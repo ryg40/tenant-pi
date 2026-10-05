@@ -1,0 +1,17 @@
+{
+  "about": "Labeled session states for the next-move chip. The state is exactly what the extension sends. Messages are invented.",
+  "states": [
+    {"id": "early", "expected": "continue", "state": {"context_used_pct": 22, "turns": 6, "last_tool_error": false, "last_user_message": "looks good, go on with step 2"}},
+    {"id": "next-item", "expected": "continue", "state": {"context_used_pct": 30, "turns": 10, "last_tool_error": false, "last_user_message": "nice, next item please"}},
+    {"id": "mid-steady", "expected": "continue", "state": {"context_used_pct": 48, "turns": 18, "last_tool_error": false, "last_user_message": "now do the same for the second file"}},
+    {"id": "ctx-78", "expected": "compact", "state": {"context_used_pct": 78, "turns": 52, "last_tool_error": false, "last_user_message": "continue with the last item"}},
+    {"id": "ctx-82", "expected": "compact", "state": {"context_used_pct": 82, "turns": 46, "last_tool_error": false, "last_user_message": "ok now also add the tests"}},
+    {"id": "ctx-80-long", "expected": "compact", "state": {"context_used_pct": 80, "turns": 60, "last_tool_error": false, "last_user_message": "keep going with the refactor"}},
+    {"id": "ctx-93", "expected": "handoff", "state": {"context_used_pct": 93, "turns": 80, "last_tool_error": false, "last_user_message": "there are still five things left, keep going"}},
+    {"id": "stuck", "expected": "handoff", "state": {"context_used_pct": 91, "turns": 70, "last_tool_error": true, "last_user_message": "we keep hitting the same error, nothing works"}},
+    {"id": "done", "expected": "commit", "state": {"context_used_pct": 45, "turns": 20, "last_tool_error": false, "last_user_message": "all tests pass, that is the whole feature"}},
+    {"id": "green-docs", "expected": "commit", "state": {"context_used_pct": 55, "turns": 25, "last_tool_error": false, "last_user_message": "tests are green and the docs are updated"}},
+    {"id": "build-broke", "expected": "validate", "state": {"context_used_pct": 38, "turns": 15, "last_tool_error": true, "last_user_message": "the build broke after that edit"}},
+    {"id": "parser", "expected": "validate", "state": {"context_used_pct": 50, "turns": 30, "last_tool_error": false, "last_user_message": "I changed the parser, does it still work?"}}
+  ]
+}

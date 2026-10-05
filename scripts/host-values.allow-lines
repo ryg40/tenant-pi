@@ -1,0 +1,17 @@
+# Accepted host-value lines in the publish set. Format: <path><TAB><sha256 of the exact line text without the line end>.
+# A maintainer accepts each line by hash. The reasons are in docs/secret-handling.md,
+# section "Accepted host values in the publish set". A changed line is a finding again. Run sh tests/test_scan.sh after an edit.
+# Compute a hash: sed -n '<line>p' <path> | tr -d '\n' | sha256sum   (macOS: shasum -a 256)
+packages/promptr/test/workboard/prompt-draft.test.mjs	10d670ca1da5b8c7c31dc9efe851faa44e78de11a8cd1199663d74006dce0724
+packages/promptr/test/workboard/prompt-draft.test.mjs	112db3a45b2f5d51effa3790e833146f70843a9fd9f69564812aac60cd66842c
+packages/promptr/test/workboard/prompt-draft.test.mjs	7e0c7d18c0114ac488de7c73b3fde372817797e09ca33424b731907dffb90e8f
+packages/promptr/test/workboard/prompt-draft.test.mjs	d3a0922b4cc2b10439999b426e5750603ca715b477768f431b9424cb07848454
+packages/promptr/test/workboard/selection-board.test.mjs	afcf5308f70b919a31eb7d2be13cbc9a6332c9ef2bea466d6b57c4b557c4c67b
+packages/tenantext/README.md	5ae0a3f721836585208574b6163ea1228185396d36fd770e240d71ae36f3c066
+packages/tenantext/slopscore/test/pr.test.ts	06b2770b1062fc260a2bdaa5abb481f754918e7f8d9795ca39224fd762b1901c
+packages/tenantext/slopscore/test/pr.test.ts	faa7e7d494b1e2e2c232fe6feef44dce589c545ae1af4884464ef745fd660411
+packages/tenantext/tracker/tests/fixtures/pipeline-previous-brief.md	bbf9adced496a8872e340596f2d992eefb8d80aaefe4c01cff4de57248afb415
+packages/tenantext/tracker/tests/fixtures/pipeline-previous-brief.md	19e7d2b026bbe907179f1195344f7a7f41eb9ac5905689ace0d3222b99918481
+packages/tenantext/tracker/tests/fixtures/pipeline-previous-brief.md	c3b670c51297d524b135ddf7f820e012353370181ee8c140920323b62fac2b40
+packages/tenantext/tracker/tests/fixtures/pipeline-previous-brief.md	d7fabcddaa5f0aa31b6da1b2be70fba8139dd1622df4028aa3cd8023f80d6465
+packages/tenantext/tracker/tests/fixtures/pipeline-synthesis-long.md	6b1054278842fa581a76cce961240101cb3affb342877a8d7594bf66ddb63bb4

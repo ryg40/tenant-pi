@@ -1,0 +1,996 @@
+{
+  "schemaVersion": 1,
+  "runtime": {
+    "piVersion": "1.0.3",
+    "nodeRange": ">=22.22.0 <23",
+    "pythonRange": ">=3.11"
+  },
+  "components": {
+    "core": {
+      "source": {
+        "kind": "npm",
+        "spec": "@earendil-works/pi-coding-agent@1.0.3"
+      },
+      "status": "tested",
+      "reason": null,
+      "requires": [],
+      "owner": "pi",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "/defaultProjectTrust"
+          },
+          {
+            "file": "settings.json",
+            "key": "/enableInstallTelemetry"
+          },
+          {
+            "file": "settings.json",
+            "key": "/enableAnalytics"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "Only the listed Pi settings fields"
+      }
+    },
+    "model-routing": {
+      "source": {
+        "kind": "builtin"
+      },
+      "status": "tested",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "pi",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "/defaultProvider"
+          },
+          {
+            "file": "settings.json",
+            "key": "/defaultModel"
+          },
+          {
+            "file": "settings.json",
+            "key": "/defaultThinkingLevel"
+          },
+          {
+            "file": "settings.json",
+            "key": "/enabledModels"
+          },
+          {
+            "file": "settings.json",
+            "key": "/modelThinkingLevels"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "Only the listed Pi settings fields"
+      }
+    },
+    "tenantext": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/tenantext/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/tenantext/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "codex-accounts": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/codex-accounts/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "TENANTEXT_LITELLM_BASE_URL",
+        "TENANTEXT_LITELLM_API_KEY"
+      ],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "gateway_upstream_unverified",
+          "fact": "The gateway behind TENANTEXT_LITELLM_BASE_URL is a host service; the kit does not check it."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/codex-accounts/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "slopscore": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/slopscore/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/slopscore/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "context-meter": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/context-meter/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/context-meter/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "ops-footer": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core",
+        "context-meter"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/ops-footer/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "sibling_extension_imports",
+          "fact": "The only runtime import is a file import of context-meter/service.ts. The imports of codex-accounts, copilot-usage and anthropic-usage files are type imports. The two extensions ops-footer and context-meter exchange ownership events. The requirement of context-meter is a safe choice, not a proven need."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/ops-footer/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "copilot-usage": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/copilot-usage/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/copilot-usage/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "anthropic-usage": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/anthropic-usage/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "usage_endpoint_unverified",
+          "fact": "Fixture tests with an injected fetch cover the extension. No live request from the extension is on record. The extension reads the Claude Code credential file under HOME and the Pi anthropic OAuth credential, read-only, and sends one GET request to api.anthropic.com."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/anthropic-usage/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "doctor": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/doctor/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "TENANTEXT_LITELLM_BASE_URL"
+      ],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "sibling_extension_imports",
+          "fact": "The checks import files of codex-accounts, copilot-usage and anthropic-usage and report on extensions that are not enabled."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/doctor/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "resources": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/resources/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "The component uses the resource settings syntax of Pi 1.0.3, the kit pin; the kit has no load test on that line."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/resources/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "herdr": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/herdr"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The skill needs the herdr CLI and Python 3 on the host; the kit does not install or check them."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/herdr"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
+      }
+    },
+    "slopscore-pr": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/slopscore-pr"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The skill runs the slopscore CLI and gh or the Gitea API; the kit does not install or check them."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/slopscore-pr"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
+      }
+    },
+    "tracker-site": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "blocked",
+      "reason": "The skill needs the tracker Python package of packages/tenantext/tracker on PYTHONPATH; the kit has no check of the Python needs",
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/tracker-site"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "python_package_required",
+          "fact": "The skill runs python3 -m tracker with PYTHONPATH set to packages/tenantext; the Python needs of tracker/ are not checked by the kit."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [],
+        "status": "blocked",
+        "boundary": "Native file and key namespace unverified; activation blocked"
+      }
+    },
+    "promptr": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/promptr"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "promptr",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "build_step_required",
+          "fact": "packages/promptr/index.ts re-exports dist/src/extension/index.mjs; dist/ is not in the tree, so npm ci and npm run build must run in packages/promptr before the first start."
+        },
+        {
+          "code": "host_module_dependency",
+          "fact": "packages/promptr/package.json lists @earendil-works/pi-tui at 1.0.2 under dependencies because the companion process needs it; Pi 1.0.2 prints one warning for it at each start. For the built files Pi loads a second copy of pi-tui from packages/promptr/node_modules. The kit pins Pi 1.0.3 with pi-tui ^1.0.3, so the two copies differ: pi-tui 1.0.3 changed the default keys of Home and End. The effect on key handling is not verified."
+        },
+        {
+          "code": "placeholder_defaults",
+          "fact": "The kit copy has neutral placeholder defaults for the tracker host, the tracker owner and the OpenKnowledge origin; set GITEA_HOST, GITEA_OWNER and OPENKNOWLEDGE_ORIGIN in the shell that starts Pi, or the tracker dialog offers a repository that does not exist."
+        },
+        {
+          "code": "private_renderer_adapters",
+          "fact": "The sidebar uses private Pi renderer adapters. Not verified: a session with a model."
+        },
+        {
+          "code": "automatic_dispatch_path_unverified",
+          "fact": "packages/promptr/src/extension/index.mts calls requestHandoff with automatic set; the kit has not verified its switch."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/promptr:index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/promptr package declaration only; native settings of the extension stay owned by it"
+      }
+    },
+    "promptr-generate-task-prompt": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/promptr"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core",
+        "promptr"
+      ],
+      "owner": "promptr",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/promptr-generate-task-prompt"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "skill_use_unverified",
+          "fact": "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/promptr:skills/promptr-generate-task-prompt"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      }
+    },
+    "promptr-handoff": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/promptr"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core",
+        "promptr"
+      ],
+      "owner": "promptr",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/promptr-handoff"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "skill_use_unverified",
+          "fact": "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/promptr:skills/promptr-handoff"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      }
+    },
+    "promptr-openknowledge-project-pages": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/promptr"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core",
+        "promptr"
+      ],
+      "owner": "promptr",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/openknowledge-project-pages"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "host_service_required",
+          "fact": "The skill calls an OpenKnowledge HTTP API of the host; the kit does not provide or check it."
+        },
+        {
+          "code": "skill_use_unverified",
+          "fact": "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/promptr:skills/openknowledge-project-pages"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      }
+    },
+    "promptr-watch-herdr-agents": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/promptr"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core",
+        "promptr"
+      ],
+      "owner": "promptr",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/watch-herdr-agents"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "host_tool_required",
+          "fact": "The skill needs the herdr CLI on the host; the kit does not install or check it."
+        },
+        {
+          "code": "skill_use_unverified",
+          "fact": "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/promptr:skills/watch-herdr-agents"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      }
+    },
+    "mcp": {
+      "source": {
+        "kind": "npm",
+        "spec": "pi-mcp-adapter"
+      },
+      "status": "tested",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "pi-mcp-adapter",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:pi-mcp-adapter"
+          },
+          {
+            "file": "settings.json",
+            "key": "/extensions"
+          },
+          {
+            "file": "mcp-adapter.json",
+            "key": ""
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "Pi package declaration, the extensions list entry that disables builtin:mcp, and the whole adapter config file"
+      }
+    },
+    "hermes": {
+      "source": {
+        "kind": "npm",
+        "spec": "pi-hermes-memory"
+      },
+      "status": "tested",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "pi-hermes-memory",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "src/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:pi-hermes-memory"
+          },
+          {
+            "file": "hermes-memory-config.json",
+            "key": ""
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "Pi package declaration plus the whole hermes-memory-config.json file; runtime stores stay under the agent directory"
+      }
+    },
+    "wiki": {
+      "source": {
+        "kind": "npm",
+        "spec": "@zosmaai/pi-llm-wiki"
+      },
+      "status": "tested",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "pi-llm-wiki",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:@zosmaai/pi-llm-wiki"
+          },
+          {
+            "file": "settings.json",
+            "key": "/llm-wiki"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "Pi package declaration and the llm-wiki settings section only; the personal vault lives under HOME or WIKI_HOME"
+      }
+    },
+    "openviking": {
+      "source": null,
+      "status": "blocked",
+      "reason": "No reviewed source exists in this release; activation is blocked.",
+      "requires": [
+        "core"
+      ],
+      "owner": "openviking",
+      "license": "AGPL-3.0",
+      "resources": {
+        "extensions": [],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "configOwnership": {
+        "claims": [],
+        "status": "blocked",
+        "boundary": "Native file and key namespace unverified; activation blocked"
+      }
+    }
+  }
+}

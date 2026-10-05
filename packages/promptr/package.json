@@ -1,0 +1,57 @@
+{
+  "name": "promptr",
+  "version": "0.1.0",
+  "description": "Promptr one-shot Pi extension: proqi-style prompt queue plus progress checkpoints and staged successor handoffs.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/src/companion/spike.mjs",
+  "bin": {
+    "promptr-companion-spike": "./dist/src/companion/spike.mjs",
+    "promptr-workflows-init": "./dist/src/workflow/init.mjs",
+    "promptr-tracker-init": "./dist/src/tracking/init.mjs",
+    "promptr-doctor": "./dist/src/doctor/cli.mjs"
+  },
+  "files": [
+    "dist/src/**/*",
+    "index.ts",
+    "examples/**/*",
+    "skills/**/*",
+    "docs/**/*"
+  ],
+  "engines": {
+    "node": ">=22.22.0 <23"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test test/**/*.test.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:installed": "node scripts/installed-smoke.mjs",
+    "install:local": "node scripts/install.mjs",
+    "doctor": "node dist/src/doctor/cli.mjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-tui": "1.0.2"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@types/node": "22.20.1",
+    "typescript": "5.9.3"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  }
+}

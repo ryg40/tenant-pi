@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "mode": "all",
+  "intervalSeconds": 15,
+  "deadlineSeconds": 7200,
+  "stablePolls": 2,
+  "stateDir": "/absolute/private/watcher-unique-run",
+  "coordinator": {
+    "pane": "w1:p1",
+    "agent": "pi",
+    "session": {"kind": "path", "value": "/absolute/current-coordinator-session.jsonl"},
+    "cwds": ["/absolute/repo"]
+  },
+  "workers": [
+    {
+      "pane": "w1:p2",
+      "agent": "claude",
+      "session": {"kind": "id", "value": "replace-with-live-claude-session-id"},
+      "cwds": ["/absolute/worktree-a", "/absolute/worktree-a/extension"],
+      "completion": {
+        "kind": "report",
+        "path": "/absolute/worktree-a/.private/final-report.md",
+        "notBefore": 0,
+        "markers": ["FINAL REPORT", "Marker: REPORT_COMPLETE"]
+      }
+    },
+    {
+      "pane": "w2:p7",
+      "agent": "pi",
+      "session": {"kind": "path", "value": "/absolute/worker-b-session.jsonl"},
+      "cwds": ["/absolute/worktree-b"],
+      "completion": {
+        "kind": "report",
+        "path": "/absolute/worktree-b/.private/final-report.md",
+        "notBefore": 0,
+        "markers": ["FINAL REPORT", "Marker: REPORT_COMPLETE"]
+      }
+    }
+  ],
+  "wakeMessage": "Watcher: selected worker sessions have settled with final reports. Independently verify exact sessions, final handoffs, stopped writers and diffs before continuing only user-authorized work. Do not launch replacement workers or assume shipping authority. Read the configured watcher status for qualified panes."
+}

@@ -1,0 +1,69 @@
+{
+  "comment": "Catalog of tools, skills and processes that a started agent can use. It is a list of suggestions in order of preference, not a set of limits. spawn.py puts the entries of a role into its prompt as one line each. The agent loads the full text of an entry only when it uses it. An entry whose locations are all absent on the machine is left out. A file at ~/.config/herdr-skill/resources.json can add or replace entries for one machine.",
+  "resources": {
+    "hound": {
+      "group": "web",
+      "order": 10,
+      "kind": "mcp",
+      "title": "Hound MCP",
+      "use_when": "First choice when it is available. Good for search and for pages that load without a real browser.",
+      "load": "Tools `hound_mcp_smart_search` and `hound_mcp_smart_fetch`, direct or through the `mcp` tool.",
+      "locations": [
+        {
+          "url": "http://127.0.0.1:8765/mcp"
+        }
+      ]
+    },
+    "desktop-browser": {
+      "group": "web",
+      "order": 20,
+      "kind": "skill",
+      "title": "Desktop browser process",
+      "use_when": "When the task asks for it, when a page needs a real browser (maps, menus, review sites, forecasts, pages that refuse automated clients), or when the first choice gives no usable content.",
+      "load": "Read the file at the location and follow it.",
+      "locations": [
+        {
+          "file": "~/.agents/skills/desktop-browser/SKILL.md"
+        },
+        {
+          "file": "~/.claude/skills/desktop-browser/SKILL.md"
+        },
+        {
+          "file": "~/.pi/agent/skills/desktop-browser/SKILL.md"
+        }
+      ]
+    },
+    "harness-web": {
+      "group": "web",
+      "order": 30,
+      "kind": "tool",
+      "title": "Other web tools of your harness",
+      "use_when": "When the entries above are not available or do not give the content.",
+      "load": "A search or fetch tool, another search MCP server, a browser MCP server, or `curl` for a page with a known URL."
+    },
+    "local-search": {
+      "group": "local",
+      "order": 10,
+      "kind": "cli",
+      "title": "Search in the working directory",
+      "use_when": "First choice for a fact about the project.",
+      "load": "`rg`, `git grep`, `git log`, and file reads."
+    },
+    "local-machine": {
+      "group": "local",
+      "order": 20,
+      "kind": "cli",
+      "title": "Other places on the machine",
+      "use_when": "When the answer is not in the working directory.",
+      "load": "Other directories, logs, session records and configuration."
+    },
+    "local-services": {
+      "group": "local",
+      "order": 30,
+      "kind": "cli",
+      "title": "Services that run",
+      "use_when": "When files do not show the state.",
+      "load": "Read-only commands such as `docker ps`, `docker logs`, or `curl` to a local endpoint."
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "comment": "Example of a machine file. Copy it to ~/.config/herdr-skill/resources.json and change it. An entry with the same id replaces the entry of the catalog. \"remove\": true takes an entry out.",
+  "resources": {
+    "desktop-browser": {
+      "group": "web",
+      "order": 20,
+      "kind": "skill",
+      "title": "Example desktop browser",
+      "use_when": "When the task asks for it, when a page needs a real browser, or when the first choice gives no usable content.",
+      "load": "Read the file at the location and follow it, with its pacing rules.",
+      "locations": [
+        {
+          "file": "~/.agents/skills/my-desktop-browser/SKILL.md"
+        }
+      ]
+    }
+  }
+}

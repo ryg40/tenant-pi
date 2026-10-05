@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "agentDir": "/home/EXAMPLE_USER/new-agent"
+  },
+  "selection": {
+    "enable": [
+      "core"
+    ],
+    "disable": [
+      "anthropic-usage",
+      "codex-accounts",
+      "context-meter",
+      "copilot-usage",
+      "doctor",
+      "herdr",
+      "hermes",
+      "mcp",
+      "model-routing",
+      "openviking",
+      "ops-footer",
+      "promptr",
+      "promptr-generate-task-prompt",
+      "promptr-handoff",
+      "promptr-openknowledge-project-pages",
+      "promptr-watch-herdr-agents",
+      "resources",
+      "slopscore",
+      "slopscore-pr",
+      "tenantext",
+      "tracker-site",
+      "wiki"
+    ]
+  },
+  "paths": {},
+  "roles": {},
+  "endpoints": {},
+  "env": {},
+  "inputs": {
+    "modelsFile": null,
+    "mcpFile": null
+  },
+  "consent": {
+    "memoryCapture": false,
+    "remoteMemoryWrites": false,
+    "telemetry": false
+  }
+}

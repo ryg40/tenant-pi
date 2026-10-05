@@ -1,0 +1,40 @@
+{
+  "comment": "Role table for spawn.py. A role sets the tab, the session type and the usual file access. It sets no model and removes no tool. The tools and skills of a role come from resources.json. spawn.py applies hard tool limits only with --strict.",
+  "roles": {
+    "coordinator": {
+      "session": "primary",
+      "access": "write",
+      "web": false,
+      "focus": "Plans the work, delegates it, checks the results, reports to the user."
+    },
+    "researcher": {
+      "session": "subagent",
+      "access": "read",
+      "web": true,
+      "focus": "Context gatherer. Web research first: sources outside the machine, with citations. Local search when the task needs it."
+    },
+    "scout": {
+      "session": "subagent",
+      "access": "read",
+      "web": true,
+      "focus": "Context gatherer. Local search first: files, repositories and their history. Web access for a repository or the documentation of an app when the task needs it."
+    },
+    "worker": {
+      "session": "subagent",
+      "access": "write",
+      "web": false,
+      "focus": "Implements one bounded change and verifies it."
+    },
+    "reviewer": {
+      "session": "subagent",
+      "access": "read",
+      "web": false,
+      "focus": "Reviews a plan, a diff or code. Reports defects with evidence. Changes nothing."
+    }
+  },
+  "launch": {
+    "comment": "Files that spawn.py gives to a harness. {skill} is the directory of this skill. ~ is the home directory.",
+    "claude_mcp_config": "{skill}/mcp/hound.claude.json",
+    "pi_mcp_config_strict": "~/.pi/agent/mcp-researcher.json"
+  }
+}

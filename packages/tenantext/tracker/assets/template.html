@@ -1,0 +1,149 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>@@TITLE@@</title><style>
+:root{--paper:#f3f0e7;--ink:#202c2a;--muted:#56645e;--line:#cbd1c5;--accent:#b44429;--green:#23674d;--amber:#8a5a00;--grey:#6b7069}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(ellipse at top right,#dce6d3,transparent 60%),var(--paper);color:var(--ink);font:16px/1.5 Georgia,serif;overflow-wrap:anywhere}
+main{max-width:1180px;margin:auto;padding:42px 24px}
+h1{font-size:clamp(34px,6vw,60px);line-height:1.05;margin:12px 0}
+h2{font-size:26px;margin:0 0 12px}
+h3{margin:4px 0;font-size:19px}
+a{color:var(--green);text-underline-offset:3px}
+code{font:13px ui-monospace,monospace}
+.tb-eyebrow,.tb-badge,.tb-state,.tb-label,.tb-role,.tb-meta,button,input,select,summary,.tb-count,.tb-ev-meta{font-family:ui-monospace,monospace}
+.tb-eyebrow{color:var(--accent);letter-spacing:2px;font-size:12px;text-transform:uppercase;margin:0}
+.tb-scope{max-width:780px;color:var(--muted);margin:0 0 16px}
+.tb-meta{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:12px;color:var(--muted);margin:0 0 12px}
+.tb-meta dt{display:inline;font-weight:bold}.tb-meta dt::after{content:": "}.tb-meta dd{display:inline;margin:0}
+.tb-notice{padding:10px 16px;background:#fff9e9;border-left:4px solid var(--accent);margin:8px 0;font-size:14px}
+.tb-notice[data-notice=freshness]{border-left-color:var(--line);background:transparent;color:var(--muted)}
+.tb-nav{display:flex;flex-wrap:wrap;gap:18px;margin:14px 0 0;font-size:14px}
+.tb-attention{margin:28px 0;padding:16px 20px;border:1px solid var(--accent);background:#fff9e9}
+.tb-attention h2{font-size:18px}
+.tb-attention-list,.tb-list,.tb-items,.tb-alternatives,.tb-ev-list{list-style:none;margin:0;padding:0}
+.tb-attention-list>li,.tb-list>li{padding:6px 0}
+.tb-label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);margin-right:6px}
+.tb-cards{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.tb-card{border:1px solid var(--line);background:#ffffff70;padding:20px 22px;min-width:0}
+.tb-lead{font-size:19px;margin:0 0 8px}
+.tb-items>li{padding:10px 0 10px 12px;border-top:1px solid var(--line)}
+.tb-items>li:first-child{border-top:0}
+.tb-item-text,.tb-blocker,.tb-next-action{margin:4px 0}
+.tb-facts{margin:6px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
+.tb-since,.tb-authority,.tb-register-note,.tb-ev-none{font-size:13px;color:var(--muted)}
+.tb-key{font-weight:bold;margin:0}
+.tb-badge,.tb-state{font-size:11px;display:inline-block;border:1px solid var(--line);border-radius:20px;padding:2px 9px;white-space:nowrap}
+[data-state=completed]{--state:var(--green);--state-bg:#e1eddf}[data-state=active]{--state:var(--ink);--state-bg:#eef0ea}
+[data-state=blocked]{--state:#a13a21;--state-bg:#fff1df}[data-state=parked]{--state:var(--grey);--state-bg:#ecebe6}
+[data-state=approval-gated]{--state:var(--amber);--state-bg:#fdf0cf}
+.tb-item[data-state],.tb-path[data-state],.tb-packet[data-state],.tb-gate[data-state]{border-left:4px solid var(--state)}
+.tb-state{color:var(--state);background:var(--state-bg);border-color:var(--state)}.tb-state[data-state=parked]{border-style:dashed}
+tr[data-state]>td:first-child{border-left:4px solid var(--state)}
+.tb-badge[data-issue-state=open]{color:#a13a21;background:#fff1df}.tb-badge[data-issue-state=closed]{color:var(--green);background:#e1eddf}
+.tb-path{padding-left:12px}
+.tb-role{font-size:12px;color:var(--accent);margin:0}
+.tb-alt-h{font-size:15px;margin-top:16px}
+.tb-alternatives>li{padding:6px 0 6px 12px;border-top:1px solid var(--line)}
+details{margin:8px 0}
+summary{cursor:pointer;font-size:13px;color:var(--green)}
+.tb-ev{padding:6px 0;font-size:14px}
+.tb-ev-meta{font-size:12px;color:var(--muted)}.tb-ev-note{display:block;font-size:13px;color:var(--muted)}
+.tb-ev[data-stale=true] .tb-ev-meta{color:var(--accent)}
+.tb-fields{margin:8px 0;font-size:14px}.tb-fields dt{font-weight:bold}.tb-fields dd{margin:0 0 6px}.tb-fields ul{margin:0;padding-left:18px}
+.tb-more{margin-top:40px;border-top:1px solid var(--ink);padding-top:16px}
+.tb-section{border-top:1px solid var(--line);padding:10px 0}
+.tb-section>summary{font-size:15px}
+.tb-group-h{font-size:15px;margin-top:12px}
+.tb-tools{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+input,select,button{font-size:14px;padding:10px;border:1px solid var(--line);background:#fffdf6;border-radius:4px;color:var(--ink);max-width:100%}
+input{flex:1;min-width:0}
+button{cursor:pointer}button:hover{border-color:var(--ink)}
+.tb-count{font-size:12px;color:var(--muted)}
+.tb-table-wrap{max-width:100%;overflow-x:auto}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font:12px ui-monospace,monospace;color:var(--muted);padding:10px}
+td{padding:12px 10px;border-top:1px solid var(--line);vertical-align:top}
+.tb-issue-title{font-weight:bold}.tb-issue-note,.tb-issue-blockers{font-size:14px;color:var(--muted);margin-top:4px}
+.tb-issue-blockers{color:#a13a21}
+.tb-packet{border:1px solid var(--line);background:#ffffff70;padding:16px 18px;margin:12px 0}
+.tb-next-prompt{margin:12px 0 4px;padding:12px 14px;border:1px dashed var(--line);background:#fffdf6}
+.tb-next-prompt[data-basis=carried-forward]{border-color:var(--accent)}
+.tb-handoff-meta{margin:0 0 8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.tb-handoff-generated{font-size:12px;color:var(--muted)}
+.tb-badge[data-basis=carried-forward]{color:var(--accent);border-color:var(--accent)}
+.tb-copy-row{margin:0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tb-copy-status{font:12px ui-monospace,monospace;color:var(--green)}
+.tb-handoff-text{margin:8px 0 0;padding:10px;max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;font:13px/1.45 ui-monospace,monospace;background:#fff;border:1px solid var(--line)}
+.tb-footer{margin-top:40px;border-top:1px solid var(--ink);padding-top:16px;color:var(--muted);font-size:14px}
+[hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+@media(max-width:800px){.tb-cards{grid-template-columns:1fr}}
+@media(max-width:650px){main{padding:24px 16px}th:nth-child(5),td:nth-child(5){display:none}td,th{padding:10px 5px}.tb-badge,.tb-state{font-size:10px;white-space:normal}}
+</style></head><body><main>@@BODY@@</main><script>
+(function(){
+  "use strict";
+  var rows=[].slice.call(document.querySelectorAll("tr.tb-issue"));
+  var search=document.getElementById("tb-search"),state=document.getElementById("tb-filter-state"),
+      workstream=document.getElementById("tb-filter-workstream"),reset=document.getElementById("tb-reset"),
+      count=document.getElementById("tb-count"),empty=document.getElementById("tb-empty");
+  function filter(){
+    if(!search||!state||!workstream)return;
+    var q=search.value.trim().toLowerCase(),shown=0;
+    rows.forEach(function(row){
+      var ok=(state.selectedIndex===0||row.dataset.issueState===state.value)&&
+             (workstream.selectedIndex===0||row.dataset.workstream===workstream.value)&&
+             row.textContent.toLowerCase().indexOf(q)!==-1;
+      row.hidden=!ok;if(ok)shown++;
+    });
+    if(count)count.textContent=shown+" of "+rows.length+" issues shown";
+    if(empty)empty.hidden=shown!==0;
+  }
+  if(search)search.addEventListener("input",filter);
+  if(state)state.addEventListener("change",filter);
+  if(workstream)workstream.addEventListener("change",filter);
+  if(reset)reset.addEventListener("click",function(){search.value="";state.selectedIndex=0;workstream.selectedIndex=0;filter();});
+  function openTarget(){
+    var id=decodeURIComponent(location.hash.slice(1));if(!id)return;
+    var el=document.getElementById(id);if(!el)return;
+    for(var node=el;node;node=node.parentElement){if(node.tagName==="DETAILS")node.open=true;}
+    el.scrollIntoView();
+  }
+  function copyWithTextarea(text,button){
+    var area=document.createElement("textarea"),ok=false;
+    area.value=text;area.setAttribute("readonly","");
+    area.style.position="fixed";area.style.top="0";area.style.left="-10000px";area.style.opacity="0";
+    document.body.appendChild(area);area.select();
+    try{ok=document.execCommand("copy");}catch(e){ok=false;}
+    document.body.removeChild(area);
+    if(button)button.focus();
+    return ok;
+  }
+  [].slice.call(document.querySelectorAll("button.tb-copy")).forEach(function(button){
+    var target=document.getElementById(button.getAttribute("data-copy-target"));
+    var box=button.closest(".tb-next-prompt");
+    var status=box?box.querySelector(".tb-copy-status"):null;
+    function say(text){if(status)status.textContent=text;}
+    function manual(){
+      var details=target.closest("details");if(details)details.open=true;
+      var range=document.createRange();range.selectNodeContents(target);
+      var selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+      say("Press Ctrl+C or Cmd+C to copy");
+    }
+    button.addEventListener("click",function(){
+      if(!target)return;
+      var text=target.textContent;
+      say("");
+      /* The artifact service sandboxes pages (null origin), where the async clipboard API
+         is refused. Copy synchronously inside the click first; it works in every engine. */
+      if(copyWithTextarea(text,button)){say("Copied");return;}
+      var clip=navigator.clipboard,pending=null;
+      if(clip&&typeof clip.writeText==="function"){
+        try{pending=clip.writeText(text);}catch(e){pending=null;}
+      }
+      if(pending&&typeof pending.then==="function")pending.then(function(){say("Copied");},manual);
+      else manual();
+    });
+  });
+  window.addEventListener("hashchange",openTarget);
+  openTarget();
+  filter();
+})();
+</script></body></html>

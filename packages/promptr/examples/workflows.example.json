@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "providers": ["openai-codex", "openai-codex-2"],
+  "defaultProvider": "openai-codex",
+  "workflows": {
+    "openai-codex-simple": {
+      "description": "Well-developed Wayfinder task. Sol xhigh coordinator, Sol medium worker (shipped default, restated here so it is easy to edit).",
+      "roles": {
+        "coordinator": { "model": "gpt-5.6-sol", "thinking": "xhigh" },
+        "scout": { "model": "gpt-5.6-luna", "thinking": "xhigh" },
+        "researcher": { "model": "gpt-5.6-luna", "thinking": "xhigh" },
+        "worker": { "model": "gpt-5.6-sol", "thinking": "medium" },
+        "reviewer": { "model": "gpt-5.6-luna", "thinking": "xhigh" },
+        "generator": { "model": "gpt-5.6-sol", "thinking": "medium" }
+      }
+    },
+    "openai-codex-high": {
+      "roles": {
+        "worker": { "thinking": "medium" }
+      }
+    }
+  }
+}

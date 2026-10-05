@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "tenantext",
+  "description": "tenantext: Simplified English (adapted ASD-STE001) output rules for Claude Code",
+  "owner": { "name": "The tenant-pi authors" },
+  "plugins": [
+    {
+      "name": "tenantext",
+      "description": "Simplified English (adapted ASD-STE001) output rules: injected at session start and after /clear, resume and compaction. /ste toggles the default.",
+      "author": { "name": "The tenant-pi authors" },
+      "source": "./claude-code",
+      "category": "productivity",
+      "license": "MIT"
+    }
+  ]
+}

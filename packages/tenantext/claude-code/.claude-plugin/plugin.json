@@ -1,0 +1,9 @@
+{
+  "name": "tenantext",
+  "version": "0.1.0",
+  "description": "Simplified English (adapted ASD-STE001) output rules for Claude Code: injected at session start and after /clear, resume and compaction. /ste toggles the default.",
+  "author": { "name": "The tenant-pi authors" },
+  "repository": "https://git.example.com/owner/tenantext",
+  "license": "MIT",
+  "keywords": ["simplified-english", "ste", "concise", "tokens"]
+}

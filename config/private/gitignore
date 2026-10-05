@@ -1,0 +1,14 @@
+# Private directory of tenant-pi: names that Git must not track here.
+# This list is not a security control. Read `git status` before each commit.
+inputs/
+.env
+.env.*
+auth.json
+models.json
+mcp-adapter.json
+sessions/
+*.key
+*.pem
+*.db
+*.sqlite
+*baseline*.json

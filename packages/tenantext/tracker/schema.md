@@ -17,7 +17,7 @@ A copyable example is in `tracker/examples/tracker-brief.md`.
 1. Frontmatter: a `---` line, `key: value` lines, a `---` line.
 2. One title line: `# Title`.
 3. Eight sections with fixed `## ` headings, in fixed order.
-4. Inside each section: fenced records and, optionally, owner notes.
+4. Inside each section: fenced records and, optionally, requester notes.
 
 Line endings are LF. The parser changes CRLF to LF.
 
@@ -57,7 +57,7 @@ Exactly these `## ` headings, in this order. Each heading appears once.
 | 8 | `## Evidence` | `evidence` | 0 or more |
 
 A `# ` line is the title. Only one title is allowed, and it comes before the first section.
-A `### ` line (or deeper) is not structure. It is part of an owner note.
+A `### ` line (or deeper) is not structure. It is part of a requester note.
 
 ## Record syntax
 
@@ -100,7 +100,7 @@ R = required, O = optional, L = list.
 | --- | --- |
 | `position` | `id` R, `text` R (one sentence, max 40 words), `milestone` O, `status` R, `evidence` L O |
 | `change` | `id` R, `title` R, `summary` R (max 40 words), `status` R, `evidence` L R (at least 1) |
-| `active` | `id` R, `title` R, `readiness` R, `next` R (max 30 words), `owner` O, `blocker` O, `priority` R (integer 1..3, unique in the section), `evidence` L O |
+| `active` | `id` R, `title` R, `readiness` R, `next` R (max 30 words), `requester` O, `blocker` O, `priority` R (integer 1..3, unique in the section), `evidence` L O |
 | `issue` | `id` R, `title` R, `state` R, `progress` R, `url` R (credential-free HTTPS), `checked` R (UTC ISO), `workstream` O, `blockers` L O, `note` O |
 | `gate` | `id` R, `kind` R, `text` R, `evidence` L O |
 | `unknown` | `id` R, `kind` R, `severity` R, `text` R, `evidence` L O |
@@ -124,8 +124,10 @@ The dump writes fields in the order of this table. It writes the `handoff` recor
 | path `role` | `recommended`, `alternative`, `backlog` |
 | evidence `kind` | `issue`, `pr`, `commit`, `okf`, `test`, `file`, `url`, `note` |
 | `synthesis` | `model`, `minimal` |
-| handoff `source` | `generated` (built by `tracker/handoff.py`), `owner` (written by the owner) |
+| handoff `source` | `generated` (built by `tracker/handoff.py`), `requester` (written by the requester) |
 | handoff `basis` | `current` (built from this brief), `carried-forward` (the path comes from an earlier brief and was not re-checked) |
+
+Older briefs use `owner` for the active record field `requester` and for the handoff source `requester`. Rename both before a refresh; the validator reports `owner` as an unknown key or value.
 
 Issue `state` is the tracker state. Issue `progress` is the delivery state.
 Keep them separate. A closed issue does not prove a merge or a deployment.
@@ -179,7 +181,7 @@ text: |
   Repository: owner/demo
   Revision: demo@a1b2c3d
   ...
-  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the owner.
+  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the requester.
 ```
 ````
 
@@ -205,7 +207,7 @@ The plain text has short labeled parts, one fact per line:
 7. Authority, every `needs_approval` item, and the brief's `approval` and `forbidden` gates.
 8. Acceptance criteria, validation commands and expected output.
 9. A closing statement: the path is a proposal. It gives no permission to deploy, publish,
-   change issues or pass an approval gate. Stop and ask the owner when a step needs approval.
+   change issues or pass an approval gate. Stop and ask the requester when a step needs approval.
 
 The text stays within 450 words. For a very long path the generator shows fewer list items
 ("N more in the restart brief") and clips long values. It never clips commands or URLs.
@@ -214,16 +216,16 @@ The text stays within 450 words. For a very long path the generator shows fewer 
 
 `tracker.handoff.refresh(model, basis=...)` returns a copy of the model:
 
-- An owner handoff (`source: owner`) that names the current recommended path is kept as it is.
+- A requester handoff (`source: requester`) that names the current recommended path is kept as it is.
 - Any other handoff is replaced by `build(model, basis=...)`.
 - Without a recommended path the copy has no handoff.
 
 The refresh pipeline calls it for every candidate brief before validation:
 `basis: current` for a model synthesis, `basis: carried-forward` for a `minimal` brief.
 
-## Owner notes
+## Requester notes
 
-Plain prose between records is an owner note.
+Plain prose between records is a requester note.
 A note is a run of non-blank lines outside a fence.
 The renderer ignores notes. Writers must keep them byte for byte.
 The model stores notes per section heading (heading text without `## `).
@@ -291,13 +293,13 @@ A hand-built model has no line numbers, so its diagnostics have `line=None`.
 
 ### Budgets
 
-These budgets are initial values.
+These budgets are the documented defaults.
 
 The default brief is the text a reader sees first. The budget counts these fields:
 
 - `position`: `text`, `milestone`.
 - every `change`: `title`, `summary`.
-- every `active`: `title`, `next`, `owner`, `blocker`.
+- every `active`: `title`, `next`, `requester`, `blocker`.
 - every `gate` with `kind: approval`: `text`.
 - every `unknown` with `severity: critical`: `text`.
 - the `recommended` path: `title`, `objective`, `next_action`.
@@ -367,6 +369,10 @@ The text form prints the recommended packet's prompt verbatim between
 `----- begin prompt -----` and `----- end prompt -----` lines.
 
 ## Rendering
+
+The baseline renderer, `tracker/render.py`, remains the shipped page.
+The three prototypes in `tracker/designs/` stay development-only and are excluded from publication.
+Promoting a prototype requires a separate design decision.
 
 `tracker.render.render(model, template=None)` validates the model first.
 It raises `BriefError` when the model has errors.
@@ -464,7 +470,7 @@ The script filters rows `tr.tb-issue` by `data-issue-state`, `data-workstream` a
 | `tb-label` | kind label in gate and unknown rows |
 | `tb-text` | gate or unknown text |
 | `tb-severity` | unknown severity word |
-| `tb-milestone`, `tb-owner`, `tb-since` | position milestone, active owner, "since" line |
+| `tb-milestone`, `tb-requester`, `tb-since` | position milestone, active requester, "since" line |
 | `tb-blocker` | active item blocker line |
 | `tb-path` | a path (recommended block, alternative row or backlog row) |
 | `tb-alt`, `tb-alt-h`, `tb-alternatives` | alternative row, its heading and list |
@@ -523,7 +529,7 @@ The script filters rows `tr.tb-issue` by `data-issue-state`, `data-workstream` a
 | `data-section` | `.tb-section` | `issues`, `gates`, `unknowns`, `backlog`, `packets`, `evidence` |
 | `data-field` | `.tb-field` | a path field name |
 | `data-basis` | `.tb-next-prompt` and its badge | `current`, `carried-forward` |
-| `data-source` | `.tb-next-prompt` and its badge | `generated`, `owner` |
+| `data-source` | `.tb-next-prompt` and its badge | `generated`, `requester` |
 | `data-copy-target` | `.tb-copy` | id of the element whose text the button copies (`tb-handoff-text`) |
 
 ## Command line

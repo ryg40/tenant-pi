@@ -23,7 +23,8 @@ from scripts.profile_inventory import RESOURCE_DIRS, inventory
 from scripts.check_runtime import TOOLS, check, matches
 from scripts import launcher
 from scripts.private_init import TARGET, TEMPLATES, check_location, check_target, init, inside, report as init_report, with_target
-from scripts.profile_plan import prepare, readiness, runtime_report, setup_commands
+from scripts.profile_plan import (PROVIDER_KEY_NAMES, prepare, provider_key_warning, readiness, runtime_report,
+                                   setup_commands)
 from scripts.profile_write import WriteError, utc_now, write
 from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, parse, place, fail
 
@@ -125,7 +126,7 @@ def _inventory(plan):
             + [{"path": ".tenant-pi/state.json", "mode": "0600", "kind": "file"}])
 
 
-def _preview(plan, *, generated, launcher_path=None, report=None):
+def _preview(plan, *, generated, launcher_path=None, report=None, key_warning=None):
     owner_resources = plan["files"][".tenant-pi/choices.json"]["content"]["overlay"].get("ownerResources", {})
     # The measured facts change this report only; the plan and the generated files stay the same.
     facts = readiness(plan, report=report, generated=generated)
@@ -149,6 +150,7 @@ def _preview(plan, *, generated, launcher_path=None, report=None):
             "launchDisplayOnly": plan["commands"]["launch"],
             "launchStatus": "manual_review_required" if generated else "not_runnable_until_generation_succeeds",
             **({"launcherDisplayOnly": launcher_path} if launcher_path is not None else {}),
+            **({"providerKeyWarning": key_warning} if key_warning is not None else {}),
         },
     }
 
@@ -553,7 +555,8 @@ def main(argv=None, *, clock=utc_now):
             return 0
         manifest_data = _load_input(args.manifest, "manifest.file")
         overlay_data = _load_input(args.overlay, "overlay.file")
-        # Never consult os.environ for credential presence or values.
+        # Never consult os.environ for a credential value. `plan` tests the names of `PROVIDER_KEY_NAMES`
+        # for presence only, for its warning.
         registry_data = _load_input(args.registry, "registry.file") if args.registry else None
         mcp_data = None
         if (slot := _mcp_slot(overlay_data)) is not None:
@@ -582,7 +585,10 @@ def main(argv=None, *, clock=utc_now):
         if args.action == "validate":
             output = {"valid": True, "scope": "offline structural and supported-input checks only"}
         elif args.action == "plan":
-            output = _preview(plan, generated=False, launcher_path=launcher_path, report=report)
+            # A membership test: the value of a variable is never read.
+            set_names = [name for name in PROVIDER_KEY_NAMES if name in os.environ]
+            output = _preview(plan, generated=False, launcher_path=launcher_path, report=report,
+                              key_warning=provider_key_warning(set_names))
         else:
             if any(gap["code"] == "pi_login_blocked" for gap in plan["readinessGaps"]):
                 fail("pi_login_blocked", "overlay.modelRoutes.gateway.auth")

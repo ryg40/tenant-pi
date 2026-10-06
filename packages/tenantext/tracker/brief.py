@@ -75,7 +75,7 @@ FIELDS = {
     ),
     "active": (
         ("id", R, TEXT), ("title", R, TEXT), ("readiness", R, TEXT), ("next", R, TEXT),
-        ("owner", O, TEXT), ("blocker", O, TEXT), ("priority", R, INT), ("evidence", O, LIST),
+        ("requester", O, TEXT), ("blocker", O, TEXT), ("priority", R, INT), ("evidence", O, LIST),
     ),
     "issue": (
         ("id", R, TEXT), ("title", R, TEXT), ("state", R, TEXT), ("progress", R, TEXT),
@@ -120,7 +120,7 @@ SEVERITIES = ("critical", "normal")
 ROLES = ("recommended", "alternative", "backlog")
 EVIDENCE_KINDS = ("issue", "pr", "commit", "okf", "test", "file", "url", "note")
 SYNTHESIS = ("model", "minimal")
-HANDOFF_SOURCES = ("generated", "owner")
+HANDOFF_SOURCES = ("generated", "requester")
 HANDOFF_BASES = ("current", "carried-forward")
 HANDOFF_MAX_WORDS = 450
 
@@ -320,7 +320,7 @@ def default_brief_strings(model):
     for rec in model.get("changes", []):
         out += [rec.get("title", ""), rec.get("summary", "")]
     for rec in model.get("active", []):
-        out += [rec.get("title", ""), rec.get("next", ""), rec.get("owner", ""), rec.get("blocker", "")]
+        out += [rec.get("title", ""), rec.get("next", ""), rec.get("requester", ""), rec.get("blocker", "")]
     for rec in model.get("gates", []):
         if rec.get("kind") == "approval":
             out.append(rec.get("text", ""))
@@ -767,7 +767,8 @@ class _Validator:
         for key, value in record.items():
             line = _line(record, key)
             if key not in spec:
-                self.err("key-unknown", f"{where} has unknown key '{key}'", line)
+                hint = " (renamed to 'requester')" if key == "owner" else ""
+                self.err("key-unknown", f"{where} has unknown key '{key}'{hint}", line)
                 continue
             kind = spec[key][1]
             if kind == LIST:
@@ -967,7 +968,7 @@ def _meta_value(value):
 def dump(model):
     """Serialize a model to canonical tracker-brief/1 Markdown.
 
-    Field order follows the schema. Owner notes follow the records of their section.
+    Field order follows the schema. Requester notes follow the records of their section.
     A handoff ``text`` is written as a ``text: |`` block with a two-space indent.
     For a valid model, parse(dump(model)) == model.
     """

@@ -68,7 +68,7 @@ def previous():
                   {"id": "path-docs", "title": "Tidy the docs", "role": "backlog"}],
         "evidence": [{"id": "ev-issue-2", "label": "I2", "kind": "issue", "ref": S.REPO_URL + "/issues/2",
                       "confidence": "verified"}],
-        "notes": {"Where things stand": ["Owner note: keep this brief short. Long history belongs in the issue tracker."]},
+        "notes": {"Where things stand": ["Requester note: keep this brief short. Long history belongs in the issue tracker."]},
     }
 
 
@@ -111,10 +111,10 @@ class MinimalTests(unittest.TestCase):
         self.assertEqual([g["kind"] for g in empty["gates"]], ["approval"], "a conservative default gate")
 
     @unittest.skipUnless(HAS_BRIEF, "needs tracker.brief")
-    def test_owner_handoff_is_carried_like_owner_content(self):
+    def test_requester_handoff_is_carried_like_requester_content(self):
         from tracker import brief, handoff
         prev = previous()
-        prev["handoffs"][0].update(source="owner", text="Owner prompt.\n\nKeep it.")
+        prev["handoffs"][0].update(source="requester", text="Requester prompt.\n\nKeep it.")
         model = self.build(copy.deepcopy(prev))
         self.assertEqual(model["handoffs"], prev["handoffs"])
         refreshed = handoff.refresh(model, basis="carried-forward")

@@ -46,7 +46,7 @@ class IdentityTests(unittest.TestCase):
     def test_parse_ref_and_slug(self):
         self.assertEqual(collect.parse_ref("main@a1b2c3d"), ("main", "a1b2c3d"))
         self.assertEqual(collect.parse_ref("feature/x@abc1234"), ("feature/x", "abc1234"))
-        self.assertEqual(collect.repo_slug("Owner/Demo.Repo"), "owner-demo-repo")
+        self.assertEqual(collect.repo_slug("owner/Demo.Repo"), "owner-demo-repo")
 
 
 class GitFactsTests(unittest.TestCase):

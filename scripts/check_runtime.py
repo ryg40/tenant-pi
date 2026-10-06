@@ -10,12 +10,12 @@ import shutil
 import subprocess
 import tempfile
 
-from scripts.validate import fail
+from scripts.validate import fail, in_range, parse_range
 
 TIMEOUT = 20
 # (result key, command name on PATH, manifest.runtime field)
 TOOLS = (("pi", "pi", "piVersion"), ("node", "node", "nodeRange"), ("python", "python3", "pythonRange"))
-STATUSES = ("match", "mismatch", "missing", "unparsed")
+STATUSES = ("match", "untested_in_range", "mismatch", "missing", "unparsed")
 # Only the first line of the output counts, and only this many bytes of it.
 MAX_OUTPUT = 256
 # The longest version token that the output echoes.
@@ -25,28 +25,10 @@ MAX_TOKEN = 40
 # build (`+abc`). Free text after the numbers is not a version.
 VERSION = re.compile(r"(?:[A-Za-z][A-Za-z0-9._-]{0,31} )?v?((\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?"
                      r"(-[0-9A-Za-z.-]+|[a-z]+\d+)?(?:\+[0-9A-Za-z.-]*)?)\Z")
-# The minimal grammar of the manifest: `>=a.b.c <d` and `>=a.b`.
-RANGE = re.compile(r">=(\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?(?: <(\d{1,9})(?:\.(\d{1,9}))?(?:\.(\d{1,9}))?)?\Z")
 
 
 def _triple(parts):
     return tuple(int(part or 0) for part in parts)
-
-
-def parse_range(value, field):
-    """Return `(lower, upper)` as number triples; `upper` is None without a `<` bound."""
-    found = RANGE.match(value) if isinstance(value, str) else None
-    if not found:
-        fail("runtime_range", field)
-    return _triple(found.groups()[:3]), (_triple(found.groups()[3:]) if found.group(4) else None)
-
-
-def in_range(version, bounds, prerelease=False):
-    """A prerelease of the lower bound itself is before the bound, as in semver."""
-    lower, upper = bounds
-    if prerelease and version == lower:
-        return False
-    return version >= lower and (upper is None or version < upper)
 
 
 def parse_version(output):
@@ -58,6 +40,14 @@ def parse_version(output):
     if not found or len(found.group(1)) > MAX_TOKEN:
         return None
     return found.group(1), _triple(found.groups()[1:4]), found.group(5) is not None
+
+
+def pi_status(found, runtime, bounds):
+    """Separate the exact tested token from an accepted, untested version."""
+    token, version, prerelease = found
+    if token == runtime["piVersion"]:
+        return "match"
+    return "untested_in_range" if in_range(version, bounds, prerelease) else "mismatch"
 
 
 def _probe(path, env, run):
@@ -96,11 +86,14 @@ def check(runtime, paths=None, *, run=subprocess.run, which=shutil.which, enviro
     paths = paths or {}
     environ = dict(os.environ if environ is None else environ)
     # Read every requirement before a process starts; a bad range starts none.
-    bounds = {key: parse_range(runtime[field], "manifest.runtime." + field)
-              for key, _, field in TOOLS if key != "pi"}
+    bounds = {key: parse_range(runtime["piAcceptedRange" if key == "pi" else field],
+                               "manifest.runtime." + ("piAcceptedRange" if key == "pi" else field))
+              for key, _, field in TOOLS}
     report = {}
     for key, command, field in TOOLS:
         result = {"installed": None, "required": runtime[field], "status": "missing"}
+        if key == "pi":
+            result.update(tested=runtime["piVersion"], acceptedRange=runtime["piAcceptedRange"])
         report[key] = result
         path = paths.get(key) or which(command)
         if not path:
@@ -112,10 +105,11 @@ def check(runtime, paths=None, *, run=subprocess.run, which=shutil.which, enviro
             continue
         token, version, prerelease = found
         result["installed"] = token
-        matched = token == runtime[field] if key == "pi" else in_range(version, bounds[key], prerelease)
-        result["status"] = "match" if matched else "mismatch"
+        result["status"] = (pi_status(found, runtime, bounds[key]) if key == "pi" else
+                            "match" if in_range(version, bounds[key], prerelease) else "mismatch")
     return report
 
 
 def matches(report):
-    return all(result["status"] == "match" for result in report.values())
+    return all(result["status"] == "match" or (key == "pi" and result["status"] == "untested_in_range")
+               for key, result in report.items())

@@ -16,7 +16,7 @@ The stages stay separate and keep this order:
 
 Stages 1 to 5 are offline and the kit runs them. Stages 6 to 9 are the user's. The kit runs none of their commands.
 
-The plan prints some commands as display text. `commands.setupDisplayOnly` holds the Pi install line, `pi update --extensions` when `mcp`, `hermes` or `wiki` is enabled, and the peer-override line when `hermes` or `wiki` is enabled. With a `--runtime-report` that has `match` or `mismatch` for Pi, the Pi install line is not there; `commands.piInstall` always holds it, with a mark. `commands.launchDisplayOnly` holds the launch line. The plan does not print the Node and Python installs or the `npm ci` of the in-tree packages. Those commands are in Stage 6 of this guide only.
+The plan prints some commands as display text. `commands.setupDisplayOnly` holds the Pi install line, `pi update --extensions` when `mcp`, `hermes` or `wiki` is enabled, and the peer-override line when `hermes` or `wiki` is enabled. With a `--runtime-report` that has `match`, `untested_in_range` or `mismatch` for Pi, the Pi install line is not there; `commands.piInstall` always holds it, with a mark. `commands.launchDisplayOnly` holds the launch line. The plan does not print the Node and Python installs or the `npm ci` of the in-tree packages. Those commands are in Stage 6 of this guide only.
 
 Status: Linux is the first target. Not verified: a complete run of stages 6 to 9 on a clean client.
 
@@ -45,6 +45,13 @@ An offline stage that passes its own check on this machine is recorded as passed
 
 ## Before you start
 
+`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
+
+`runtime.piAcceptedRange` is the accepted Pi range. `runtime.piVersion` is the tested version.
+A newer accepted Pi version works by the range rule. The kit tests ran on the tested version only.
+With `untested_in_range`, keep the installed Pi and record `core_runtime_untested_in_range` as a readiness gap.
+The Pi install line stays a plain command with `not_needed`, not `replaces_installed`.
+
 Requirements of this release (`config/manifest.json`, `runtime`):
 
 | Item | Required | Notes |
@@ -52,7 +59,7 @@ Requirements of this release (`config/manifest.json`, `runtime`):
 | Linux | the first target | Not verified: a complete live run on Linux. |
 | Python | `>=3.11` | Standard library only. The kit has no Python dependency. |
 | Node | `>=22.22.0 <23` | The same Node installs Pi and builds native addons later. |
-| Pi | `1.0.3` | `@earendil-works/pi-coding-agent`. Stage 6 installs it. |
+| Pi | `runtime.piAcceptedRange` | Stage 6 installs the tested `<pin>` when needed. |
 | Git | any current version | Only to clone the kit. |
 
 macOS, Windows, browser-hosted Pi and Pi inside Herdr are not qualified. See [the release checklist](release-checklist.md#platforms-that-are-not-qualified).
@@ -86,7 +93,7 @@ python3 scripts/tenant_pi.py check-runtime
 ```
 
 - The tests print `OK`. The publish check prints `publish set valid`. If one fails, stop: the clone is not the reviewed kit.
-- `check-runtime` prints one JSON object with a `status` of `match`, `mismatch`, `missing` or `unparsed` for `pi`, `node` and `python`. Exit code 1 at this stage is a finding, not a failure. See [the runtime check](../check-runtime.md).
+- `check-runtime` prints one JSON object with a `status` of `match`, `untested_in_range` (Pi only), `mismatch`, `missing` or `unparsed` for `pi`, `node` and `python`. Exit code 1 at this stage is a finding, not a failure. See [the runtime check](../check-runtime.md).
 - Do not move or delete the clone later. A generated profile names `packages/` inside the clone by its absolute path.
 - Use `PYTHONDONTWRITEBYTECODE=1` for the checks. Do not run the tests with `pytest`: its cache directory makes the publish check fail. See [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
 
@@ -131,7 +138,8 @@ Goal: a private directory with an overlay that names a new target.
      "target": {"agentDir": "/home/EXAMPLE_USER/.pi/profiles/main"},
      "selection": {
        "enable": ["core"],
-       "disable": ["anthropic-usage", "codex-accounts", "context-meter", "copilot-usage", "doctor", "herdr", "hermes", "mcp",
+       "disable": ["anthropic-usage", "codex-accounts", "context-meter", "coordinator-skills", "copilot-usage", "doctor", "herdr",
+                   "hermes", "mcp",
                    "model-routing", "openviking", "ops-footer", "promptr", "promptr-generate-task-prompt",
                    "promptr-handoff", "promptr-openknowledge-project-pages", "promptr-watch-herdr-agents",
                    "resources", "slopscore", "slopscore-pr", "tenantext", "tracker-site", "wiki"]
@@ -196,11 +204,12 @@ The report shows the state before Stage 6. Stage 6 changes the facts: after each
 `plan` writes nothing. Read these keys of its JSON output:
 
 - `files`: the paths and modes that `generate` will write.
-- `readinessGaps`: the facts that no offline step can prove. Without `--runtime-report`, a core-only plan has three: `target_absence_unverified`, `node_runtime_unverified` and `core_runtime_unverified`. These are facts to carry, not errors. With the report, a `match` removes the gap of that tool, and a `mismatch`, `missing` or `unparsed` shows the measured state in place of `unverified`; see [the plan](../profile-plan.md#readiness-after-measured-facts).
+- `readinessGaps`: the facts that no offline step can prove. Without `--runtime-report`, a core-only plan has three: `target_absence_unverified`, `node_runtime_unverified` and `core_runtime_unverified`. These are facts to carry, not errors. With the report, a `match` removes the gap of that tool, and an `untested_in_range`, `mismatch`, `missing` or `unparsed` shows the measured state in place of `unverified`; see [the plan](../profile-plan.md#readiness-after-measured-facts).
 - `commands.setupDisplayOnly`: the dependency commands for Stage 6. Display text only.
 - `commands.piInstall`: the Pi install line with its mark and a warning. Read it before you run that line in Stage 6.
 - `commands.launchDisplayOnly`: the launch line for Stage 8. Display text only.
 - `commands.launcherDisplayOnly`: the launcher path, when you give `--launcher`.
+- `commands.providerKeyWarning`: the names of the known provider key variables that are set in this shell. The key is absent when none is set; see [the warning](../profile-plan.md#the-warning-for-a-provider-key-variable).
 
 Use the same options as in Stage 3. `validate` does not take `--runtime-report`.
 
@@ -227,7 +236,7 @@ Result: passed when `filesComplete` is `true`. The runtime stays `unverified`.
 
 ## Stage 6: install the dependencies by hand
 
-The kit installs nothing. This stage lists reviewed commands for you to copy, read and run yourself. Run only the commands for the modules you enabled. The plan prints the declared-package lines under `commands.setupDisplayOnly`. It prints the Pi line there too, unless a `--runtime-report` with `match` or `mismatch` for Pi takes it out; `commands.piInstall` always holds the Pi line. The Node, Python and in-tree package commands come from this guide only.
+The kit installs nothing. This stage lists reviewed commands for you to copy, read and run yourself. Run only the commands for the modules you enabled. The plan prints the declared-package lines under `commands.setupDisplayOnly`. It prints the Pi line there too, unless a `--runtime-report` with `match`, `untested_in_range` or `mismatch` for Pi takes it out; `commands.piInstall` always holds the Pi line. The Node, Python and in-tree package commands come from this guide only.
 
 Warning: each command below changes the machine. Read it before you run it.
 
@@ -245,19 +254,22 @@ Not verified: the exact package name `nodejs22` on every Fedora release.
 
 ### Pi
 
-The Pi install line of the plan is:
+After the overlay exists, `python3 scripts/tenant_pi.py plan --overlay <file>` prints the same line in `commands.piInstall`, key `command`.
 
 ```sh
-npm install --global -- @earendil-works/pi-coding-agent@1.0.3
+# Run from the kit root.
+pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && \
+  npm install --global -- @earendil-works/pi-coding-agent@"${pin:?}"
 ```
 
 Warning: a global install replaces the `pi` command of every profile of the user.
 
-`commands.piInstall` always holds this line, with a mark. Without `--runtime-report` the line is also under `commands.setupDisplayOnly`, and its `status` is `installed_version_unknown`. With a saved `check-runtime` report the `status` is `needed` for `missing`, `not_needed` for `match`, `replaces_installed` for `mismatch`, and `installed_version_unknown` for `unparsed`. The line then stays under `commands.setupDisplayOnly` only when the report has `missing` or `unparsed` for Pi. With `replaces_installed`, `change` says whether the line is a `downgrade` or an `upgrade` of the installed Pi. See [the mark of the Pi install line](../profile-plan.md#the-mark-of-the-pi-install-line).
+`commands.piInstall` always holds this line, with a mark. Without `--runtime-report` the line is also under `commands.setupDisplayOnly`, and its `status` is `installed_version_unknown`. With a saved `check-runtime` report the `status` is `needed` for `missing`, `not_needed` for `match` or `untested_in_range`, `replaces_installed` for `mismatch`, and `installed_version_unknown` for `unparsed`. The line then stays under `commands.setupDisplayOnly` only when the report has `missing` or `unparsed` for Pi. With `replaces_installed`, `change` says whether the line is a `downgrade` or an `upgrade` of the installed Pi. See [the mark of the Pi install line](../profile-plan.md#the-mark-of-the-pi-install-line).
 
 The command fixes the version of the Pi package, not all versions of its dependencies. See [what the install command fixes](../check-runtime.md#what-the-install-command-fixes).
 
-Which command you run depends on the `pi` status of `check-runtime` (Stage 1, or the report of Stage 4). With `match`, skip this section.
+Which command you run depends on the `pi` status of `check-runtime` (Stage 1, or the report of Stage 4).
+With `match` or `untested_in_range`, skip the Pi install.
 
 With `missing`, first see whether you can write the global npm prefix:
 
@@ -274,13 +286,15 @@ If it prints `writable`, run the global command above. You can refuse the global
 If it prints `not writable` (for example a user without root on a Node that root owns), the global command fails. Use the prefix form:
 
 ```sh
-npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@1.0.3
+# Run from the kit root.
+pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && \
+  npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@"${pin:?}"
 export PATH="$HOME/.npm-global/bin:$PATH"
 ```
 
 The directory `"$HOME/.npm-global"` is the example; you can name another directory that you own. The `export` line changes the current shell only. To keep it, add the line to your shell startup file yourself. The kit never edits a shell startup file. Record the prefix and its `PATH` line as an adaptation.
 
-With `mismatch` (another Pi version is installed) or `unparsed`, make a decision. With `unparsed`, run `PI_CODING_AGENT_DIR="$(mktemp -d)" pi --version` and read its output first. Three options:
+With `mismatch` (outside the accepted range) or `unparsed`, make a decision. With `unparsed`, run `PI_CODING_AGENT_DIR="$(mktemp -d)" pi --version` and read its output first. Three options:
 
 - Stop.
 - Keep the existing Pi, and record the version mismatch as a gap.
@@ -292,7 +306,7 @@ Do not use `npm config set prefix`. It changes the npm configuration for every l
 
 ### In-tree packages
 
-Only when you enabled a Tenantext component (`tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `slopscore-pr`):
+Only when you enabled a Tenantext component (`tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `coordinator-skills`, `slopscore-pr`):
 
 ```sh
 cd "$HOME/tenant-pi/packages/tenantext" && npm ci --ignore-scripts
@@ -332,9 +346,9 @@ The plan prints the second line only with a memory module. `pi-mcp-adapter` list
 
 `pi update`, `pi install`, `pi remove`, `/model` and settings changes inside Pi can write to `settings.json` of the profile. After each such operation, run `compare` again and read the drift. Do not hide the drift. See [the candidate update guide](candidate-update.md#after-a-native-pi-operation).
 
-Not verified: the exact list of Pi commands that rewrite `settings.json` at Pi `1.0.3`.
+Not verified: the exact list of Pi commands that rewrite `settings.json` at Pi `<pin>`.
 
-Result: passed when `check-runtime` prints `match` for all three tools in the shell that will launch Pi. The runtime stays `unverified`. A module whose dependency step you did not run is `skipped`.
+Result: passed when Node and Python are `match`, and Pi is `match` or `untested_in_range`. Record the gap for an untested version. The runtime stays `unverified`. A module whose dependency step you did not run is `skipped`.
 
 ## Stage 7: authenticate
 
@@ -403,6 +417,7 @@ Rule: the profile keeps its sessions in its own `sessions/` directory. The part 
 - Without a launcher file, type the `commands.launchDisplayOnly` line from the plan. Do not split it: each assignment belongs to the same `pi` process.
 - With the gateway, the line also holds `TENANTEXT_LITELLM_BASE_URL`. With `mcp`, it holds `PI_MCP_CONFIG_MODE=exclusive`. With a relocated wiki vault, it holds `WIKI_HOME`.
 - The file holds no key. The key comes from the environment of the shell that runs the file.
+- A provider key variable of this shell reaches Pi too, and Pi uses it when the profile has no login: see the rule in [check 3](#check-3-the-model-reply). The launch line and the launcher file do not clear such a variable. The plan of Stage 4 names the known ones that are set, under `commands.providerKeyWarning`.
 
 Pi starts with its own native terminal interface. The kit does not wrap or replace it.
 
@@ -410,7 +425,7 @@ Pi starts with its own native terminal interface. The kit does not wrap or repla
 
 Record each check as passed, failed, blocked or not run in `install-log.md` of the private directory. Check 4 has one more value, not verified.
 
-1. `PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi --version` prints `1.0.3`.
+1. `PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi --version` prints `<pin>` or an accepted version. Record the untested-version gap when needed.
 2. Pi starts with no extension error and no peer warning.
 3. The chosen model replies to the fixed prompt, and the reply holds the expected number: see [check 3](#check-3-the-model-reply).
 4. `ls -la "$HOME/.pi/profiles/main"` shows the generated files plus what Pi wrote: `auth.json`, `sessions/`, `npm/`. The live profile did not change: the comparison below prints `"result":"unchanged"`.
@@ -448,7 +463,7 @@ Preferred form: print mode. With `-p`, Pi sends one prompt, writes the final rep
 | Text without `43`, then `exit status: 0` | yes | no |
 | An error text, no text, or an exit status that is not 0 | no | no |
 
-Print mode uses the default model of the profile. Pi reads a provider key from the environment of the launching shell, including in a profile with no login. Not verified: which variable names Pi reads for each provider. Use the name that the Pi documentation gives. To get the reply from one named model, add `--model '<provider>/<model>'` before `-p`.
+Print mode uses the default model of the profile. Rule: Pi reads a provider key from the environment of the launching shell, including in a profile with no login. The reply can then come from a provider that you did not choose. So name the model for this check: add `--model '<provider>/<model>'` before `-p`. The plan warns when a known provider key variable is set, under `commands.providerKeyWarning`. Not verified: which variable names Pi reads for each provider. Use the name that the Pi documentation gives.
 
 Other form: a pasted screen of an interactive session. A Pi screen has no labels. Its lines come in this order: the user line (the text that you typed), then thinking text when the model shows it, then the model line. The user line must be the fixed prompt. "Reply matched" is yes only when `43` is in the model line. A `43` in the user line or in the thinking text is not a reply.
 

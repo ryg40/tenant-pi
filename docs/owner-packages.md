@@ -74,7 +74,7 @@ The two indexes count different lists: `/packages/<index>` counts the kit declar
 - Not verified: the meaning Pi gives to a filter list that holds only `!pattern` exclusions, and the exact pattern grammar of Pi. The validator accepts a conservative subset.
 - Not verified: an omitted filter list loads every resource of that kind. An empty list loads none in the kit's own declarations; see `docs/packages.md`.
 - Not verified: the path exists, is a Pi package, is readable by the Pi process, or holds safe code. The kit makes no existence check by design.
-- Not verified: behavior at the kit pin `1.0.3`. No test starts Pi.
+- Not verified: behavior at the kit pin in `config/manifest.json`, key `runtime.piVersion`. No test starts Pi.
 - Out of scope: `npm:` and Git sources (they stay kit components), install, `npm ci`, and any change to `overlay.paths`, which stays the component path map.
 
 ## Tests

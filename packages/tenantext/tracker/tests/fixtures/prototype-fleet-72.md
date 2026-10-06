@@ -1327,7 +1327,7 @@ text: |
   - The tests pass and the open questions are listed.
   Expected output: A reviewed change and a list of open questions.
 
-  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the owner.
+  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the requester.
 ```
 
 ## Evidence

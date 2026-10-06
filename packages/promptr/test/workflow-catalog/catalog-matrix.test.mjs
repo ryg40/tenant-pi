@@ -5,47 +5,47 @@ import {
 } from '../../dist/src/workflow/catalog.mjs';
 
 const TEMPLATES = [
- 'openai-codex-simple', 'openai-codex-medium', 'openai-codex-high',
- 'openai-claude-simple', 'openai-claude',
+ 'worker-simple', 'worker-medium', 'worker-high',
+ 'reviewer-simple', 'reviewer',
 ];
-const PROVIDERS = ['openai-codex', 'openai-codex-2'];
+const PROVIDERS = ['default-provider'];
 
 /** The approved matrix, written out once so a drift shows as a diff. */
 const MATRIX = {
- 'openai-codex-simple': {
-  coordinator: ['gpt-5.6-sol', 'xhigh'],
-  scout: ['gpt-5.6-luna', 'xhigh'],
-  researcher: ['gpt-5.6-luna', 'xhigh'],
-  worker: ['gpt-5.6-sol', 'medium'],
-  reviewer: ['gpt-5.6-luna', 'xhigh'],
+ 'worker-simple': {
+  coordinator: ['standard-model', 'xhigh'],
+  scout: ['light-model', 'xhigh'],
+  researcher: ['light-model', 'xhigh'],
+  worker: ['standard-model', 'medium'],
+  reviewer: ['light-model', 'xhigh'],
  },
- 'openai-codex-medium': {
-  coordinator: ['gpt-6-astra', 'low'],
-  scout: ['gpt-5.6-luna', 'xhigh'],
-  researcher: ['gpt-5.6-luna', 'xhigh'],
-  worker: ['gpt-5.6-sol', 'medium'],
-  reviewer: ['gpt-5.6-luna', 'xhigh'],
+ 'worker-medium': {
+  coordinator: ['large-model', 'low'],
+  scout: ['light-model', 'xhigh'],
+  researcher: ['light-model', 'xhigh'],
+  worker: ['standard-model', 'medium'],
+  reviewer: ['light-model', 'xhigh'],
  },
- 'openai-codex-high': {
-  coordinator: ['gpt-6-astra', 'medium'],
-  scout: ['gpt-5.6-luna', 'xhigh'],
-  researcher: ['gpt-5.6-luna', 'xhigh'],
-  worker: ['gpt-6-astra', 'low'],
-  reviewer: ['gpt-5.6-luna', 'xhigh'],
+ 'worker-high': {
+  coordinator: ['large-model', 'medium'],
+  scout: ['light-model', 'xhigh'],
+  researcher: ['light-model', 'xhigh'],
+  worker: ['large-model', 'low'],
+  reviewer: ['light-model', 'xhigh'],
  },
- 'openai-claude-simple': {
-  coordinator: ['gpt-5.6-sol', 'xhigh'],
-  scout: ['gpt-5.6-luna', 'xhigh'],
-  researcher: ['gpt-5.6-luna', 'xhigh'],
-  worker: ['claude-opus-5', 'high'],
-  reviewer: ['claude-sonnet-5', 'high'],
+ 'reviewer-simple': {
+  coordinator: ['standard-model', 'xhigh'],
+  scout: ['light-model', 'xhigh'],
+  researcher: ['light-model', 'xhigh'],
+  worker: ['claude-large-model', 'high'],
+  reviewer: ['claude-standard-model', 'high'],
  },
- 'openai-claude': {
-  coordinator: ['gpt-6-astra', 'low'],
-  scout: ['gpt-5.6-luna', 'xhigh'],
-  researcher: ['gpt-5.6-luna', 'xhigh'],
-  worker: ['claude-opus-5', 'high'],
-  reviewer: ['claude-sonnet-5', 'high'],
+ 'reviewer': {
+  coordinator: ['large-model', 'low'],
+  scout: ['light-model', 'xhigh'],
+  researcher: ['light-model', 'xhigh'],
+  worker: ['claude-large-model', 'high'],
+  reviewer: ['claude-standard-model', 'high'],
  },
 };
 
@@ -61,7 +61,7 @@ function byRole(value) {
  return Object.fromEntries(value.roles.map((role) => [role.role, role]));
 }
 
-test('the catalog offers exactly the five named workflows and two OpenAI providers', () => {
+test('the catalog offers exactly the five named workflows and one neutral provider', () => {
  assert.deepEqual(listWorkflows().map((choice) => choice.id), TEMPLATES);
  assert.deepEqual(listProviders().map((choice) => choice.id), PROVIDERS);
  for (const choice of [...listWorkflows(), ...listProviders()]) {
@@ -70,7 +70,7 @@ test('the catalog offers exactly the five named workflows and two OpenAI provide
  }
 });
 
-test('all ten workflow/provider combinations expand to the frozen role matrix', () => {
+test('all five workflow/provider combinations expand to the frozen role matrix', () => {
  let combinations = 0;
  for (const template of TEMPLATES) {
   for (const provider of PROVIDERS) {
@@ -86,7 +86,7 @@ test('all ten workflow/provider combinations expand to the frozen role matrix', 
    }
   }
  }
- assert.equal(combinations, 10);
+ assert.equal(combinations, 5);
 });
 
 test('role order is stable: coordinator, scout, researcher, worker, reviewer, generator', () => {
@@ -101,13 +101,13 @@ test('role order is stable: coordinator, scout, researcher, worker, reviewer, ge
  }
 });
 
-test('every OpenAI role binds the selected provider; Claude roles never redirect through it', () => {
+test('every Pi-route role binds the selected provider; Claude roles never redirect through it', () => {
  for (const template of TEMPLATES) {
   for (const provider of PROVIDERS) {
    const value = expandOk(template, provider);
    for (const role of value.roles) {
-    if (template.startsWith('openai-claude') && CLAUDE_ROLES.has(role.role)) {
-     assert.equal(role.provider, 'anthropic', `${template} ${role.role} provider`);
+    if (template.startsWith('reviewer') && CLAUDE_ROLES.has(role.role)) {
+     assert.equal(role.provider, 'claude', `${template} ${role.role} provider`);
      assert.equal(role.route, 'herdr-claude', `${template} ${role.role} route`);
     } else {
      assert.equal(role.provider, provider, `${template} ${role.role} provider`);
@@ -118,23 +118,23 @@ test('every OpenAI role binds the selected provider; Claude roles never redirect
  }
 });
 
-test('the generator is always the selected OpenAI provider on Sol medium over Pi', () => {
+test('the generator is always the selected provider on the standard model at medium over Pi', () => {
  for (const template of TEMPLATES) {
   for (const provider of PROVIDERS) {
    const generator = byRole(expandOk(template, provider)).generator;
    assert.deepEqual(generator, {
-    role: 'generator', provider, model: 'gpt-5.6-sol', thinking: 'medium', route: 'pi',
+    role: 'generator', provider, model: 'standard-model', thinking: 'medium', route: 'pi',
    }, `${template}/${provider} generator`);
   }
  }
 });
 
-test('scout and researcher stay distinct evidence stages, both on Luna xhigh over Pi', () => {
- const value = expandOk('openai-claude', 'openai-codex');
+test('scout and researcher stay distinct evidence stages, both on the light model at xhigh over Pi', () => {
+ const value = expandOk('reviewer', 'default-provider');
  const roles = byRole(value);
  assert.notEqual(roles.scout, roles.researcher);
  for (const role of [roles.scout, roles.researcher]) {
-  assert.equal(role.model, 'gpt-5.6-luna');
+  assert.equal(role.model, 'light-model');
   assert.equal(role.thinking, 'xhigh');
   assert.equal(role.route, 'pi');
  }
@@ -146,7 +146,7 @@ test('scout and researcher stay distinct evidence stages, both on Luna xhigh ove
 });
 
 test('instructions state the Coordinator-designs / worker-implements / reviewer-checks policy', () => {
- const instructions = expandOk('openai-codex-medium', 'openai-codex').instructions.join(' ');
+ const instructions = expandOk('worker-medium', 'default-provider').instructions.join(' ');
  assert.match(instructions, /Coordinator designs the solution and writes a detailed implementation packet/);
  assert.match(instructions, /Workers implement the bounded design/);
  assert.match(instructions, /Reviewer checks the actual work independently/);
@@ -155,7 +155,7 @@ test('instructions state the Coordinator-designs / worker-implements / reviewer-
 });
 
 test('instructions scope the reviewer to the diff, bucket hardening as follow-up, and size the route', () => {
- const instructions = expandOk('openai-codex-simple', 'openai-codex').instructions.join(' ');
+ const instructions = expandOk('worker-simple', 'default-provider').instructions.join(' ');
  assert.match(instructions, /its input is the diff plus the solution brief and it reads only files in that diff/);
  assert.match(instructions, /in-flight-transition hardening the issue does not name is a FOLLOW-UP line, not a finding/);
  assert.match(instructions, /re-review sees the prior findings and the repair diff only and marks each FIXED or NOT FIXED/);
@@ -164,10 +164,10 @@ test('instructions scope the reviewer to the diff, bucket hardening as follow-up
 });
 
 test('herdr-native execution swaps the headless subagent line for the interactive Herdr session recipe', () => {
- const headless = expandOk('openai-codex-simple', 'openai-codex').instructions.join(' ');
+ const headless = expandOk('worker-simple', 'default-provider').instructions.join(' ');
  assert.match(headless, /Execution: delegated roles run headless through the integrated pi-subagents `subagent` tool/);
  assert.doesNotMatch(headless, /herdr_agent/);
- const native = expandWorkflow({ template: 'openai-codex-simple', provider: 'openai-codex', readiness: 'ready', execution: 'herdr-native' }).value;
+ const native = expandWorkflow({ template: 'worker-simple', provider: 'default-provider', readiness: 'ready', execution: 'herdr-native' }).value;
  const text = native.instructions.join(' ');
  assert.equal(native.execution, 'herdr-native');
  assert.match(text, /interactive Herdr-native Pi sessions, one new tab per role/);
@@ -183,36 +183,32 @@ test('herdr-native execution swaps the headless subagent line for the interactiv
  assert.match(text, /reuse your own idle same-role pane/);
  assert.doesNotMatch(text, /headless through the integrated pi-subagents/);
  // the role matrix, warnings and fallback line are execution-independent
- const base = expandOk('openai-codex-simple', 'openai-codex');
+ const base = expandOk('worker-simple', 'default-provider');
  assert.deepEqual(native.roles, base.roles);
  assert.deepEqual(native.warnings, base.warnings);
  assert.ok(native.instructions.some((l) => l.startsWith('Provider quota fallback (pre-authorized):')));
  assert.match(native.instructions.at(-1), /^Every role runs as a Pi session\b/);
 });
 
-test('every expansion names the pre-authorized quota fallback as the other shipped provider', () => {
+test('every expansion carries one quota fallback line; the single shipped provider has no fallback', () => {
  for (const template of TEMPLATES) {
-  const one = expandOk(template, 'openai-codex').instructions;
-  const two = expandOk(template, 'openai-codex-2').instructions;
+  const one = expandOk(template, 'default-provider').instructions;
   const lineOne = one.find((l) => l.startsWith('Provider quota fallback (pre-authorized):'));
-  const lineTwo = two.find((l) => l.startsWith('Provider quota fallback (pre-authorized):'));
-  assert.match(lineOne, /relaunch that role on openai-codex-2 with the same model and thinking level/);
-  assert.match(lineTwo, /relaunch that role on openai-codex with the same model and thinking level/);
-  assert.match(lineOne, /continue without asking\. This is the only pre-authorized runtime change; roles on other routes stop\./);
+  assert.match(lineOne, /no fallback provider is configured; a usage-limit or quota error is a stop condition to report to the user\./);
   assert.equal(one.filter((l) => l.startsWith('Provider quota fallback')).length, 1, 'exactly one fallback line');
   assert.match(one.join(' '), /mismatch blocks the send unless it is separately approved; the quota fallback line is that approval for usage-limit errors only/);
  }
 });
 
 test('the Claude templates declare independent Claude permissions; others declare Pi-only', () => {
- for (const template of ['openai-claude-simple', 'openai-claude']) {
-  const instructions = expandOk(template, 'openai-codex').instructions.join(' ');
+ for (const template of ['reviewer-simple', 'reviewer']) {
+  const instructions = expandOk(template, 'default-provider').instructions.join(' ');
   assert.match(instructions, /run through Herdr/);
   assert.match(instructions, /permissions stay independently controlled/);
  }
- for (const template of ['openai-codex-simple', 'openai-codex-medium', 'openai-codex-high']) {
-  const instructions = expandOk(template, 'openai-codex').instructions.join(' ');
-  assert.match(instructions, /Every role runs as a Pi session on the selected OpenAI provider\./);
+ for (const template of ['worker-simple', 'worker-medium', 'worker-high']) {
+  const instructions = expandOk(template, 'default-provider').instructions.join(' ');
+  assert.match(instructions, /Every role runs as a Pi session on the selected provider\./);
   assert.doesNotMatch(instructions, /Herdr/);
  }
 });

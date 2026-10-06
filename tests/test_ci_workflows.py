@@ -16,6 +16,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts import ci_update as ci
 
+RUNTIME = json.loads((ROOT / "config/manifest.json").read_text())["runtime"]
+PIN = RUNTIME["piVersion"]
+# A stable patch after the pin's numeric version, including a prerelease pin.
+major, minor, patch_number = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9A-Za-z.-]+)?", PIN).groups()
+NEWER = f"{major}.{minor}.{int(patch_number) + 1}"
+
 WORKFLOWS = (".gitea/workflows/pi-update.yml", ".gitea/workflows/checks.yml", ".github/workflows/checks.yml")
 CHECKS = ("python3 -m unittest discover -s tests -q", "python3 scripts/examples.py",
           "python3 scripts/validate.py --overlay config/config.example.json",
@@ -102,9 +108,9 @@ class Adapter(unittest.TestCase):
         self.root = Path(self.tmp.name)
         (self.root / "scripts").mkdir()
         (self.root / "config").mkdir()
-        self.manifest = {"runtime": {"piVersion": "1.0.3"}, "components": {"core": {"source": {"spec": ci.PACKAGE + "1.0.3"}}}}
+        self.manifest = {"runtime": {"piVersion": PIN, "piAcceptedRange": RUNTIME["piAcceptedRange"]}, "components": {"core": {"source": {"spec": ci.PACKAGE + PIN}}}}
         (self.root / "config/manifest.json").write_text(json.dumps(self.manifest, indent=2) + "\n")
-        (self.root / "scripts/validate.py").write_text('REVIEWED_SOURCES = {\n    "core": {"kind": "npm", "spec": "' + ci.PACKAGE + '1.0.3"},\n}\n')
+        (self.root / "scripts/validate.py").write_text('REVIEWED_SOURCES = {\n    "core": {"kind": "npm", "spec": "' + ci.PACKAGE + PIN + '"},\n}\n')
         self.directory = self.root / "reports"
 
     def stub(self, code, data):
@@ -125,17 +131,17 @@ class Adapter(unittest.TestCase):
             "    log.parent.mkdir(parents=True)\n"
             "    log.write_text('step output')\n"
             "if args[0] == 'qualify':\n"
-            "    assert args[1:3] == ['--version', '1.0.4']\n"
+            "    assert args[1:3] == " + repr(["--version", NEWER]) + "\n"
             "    assert args[3] == '--workdir'\n"
             "if args[0] == 'notes':\n"
-            "    assert args[1:5] == ['--from', '1.0.3', '--to', '1.0.4']\n"
+            "    assert args[1:5] == " + repr(["--from", PIN, "--to", NEWER]) + "\n"
             "    assert args[5] == '--workdir'\n"
             "print('stub log', file=sys.stderr)\n"
             "print(" + repr(json.dumps(data)) + ")\n"
             "sys.exit(" + str(code) + ")\n")
 
     def test_detect_empty_new_module_only_and_bad_exit(self):
-        for code, latest, expected in ((0, "1.0.3", "false"), (10, "1.0.4", "true"), (10, "1.0.3", "false")):
+        for code, latest, expected in ((0, PIN, "false"), (10, NEWER, "true"), (10, PIN, "false")):
             with self.subTest(code=code, latest=latest):
                 self.stub(code, {"core": {"latest": latest}})
                 out = self.root / "output"
@@ -157,21 +163,21 @@ class Adapter(unittest.TestCase):
         for action, data in (("qualify", {"steps": []}), ("notes", {"breaking": True, "text": "Breaking Changes\nRead this."})):
             path = self.directory / action
             self.stub(0, data)
-            self.assertTrue(ci.stage(action, path, "1.0.4", "1.0.3", root=self.root)["passed"])
+            self.assertTrue(ci.stage(action, path, NEWER, PIN, root=self.root)["passed"])
             self.assertTrue((path / "receipt.json").is_file())
             self.assertEqual((path / "logs/pi-update-stub/step.log").read_text(), "step output")
             self.stub(1, {"steps": [{"name": "install", "exitCode": 1}]})
             failed = path
             with self.assertRaisesRegex(ci.Invalid, action + "_failed"):
-                ci.stage(action, failed, "1.0.4", "1.0.3", root=self.root)
+                ci.stage(action, failed, NEWER, PIN, root=self.root)
             self.assertFalse((failed / "receipt.json").exists())
             self.assertEqual((failed / (action + ".log")).read_text(), "stub log\n")
 
-    def receipts(self, breaking=True):
+    def receipts(self, breaking=True, target=NEWER):
         for action in ("qualify", "notes"):
             directory = self.directory / action
             directory.mkdir(parents=True)
-            ci.write_json(directory / "receipt.json", {"action": action, "version": "1.0.4", "passed": True})
+            ci.write_json(directory / "receipt.json", {"action": action, "version": target, "passed": True})
         ci.write_json(self.directory / "notes/notes.json", {"breaking": breaking, "text": "Read the changes."})
 
     def api(self, *, conflict=False, existing=False, changed=False):
@@ -179,7 +185,7 @@ class Adapter(unittest.TestCase):
         def call(method, path, body=None):
             calls.append((method, path, copy.deepcopy(body)))
             if path.startswith("/pulls?"):
-                return [{"number": 7, "head": {"ref": "automation/pi-1.0.4"}}] if existing else []
+                return [{"number": 7, "head": {"ref": "automation/pi-" + NEWER}}] if existing else []
             if method == "GET" and path.startswith("/branches/"):
                 return {"commit": {"id": ("b" if changed else "a") * 40}}
             if method == "GET" and path.startswith("/contents/"):
@@ -196,8 +202,8 @@ class Adapter(unittest.TestCase):
             raise AssertionError(path)
         return call, calls
 
-    def request(self, api):
-        return ci.request(self.directory, "1.0.4", "1.0.3", "main", "a" * 40, api, root=self.root)
+    def request(self, api, target=NEWER):
+        return ci.request(self.directory, target, PIN, "main", "a" * 40, api, root=self.root)
 
     def test_request_updates_both_pins_and_anchor_and_marks_breaking(self):
         self.receipts()
@@ -205,27 +211,70 @@ class Adapter(unittest.TestCase):
         self.assertEqual(self.request(api), {"status": "created", "number": 8})
         files = next(body["files"] for method, path, body in calls if method == "POST" and path == "/contents")
         manifest = json.loads(base64.b64decode(files[0]["content"]))
-        self.assertEqual(manifest["runtime"]["piVersion"], "1.0.4")
-        self.assertEqual(manifest["components"]["core"]["source"]["spec"], ci.PACKAGE + "1.0.4")
-        self.assertIn(ci.PACKAGE + "1.0.4", base64.b64decode(files[1]["content"]).decode())
+        self.assertEqual(manifest["runtime"]["piVersion"], NEWER)
+        self.assertEqual(f">={NEWER} <{major}.{int(minor) + 1}", manifest["runtime"]["piAcceptedRange"])
+        self.assertEqual(manifest["components"]["core"]["source"]["spec"], ci.PACKAGE + NEWER)
+        self.assertIn(ci.PACKAGE + NEWER, base64.b64decode(files[1]["content"]).decode())
         pull = calls[-1][2]
-        self.assertEqual(pull["title"], "BREAKING: Update Pi to 1.0.4")
+        self.assertEqual(pull["title"], "BREAKING: Update Pi to " + NEWER)
         self.assertIn("Read the changes.", pull["body"])
         self.assertEqual(ci.read_json(self.root / "config/manifest.json"), self.manifest)
+
+    def test_request_uses_shared_pin_contents_with_fixed_target_text(self):
+        # Fixed synthetic input keeps the edit test meaningful after the real pin moves.
+        self.manifest["runtime"]["piVersion"] = "1.0.3"
+        self.manifest["runtime"]["piAcceptedRange"] = ">=1.0.3 <1.1"
+        self.manifest["components"]["core"]["source"]["spec"] = ci.PACKAGE + "1.0.3"
+        (self.root / "config/manifest.json").write_text(json.dumps(self.manifest, indent=2) + "\n")
+        (self.root / "scripts/validate.py").write_text('REVIEWED_SOURCES = {\n'
+            '    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.3"},\n}\n')
+        self.receipts(target="1.0.4")
+        api, calls = self.api()
+        with patch.object(ci.pi_update, "pin_contents", wraps=ci.pi_update.pin_contents) as pin:
+            ci.request(self.directory, "1.0.4", "1.0.3", "main", "a" * 40, api, root=self.root)
+        pin.assert_called_once_with((self.root / "config/manifest.json").read_text(),
+                                    (self.root / "scripts/validate.py").read_text(), "1.0.4")
+        expected = {
+            "config/manifest.json": '{\n  "runtime": {\n    "piVersion": "1.0.4",\n    "piAcceptedRange": ">=1.0.4 <1.1"\n  },\n'
+                '  "components": {\n    "core": {\n      "source": {\n'
+                '        "spec": "@earendil-works/pi-coding-agent@1.0.4"\n      }\n    }\n  }\n}\n',
+            "scripts/validate.py": 'REVIEWED_SOURCES = {\n'
+                '    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.4"},\n}\n',
+        }
+        files = next(body["files"] for method, path, body in calls if method == "POST" and path == "/contents")
+        self.assertEqual(expected, {row["path"]: base64.b64decode(row["content"]).decode() for row in files})
+
+    def test_bad_source_pin_or_anchor_never_claims_a_branch(self):
+        self.receipts()
+        manifest_file, validator_file = self.root / "config/manifest.json", self.root / "scripts/validate.py"
+        original_manifest, original_validator = manifest_file.read_text(), validator_file.read_text()
+        for manifest_text, validator_text, error in (
+                (original_manifest.replace(ci.PACKAGE + PIN, ci.PACKAGE + "99.0.0"), original_validator, "source_pin"),
+                (original_manifest, "REVIEWED_SOURCES = {}\n", "source_anchor"),
+                (original_manifest, original_validator * 2, "source_anchor")):
+            with self.subTest(error=error):
+                manifest_file.write_text(manifest_text)
+                validator_file.write_text(validator_text)
+                api, calls = self.api()
+                with self.assertRaisesRegex(ci.Invalid, "^" + error + "$"):
+                    self.request(api)
+                self.assertTrue(all(method == "GET" for method, _, _ in calls))
+        manifest_file.write_text(original_manifest)
+        validator_file.write_text(original_validator)
 
     def test_ordered_note_entries_and_nonbreaking_title(self):
         self.receipts(breaking=False)
         ci.write_json(self.directory / "notes/notes.json", {"breaking": False, "entries": [
-            {"version": "1.0.4", "text": "### Fixed\nA correction."}]})
+            {"version": NEWER, "text": "### Fixed\nA correction."}]})
         api, calls = self.api()
         self.request(api)
-        self.assertEqual(calls[-1][2]["title"], "Update Pi to 1.0.4")
-        self.assertIn("## 1.0.4\n\n### Fixed\nA correction.", calls[-1][2]["body"])
+        self.assertEqual(calls[-1][2]["title"], "Update Pi to " + NEWER)
+        self.assertIn("## " + NEWER + "\n\n### Fixed\nA correction.", calls[-1][2]["body"])
 
     def test_prerelease_notes_and_invalid_labels(self):
         self.stub(0, {"breaking": False, "entries": [{"version": "1.0.4-rc.1", "text": "Preview fixes."}]})
-        self.assertTrue(ci.stage("notes", self.directory, "1.0.4", "1.0.3", root=self.root)["passed"])
-        for label in ("1.0.4-rc.1", "1.0.4-1", "1.0.4"):
+        self.assertTrue(ci.stage("notes", self.directory, NEWER, PIN, root=self.root)["passed"])
+        for label in ("1.0.4-rc.1", "1.0.4-1", NEWER):
             self.assertIn(label, ci.notes_text({"breaking": False, "entries": [{"version": label, "text": "Changes"}]}))
         for label in ("1.0.4-rc.1\n", "1.0.4+build", "1.0", "1.0.4-" + "a" * 80):
             with self.assertRaisesRegex(ci.Invalid, "update_version"):
@@ -238,15 +287,15 @@ class Adapter(unittest.TestCase):
                 def api(method, path):
                     calls.append((method, path))
                     if path.startswith("/pulls?"):
-                        return [{"number": 7, "head": {"ref": "automation/pi-1.0.4"}}] if state == "existing" else []
-                    self.assertEqual(path, "/branches/automation%2Fpi-1.0.4")
+                        return [{"number": 7, "head": {"ref": "automation/pi-" + NEWER}}] if state == "existing" else []
+                    self.assertEqual(path, "/branches/automation%2Fpi-" + NEWER)
                     if state == "available":
                         raise ci.Invalid("api_not_found")
-                    return {"name": "automation/pi-1.0.4"}
+                    return {"name": "automation/pi-" + NEWER}
                 out = self.root / "outputs"
                 out.write_text("")
                 stdout = io.StringIO()
-                with patch.dict(os.environ, {"GITHUB_OUTPUT": str(out), "UPDATE_VERSION": "1.0.4"}), \
+                with patch.dict(os.environ, {"GITHUB_OUTPUT": str(out), "UPDATE_VERSION": NEWER}), \
                         patch.object(ci, "Api", return_value=api), redirect_stdout(stdout):
                     code = ci.main(["preflight", "--directory", str(self.directory)])
                 result = json.loads(stdout.getvalue())
@@ -266,7 +315,7 @@ class Adapter(unittest.TestCase):
         out.write_text("")
         with patch.dict(os.environ, {"GITHUB_OUTPUT": str(out)}):
             with self.assertRaisesRegex(ci.Invalid, "api_failed"):
-                ci.preflight(self.directory, "1.0.4", api)
+                ci.preflight(self.directory, NEWER, api)
         self.assertEqual(out.read_text(), "")
 
     def test_existing_request_is_noop(self):
@@ -299,7 +348,7 @@ class Adapter(unittest.TestCase):
             error = ci.urllib.error.HTTPError("https://git.example.invalid", status, "ignored", {}, None)
             with patch.object(api.opener, "open", side_effect=error):
                 with self.assertRaisesRegex(ci.Invalid, expected):
-                    api("GET", "/branches/automation%2Fpi-1.0.4")
+                    api("GET", "/branches/automation%2Fpi-" + NEWER)
 
     def test_api_validation_and_redirect(self):
         for url in ("http://git.example.invalid", "https://user:pass@git.example.invalid", "https://git.example.invalid?x=y"):

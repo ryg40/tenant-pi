@@ -58,7 +58,7 @@ Reload Pi after updating this extension to use the new fallback rates.
 
 | Route | Credential owner | Account choice |
 | --- | --- | --- |
-| `litellm-codex/codex-auto/*` | Separate gateway bearer key | Gateway prefers Codex 2 and can fall back to Codex 1 |
+| `litellm-codex/codex-auto/*` | Separate gateway bearer key | The gateway chooses the account by its own policy |
 | Gateway `codex1/<model>` | Separate gateway bearer key | Gateway account 1 only |
 | Gateway `codex2/<model>` | Separate gateway bearer key | Gateway account 2 only |
 | `openai-codex` | Pi's built-in OAuth provider | Direct Pi account 1 |
@@ -70,8 +70,8 @@ Direct Pi account credentials and gateway account credentials have separate refr
 The extension does not assume those independent logins represent the same accounts.
 
 The gateway falls back once before response bytes reach the client.
-A reported Codex 2 limit or HTTP 429 can cause fallback.
-A later reset can return safe requests to Codex 2.
+A reported account limit or HTTP 429 can cause fallback.
+The gateway applies its own account policy after a later reset.
 Authentication errors and mid-stream failures do not cause an account switch.
 
 Warning: Fallback cannot complete a request when both accounts have exhausted their allowance.
@@ -104,6 +104,22 @@ Redirects fail instead of forwarding credentials to another URL.
 `/codex-accounts routing` displays local routing information without making a model call.
 The `after_provider_response` hook accepts a gateway account name of the form `codexN` (`codex1`, `codex2`, `codex3`, ...) from `X-Codex-Account`.
 The selected account means the last response account, not a promise about the next request.
+
+The report also shows a preferred account. The extension does not know the policy of a gateway, so the default is `not set`.
+To show the account that your gateway prefers, add `preferredAccount` to `codex-accounts/settings.json` in the Pi agent directory:
+
+```json
+{
+  "accounts": [
+    { "provider": "openai-codex", "label": "Codex 1" },
+    { "provider": "openai-codex-2", "label": "Codex 2" }
+  ],
+  "preferredAccount": "codex1"
+}
+```
+
+The value is a gateway account name of the form `codexN`. Another value stops the extension with an error.
+The setting changes the report only. It does not change which account the gateway selects.
 
 The extension does not query the router's private status endpoint.
 The public gateway does not provide a verified routing status endpoint.

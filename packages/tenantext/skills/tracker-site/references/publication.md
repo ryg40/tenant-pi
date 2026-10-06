@@ -9,9 +9,11 @@ Set `publish.endpoint` (the artifact service origin, for example `https://artifa
 ## Service contract (artifact service API v1)
 
 - Create: `POST {endpoint}/v1/artifacts` with `Authorization: Bearer <token>` and `Idempotency-Key`. Body: `content` (the HTML), `contentType` (`text/html`), `fileName` (`tracker-brief.html`), `title`. The response holds `shareUrl`, `artifact` (with `slug` and `expiresAt`) and `editToken`.
-- Refresh: `PUT {endpoint}/v1/artifacts/{slug}` with the bearer token and `X-Orca-Edit-Token`. The link stays the same.
+- Refresh: `PUT {endpoint}/v1/artifacts/{slug}` with the bearer token and the edit token in the edit-token header. The link stays the same.
 - Verify: `GET` the HTTPS share URL. Expect HTTP 200 and exactly the uploaded bytes.
 - The service returns 409 when a key is reused with different content, and 404 for an expired or deleted link.
+
+The name of the edit-token header differs between services. The default is `X-Edit-Token`. Set `publish.edit_token_header` to the name that your service documents. With the wrong name, the service refuses the refresh, usually with HTTP 403; the first publication still works. A setup that used the old fixed header name sets `publish.edit_token_header` to that name.
 
 Check the service's own README before the first use on a new installation.
 

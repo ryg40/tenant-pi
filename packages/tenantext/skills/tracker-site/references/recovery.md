@@ -54,7 +54,7 @@ Invalid or missing model output gives a minimal brief:
 ## Store failure and conflicts
 
 - Store unavailable: the brief waits in `pending/` with its base revision. `last-good.md` keeps the brief. `tracker sync` writes it when the store is back and its revision still equals the base revision.
-- Conflict: the canonical brief changed after the checkpoint (an owner edit). The tool refuses the write and keeps its brief in `pending/` with a conflict flag. Run `tracker checkpoint` and refresh again. The new run starts from the owner's version.
+- Conflict: the canonical brief changed after the checkpoint (a requester edit). The tool refuses the write and keeps its brief in `pending/` with a conflict flag. Run `tracker checkpoint` and refresh again. The new run starts from the requester's version.
 - The tool moves replaced or synced pending briefs to subdirectories of `pending/`. It does not delete them.
 
 ## Publication failure
@@ -72,4 +72,4 @@ These limits hold for any session length or repository size.
 
 ## Brief budgets
 
-The validator in `tracker.brief` checks the counts and the word budget of the default view: over 400 words is a warning, over 550 words is an error. These values are provisional.
+The validator in `tracker.brief` checks the counts and the word budget of the default view: over 400 words is a warning, over 550 words is an error. These are the documented defaults.

@@ -1,7 +1,8 @@
 /*
- * How Pi 1.0.3 matches resource arrays and package filter lists.
+ * How the reviewed Pi source matches resource arrays and package filter lists.
  * Source: @earendil-works/pi-coding-agent 1.0.3, dist/core/package-manager.js (line numbers of that file).
- * The cited files are byte-equal in Pi 1.0.2 and Pi 1.0.3, so the line numbers are the same in both.
+ * The cited files are byte-equal to those of Pi 1.0.2, so the line numbers are the same.
+ * This is historical source evidence, not a qualification of the current kit pin.
  *
  * - Entry classes (132-140): an entry that starts with `!`, `+` or `-` is an override. A plain entry with `*` or `?`
  *   is an include glob. Any other plain entry is a path.

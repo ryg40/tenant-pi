@@ -14,6 +14,8 @@ from scripts.profile_write import STATE, WriteError, write
 from scripts.validate import ROOT, load
 from tests.test_model_routes import NATIVE, GATEWAY, REGISTRY
 
+PIN = load(ROOT / "config/manifest.json")["runtime"]["piVersion"]
+
 FIXED = datetime(2026, 9, 30, 12, 34, 56, 789, tzinfo=timezone.utc)
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
@@ -71,8 +73,8 @@ class WriterTests(unittest.TestCase):
                              (self.target / name).read_bytes())
         state = json.loads((self.target / STATE).read_text())
         self.assertEqual({"schemaVersion": 1, "status": "complete", "provenance": {
-            "kitSchemaVersion": 1, "piVersion": "1.0.3", "nodeRange": ">=22.22.0 <23", "enabled": ["core"],
-            "pins": {"core": "npm:@earendil-works/pi-coding-agent@1.0.3"},
+            "kitSchemaVersion": 1, "piVersion": PIN, "nodeRange": ">=22.22.0 <23", "enabled": ["core"],
+            "pins": {"core": "npm:@earendil-works/pi-coding-agent@" + PIN},
             "outputs": ["settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json"],
             "generatedAt": "2026-09-30T12:34:56Z", "kitCommit": COMMIT}}, state)
         # The record carries no private overlay value: no target path, endpoint, role, or credential name.
@@ -138,6 +140,25 @@ class WriterTests(unittest.TestCase):
                          json.loads((self.target / ".tenant-pi/choices.json").read_text()))
         self.check_outside()
 
+    def test_a_skill_component_of_several_skills_writes_each_skill(self):
+        target = self.parent / "profile coordinator-skills"
+        overlay = load("config/config.example.json")
+        overlay["target"]["agentDir"] = str(target)
+        overlay["selection"]["disable"].remove("coordinator-skills")
+        overlay["selection"]["enable"].append("coordinator-skills")
+        plan = prepare(load("config/manifest.json"), overlay)
+        self.assertTrue(write(plan, str(target)).complete)
+        settings = json.loads((target / "settings.json").read_text())
+        # The manifest is the one source of the skill list of the component.
+        skills = load("config/manifest.json")["components"]["coordinator-skills"]["resources"]["skills"]
+        self.assertGreater(len(skills), 1)
+        self.assertEqual([{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": skills,
+                           "prompts": [], "themes": []}], settings["packages"])
+        for skill in skills:
+            self.assertTrue(Path(settings["packages"][0]["source"], skill, "SKILL.md").is_file())
+        self.assertEqual({"core": "npm:@earendil-works/pi-coding-agent@" + PIN, "coordinator-skills": "tree:packages/tenantext"},
+                         json.loads((target / STATE).read_text())["provenance"]["pins"])
+
     def test_one_tree_component_is_written_once_with_its_own_filter(self):
         for cid, key, item in (("slopscore", "extensions", "extensions/slopscore/index.ts"),
                                ("slopscore-pr", "skills", "skills/slopscore-pr")):
@@ -156,7 +177,7 @@ class WriterTests(unittest.TestCase):
                 self.assertTrue(Path(settings["packages"][0]["source"], item).exists())
                 state = json.loads((target / STATE).read_text())
                 # The provenance record holds the kit-relative pin, never the host path of the kit.
-                self.assertEqual({"core": "npm:@earendil-works/pi-coding-agent@1.0.3", cid: "tree:packages/tenantext"},
+                self.assertEqual({"core": "npm:@earendil-works/pi-coding-agent@" + PIN, cid: "tree:packages/tenantext"},
                                  state["provenance"]["pins"])
                 self.assertNotIn(str(ROOT), (target / STATE).read_text())
                 for change in (lambda p: p["files"]["settings.json"]["content"]["packages"][0][key].append("skills/herdr"),

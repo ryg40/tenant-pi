@@ -1,6 +1,6 @@
 // Vendored from pi-atelier v0.12.0 src/run-activity.ts (tag 3ff521f618cf, commit 371b847e525f).
-// MIT License, Copyright (c) 2026 Michael. See extension/docs/PI-ATELIER-LICENSE.txt and
-// extension/docs/atelier-adaptation.md for provenance and Promptr adaptations.
+// MIT License, Copyright (c) 2026 Michael. See packages/promptr/docs/PI-ATELIER-LICENSE.txt and
+// packages/promptr/docs/atelier-adaptation.md for provenance and Promptr adaptations.
 import nodePath from "node:path";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { toDisplayPath } from "./display-path.mts";

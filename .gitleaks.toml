@@ -3203,3 +3203,15 @@ regexTarget = "secret"
 regexes = [
     '''^promptr-abc123$''',
 ]
+
+[[allowlists]]
+description = "Test fixture of the vendored OpenViking Pi package"
+# packages/openviking-pi/tests/capture-adapter.test.mjs holds a curl command
+# with this placeholder bearer value. The test proves that the capture adapter
+# redacts it. It is a synthetic fixture value, not a credential, and the file
+# stays equal to its upstream commit. The exact-value rule is unchanged.
+targetRules = ["curl-auth-header"]
+regexTarget = "secret"
+regexes = [
+    '''^bearer-value$''',
+]

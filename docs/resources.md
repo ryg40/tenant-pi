@@ -8,7 +8,8 @@ This page states the contract of the component. The package tests under `package
 
 A Pi resource is an extension, a skill, a prompt template or an MCP server. The `resources` component shows the resources of one agent directory in one list. It turns each resource on or off. It saves a set of states as a named profile and applies a profile later.
 
-The component uses the resource settings syntax of Pi 1.0.3. The kit pins Pi 1.0.3. Not verified: a load of the component in a generated profile on Pi 1.0.3.
+The current kit pin is `runtime.piVersion` in `config/manifest.json`.
+The source facts below use `<reviewed release>`, Pi `1.0.3`; they do not qualify the current pin.
 
 ## Enable the component
 
@@ -89,7 +90,7 @@ The component makes minimal edits. It keeps all other keys and the key order. It
 
 ### How Pi reads a list
 
-These rules are read in the source of Pi 1.0.3: the function `applyPatterns` in `dist/core/package-manager.js`. That file is byte-equal in Pi 1.0.2 and Pi 1.0.3. The comment at the top of `packages/tenantext/extensions/resources/writers.ts` has the line numbers. The package test `test/resources-inventory.test.ts` compares the inventory with the result of the installed Pi on four settings files.
+These rules are read in the source of the reviewed release: the function `applyPatterns` in `dist/core/package-manager.js`. That file is byte-equal in Pi 1.0.2 and the reviewed release. The comment at the top of `packages/tenantext/extensions/resources/writers.ts` has the line numbers. The package test `test/resources-inventory.test.ts` compares the inventory with the result of the installed Pi on four settings files.
 
 | Entry | Meaning |
 | --- | --- |
@@ -175,7 +176,7 @@ Some hosts have a `disabledMcpServers` block from `pi-mcp-adapter`. The componen
 
 #### Project override
 
-From Pi 1.0.1, a `.pi/mcp.json` entry without `command`, `url` and `type` is an override. It is not a server. Pi merges it over the user server with the same name. It can set only `enabled`, `exposure` and `toolExposure` (`docs/mcp.md` line 34 of Pi 1.0.3; `dist/extensions/mcp/config.js` lines 36 to 40 and 64 to 82).
+From Pi 1.0.1, a `.pi/mcp.json` entry without `command`, `url` and `type` is an override. It is not a server. Pi merges it over the user server with the same name. It can set only `enabled`, `exposure` and `toolExposure` (`docs/mcp.md` line 34 of the reviewed release; `dist/extensions/mcp/config.js` lines 36 to 40 and 64 to 82).
 
 The component models this merge. These are the rows for a user server `example` and a project override `{ "example": { "enabled": false } }`:
 
@@ -205,7 +206,7 @@ Writes:
 
 The model applies only when the `builtin:mcp` row of the inventory is on. With `builtin:mcp` off, Pi does not read `mcp.json` in the native way, and each file gives its rows alone: an entry of `.pi/mcp.json` is a project row with the source `mcp`.
 
-The package tests compare the rows with the result of `loadMcpConfig()` of the linked Pi package (Pi 1.0.3), and the written override with the result of `updateMcpServerConfig()`. Not verified against a live Pi session: the MCP state. The rules for one file come from `docs/mcp.md` of Pi 1.0.3 (lines 69 and 90) and agree with the component.
+The package tests compare the rows with the result of `loadMcpConfig()` of the linked Pi package (the reviewed release), and the written override with the result of `updateMcpServerConfig()`. Not verified against a live Pi session: the MCP state. The rules for one file come from `docs/mcp.md` of the reviewed release (lines 69 and 90) and agree with the component.
 
 Not modeled:
 

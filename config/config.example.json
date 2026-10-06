@@ -11,6 +11,7 @@
       "anthropic-usage",
       "codex-accounts",
       "context-meter",
+      "coordinator-skills",
       "copilot-usage",
       "doctor",
       "herdr",

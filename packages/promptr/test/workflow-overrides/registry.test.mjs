@@ -10,11 +10,11 @@ import {
 import { defaultCapabilityProbePath, loadCapabilityProbe } from '../../dist/src/generate/launch.mjs';
 
 const REGISTRY = [
- { provider: 'github-copilot', id: 'gpt-5.6-sol', reasoning: true },
- { provider: 'github-copilot', id: 'gpt-5.6-luna', reasoning: true, thinkingLevelMap: { xhigh: null } },
+ { provider: 'github-copilot', id: 'standard-model', reasoning: true },
+ { provider: 'github-copilot', id: 'light-model', reasoning: true, thinkingLevelMap: { xhigh: null } },
  { provider: 'github-copilot', id: 'gpt-4.1', reasoning: false },
- { provider: 'openai-codex', id: 'gpt-5.6-sol', reasoning: true },
- { provider: 'openai-codex', id: 'gpt-5.6-sol', reasoning: true }, // duplicate row
+ { provider: 'default-provider', id: 'standard-model', reasoning: true },
+ { provider: 'default-provider', id: 'standard-model', reasoning: true }, // duplicate row
 ];
 
 test('registry rows become exact pi-route capabilities; thinking follows reasoning and the level map', () => {
@@ -51,10 +51,10 @@ test('the probe file round-trips and carries no credential fields; bare arrays s
 function copilotExpansion() {
  const parsed = parseWorkflowConfig({
   version: 1, providers: ['github-copilot'], defaultProvider: 'github-copilot',
-  workflows: { 'openai-codex-simple': { roles: { coordinator: { thinking: 'high' }, reviewer: { model: 'gpt-5.6-luna', thinking: 'xhigh' } } } },
+  workflows: { 'worker-simple': { roles: { coordinator: { thinking: 'high' }, reviewer: { model: 'light-model', thinking: 'xhigh' } } } },
  });
  const built = createConfiguredCatalog(catalogPort, parsed.value, { source: '/x/workflows.json' });
- return built.catalog.expandWorkflow({ template: 'openai-codex-simple', provider: 'github-copilot', readiness: 'ready' }).value;
+ return built.catalog.expandWorkflow({ template: 'worker-simple', provider: 'github-copilot', readiness: 'ready' }).value;
 }
 
 test('checkExpansion reports ok, missing (provider, model, thinking) and unverifiable herdr-claude roles exactly', () => {
@@ -69,13 +69,13 @@ test('checkExpansion reports ok, missing (provider, model, thinking) and unverif
  const totals = summarizeRoleChecks(checks);
  assert.deepEqual(totals, { ok: 3, missing: 3, unverifiable: 0 });
 
- const noProvider = checkExpansion(copilotExpansion(), capabilitiesFromRegistry([{ provider: 'openai-codex', id: 'gpt-5.6-sol', reasoning: true }]));
+ const noProvider = checkExpansion(copilotExpansion(), capabilitiesFromRegistry([{ provider: 'default-provider', id: 'standard-model', reasoning: true }]));
  assert.ok(noProvider.every((c) => c.status === 'missing' && /provider github-copilot not in the registry/.test(c.reason)));
 
- const mixed = catalogPort.expandWorkflow({ template: 'openai-claude', provider: 'openai-codex', readiness: 'ready' }).value;
+ const mixed = catalogPort.expandWorkflow({ template: 'reviewer', provider: 'default-provider', readiness: 'ready' }).value;
  const mixedChecks = checkExpansion(mixed, capabilitiesFromRegistry(REGISTRY));
  assert.equal(mixedChecks.find((c) => c.role === 'worker').status, 'unverifiable');
- assert.match(describeRoleChecks(mixedChecks).find((l) => /worker/.test(l)), /^unverifiable +worker +anthropic\/claude-opus-5:high via herdr-claude — herdr-claude route/);
+ assert.match(describeRoleChecks(mixedChecks).find((l) => /worker/.test(l)), /^unverifiable +worker +claude\/claude-large-model:high via herdr-claude — herdr-claude route/);
 });
 
 test('the companion reads the hosted probe from the default path when no env override is set', () => {

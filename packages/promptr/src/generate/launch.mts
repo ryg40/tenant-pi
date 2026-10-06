@@ -13,13 +13,15 @@ import { fileURLToPath } from "node:url";
 import type { GeneratePromptRequest } from "../tracking/selection.mts";
 import type { WorkflowExpansion } from "../tracking/workflow-port.mts";
 import { validateWorkflowCapabilities, type WorkflowCapability } from "../workflow/catalog.mts";
-import { resolveCapabilityProbeFile, loadWorkflowConfig } from "../workflow/load.mts";
+import { NEUTRAL_PROVIDER_ID, NO_OVERRIDE_HINT, resolveCapabilityProbeFile, loadWorkflowConfig } from "../workflow/load.mts";
 export { defaultCapabilityProbePath, CAPABILITY_PROBE_FILE_NAME } from "../workflow/load.mts";
 import { parseCapabilityProbe } from "../workflow/registry.mts";
 import { buildGeneratorPrompt, validateGeneratorOutput, type GeneratorCatchUp, type GeneratorContext, type GeneratorPacket } from "./packet.mts";
 import { loadFreshCatchUp } from "../tracking/catchup-sources.mts";
 import type { ProjectPaths } from "../state/paths.mts";
-import { isHerdrPaneId, isHerdrPaneInWorkspace, isHerdrWorkspaceId } from "../herdr/identity.mts";
+import { isHerdrWorkspaceId } from "../herdr/identity.mts";
+import { buildTabCreateArgs, buildInteractiveStartArgs, buildPromptArgs, parseAgent, parseTabCreate, matchesAgentIdentity, type AgentRecord } from "../herdr/adapter.mts";
+export { buildTabCreateArgs, parseAgent, parseTabCreate, type AgentRecord } from "../herdr/adapter.mts";
 import { herdrRoleNameFromList } from "../herdr/naming.mts";
 
 /**
@@ -66,6 +68,9 @@ export function generatorRuntimeOverride(env: NodeJS.ProcessEnv): GeneratorRunti
 export function runtimeLabel(runtime: GeneratorRuntime): string {
   return `${runtime.provider}/${runtime.model}:${runtime.thinking}`;
 }
+
+/** Reason of the early stop when the shipped neutral catalog would launch without a local override. */
+export const NO_OVERRIDE_REASON = `no workflow override file; ${NO_OVERRIDE_HINT}`;
 
 /** Absolute path of a JSON capability probe: `[{provider, model, thinking[], route}]`. */
 export const CAPABILITY_PROBE_ENV = "PROMPTR_WORKFLOW_CAPABILITIES";
@@ -167,15 +172,11 @@ export function resolveSkillPath(env: NodeJS.ProcessEnv, exists: (p: string) => 
 }
 
 /**
- * Herdr learns Pi state only through herdr-agent-state. The `openai-codex-2`
- * provider is an extension too. Its extension file is attached to
- * `openai-codex-2` and nothing else: a configured provider such as
- * `github-copilot` never loads the extension file of another provider.
+ * Herdr learns Pi state only through herdr-agent-state. No provider adds an
+ * extension file of its own.
  */
-export function requiredExtensions(provider: string, agentDir: string): string[] {
-  const list = [path.join(agentDir, "extensions", "herdr-agent-state.ts")];
-  if (provider === "openai-codex-2") list.push(path.join(agentDir, "extensions", "openai-codex-2.ts"));
-  return list;
+export function requiredExtensions(agentDir: string): string[] {
+  return [path.join(agentDir, "extensions", "herdr-agent-state.ts")];
 }
 
 /** Herdr agent names: lowercase start, `[a-z0-9_-]`, 1-32 chars. */
@@ -183,41 +184,15 @@ export function generatorSessionName(taskNumber: number, requestId: string): str
   return `promptr-gen-${String(taskNumber)}-${requestId.slice(0, 8)}`.slice(0, 32);
 }
 
-export function buildTabCreateArgs(workspace: string, cwd: string, label: string): string[] {
-  return ["tab", "create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus"];
-}
-
 export function buildAgentStartArgs(
   name: string, pane: string, runtime: GeneratorRuntime, skillPath: string, extensions: readonly string[],
 ): string[] {
   return [
-    "agent", "start", name, "--kind", "pi", "--pane", pane, "--timeout", "60000",
-    "--", "--provider", runtime.provider, "--model", runtime.model, "--thinking", runtime.thinking,
+    ...buildInteractiveStartArgs(name, pane, runtime),
     "--no-skills", "--skill", skillPath, "--no-prompt-templates", "--no-context-files", "--no-extensions",
     ...extensions.flatMap((e) => ["-e", e]),
     "--tools", "read,write", "--name", name,
   ];
-}
-
-export function parseTabCreate(stdout: string, workspace?: string): string | undefined {
-  try {
-    const data = JSON.parse(stdout);
-    if (data && typeof data === "object" && "error" in data) return undefined;
-    const id = (data as { result?: { root_pane?: { pane_id?: unknown } } })?.result?.root_pane?.pane_id;
-    return isHerdrPaneId(id) && (workspace === undefined || isHerdrPaneInWorkspace(id, workspace)) ? id : undefined;
-  } catch { return undefined; }
-}
-
-export interface AgentRecord {
-  agent?: unknown; pane_id?: unknown; cwd?: unknown; foreground_cwd?: unknown;
-  agent_status?: unknown; agent_session?: { kind?: unknown; value?: unknown }; terminal_id?: unknown;
-}
-
-export function parseAgent(stdout: string): AgentRecord | undefined {
-  try {
-    const data = JSON.parse(stdout);
-    return data?.result?.agent as AgentRecord | undefined;
-  } catch { return undefined; }
 }
 
 export type GeneratorResult =
@@ -263,6 +238,14 @@ export async function runGenerator(input: GeneratorInput, deps: GeneratorDeps): 
   const override = generatorRuntimeOverride(input.env);
   const runtime = override ?? generatorRuntime(request.workflow);
   if (!runtime) return fail("workflow has no generator role");
+  // The shipped catalog names a neutral provider that no Pi serves. Without
+  // an override file the launch can only fail inside Pi, so stop here.
+  if (runtime.provider === NEUTRAL_PROVIDER_ID) {
+    const config = loadWorkflowConfig(input.env, { readFile: deps.readFile, exists: (p) => deps.readFile(p) !== undefined });
+    if (config.ok && config.config === undefined) {
+      record({ outcome: "failed", reason: NO_OVERRIDE_REASON }); return fail(NO_OVERRIDE_REASON);
+    }
+  }
   // Capability gate: only when a probe was supplied. A failure blocks
   // the dispatch visibly; nothing is substituted and no tab is created.
   const probe = loadCapabilityProbe(input.env, deps.readFile);
@@ -304,7 +287,7 @@ export async function runGenerator(input: GeneratorInput, deps: GeneratorDeps): 
 
   note(`generator: starting ${runtimeLabel(runtime)} in ${pane}`);
   try {
-    await deps.exec(buildAgentStartArgs(session, pane, runtime, skillPath, requiredExtensions(runtime.provider, input.agentDir)));
+    await deps.exec(buildAgentStartArgs(session, pane, runtime, skillPath, requiredExtensions(input.agentDir)));
   } catch {
     const reason = `generator Pi failed to start in ${pane}`;
     record({ outcome: "failed", reason, pane }); return fail(reason, pane);
@@ -314,15 +297,13 @@ export async function runGenerator(input: GeneratorInput, deps: GeneratorDeps): 
     try { return parseAgent(await deps.exec(["agent", "get", pane as string])); } catch { return undefined; }
   };
   const first = await get();
-  if (!first || first.agent !== "pi" || first.pane_id !== pane || first.cwd !== scratchDir
-    || first.agent_status !== "idle" || first.agent_session?.kind !== "path") {
+  if (!matchesAgentIdentity(first, { pane, cwd: scratchDir }) || first?.agent_status !== "idle") {
     const reason = `generator identity unverified in ${pane}`;
     record({ outcome: "failed", reason, pane }); return fail(reason, pane);
   }
 
   try {
-    await deps.exec(["agent", "prompt", pane, buildGeneratorPrompt(packetPath, outputPath, requestId, taskNumber),
-      "--wait", "--until", "working", "--timeout", "10000"]);
+    await deps.exec(buildPromptArgs(pane, buildGeneratorPrompt(packetPath, outputPath, requestId, taskNumber)));
   } catch {
     const reason = `generator prompt uncertain in ${pane}; inspect it`;
     record({ outcome: "uncertain", reason, pane }); return fail(reason, pane);

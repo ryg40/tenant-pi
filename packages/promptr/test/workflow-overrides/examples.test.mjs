@@ -20,16 +20,16 @@ test('the default example is valid and applies cleanly to the shipped catalog', 
  assert.equal(parsed.ok, true, parsed.ok ? '' : parsed.error);
  const built = createConfiguredCatalog(catalogPort, parsed.value, { source: String(DEFAULT_EXAMPLE) });
  assert.equal(built.ok, true, built.ok ? '' : built.error);
- assert.deepEqual(built.catalog.listProviders().map((p) => p.id), ['openai-codex', 'openai-codex-2']);
+ assert.deepEqual(built.catalog.listProviders().map((p) => p.id), ['example-provider', 'second-provider']);
  const worker = built.catalog.expandWorkflow({
-  template: 'openai-codex-high', provider: 'openai-codex-2', readiness: 'ready',
+  template: 'worker-high', provider: 'second-provider', readiness: 'ready',
  }).value.roles.find((r) => r.role === 'worker');
  assert.deepEqual(worker, {
-  role: 'worker', provider: 'openai-codex-2', model: 'gpt-6-astra', thinking: 'medium', route: 'pi',
+  role: 'worker', provider: 'second-provider', model: 'gpt-6-astra', thinking: 'medium', route: 'pi',
  });
 });
 
-test('the Copilot example is structurally valid and keeps the shipped model IDs', () => {
+test('the Copilot example is structurally valid and names its sample model IDs', () => {
  const text = readFileSync(COPILOT_EXAMPLE, 'utf8');
  assert.doesNotMatch(text, /<[a-z-]+>/, 'no placeholders remain in the packaged Copilot example');
  assert.match(text, /pi --list-models/);
@@ -38,7 +38,7 @@ test('the Copilot example is structurally valid and keeps the shipped model IDs'
  const built = createConfiguredCatalog(catalogPort, parsed.value, { source: 'copilot-example' });
  assert.equal(built.ok, true, built.ok ? '' : built.error);
  assert.deepEqual(built.catalog.listProviders().map((p) => p.id), ['github-copilot']);
- // Keep the shipped matrix IDs. This test does not prove registry availability.
+ // The sample IDs of the example. This test does not prove registry availability.
  const models = new Set();
  for (const workflow of built.catalog.listWorkflows()) {
   const result = built.catalog.expandWorkflow({
@@ -52,7 +52,7 @@ test('the Copilot example is structurally valid and keeps the shipped model IDs'
    ['coordinator', 'scout', 'researcher', 'worker', 'reviewer', 'generator'], workflow.id);
   for (const role of value.roles) models.add(role.model);
   const joined = `${value.instructions.join(' ')} ${workflow.label}`;
-  assert.doesNotMatch(joined, /OpenAI/, `${workflow.id} must not claim an OpenAI provider`);
+  assert.doesNotMatch(joined, /on the selected provider|Pi roles|default-provider/, `${workflow.id} must not repeat a shipped label or provider`);
   assert.doesNotMatch(value.instructions.join(' '), /Herdr/, `${workflow.id} must not claim a Herdr Claude route`);
  }
  assert.deepEqual([...models].sort(), ['claude-opus-5', 'claude-sonnet-5', 'gpt-5.6-luna', 'gpt-5.6-sol', 'gpt-6-astra']);

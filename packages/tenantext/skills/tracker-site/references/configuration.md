@@ -15,7 +15,7 @@ Default: `~/.pi/agent/tracker-state/<repo-slug>/`. The slug is the `owner/name` 
 
 | File | Content |
 | --- | --- |
-| `config.json` | Optional owner configuration |
+| `config.json` | Optional configuration |
 | `checkpoint.json` | The bounded checkpoint packet (at most 8192 bytes) |
 | `run.json` | Stage status, attempts, errors, runtime, model calls and tokens |
 | `runs/` | Earlier `run.json` files |
@@ -39,7 +39,7 @@ Default: `~/.pi/agent/tracker-state/<repo-slug>/`. The slug is the `owner/name` 
   "repo_url": "https://git.example.com/owner/tenantext",
   "title": "Tenantext restart brief",
   "scope": "Tenantext Pi extension suite and the tracker work.",
-  "store": {"backend": "local", "path": ".okf/tracker-brief.md"},
+  "store": {"backend": "local", "path": "docs/tracker-brief.md"},
   "issues": {"api": "https://git.example.com/api/v1", "token_env": "GITEA_TOKEN", "max_pages": 4, "page_size": 50},
   "git": {"max_commits": 30},
   "max_retries": 2,
@@ -47,17 +47,39 @@ Default: `~/.pi/agent/tracker-state/<repo-slug>/`. The slug is the `owner/name` 
   "publish": {
     "endpoint": "https://artifacts.example.com",
     "credential_file": "/home/dev/.config/artifact-token",
-    "receipt_dir": "~/.pi/agent/tracker-publications"
+    "receipt_dir": "~/.pi/agent/tracker-publications",
+    "edit_token_header": "X-Edit-Token"
   }
 }
 ```
 
-- `store.path` is relative to the repository root. The default is `.okf/tracker-brief.md` when the repository has an `.okf/` bundle, else `tracker-brief.md`.
+- `store.path` is relative to the repository root. The default is `docs/tracker-brief.md` when `docs/` is a directory, else `tracker-brief.md` at the root.
+- An explicit `store.path` overrides that default. `TRACKER_STORE_PATH` overrides the configured path.
+- The default never uses `.okf/`: the brief has no OKF frontmatter. An explicit path can still select that directory.
 - `store.backend: openknowledge` selects the OpenKnowledge adapter. It is detection only. See [storage.md](storage.md).
 - `issues.api` is the Gitea API base. Without it, the tool skips issue collection and labels the brief with an `unknown` record.
 - The issue token comes from the environment variable named in `issues.token_env` (default `GITEA_TOKEN`) or from `issues.token_file`. It travels only in a request header.
 - `max_retries`: a stage may fail `max_retries + 1` times per run.
+- `publish.edit_token_header` is the request header that carries the edit token on a refresh. The default is `X-Edit-Token`. Set the name that the artifact service documents. See [publication.md](publication.md).
 - `publish` stays off until `endpoint` and `credential_file` are set, and runs only on an explicit publish command.
+
+## Default view budgets
+
+The validator keeps these defaults. See [the schema](../../../tracker/schema.md#budgets) for the fields included in the word count.
+
+| Limit | Default |
+| --- | --- |
+| Word warning | More than 400 words |
+| Word error | More than 550 words |
+| Position | Exactly 1 record |
+| Changes | At most 3 records |
+| Active items | At most 3 records, with distinct priorities from 1 to 3 |
+| Recommended path | At most 1 record |
+| Alternative paths | At most 2 records |
+| Handoff | Exactly 1 for a recommended path, else none |
+| Approval boundaries | At least 1 gate record |
+
+Approval gates and critical unknowns stay visible. Their item counts have no upper limit.
 
 ## Environment variables
 

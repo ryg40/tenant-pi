@@ -52,7 +52,7 @@ The kit commands are `validate`, `plan`, `generate`, `compare`, `carry`, `invent
 - runs `pi`, except `pi --version` inside `check-runtime` with an empty temporary `PI_CODING_AGENT_DIR`;
 - opens a network connection or makes a model call;
 - reads `auth.json`, `models.json`, a session, a memory store or the live `settings.json`. `baseline` and `check-baseline` read the status of each entry of the directory that you name (name, kind, size, modification time) and open no file; see [the directory baseline](../directory-baseline.md);
-- reads an environment value other than `HOME` (`init-private`, `baseline`, `validate`, `plan`, `generate`) and `PATH` (`check-runtime`). Exception: `check-runtime` passes the full environment of the caller to its three child processes (`pi --version`, `node --version`, `python3 --version`), with `PI_CODING_AGENT_DIR` replaced for the Pi process;
+- reads an environment value other than `HOME` (`init-private`, `baseline`, `validate`, `plan`, `generate`) and `PATH` (`check-runtime`). `plan` also tests a fixed list of provider key variable names for presence and reads no value; see [the warning](../profile-plan.md#the-warning-for-a-provider-key-variable). Exception: `check-runtime` passes the full environment of the caller to its three child processes (`pi --version`, `node --version`, `python3 --version`), with `PI_CODING_AGENT_DIR` replaced for the Pi process;
 - copies auth, sessions, memory, queues, keyring state or installed packages between profiles;
 - writes, prints or resolves a secret value.
 

@@ -1,6 +1,6 @@
 // Promptr adapter over the vendored pi-atelier v0.12.0 sidebar renderer.
 // Upstream panel IDs stay stable; Promptr panels use the `promptr:<name>` namespace.
-// See extension/docs/atelier-adaptation.md for ownership and provenance.
+// See packages/promptr/docs/atelier-adaptation.md for ownership and provenance.
 import type { ThemeLike } from "./vendor/atelier/footer.mts";
 import {
   renderSidebarView, type SidebarChartGraphics, type SidebarSnapshot, type SidebarViewportState,

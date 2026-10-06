@@ -10,7 +10,7 @@ import { loadSettings as loadMeterSettings } from "../extensions/context-meter/s
 const STATUS_KEY = "tenantext";
 const ENTRY_TYPE = "tenantext-note";
 const SUBCOMMANDS = ["on", "off", "guard on", "guard off", "settings", "save", "context", "rules", "help"];
-const IFS_SUBCOMMANDS = ["on", "off", "status"];
+const DECISIONS_SUBCOMMANDS = ["on", "off", "status"];
 
 const HELP = `## /tenantext
 | Command | Effect |
@@ -19,7 +19,7 @@ const HELP = `## /tenantext
 | /tenantext on, off | Language rules for this session |
 | /tenantext guard on, off | Startup guard for this session |
 | /tenantext settings | Edit main and operations footer settings in the TUI |
-| /tenantext-ifs-enable on, off | Allow or block every decision-server call; saved at once |
+| /tenantext-decisions on, off | Allow or block every decision-server call; saved at once |
 | /tenantext save | Store the current on/off states as defaults |
 | /tenantext context | Report startup context size by source |
 | /tenantext rules | Print the rule block |`;
@@ -135,7 +135,7 @@ export default function tenantext(pi: ExtensionAPI) {
 					const lines = [
 						`- rules: ${session.rules ? "on" : "off"} (default ${settings.rules ? "on" : "off"}, v${RULES_VERSION}, ~${estimateTokensFromText(RULES_BLOCK)} tokens per turn)`,
 						`- guard: ${session.guard ? "on" : "off"} (default ${settings.guard ? "on" : "off"}), ${guard.humanPromptSeen ? "passed" : "armed"}`,
-						`- decisions: ${settings.decisions ? "on" : "off"} (/tenantext-ifs-enable)`,
+						`- decisions: ${settings.decisions ? "on" : "off"} (/tenantext-decisions)`,
 						`- flagged: ${guard.blockedInputs} blocked inputs, ${guard.unverifiedRuns} unverified runs, ${guard.requestsBeforeHuman} early requests`,
 						`- provider requests this session: ${guard.requestsTotal}`,
 						`- settings file: ${settingsPath()}`,
@@ -200,10 +200,10 @@ export default function tenantext(pi: ExtensionAPI) {
 	});
 
 	// --- decision servers: one switch for every tenantext caller. The state is saved at once and applied without a restart. ---
-	pi.registerCommand("tenantext-ifs-enable", {
+	pi.registerCommand("tenantext-decisions", {
 		description: "Allow or block calls to the decision server (nextMoveUrl): on, off, status",
 		getArgumentCompletions: (prefix: string) => {
-			const items = IFS_SUBCOMMANDS.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s }));
+			const items = DECISIONS_SUBCOMMANDS.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s }));
 			return items.length ? items : null;
 		},
 		handler: async (args: string, ctx: ExtensionCommandContext) => {
@@ -217,7 +217,7 @@ export default function tenantext(pi: ExtensionAPI) {
 				ctx.ui.notify(`decision-server calls ${cmd}; saved to ${settingsPath()}`, "info");
 				return;
 			}
-			if (cmd !== "status") { ctx.ui.notify("usage: /tenantext-ifs-enable on|off|status", "warning"); return; }
+			if (cmd !== "status") { ctx.ui.notify("usage: /tenantext-decisions on|off|status", "warning"); return; }
 			const meter = loadMeterSettings().settings;
 			ctx.ui.notify([
 				`- decision-server calls: ${settings.decisions ? "on" : "off"}`,

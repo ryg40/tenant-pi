@@ -25,7 +25,7 @@ CARRIED_FORWARD = (
 )
 PROPOSAL = (
     "This path is a proposal. It gives no permission to deploy, publish, change issues "
-    "or pass an approval gate. When a step needs approval, stop and ask the owner."
+    "or pass an approval gate. When a step needs approval, stop and ask the requester."
 )
 GATE_LABELS = (("approval", "Needs approval"), ("forbidden", "Forbidden"))
 
@@ -57,7 +57,7 @@ def build(model, *, basis="current"):
 def refresh(model, *, basis="current"):
     """Return a copy of ``model`` whose handoff matches its recommended path.
 
-    An owner-written handoff (``source: owner``) that still names the recommended
+    A requester-written handoff (``source: requester``) that still names the recommended
     path is kept as it is. Any other handoff is replaced by ``build``. Without a
     recommended path the copy has no handoff.
     """
@@ -67,8 +67,8 @@ def refresh(model, *, basis="current"):
     if path is None:
         out["handoffs"] = []
         return out
-    owner = [h for h in existing if h.get("source") == "owner" and h.get("path") == path.get("id")]
-    out["handoffs"] = [owner[0]] if owner else [build(out, basis=basis)]
+    requester = [h for h in existing if h.get("source") == "requester" and h.get("path") == path.get("id")]
+    out["handoffs"] = [requester[0]] if requester else [build(out, basis=basis)]
     return out
 
 
@@ -195,7 +195,7 @@ def _lines(model, path, basis, items, clip):
         _list("Depends on", path.get("depends", []), items, clip)
         + _list("Prerequisites", path.get("prerequisites", []), items, clip),
         [f"Authority: {_clip(path.get('authority', ''), clip)}"]
-        + _list("Needs separate owner approval", path.get("needs_approval", []), items, clip)
+        + _list("Needs separate requester approval", path.get("needs_approval", []), items, clip)
         + _list("Approval gates in force", gates, items, clip),
         _list("Acceptance criteria", path.get("acceptance", []), items, clip)
         + _list("Validation commands", path.get("validate", []), items, None, clip_values=False)

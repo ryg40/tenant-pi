@@ -2,6 +2,7 @@
 """Adapters for update jobs. Network writes occur only in the request action."""
 import argparse
 import base64
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,9 @@ import urllib.request
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+_pin_spec = importlib.util.spec_from_file_location("pi_update", ROOT / "scripts/pi_update.py")
+pi_update = importlib.util.module_from_spec(_pin_spec)
+_pin_spec.loader.exec_module(pi_update)
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 NOTE_VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
 PACKAGE = "@earendil-works/pi-coding-agent@"
@@ -209,24 +213,19 @@ def request(directory, target, previous, base, revision, api, *, root=ROOT):
         return {"status": "existing", "number": existing}
     remote = api("GET", "/branches/" + urllib.parse.quote(base, safe=""))
     require(remote["commit"]["id"] == revision, "source_changed")
-    files = []
+    sources, entries = {}, {}
     for path in ("config/manifest.json", "scripts/validate.py"):
         entry = api("GET", "/contents/" + path + "?ref=" + revision)
         content = base64.b64decode(entry["content"], validate=False).decode("utf-8")
         require(content == (root / path).read_text(encoding="utf-8"), "source_changed")
-        if path.endswith(".json"):
-            data = json.loads(content)
-            require(data["runtime"]["piVersion"] == previous and
-                    data["components"]["core"]["source"]["spec"] == PACKAGE + previous, "source_pin")
-            data["runtime"]["piVersion"] = target
-            data["components"]["core"]["source"]["spec"] = PACKAGE + target
-            content = json.dumps(data, indent=2) + "\n"
-        else:
-            old = '"core": {"kind": "npm", "spec": "' + PACKAGE + previous + '"}'
-            require(content.count(old) == 1, "source_anchor")
-            content = content.replace(old, old.replace(PACKAGE + previous, PACKAGE + target))
-        files.append({"operation": "update", "path": path, "sha": entry["sha"],
-                      "content": base64.b64encode(content.encode()).decode()})
+        sources[path], entries[path] = content, entry
+    require(json.loads(sources["config/manifest.json"])["runtime"]["piVersion"] == previous, "source_pin")
+    try:
+        contents = pi_update.pin_contents(sources["config/manifest.json"], sources["scripts/validate.py"], target)
+    except pi_update.Invalid as exc:
+        raise Invalid(str(exc).split(":", 1)[0]) from None
+    files = [{"operation": "update", "path": path, "sha": entries[path]["sha"],
+              "content": base64.b64encode(content.encode()).decode()} for path, content in contents.items()]
     # Exactly one concurrent caller can create this branch. A failed claim never proceeds to POST /pulls.
     try:
         api("POST", "/branches", {"new_branch_name": branch, "old_ref_name": revision})
@@ -240,7 +239,7 @@ def request(directory, target, previous, base, revision, api, *, root=ROOT):
     api("POST", "/contents", {"branch": branch, "message": "ci: update Pi to " + target, "files": files})
     title = ("BREAKING: " if notes["breaking"] else "") + "Update Pi to " + target
     body = ("Breaking changes: " + ("YES" if notes["breaking"] else "no") + "\n\n" + text +
-            "\n\nReview the pin-dependent test fixtures and run the offline checks before merge. "
+            "\n\nReview the candidate and run the offline checks before merge. "
             "This request does not approve or publish a release.\n")
     created = api("POST", "/pulls", {"head": branch, "base": base, "title": title, "body": body})
     return {"status": "created", "number": created["number"]}

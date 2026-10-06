@@ -17,6 +17,7 @@ from scripts.validate import Invalid, load
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
+PIN = load(ROOT / "config/manifest.json")["runtime"]["piVersion"]
 CANARY = "CANARY_SECRET"
 A = "a" * 40
 EVENTS = []
@@ -38,7 +39,7 @@ def dump(value):
 
 
 def state(**provenance):
-    record = {"kitSchemaVersion": 1, "piVersion": "1.0.3", "nodeRange": ">=22.22.0 <23", "enabled": ["core"],
+    record = {"kitSchemaVersion": 1, "piVersion": PIN, "nodeRange": ">=22.22.0 <23", "enabled": ["core"],
               "pins": {}, "outputs": [], **provenance}
     return {"schemaVersion": 1, "status": "complete", "provenance": record}
 
@@ -46,14 +47,14 @@ def state(**provenance):
 class PureListTests(unittest.TestCase):
     def test_candidate_row_fields(self):
         row = child("candidate 2026-10-02", "dir", state(generatedAt="2026-10-02T08:00:00Z", kitCommit=A))
-        self.assertEqual({"name": "candidate 2026-10-02", "status": "candidate", "kitSchemaVersion": 1, "piVersion": "1.0.3",
+        self.assertEqual({"name": "candidate 2026-10-02", "status": "candidate", "kitSchemaVersion": 1, "piVersion": PIN,
                           "filesComplete": True, "generatedAt": "2026-10-02T08:00:00Z", "kitCommit": A, "unsupported": []}, row)
         incomplete = state(kitCommit="unknown")
         incomplete["status"] = "incomplete"
         self.assertEqual((False, "unknown", None), tuple(child("c", "dir", incomplete)[k] for k in ("filesComplete", "kitCommit", "generatedAt")))
 
     def test_older_state_without_new_fields(self):
-        self.assertEqual({"name": "old", "status": "candidate", "kitSchemaVersion": 1, "piVersion": "1.0.3",
+        self.assertEqual({"name": "old", "status": "candidate", "kitSchemaVersion": 1, "piVersion": PIN,
                           "filesComplete": True, "generatedAt": None, "kitCommit": None, "unsupported": []},
                          child("old", "dir", state()))
         self.assertEqual({"name": "bare", "status": "candidate", **dict.fromkeys(candidate_list.FIELDS), "unsupported": []},
@@ -165,7 +166,7 @@ class ParentDirectoryTests(unittest.TestCase):
         finally:
             del RECORDING[:]
         self.assertEqual(dump(result), dump(again))
-        common = {"status": "candidate", "kitSchemaVersion": 1, "piVersion": "1.0.3", "filesComplete": True,
+        common = {"status": "candidate", "kitSchemaVersion": 1, "piVersion": PIN, "filesComplete": True,
                   "generatedAt": "2026-10-02T08:00:00Z", "unsupported": []}
         self.assertEqual([{"name": "candidate 2026-10-01", **common, "kitCommit": A},
                           {"name": "candidate 2026-10-02", **common, "kitCommit": "unknown"},
@@ -303,7 +304,7 @@ class ListCliTests(unittest.TestCase):
             self.assertEqual(runs[0].stdout, runs[1].stdout)
             result = json.loads(runs[0].stdout)
             self.assertEqual(runs[0].stdout.strip(), dump(result))
-            self.assertEqual([{"name": "generated", "status": "candidate", "kitSchemaVersion": 1, "piVersion": "1.0.3",
+            self.assertEqual([{"name": "generated", "status": "candidate", "kitSchemaVersion": 1, "piVersion": PIN,
                                "filesComplete": True, "generatedAt": "2026-10-02T08:00:00Z", "kitCommit": A, "unsupported": []},
                               {"name": "linked", "status": "symlink"}, {"name": "plain", "status": "unmanaged"}], result["children"])
             failed = subprocess.run([sys.executable, str(CLI), "list", "--parent", "relative"], cwd=base, env=env,

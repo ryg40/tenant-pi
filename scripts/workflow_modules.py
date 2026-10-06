@@ -49,16 +49,16 @@ CREDENTIAL_ARG = re.compile(r"(?i)token|secret|passw|api[-_]?key|bearer|authoriz
 # Written into the generated file; honoured because the exclusive source has kind `user`.
 ADAPTER_SETTINGS = {"hostConfigDiscovery": "off", "projectServers": "ask", "allowInstall": False}
 # Readiness matrix of the in-tree Promptr package; each entry is a fact of `packages/promptr`.
-# `met`: observed with Pi 1.0.2, not the kit pin 1.0.3. `open`: a named gap of the component.
+# `met`: measured at the version in the fact, not a qualified runtime. `open`: a named gap.
 PROMPTR_PREREQUISITES = (
     {"code": "local_package_load", "subject": "promptr", "status": "met",
-     "fact": "Pi 1.0.2 loads the built packages/promptr as a local path package from a generated profile; its 16 commands register."},
+     "fact": "Pi 1.0.2 and Pi 1.0.3 load the built packages/promptr as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills."},
     {"code": "pi_line_build_and_tests", "subject": "promptr", "status": "met",
-     "fact": "The package pins pi-tui and pi-coding-agent 1.0.2; the build, its tests and its two smoke scripts pass on that line. The kit pins Pi 1.0.3; no build or test of the package ran on that line."},
+     "fact": "The package pins pi-tui and pi-coding-agent 1.0.4. With both dependencies at 1.0.4, the build, the 756 tests, the typecheck and `npm run smoke` pass. `npm run smoke:installed` and a package load on Pi 1.0.4 are not verified."},
     {"code": "build_step_required", "subject": "promptr", "status": "open",
      "fact": "packages/promptr/index.ts re-exports dist/src/extension/index.mjs; dist/ is ignored and absent in the tree, so `npm ci` and `npm run build` must run first."},
-    {"code": "host_module_dependency", "subject": "@earendil-works/pi-tui@1.0.2", "status": "open",
-     "fact": "packages/promptr/package.json lists the host module under dependencies because the companion process needs it; Pi 1.0.2 prints one warning at each start. For the built files Pi loads a second copy of pi-tui from packages/promptr/node_modules. The kit pins Pi 1.0.3 with pi-tui ^1.0.3, so the two copies differ: pi-tui 1.0.3 changed the default keys of Home and End. The effect on key handling is not verified."},
+    {"code": "host_module_dependency", "subject": "@earendil-works/pi-tui@1.0.4", "status": "open",
+     "fact": "packages/promptr/package.json pins pi-tui 1.0.4 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.0.4, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.0.4 are not verified."},
     {"code": "private_renderer_adapters", "subject": "promptr", "status": "open",
      "fact": "The sidebar uses private Pi renderer adapters; a start on Pi 1.0.2 shows the sidebar, and no session with a model ran."},
     {"code": "automatic_dispatch_path_unverified", "subject": "promptr", "status": "open",
@@ -194,7 +194,7 @@ def render_mcp(definitions, components):
     source = components["mcp"]["source"]
     servers, records, gaps = {}, {}, []
     gaps.append({"code": "package_runtime_unverified", "subject": "mcp"})
-    # package.json peerDependencies: `@earendil-works/pi-ai` ^0.84.1 || ... || ^0.87.0 (optional) at the reviewed 3.2.0; Pi is 1.0.3.
+    # package.json peerDependencies: `@earendil-works/pi-ai` ^0.84.1 || ... || ^0.87.0 (optional) at the reviewed 3.2.0; compatibility with the kit pin is unverified.
     gaps.append({"code": "peer_range_unverified", "subject": "mcp"})
     # `/mcp-auth` and bearer stores use the OS keyring (`@napi-rs/keyring`), which HOME shares.
     gaps.append({"code": "credential_store_shared", "subject": "mcp"})

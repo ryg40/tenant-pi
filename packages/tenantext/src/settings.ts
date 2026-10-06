@@ -56,5 +56,5 @@ export function ensureSettings(path = settingsPath()): void {
 	mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
 	if (!existsSync(path) || !readFileSync(path, "utf8").trim()) saveSettings(DEFAULT_SETTINGS, path);
 	const guide = join(dirname(path), "settings.example.jsonc");
-	if (!existsSync(guide)) writeFileSync(guide, `// Tenantext options. Copy values into settings.json (plain JSON, without comments).\n{\n  // rules: true | false — add simplified English rules to the system prompt.\n  "rules": true,\n  // guard: true | false — block extension prompts before the first human prompt.\n  "guard": true,\n  // decisions: true | false — allow calls to decision models (the next-move chip). /tenantext-ifs-enable on|off changes this.\n  "decisions": true\n}\n`, { flag: "wx", mode: 0o600 });
+	if (!existsSync(guide)) writeFileSync(guide, `// Tenantext options. Copy values into settings.json (plain JSON, without comments).\n{\n  // rules: true | false — add simplified English rules to the system prompt.\n  "rules": true,\n  // guard: true | false — block extension prompts before the first human prompt.\n  "guard": true,\n  // decisions: true | false — allow calls to decision models (the next-move chip). /tenantext-decisions on|off changes this.\n  "decisions": true\n}\n`, { flag: "wx", mode: 0o600 });
 }

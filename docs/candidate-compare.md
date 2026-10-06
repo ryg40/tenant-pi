@@ -58,6 +58,8 @@ A change entry carries a value only for a field with a closed public form. Every
 
 A value that does not match its public form is reported as `unsupported_value` without the value. Markers cover the target path, provider and model identities, endpoints, environment references, local paths, `enabledModels`, `modelThinkingLevels`, package resource filters, the registry and its digest, the rendered routes, the recorded memory activation, each overlay `memory.hermes.childExtensionPaths` entry and `memory.wiki.wikiHome`, the Hermes `llmModelOverride` and `childExtensionPaths`, the wiki `taskModel`, and unknown fields. A nested secret canary in any of these positions never reaches stdout, stderr, or the report; the tests assert this for endpoints, environment references, model names, hostile URL fields, registry entries, route setup text, and unknown keys at every level.
 
+The manifest field `piAcceptedRange` compares as a marker, never by value. An older record without that field still compares. Drift calculation then reports `required_fields: manifest.runtime`; regenerate from the current kit without changing the old candidate.
+
 Unknown key names are shown when they use safe characters, so that an unsupported field is visible instead of silently discarded. Their values are never shown.
 
 ### The overlay `memory` block
@@ -68,14 +70,15 @@ Unknown key names are shown when they use safe characters, so that an unsupporte
 | --- | --- |
 | `/overlay/memory/schemaVersion` | Small integer, by value |
 | `/overlay/memory/<module>` for a module that is `null` | The fixed word `disabled`. A module that changes between `null` and an object is one `added` or `removed` entry here, plus one entry per field. |
-| `/overlay/memory/hermes/backgroundReview`, `/overlay/memory/wiki/ambientPersonalVault`, `/overlay/memory/wiki/backgroundTasks` | Boolean, by value |
+| `/overlay/memory/hermes/backgroundReview`, `/overlay/memory/wiki/ambientPersonalVault`, `/overlay/memory/wiki/backgroundTasks`, `/overlay/memory/openviking/captureToolResults` | Boolean, by value |
+| `/overlay/memory/openviking/recallContextTimeoutMs` | Small integer, by value |
 | `/overlay/memory/hermes/reviewTransport` | `direct` or `subprocess`, by value |
 | `/overlay/memory/hermes/childExtensionPaths/<index>` | Marker per entry, never a value, also for a `builtin:<name>` entry |
 | `/overlay/memory/wiki/wikiHome` | Marker, never a value |
 
 - A value outside its public form is `unsupported_value` without the value.
 - An unknown module or field name is `unsupported_field` when it uses safe characters, and `<redacted>` with `unsupported_field_name` otherwise. Its value is never shown.
-- A block, a module or a `childExtensionPaths` value of the wrong type is one `unsupported_shape` entry. A non-null `openviking` is `unsupported_shape`: the module is blocked.
+- A block, a module or a `childExtensionPaths` value of the wrong type is one `unsupported_shape` entry. `openviking` has no field for an endpoint or a key: such a name is `unsupported_field`.
 - The derived activation record stays in the report as the one marker `/memory`.
 - `carry` maps each field entry to one overlay patch; see `docs/carry.md`.
 

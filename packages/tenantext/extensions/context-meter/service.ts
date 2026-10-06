@@ -24,7 +24,7 @@ export function createContextMeter(pi: ExtensionAPI): ContextMeterService {
   let requestSystem: number | undefined;
   let disposed = false;
   let nextMove: NextMove | undefined;
-  // Decision-model policy: the /tenantext-ifs-enable gate, one call in flight, and a per-endpoint cooldown after failures.
+  // Decision-model policy: the /tenantext-decisions gate, one call in flight, and a per-endpoint cooldown after failures.
   let decisions = true;
   let inflight: AbortController | undefined;
   const breaker = createBreaker();
@@ -96,7 +96,7 @@ export function createContextMeter(pi: ExtensionAPI): ContextMeterService {
   unsubs.push(pi.on("session_shutdown", () => { service.dispose(); }));
   const nextMoveStatus = (): string => {
     if (!settings.nextMoveUrl) return "off; nextMoveUrl is empty.";
-    if (!decisions) return "off by /tenantext-ifs-enable off.";
+    if (!decisions) return "off by /tenantext-decisions off.";
     const { failures, resumeAt } = breaker.state();
     if (failures === 0) return `on; endpoint answered or not yet asked; timeout ${settings.nextMoveTimeoutMs} ms.`;
     return `paused after ${failures} failed call${failures === 1 ? "" : "s"}; next try in ${Math.max(0, Math.ceil((resumeAt - Date.now()) / 1000))} s.`;

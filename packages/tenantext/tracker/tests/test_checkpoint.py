@@ -190,7 +190,7 @@ class NearContextLimitTests(unittest.TestCase):
             packet = json.loads(data)
             self.assertEqual(packet["uncommitted_files"]["count"], 301)
             self.assertEqual(packet["previous_brief"]["ref"], "main@" + base)
-            self.assertTrue(any("owner approval" in b for b in packet["approval_boundaries"]))
+            self.assertTrue(any("requester approval" in b for b in packet["approval_boundaries"]))
             self.assertEqual(packet["next_safe_action"], "Run the storage tests and fix the first failure.")
             run = cp.RunState.load(state)
             self.assertEqual(run.data["mode"], "incremental")

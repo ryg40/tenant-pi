@@ -9,7 +9,12 @@ export interface CodexAccountsSettings {
 	accounts: CodexAccountConfig[];
 	/** True when the accounts come from a settings file. An account that the user listed shows `no login` when it has no credential. */
 	explicit?: boolean;
+	/** The gateway account that the gateway of this machine prefers, for example `codex1`. Display only. No default. */
+	preferredAccount?: string;
 }
+
+// A gateway names its account services codex1, codex2, codex3, ... in X-Codex-Account.
+export const ACCOUNT_NAME = /^codex[1-9][0-9]*$/;
 
 export const PRIMARY_CODEX_PROVIDER = "openai-codex";
 export const DEFAULT_CODEX_ACCOUNTS: CodexAccountConfig[] = [
@@ -46,5 +51,9 @@ export function validateCodexAccounts(value: unknown): CodexAccountsSettings {
 	if (new Set(accounts.map(({ provider }) => provider)).size !== accounts.length) {
 		throw new Error("codex-accounts provider ids must be unique");
 	}
-	return { accounts };
+	const preferredAccount = (value as { preferredAccount?: unknown }).preferredAccount;
+	if (preferredAccount !== undefined && (typeof preferredAccount !== "string" || !ACCOUNT_NAME.test(preferredAccount))) {
+		throw new Error("codex-accounts preferredAccount must be a gateway account name of the form codexN");
+	}
+	return { accounts, ...(preferredAccount ? { preferredAccount } : {}) };
 }

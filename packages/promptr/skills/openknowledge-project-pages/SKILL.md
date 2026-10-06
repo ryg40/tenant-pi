@@ -7,7 +7,7 @@ description: Read and write Promptr's per-project OpenKnowledge pages (brief, in
 
 Use when an agent must read or update a project's shared pages at `https://openknowledge.example.com` (or `OPENKNOWLEDGE_ORIGIN`): orienting from a brief, queueing browser-typed thoughts, mirroring the workspace, or appending a handoff. Promptr's companion does this automatically; this skill is for agents doing it by hand or debugging a sync.
 
-Repo copy (`.pi/skills/openknowledge-project-pages/`) is distributable source; the installed global copy under `~/.pi/agent/skills/` is runtime state. Synchronize intentionally and `cmp` after updates.
+Repo copy (`packages/promptr/skills/openknowledge-project-pages/`) is distributable source; the installed global copy under `~/.pi/agent/skills/` is runtime state. Synchronize intentionally and `cmp` after updates.
 
 ## Page tree
 

@@ -4,6 +4,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { atomicWrite } from "../state/paths.mts";
+import { parseAgent, matchesAgentIdentity, buildPromptArgs } from "../herdr/adapter.mts";
 import { isHerdrPaneId } from "../herdr/identity.mts";
 import type { BriefingDialogs } from "../briefing/overview.mts";
 import { validateBriefing } from "../briefing/openknowledge.mts";
@@ -17,12 +18,9 @@ export const executeHerdr: HerdrExecutor = async args => {
 export interface BriefingPiTarget { pane: string; sessionFile: string; cwd: string }
 
 async function readyTarget(target: BriefingPiTarget, exec: HerdrExecutor): Promise<string> {
-  const data = JSON.parse(await exec(["agent", "get", target.pane]));
-  const agent = data?.result?.agent;
-  if (data.error || agent?.agent !== "pi" || agent.pane_id !== target.pane
-    || agent.cwd !== target.cwd || agent.foreground_cwd !== target.cwd
-    || agent.agent_status !== "idle" || agent.agent_session?.kind !== "path"
-    || agent.agent_session?.value !== target.sessionFile || typeof agent.terminal_id !== "string") {
+  const agent = parseAgent(await exec(["agent", "get", target.pane]));
+  if (!matchesAgentIdentity(agent, { pane: target.pane, cwd: target.cwd, foreground: true, session: target.sessionFile })
+    || agent?.agent_status !== "idle" || typeof agent.terminal_id !== "string") {
     throw new Error("Main Pi identity/readiness changed; nothing submitted. Inspect main Pi and reopen /coordinatr-herdr.");
   }
   return agent.terminal_id;
@@ -54,7 +52,7 @@ export async function resumeBriefingInMainPi(
     atomicWrite(packet, JSON.stringify({ target, terminal, text, outcome: "attempted/unknown", at: new Date().toISOString() }, null, 2) + "\n");
   } catch { ui.notify("Target changed or packet could not be saved; nothing submitted.", "warning"); return false; }
   try {
-    await exec(["agent", "prompt", target.pane, text, "--wait", "--until", "working", "--timeout", "10000"]);
+    await exec(buildPromptArgs(target.pane, text));
     ui.notify(`Submission attempted; verify main Pi's reply. Packet retained: ${packet}. No automatic retry.`, "info");
   } catch {
     ui.notify(`Submission failed or uncertain; inspect main Pi. Packet retained: ${packet}. No retry.`, "warning");

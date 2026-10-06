@@ -1,8 +1,11 @@
 """Documentation check: links, anchors, JSON examples, CLI names, env names; offline and read-only."""
 import contextlib
 import io
+import json
+import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -117,6 +120,54 @@ class PiInstallRuleTests(unittest.TestCase):
             self.assertEqual([options[0], options[0] + 1, options[0] + 2], options)
             self.assertEqual(options[2] + 2, next(i for i, line in enumerate(lines) if self.LINES[8] in line))
 
+    def test_install_blocks_read_and_use_the_pin_in_one_shell(self):
+        shells = ["/bin/sh"]
+        if shutil.which("bash"):
+            shells.append(shutil.which("bash"))
+        with tempfile.TemporaryDirectory(prefix="tenantpi-install-block-") as temp:
+            root = Path(temp)
+            (root / "config").mkdir()
+            binary, home, agent = root / "bin", root / "home", root / "empty-agent"
+            for directory in (binary, home, agent):
+                directory.mkdir()
+            npm = binary / "npm"
+            npm.write_text("#!" + sys.executable + "\nimport json, os, pathlib, sys\n"
+                           'pathlib.Path(os.environ["HOME"], "npm-call.json").write_text(json.dumps(sys.argv[1:]))\n')
+            npm.chmod(0o700)
+            env = {"PATH": str(binary) + os.pathsep + str(Path(sys.executable).parent) + ":/usr/bin:/bin",
+                   "HOME": str(home), "TMPDIR": temp, "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1",
+                   "PI_CODING_AGENT_DIR": str(agent)}
+            record = home / "npm-call.json"
+            for name in self.DOCS:
+                blocks = parse((ROOT / name).read_text(encoding="utf-8"))[1]
+                installs = [lines[:3] for language, _, lines in blocks
+                            if language == "sh" and any('"${pin:?}"' in line for _, line in lines)]
+                self.assertEqual(2, len(installs), name)
+                for lines in installs:
+                    self.assertEqual("# Run from the kit root.", lines[0][1])
+                    command = "\n".join(line for _, line in lines)
+                    for shell in shells:
+                        for value in ("9.9.9", "", None):
+                            with self.subTest(name=name, command=lines[-1][1], shell=shell, value=value):
+                                if record.exists():
+                                    record.unlink()
+                                (root / "config/manifest.json").write_text(json.dumps({"runtime": {"piVersion": value}})
+                                                                         if value is not None else "invalid JSON")
+                                result = subprocess.run([shell, "-c", command], cwd=root, env=env,
+                                                        stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+                                if value == "9.9.9":
+                                    self.assertEqual(0, result.returncode, result.stderr)
+                                    self.assertEqual("@earendil-works/pi-coding-agent@9.9.9", json.loads(record.read_text())[-1])
+                                else:
+                                    self.assertNotEqual(0, result.returncode)
+                                    self.assertFalse(record.exists())
+                        if record.exists():
+                            record.unlink()
+                        result = subprocess.run([shell, "-c", command], cwd=home, env=env,
+                                                stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+                        self.assertNotEqual(0, result.returncode)
+                        self.assertFalse(record.exists())
+
 
 class ModelReplyRuleTests(unittest.TestCase):
     """The three install documents give one fixed prompt and one reading rule for the model reply."""
@@ -230,8 +281,22 @@ class SharedRuleTests(unittest.TestCase):
     """The three install documents give the same rules: one shared line or text for each rule."""
 
     DOCS = PiInstallRuleTests.DOCS
-    # Each sentence is in one line of each document, so a change of one document without the others fails.
-    LINES = (
+    REPEATED = (
+        "# Run from the kit root.",
+        '''pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && ''' + "\\",
+    )
+    # Each shared line has the same count in each document.
+    LINES = (*REPEATED,
+        "`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.",
+        '`runtime.piAcceptedRange` is the accepted Pi range. `runtime.piVersion` is the tested version.',
+        'A newer accepted Pi version works by the range rule. The kit tests ran on the tested version only.',
+        'With `untested_in_range`, keep the installed Pi and record `core_runtime_untested_in_range` as a readiness gap.',
+        'The Pi install line stays a plain command with `not_needed`, not `replaces_installed`.',
+        'With `match` or `untested_in_range`, skip the Pi install.',
+        "After the overlay exists, `python3 scripts/tenant_pi.py plan --overlay <file>` prints the same line "
+        "in `commands.piInstall`, key `command`.",
+        '  npm install --global -- @earendil-works/pi-coding-agent@"${pin:?}"',
+        '  npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@"${pin:?}"',
         # A live agent directory that is a link, a `pi` command of the agent, and the time of the baseline.
         "If the action stops with `not_directory: baseline.dir`, the directory or a directory above it is a symbolic "
         'link. Run `realpath "$HOME/.pi/agent"`, give that path as `--dir` to `baseline` and to `check-baseline`, '
@@ -275,7 +340,7 @@ class SharedRuleTests(unittest.TestCase):
             lines = text.split("\n")
             for expected in self.LINES:
                 with self.subTest(name=name, line=expected[:60]):
-                    self.assertEqual(1, sum(expected in line for line in lines))
+                    self.assertEqual(2 if expected in self.REPEATED else 1, sum(expected in line for line in lines))
             for expected in self.TEXT:
                 with self.subTest(name=name, text=expected):
                     self.assertTrue(expected in text)
@@ -308,7 +373,8 @@ class SharedRuleTests(unittest.TestCase):
         for action in ("validate", "plan", "generate"):
             with self.subTest(action=action):
                 self.assertEqual(1, text.count('tenant_pi.py ' + action + ' --overlay "$HOME/.config/tenant-pi/overlay.json"'))
-        plan = next(line for line in text.split("\n") if "tenant_pi.py plan --overlay" in line)
+        plan = next(line for line in text.split("\n")
+                    if 'tenant_pi.py plan --overlay "$HOME/.config/tenant-pi/overlay.json"' in line)
         self.assertTrue('--runtime-report "$HOME/.config/tenant-pi/runtime.json"' in plan)
 
 
@@ -357,6 +423,25 @@ class TreeTests(unittest.TestCase):
                 findings, _ = self.run_check({"docs/other.md": "# Other\n\n" + text + "\n"})
                 self.assertEqual([rule + ": docs/other.md:3"], findings)
                 self.assertNotIn(CANARY, "".join(findings))
+
+    def test_skill_table_is_the_manifest_list(self):
+        name = "packages/tenantext/skills/coordinator-skills/README.md"
+        skills = json.loads((self.root / "config/manifest.json").read_text())["components"]["coordinator-skills"]["resources"]["skills"]
+        rows = ["| `" + skill.rsplit("/", 1)[1] + "` | Use. |" for skill in skills]
+        table = lambda rows: "# Skills\n\n| Skill | Use |\n| --- | --- |\n" + "\n".join(rows) + "\n"
+        self.assertEqual([], self.run_check({name: table(rows)})[0])
+        for case, changed in (("missing", rows[:-1]), ("extra", rows + ["| `" + CANARY.lower() + "` | Use. |"]),
+                              ("order", rows[1:] + rows[:1])):
+            with self.subTest(case=case):
+                findings, _ = self.run_check({name: table(changed)})
+                self.assertEqual(["skill_list: " + name], findings)
+                self.assertNotIn(CANARY.lower(), "".join(findings))
+        # Another table of the README does not feed the rule; a README with no skill table fails.
+        other = "\n| Name | Note |\n| --- | --- |\n| `" + CANARY.lower() + "` | Not a skill. |\n"
+        self.assertEqual([], self.run_check({name: table(rows) + other})[0])
+        self.assertEqual(["skill_list: " + name], self.run_check({name: other})[0])
+        self.assertEqual(["skill_list: " + name],
+                         self.run_check({name: "| Name | Note |\n| --- | --- |\n" + "\n".join(rows) + "\n"})[0])
 
     def test_guide_only_rules(self):
         guide = self.files["docs/guides/setup.md"]

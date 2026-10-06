@@ -39,7 +39,7 @@ Each diagnostic is static: the rule and the field path, never the input value. `
 | `unknown_fields` | `overlay.ownerResources` | The object has a key other than `skills` and `prompts`. |
 | `array` | `overlay.ownerResources.<kind>` | The value is not a list. |
 | `resource_count` | `overlay.ownerResources.<kind>` | The list has more than 64 entries. |
-| `resource_whitespace` | `overlay.ownerResources.<kind>` | An entry starts or ends with whitespace, or has a segment that is only whitespace. Pi 1.0.3 trims an entry before it resolves the path, so such an entry names a different directory. A space inside a segment is permitted. |
+| `resource_whitespace` | `overlay.ownerResources.<kind>` | An entry starts or ends with whitespace, or has a segment that is only whitespace. The reviewed Pi source trims an entry before it resolves the path, so such an entry names a different directory. A space inside a segment is permitted. |
 | `resource_directive` | `overlay.ownerResources.<kind>` | An entry starts with `!`, `+` or `-`. Pi reads such an entry as a filter directive, not as a path. |
 | `text`, `shell_or_template`, `absolute_path` | `overlay.ownerResources.<kind>` | The existing absolute-path rules of the overlay: absolute POSIX path, no `.` or `..` segment, no empty segment, no trailing `/`, no `$`, backtick, `{{`, `}}` or control character. The permitted segment characters exclude `*`, `?`, `~` and `:`. |
 | `resource_path_length` | `overlay.ownerResources.<kind>` | An entry has more than 1024 characters. |
@@ -81,7 +81,7 @@ The kit component `resources` ([the resources page](resources.md)) reads the exp
 
 ## Pi field semantics
 
-Source: the documentation files of the Pi package `@earendil-works/pi-coding-agent`, version `1.0.3` (read from its `package.json`): `docs/settings.md`, `docs/packages.md`, `docs/skills.md` and `docs/prompt-templates.md`. The four files of Pi `1.0.3` are byte-equal to those of Pi `1.0.2`. The agent directory holds no Pi documentation file.
+Source: the documentation files of the Pi package `@earendil-works/pi-coding-agent`, version `1.0.3` (read from its `package.json`): `docs/settings.md`, `docs/packages.md`, `docs/skills.md` and `docs/prompt-templates.md`. These four files are byte-equal to those of Pi `1.0.2`. This is historical source evidence, not the current pin. The agent directory holds no Pi documentation file.
 
 The documentation says:
 
@@ -94,7 +94,7 @@ The documentation says:
 ## Limits and unproven claims
 
 - Not verified: Pi loads the rendered arrays. The statements above are read in documentation only. No test in this repository starts Pi.
-- Not verified: behavior at the kit pin `1.0.3`. The documentation read is that of Pi `1.0.3`. No test starts Pi.
+- Not verified: behavior at the kit pin in `config/manifest.json`, key `runtime.piVersion`. No test starts Pi.
 - Not verified: a directory entry in the `prompts` array loads nested Markdown files, or the direct `.md` children only.
 - Not verified: the result when one skill name exists in an owner directory and in a package or in `~/.agents/skills`. The documentation names a warning and "first discovered"; the discovery order across sources is not documented there.
 - Not verified: a directory exists, is readable by the Pi process, or holds safe content. The kit makes no existence check by design. A skill can instruct the model to run a program; review the directory before you list it.

@@ -418,5 +418,11 @@ test("the doctor fix with no settings file writes the primary and only accounts 
 		const again = (await run()).find(c => c.id === "codex")!;
 		again.fix!.apply();
 		assert.deepEqual(JSON.parse(readFileSync(join(dir, "codex-accounts", "settings.json"), "utf8")).accounts.map((a: { provider: string }) => a.provider), ["openai-codex", "openai-codex-3", "openai-codex-4"]);
+		// The fix keeps the other keys of the settings file.
+		writeFileSync(join(dir, "codex-accounts", "settings.json"), JSON.stringify({ accounts: [{ provider: "openai-codex", label: "Codex 1" }], preferredAccount: "codex1" }));
+		(await run()).find(c => c.id === "codex")!.fix!.apply();
+		const kept = JSON.parse(readFileSync(join(dir, "codex-accounts", "settings.json"), "utf8"));
+		assert.equal(kept.preferredAccount, "codex1");
+		assert.deepEqual(kept.accounts.map((a: { provider: string }) => a.provider), ["openai-codex", "openai-codex-4"]);
 	} finally { rmSync(dir, { recursive: true, force: true }); }
 });

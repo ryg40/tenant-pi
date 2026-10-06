@@ -1,6 +1,6 @@
 // Vendored from pi-atelier v0.12.0 src/split-pane.ts (tag 3ff521f618cf, commit 371b847e525f).
-// MIT License, Copyright (c) 2026 Michael. See extension/docs/PI-ATELIER-LICENSE.txt and
-// extension/docs/atelier-adaptation.md for provenance and Promptr adaptations.
+// MIT License, Copyright (c) 2026 Michael. See packages/promptr/docs/PI-ATELIER-LICENSE.txt and
+// packages/promptr/docs/atelier-adaptation.md for provenance and Promptr adaptations.
 // Promptr: the only split implementation. It splits the transcript only, keeps Pi's
 // pending/status/widgets/editor/footer dock full width below it, and shows no sidebar
 // when that dock is not recognized. ../split-pane.mts re-exports this module.

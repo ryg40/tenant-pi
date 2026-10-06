@@ -1,8 +1,9 @@
 # Local workflow overrides
 
-Promptr ships a fixed workflow matrix (the Generate Prompt role plan). A client
-machine can retarget it — provider, model and thinking level per workflow level
-and role — by writing one local JSON file. No source edit and no second workflow engine.
+Promptr ships a fixed workflow matrix (the Generate Prompt role plan) with
+neutral provider and model ids. A client machine retargets it by writing one
+local JSON file. The file sets the provider, the model and the thinking level
+per workflow level and role. No source edit and no second workflow engine.
 
 This is what a GitHub Copilot-only client uses to run the same named workflow
 templates on the models that machine actually has.
@@ -17,7 +18,7 @@ templates on the models that machine actually has.
 
 Precedence is deliberately short:
 
-1. shipped defaults (`extension/src/workflow/catalog.mts`)
+1. shipped defaults (`packages/promptr/src/workflow/catalog.mts`)
 2. the single local override above
 
 There is no implicit project-level override. The file is machine-local: it is
@@ -29,10 +30,10 @@ stays entirely in Pi's own `auth.json` / `models.json`.
 ## Creating one
 
 ```bash
-promptr-workflows-init --provider github-copilot --all-pi --keep-models   # same model IDs on Copilot
+promptr-workflows-init --example copilot                                  # the packaged Copilot example
 promptr-workflows-init --provider some-provider --all-pi                  # placeholders to fill in
 promptr-workflows-init --example copilot --print                          # inspect the packaged example
-promptr-workflows-init --provider openai-codex --path /abs/file.json
+promptr-workflows-init --provider some-provider --path /abs/file.json
 ```
 
 The command writes exactly one JSON file and nothing else. It never starts an
@@ -49,14 +50,15 @@ separately, when a workflow is actually dispatched.
   `<set-worker-model-id>`-style placeholders. Those are **rejected** until you
   replace them, so an unedited file blocks visibly instead of failing later with
   a confusing provider error. The command says `not usable yet` and exits 2.
-- `--keep-models` keeps the shipped IDs instead. Use it only when your provider serves each exact ID.
+- `--keep-models` keeps the shipped IDs instead. The shipped IDs are neutral tier names
+  (`standard-model`, `light-model`, `large-model`), so use it only when your provider serves each exact ID.
   This flag does not translate model names. Confirm availability with `pi --list-models` after `/login`.
 
-Packaged examples live in `extension/examples/`:
+Packaged examples live in `packages/promptr/examples/`:
 
 | File | What it shows |
 | --- | --- |
-| `workflows.example.json` | the shipped OpenAI matrix restated, easy to retune |
+| `workflows.example.json` | two sample providers and one template written out in full, easy to retune; the provider and model ids are sample values |
 | `workflows.copilot.json` | GitHub Copilot only, every template all-Pi; confirm the example model IDs against your installed Pi catalog and subscription |
 
 ## Schema (version 1)
@@ -67,7 +69,7 @@ Packaged examples live in `extension/examples/`:
   "providers": ["github-copilot"],     // optional; the picker offers exactly these
   "defaultProvider": "github-copilot", // optional; must be in providers, listed first
   "workflows": {                        // optional; keys are shipped workflow IDs
-    "openai-codex-simple": {
+    "worker-simple": {
       "label": "Copilot - simple",      // optional display label
       "description": "…",               // optional display description
       "roles": {                        // keys are roles that workflow actually has
@@ -83,9 +85,29 @@ Packaged examples live in `extension/examples/`:
 }
 ```
 
-Workflow IDs are the shipped ones: `openai-codex-simple`, `openai-codex-medium`,
-`openai-codex-high`, `openai-claude-simple`, `openai-claude`. Roles are `coordinator`, `scout`,
+Workflow IDs are the shipped ones: `worker-simple`, `worker-medium`,
+`worker-high`, `reviewer-simple`, `reviewer`. Roles are `coordinator`, `scout`,
 `researcher`, `worker`, `reviewer`, `generator`.
+
+### Renamed template ids
+
+The workflow IDs changed from provider names to role names. An override file
+with an old key is a configuration error (unknown workflow). Edit each key by
+hand:
+
+| Old id | New id |
+| --- | --- |
+| `openai-codex-simple` | `worker-simple` |
+| `openai-codex-medium` | `worker-medium` |
+| `openai-codex-high` | `worker-high` |
+| `openai-claude-simple` | `reviewer-simple` |
+| `openai-claude` | `reviewer` |
+
+The `worker-*` templates run every role as a Pi session. The `reviewer*`
+templates run the worker and the reviewer on the `herdr-claude` route. The
+shipped provider id is `default-provider`, and the shipped model ids are tier
+names, not model IDs of a provider. An override file that relied on a shipped
+provider or model id must now name its own in `providers` and in each role.
 
 ### What an override can and cannot do
 
@@ -167,7 +189,7 @@ by `PROMPTR_WORKFLOW_CAPABILITIES`):
   "writtenAt": "2030-09-08T10:00:00.000Z",
   "source": "pi modelRegistry.getAvailable()",
   "capabilities": [
-    { "provider": "github-copilot", "model": "gpt-5.6-sol", "thinking": ["low", "medium", "high", "xhigh"], "route": "pi" }
+    { "provider": "example-provider", "model": "example-model", "thinking": ["low", "medium", "high", "xhigh"], "route": "pi" }
   ]
 }
 ```
@@ -175,9 +197,11 @@ by `PROMPTR_WORKFLOW_CAPABILITIES`):
 Matching is exact on provider, model, route and thinking level. When a probe
 exists and does not cover the role about to run, the dispatch is blocked before
 any tab or agent is created. Configured workflows require a readable, valid
-probe before launch. Only shipped defaults without an override retain the
-legacy no-probe launch, labelled `runtime unverified: no capability
-probe (run /promptr-workflows probe in Pi)`. `xhigh` requires an explicit
+probe before launch. The shipped defaults do not launch: their provider and
+model ids are neutral and no Pi serves them. Without an override file the
+dispatch stops before any tab is created, with the reason `no workflow
+override file`. An override file is the first step (`promptr-workflows-init`),
+the probe is the second. `xhigh` requires an explicit
 registry thinking-level mapping; malformed thinking entries invalidate the
 whole probe rather than being silently filtered. A probe that is present but
 unreadable or malformed blocks — absence of capabilities is never read as
@@ -191,12 +215,10 @@ after `/login` or model changes; it is not refreshed automatically.
 - The packaged example uses `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-6-astra` and the Claude IDs in its role entries.
   Check every ID with `pi --list-models` after `/login` before you use `--keep-models` or the example.
   Promptr never maps one provider's model name onto another's.
-- A Copilot workflow never requires the extension file of the
-  `openai-codex-2` provider: the generator only attaches `openai-codex-2.ts`
-  for that provider. The Herdr state reporter
+- The generator attaches no provider extension file. The Herdr state reporter
   (`herdr-agent-state.ts`) is still required for every Pi generator, because
   that is how Herdr learns the session's state.
-- If you keep either `openai-claude-simple` or `openai-claude`, its worker and
+- If you keep either `reviewer-simple` or `reviewer`, its worker and
   reviewer still run Claude through Herdr with their own permissions. Retarget
   them (as the packaged Copilot example does) if that machine has no Claude access.
 

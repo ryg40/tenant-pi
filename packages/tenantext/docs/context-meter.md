@@ -165,11 +165,9 @@ An answer the confidence gate hides is not a failure. It does not start a cooldo
 
 `/context-meter report` shows the state on the `Next-move chip:` line: off, on, or `paused after N failed calls; next try in S s`.
 
-### Switch: /tenantext-ifs-enable
+### Switch: /tenantext-decisions
 
-IFS is the command name for the decision-server switch. It controls optional next-move requests, not the main model.
-
-`/tenantext-ifs-enable off` blocks every Tenantext call to a decision server. The meter clears the chip and makes no call until `on`. `status` or no argument shows the current state and whether `nextMoveUrl` is set.
+`/tenantext-decisions off` blocks every Tenantext call to a decision server. The meter clears the chip and makes no call until `on`. `status` or no argument shows the current state and whether `nextMoveUrl` is set.
 
 The switch is the `decisions` key in `~/.pi/agent/tenantext/settings.json`. The command saves it at once, and the meter applies it without a restart through the `tenantext:decisions` event. The `/tenantext settings` menu offers the same switch as "Decision-server calls". The meter reads the saved value at session start, so the switch also holds when the main Tenantext extension is not loaded.
 The operations footer shows the chip on the model row at 60 columns or more. The standalone meter shows it at 60 columns or more.

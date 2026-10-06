@@ -61,6 +61,11 @@ export function workflowStateRoot(env: NodeJS.ProcessEnv): string {
   return path.join(base, "promptr");
 }
 
+/** Provider id of the shipped catalog. No Pi serves it; a local override names the real provider. */
+export const NEUTRAL_PROVIDER_ID = "default-provider";
+/** Shown wherever the shipped defaults would be used without a local override. */
+export const NO_OVERRIDE_HINT = "run promptr-workflows-init (for example `--example copilot` or `--provider <id>`)";
+
 export function resolveWorkflowsFile(env: NodeJS.ProcessEnv): WorkflowsFile {
   const explicit = env[WORKFLOWS_FILE_ENV]?.trim();
   if (explicit !== undefined && explicit.length > 0) {
@@ -192,7 +197,7 @@ export function createReloadingCatalog(
       }
       return snapshot.configured
         ? `workflow override active: ${snapshot.path} (configuration, not verified availability)`
-        : `workflow overrides: none (shipped defaults; optional file ${snapshot.path})`;
+        : `workflow overrides: none (shipped defaults do not launch); expected file ${snapshot.path}`;
     },
   });
 }

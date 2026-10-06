@@ -19,6 +19,16 @@ PUBLISH = (
     "tests/test_ci_workflows.py",
     "docs/ci.md",
     ".gitignore", ".env.example", "README.md", "LICENSE", "packages/promptr/LICENSE",
+    "packages/openviking-pi/LICENSE",
+    "packages/promptr/src/herdr/adapter.mts",
+    "packages/promptr/src/herdr/role-handoff.mts",
+    "packages/promptr/src/state/run-receipts.mts",
+    "packages/promptr/docs/herdr-handoff.md",
+    "packages/promptr/test/herdr/handoff.test.mjs",
+    "packages/promptr/test/herdr/fixtures/agent-get.json",
+    "packages/promptr/test/herdr/fixtures/agent-list.json",
+    "packages/promptr/test/herdr/fixtures/agent-prompt-wait.json",
+    "packages/promptr/test/herdr/fixtures/agent-wait.json",
     "INSTALL.md", "EXPLAINER.md", "config/manifest.json",
     "config/config.example.json", "scripts/validate.py", "scripts/examples.py",
     "scripts/publish_check.py", "scripts/capture.py", "scripts/install.py",
@@ -58,13 +68,21 @@ PUBLISH = (
     "scripts/doc_check.py", "tests/test_doc_check.py", "docs/guides/setup.md", "docs/guides/modules.md",
     "docs/guides/troubleshooting.md", "docs/guides/privacy.md", "docs/guides/candidate-update.md",
     "docs/guides/release-checklist.md",
+    "AGENTS.md", "GLOSSARY.md", "docs/agents/issue-tracker.md",
+    "tests/test_skill_invariants.py",
 )
 # Package directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.
 PUBLISH_DIRS = (
     ("packages/tenantext", ("node_modules/",)),
     # The license is explicit in PUBLISH, so the directory rule must not add it again.
-    ("packages/promptr", ("node_modules/", "dist/", "LICENSE")),
+    ("packages/promptr", ("node_modules/", "dist/", "LICENSE",
+        "src/herdr/adapter.mts", "src/herdr/role-handoff.mts", "src/state/run-receipts.mts",
+        "docs/herdr-handoff.md", "test/herdr/handoff.test.mjs",
+        "test/herdr/fixtures/agent-get.json", "test/herdr/fixtures/agent-list.json",
+        "test/herdr/fixtures/agent-prompt-wait.json", "test/herdr/fixtures/agent-wait.json")),
+    # A vendored copy. Its `shared/` directory is committed source, not build output.
+    ("packages/openviking-pi", ("node_modules/", "LICENSE")),
 )
 # Optional list of repository-relative files or directory prefixes ending in "/".
 # The list excludes itself. A portable copy has neither the list nor its excluded files.
@@ -85,6 +103,10 @@ PATTERN_ALLOW = (
      'env.TENANTEXT_LITELLM_API_KEY ? "$TENANTEXT_LITELLM_API_KEY" : undefined };'),
     # A canary fixture of the Tenantext tracker publish test, not a token.
     ("packages/tenantext/tracker/tests/test_publish.py", 'BEARER = ' '"CANARY-BEARER-TOKEN-51d0"'),
+    # A property that says whether a key is set, and a variable name; no value (vendored OpenViking extension).
+    ("packages/openviking-pi/shared/credentials.mjs", '    hasApiKey: ' 'connection.hasApiKey,'),
+    ("packages/openviking-pi/shared/plugin-config.mjs", '    hasApiKey: ' 'connection.hasApiKey,'),
+    ("packages/openviking-pi/tests/config.test.mjs", '    OPENVIKING_API_KEY: ' 'process.env.OPENVIKING_API_KEY,'),
 )
 
 # Public reader rules: content that a reader of your published copy must not get
@@ -340,8 +362,12 @@ def check():
     # A candidate release must account for every non-private tracked file.
     # Without Git metadata, compare against a reviewed explicit repository inventory.
     # Accept reviewed private-copy files when present; no exclusion list is needed in a snapshot.
-    if actual != set(PUBLISH) | published | excluded | private:
-        fail("unreviewed_file", "repository inventory")
+    reviewed = set(PUBLISH) | published | excluded | private
+    if actual != reviewed:
+        # One path for each line after the finding line: a file that no list names, then a
+        # reviewed file that the checkout does not hold (with the prefix `missing: `).
+        fail("unreviewed_file", "\n".join(["repository inventory", *sorted(actual - reviewed),
+                                           *(f"missing: {name}" for name in sorted(reviewed - actual))]))
     data = load(ROOT / "config/manifest.json")
     components = manifest(data)
     overlay(load(ROOT / "config/config.example.json"), components)

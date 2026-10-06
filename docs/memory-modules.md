@@ -2,7 +2,7 @@
 
 Status: offline implementation, not a qualified runtime. `scripts/memory_modules.py` is a pure module: no file, environment, subprocess, or network access. Validation, planning, and generation make zero model calls and zero network writes; the tests prove this with a blocked-socket, blocked-subprocess fixture. Not verified: live capture behaviour. Get explicit consent before a live capture test.
 
-Two modules can be enabled: `hermes` (`pi-hermes-memory`) and `wiki` (`@zosmaai/pi-llm-wiki`). Both are declared without a version, so `pi update --extensions` installs the current registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` stays blocked; see the gap below. Enabling either module is a three-part explicit act. The default example enables none of them and emits no memory extension.
+Three modules can be enabled: `hermes` (`pi-hermes-memory`), `wiki` (`@zosmaai/pi-llm-wiki`) and `openviking` (the vendored package `packages/openviking-pi`). The two npm modules are declared without a version, so `pi update --extensions` installs the current registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. `openviking` also needs `consent.remoteMemoryWrites`, because each capture is a write to a server. The default example enables none of them and emits no memory extension.
 
 ## Activation truth table
 
@@ -12,10 +12,11 @@ Two modules can be enabled: `hermes` (`pi-hermes-memory`) and `wiki` (`@zosmaai/
 | Module enabled, `consent.memoryCapture` false | `memory_consent_required`. Nothing is generated. |
 | Module enabled, consent true, no `memory` block or `memory.<module>` is `null` | `memory_choices_required`. Nothing is generated. |
 | `consent.memoryCapture` true with no memory module enabled | `memory_disabled`. Consent alone activates nothing. |
-| `consent.remoteMemoryWrites` true | `remote_memory_disabled`. No enabled module writes to a remote store at this pin. |
+| `consent.remoteMemoryWrites` true without `openviking` in `selection.enable` | `remote_memory_disabled`. `hermes` and `wiki` write to no remote store. |
+| `openviking` enabled, `consent.memoryCapture` true, `consent.remoteMemoryWrites` false | `remote_memory_consent_required`. Nothing is generated. |
 | Module enabled, consent true, explicit choices | The package declaration, its settings or config file, and readiness gaps are emitted as the tables below say. |
 
-A configured credential name, an endpoint, or a reachable service never enables capture: neither module has an endpoint or credential field in the overlay.
+A configured credential name, an endpoint, or a reachable service never enables capture: no module has an endpoint or credential field in the overlay.
 
 ## Overlay block
 
@@ -39,11 +40,12 @@ A configured credential name, an endpoint, or a reachable service never enables 
 | `wiki.ambientPersonalVault` | boolean | `true` lets the extension create `~/.llm-wiki/` on the first session start and inject recall in every directory. `false` keeps the extension quiet until a project vault exists or a tool is called. |
 | `wiki.backgroundTasks` | boolean | `true` sets the wiki background task model from `roles.memory`. `false` leaves the wiki on the session model when the agent invokes an ingest tool. |
 | `wiki.wikiHome` | absolute path | Optional, and only with `ambientPersonalVault: true`. Moves the personal vault to `<wikiHome>/.llm-wiki/` through a process-local `WIKI_HOME` assignment on the launch line. At this pin `resolveProjectVaultRoot` treats `WIKI_HOME` as the project's own vault, so every ambient surface fires wherever Pi starts; a quiet wiki with a relocated vault is not possible, and the validator fails `wiki_home_is_ambient`. |
-| `openviking` | `null` only | The component is blocked. |
+| `openviking.captureToolResults` | boolean | Required. `true` lets the extension send the output of each tool call to the server with the turn. `false` sends the turn without tool result output. The launch line carries the value in both states. |
+| `openviking.recallContextTimeoutMs` | integer, 0 to 600000 | Optional. The time limit of one context recall request in milliseconds. `0` keeps the built-in default of the extension. Without the field, the launch line has no value for it. |
 
-`roles.memory` is the one model choice both modules share. With `modelRoutes` it is checked against the explicit registry like any other role. Without a registry, the model and its authentication remain `unverified`.
+`roles.memory` is the one model choice that `hermes` and `wiki` share. `openviking` uses no role. With `modelRoutes` it is checked against the explicit registry like any other role. Without a registry, the model and its authentication remain `unverified`.
 
-Not verified: the Pi 0.99.1 behaviour described below with Pi 1.0.3, the current kit pin.
+Not verified: the Pi 0.99.1 behaviour described below with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
 ## Hermes: what the pinned source does
 
@@ -78,33 +80,74 @@ Source: `@zosmaai/pi-llm-wiki@0.12.4`, `extensions/llm-wiki/index.ts`, `lib/task
 
 With `ambientPersonalVault: false`, no `WIKI_HOME`, and no project vault, nothing in the wiki writes without an agent tool call. Recall injection, the session notice, and the periodic reminder all pass through the same ambient gate, and a project vault or a trusted project settings file reopens it.
 
-## OpenViking: blocked with a named gap
+## OpenViking: what the vendored source does
 
-No reviewed source exists in this release; activation is blocked. The manifest source stays `null`.
-A source review must establish capture defaults, credential storage, retrieval scope and file ownership before activation.
+Source: `packages/openviking-pi`, vendored from a fork of OpenViking's `examples/pi-coding-agent-extension`, package version 0.4.3. The fork commit is `e9b05366` (`e9b053666a52fd02975017f0dc56e59719ff5529`), not a commit of the public `volcengine/OpenViking` repository. Its upstream merge base is `c9a869cb` (`c9a869cb145aac98f4be1586da32174d220c8800`).
 
-`consent.remoteMemoryWrites` therefore has no consumer. Setting it fails with `remote_memory_disabled`, and core Pi stays usable with the module disabled.
+The fork edits nine files relative to `examples/pi-coding-agent-extension/`: `README.md`, `config.ts`, `index.ts`, `sync.ts`, `lib/capture-adapter.mjs`, `lib/capture-utils-local.mjs`, `tests/capture-adapter.test.mjs`, `tests/config.test.mjs`, and `tests/sync-barrier.test.mjs`.
+
+Its four behaviour changes are:
+
+- Context takeover defaults off and requires explicit activation.
+- Tool-result capture defaults off; tool inputs and outputs receive credential redaction in both states.
+- Keyword capture keeps only turns that match a durable-memory trigger.
+- Additive mode persists the capture watermark across resume. Session creation and reads use `auto_create` and fail closed on errors.
+
+Licence: Apache-2.0 covers upstream `examples/`; the kit carries its `examples/LICENSE` as `packages/openviking-pi/LICENSE`. The OpenViking repository root uses AGPL-3.0. The kit copies nothing from outside `examples/`.
+
+| Behaviour | Source fact | Kit handling |
+| --- | --- | --- |
+| Settings | `loadConfig()` reads no file beside the extension. `shared/config-schema.mjs` declares each setting and resolves it in this order: an `OPENVIKING_*` variable, the workspace file `.openviking/config.json`, the `plugin.pi` section of `~/.openviking/ovcli.conf`, its `plugin` section, the default. | The kit writes no settings file for the module. It renders the two overlay fields as variables on the launch line. The variable names come from the schema: `OPENVIKING_CAPTURE_TOOL_RESULTS` and `OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS`. A variable is the first layer, so the overlay value wins over each file. Each other setting keeps the value that the files or the defaults give. |
+| Capture | With `autoCapture` (default on), the extension sends each turn to the server session. Tool result output is sent only when `captureToolResults` is `true` (default `false`). Credential fields and bearer values in tool inputs and outputs are redacted in both states (`lib/capture-utils-local.mjs`). | Enabling the module at all is capture to a remote store. It needs `consent.memoryCapture` and `consent.remoteMemoryWrites`. `captureToolResults` is a required overlay field, so the choice is explicit. |
+| Recall | Before each prompt the extension asks the server for memories of the caller through `viking://~/memories` and `viking://~/skills` and adds the result to the prompt. | Not a kit setting, except the time limit `recallContextTimeoutMs`. |
+| Context takeover | `loadLocalConfig()` keeps takeover off unless a settings layer or `OPENVIKING_TAKEOVER` turns it on. | The kit sets nothing for it. Takeover stays off unless the user turns it on outside the kit. |
+| Credentials | The endpoint, the key and the identity come from `OPENVIKING_*` variables, then `~/.openviking/ovcli.conf`, then `~/.openviking/ov.conf`. `OPENVIKING_CLI_CONFIG_FILE` and `OPENVIKING_CONFIG_FILE` move the two files. | The kit writes none of them, reads none of them, and has no overlay field for an endpoint, a key or a user. `endpoints.openviking` and `env.openviking` fail validation. The user sets up the credentials outside the kit before the first start. |
+| Local state | The pending queue (`~/.openviking/pending/`), the recall ledger (`~/.openviking/pi-recall-ledger/`), the workspace registry and the logs are under `~/.openviking/`. | Not under the agent directory. Each profile of one user shares this state: the `shared_home_state` gap. |
+| Tools | The extension registers the MCP tools of the server as `openviking_*` tools after a handshake. A failed handshake does not stop the start. | Do not point the `mcp` module at the same server: the tools would appear twice. |
+| Dependency | `package.json` lists `@modelcontextprotocol/client` at `2.0.0`, with a committed lock file. `node_modules/` is not in the tree. | The `install_step_required` gap and the setup line `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only: the kit does not run it. |
+| Server | The extension needs an OpenViking server with `viking://~` home alias support. | The `server_required` gap. The kit starts no server and makes no request. |
+
+A setting from an older version of the extension can exist as a `config.json` beside an installed copy. This version does not read that file. To keep a choice from it, set the overlay field when the module has one, or move the value to the `plugin.pi` section of `~/.openviking/ovcli.conf`.
+
+Cost of `captureToolResults: true`: each tool part goes to the server, capped at `captureToolMaxChars` characters (default 1000000), and the server stores larger output outside the session. Not measured: the growth of session storage and the effect on memory extraction. The `capture_cost_unmeasured` gap is in each plan with the module.
+
+The kit does not run the files under `packages/openviking-pi/scripts/`. `e2e-live.mjs` and `e2e-live.sh` need a live server, a Pi and a model. `setup.mjs` is a wizard that writes credentials to `~/.openviking/`.
+
+### Refresh the vendored copy
+
+`pi update --extensions` and the kit update pipeline (`docs/pi-update.md`) handle npm pins. They do not change `packages/openviking-pi`. A refresh is a manual step, until the kit has a command for it. `<openviking checkout>` is a clone of the OpenViking repository and `<commit>` is the reviewed commit:
+
+```sh
+work="$(mktemp -d)"
+git -C '<openviking checkout>' archive '<commit>' examples agent-plugins | tar -x -C "$work"
+(cd "$work" && node examples/memory-plugin-shared/sync.mjs)
+```
+
+`sync.mjs` writes `examples/pi-coding-agent-extension/shared/` from `examples/memory-plugin-shared/lib/`. It also writes the copies of the other plugins, so the archive holds the whole `examples/` and `agent-plugins/` trees; with less, the script stops with an error after it wrote `shared/`. The directory holds the files that the extension imports. The OpenViking repository does not track it for this extension, so the kit commits it: Pi loads the package from the kit directory and can only see the files that are there. Then copy `examples/pi-coding-agent-extension/` to `packages/openviking-pi/`, without `node_modules/`, and `examples/LICENSE` to `packages/openviking-pi/LICENSE`. Keep the kit-only README edits and the added `LICENSE` at a refresh. The README banner records the fork commit, upstream merge base, changed files, licence scope and upstream-only references. Update those facts here and in `docs/packages.md` too. The README corrects links and shortens "Local fork: differences" because the kit loads the package by its path. `LICENSE` is the file from `examples/`. All other extension files stay byte-equal to the fork commit. Each generated `shared/` file matches the corresponding shared source with its generated-file header added. The capture-adapter fixture stays unchanged; the kit scanner permits its exact placeholder header value through a narrow content allowlist. Read `shared/config-schema.mjs` again: the two variable names and the bounds of `recallContextTimeoutMs` in `scripts/memory_modules.py` must agree with it, and a test compares them. Run `npm ci --ignore-scripts` in the package directory of each clone after a refresh.
 
 ## Generated outputs
 
 | Output | Present when | Content |
 | --- | --- | --- |
-| `settings.json` `packages` | either module | `npm:pi-hermes-memory` with `extensions: ["src/index.ts"]`; `npm:@zosmaai/pi-llm-wiki` with `extensions: ["extensions"]`; all other resource lists empty. Declared after the in-tree packages. |
+| `settings.json` `packages` | any module | `npm:pi-hermes-memory` with `extensions: ["src/index.ts"]`; the absolute path of `packages/openviking-pi` in this kit with `extensions: ["index.ts"]`; `npm:@zosmaai/pi-llm-wiki` with `extensions: ["extensions"]`; all other resource lists empty. Declared after the other in-tree packages, in this order. |
 | `settings.json` `llm-wiki` | wiki | `ambientPersonalVault`, `trajectories: false`, and with background tasks `taskModel` and `taskThinkingLevel`. |
 | `hermes-memory-config.json` | hermes | Review off: `reviewEnabled`, `correctionDetection`, `flushOnCompact`, `flushOnShutdown`, `autoConsolidate` all `false`, `memoryOverflowStrategy: "reject"`. Review on: the same keys `true`, `memoryOverflowStrategy: "auto-consolidate"`, `reviewTransport`, `llmModelOverride`, `llmThinkingOverride`, and `childExtensionPaths` when given. |
-| `.tenant-pi/choices.json` `memory` | either module | The activation record (`enabled`, `localCapture`, `backgroundModelCalls`, `remoteWrites`, transport, child source count, personal vault location) and the `WIKI_HOME` setup fact. |
+| `.tenant-pi/choices.json` `memory` | any module | The activation record (`enabled`, `localCapture`, `backgroundModelCalls`, `remoteWrites`, transport, child source count, personal vault location, and `captureToolResults` for `openviking`) and the setup facts: `WIKI_HOME` and the two `OPENVIKING_*` variables. For `openviking`, `remoteWrites` is `true` and `localCapture` is `false`: the module keeps no memory store on the client. |
 | `.tenant-pi/state.json` `outputs` | hermes | Lists the Hermes file as a declared output. |
 | Launch line | `wikiHome` | `WIKI_HOME='<path>'` precedes `PI_CODING_AGENT_DIR=...`. |
-| Setup lines | either module | `pi update --extensions` to reconcile the declared packages, then `node scripts/patch_extension_peers.mjs`. Display only. |
+| Launch line | openviking | `OPENVIKING_CAPTURE_TOOL_RESULTS=true` or `=false` precedes `PI_CODING_AGENT_DIR=...`, and `OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=<n>` when the overlay has `recallContextTimeoutMs`. Both are process-local: the kit exports nothing and writes no shell file. A manual `pi` command without them uses the files and the defaults of the extension. |
+| Setup lines | hermes or wiki | `pi update --extensions` to reconcile the declared packages, then `node scripts/patch_extension_peers.mjs`. Display only. |
+| Setup lines | openviking | `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only. The module adds no `pi update --extensions` line and no peer override line: Pi installs nothing for a path package, and the package lists no host module as a dependency. |
+| Extra file | openviking | None. No generated file holds an endpoint, a key or a user of the server. |
 
-Readiness gaps: `package_runtime_unverified` and `peer_override_required` per module, `native_addon_unverified` for `better-sqlite3`, `session_backfill_scope_unverified` for Hermes, `project_settings_override` for the wiki, `child_provider_unverified` when child sources are given, `shared_home_state` for the wiki without `wikiHome`. The `memory` role adds `model_catalog_unverified` and `provider_auth_unverified` like every role; it does not add `role_activation_unavailable` when a module consumes it.
+Readiness gaps of `openviking`: the gaps of its manifest entry (`install_step_required`, `server_required`, `package_runtime_unverified`, `kit_test_missing`, `capture_cost_unmeasured`) and `shared_home_state`. Readiness gaps of the two npm modules: `package_runtime_unverified` and `peer_override_required` per module, `native_addon_unverified` for `better-sqlite3`, `session_backfill_scope_unverified` for Hermes, `project_settings_override` for the wiki, `child_provider_unverified` when child sources are given, `shared_home_state` for the wiki without `wikiHome`. The `memory` role adds `model_catalog_unverified` and `provider_auth_unverified` like every role; it does not add `role_activation_unavailable` when a module consumes it.
 
 ## Carry
 
-`compare` reports the recorded overlay `memory` block field by field under `/overlay/memory/<module>/<field>`: the three switches and `reviewTransport` by value, each `childExtensionPaths` entry and `wikiHome` as a marker without a value ([candidate comparison](candidate-compare.md)). `carry` prints one patch per reported field at `/memory/<module>/<field>`, with the value from the right side's overlay copy; the `childExtensionPaths` list is one unit. A memory field that the patched overlay sets, and that the report does not name, stays unchanged, unless the report names another field of the same module and the right side sets that module to `null` or has no block: then the module goes as a whole. A module object of the patched overlay with no field entry in the report is never set to `null` or removed. A module that is `null` in the patched overlay carries as one `/memory/<module>` patch. `carry` never patches `consent`, so a memory patch that needs a consent change leaves that decision to the user ([carrying drift](carry.md)). The field names of the three modules are one table, `MODULE_FIELDS` in `scripts/memory_modules.py`; the validator, `compare` and `carry` read it.
+`compare` reports the recorded overlay `memory` block field by field under `/overlay/memory/<module>/<field>`: the three switches and `reviewTransport` by value, `openviking.captureToolResults` and `openviking.recallContextTimeoutMs` by value, each `childExtensionPaths` entry and `wikiHome` as a marker without a value ([candidate comparison](candidate-compare.md)). `carry` prints one patch per reported field at `/memory/<module>/<field>`, with the value from the right side's overlay copy; the `childExtensionPaths` list is one unit. A memory field that the patched overlay sets, and that the report does not name, stays unchanged, unless the report names another field of the same module and the right side sets that module to `null` or has no block: then the module goes as a whole. A module object of the patched overlay with no field entry in the report is never set to `null` or removed. A module that is `null` in the patched overlay carries as one `/memory/<module>` patch. `carry` never patches `consent`, so a memory patch that needs a consent change (`memoryCapture`, and `remoteMemoryWrites` for `openviking`) leaves that decision to the user ([carrying drift](carry.md)). The field names of the three modules are one table, `MODULE_FIELDS` in `scripts/memory_modules.py`; the validator, `compare` and `carry` read it.
 
 ## Test coverage
 
-`tests/test_memory_modules.py` covers: default generation with no memory module; no consent; consent without selection; selection without choices; local-only consent for both modules with every background switch off; remote-write refusal; OpenViking non-null and enable attempts; missing memory role; unsupported wiki thinking; missing child provider for `llama.cpp`, `openai-codex-2`, and a gateway role; every invalid choice shape with a secret canary, including `wikiHome` with a quiet wiki; the process-local `WIKI_HOME` fact; hostile Hermes file shapes in comparison; guarded publication of the Hermes file with tamper rejection; redacted comparison of the Hermes file and the wiki section; and a CLI generate-and-compare run in a disposable HOME with blocked sockets and subprocesses, ambient `~/.llm-wiki` and `~/.pi/agent/hermes-memory-config.json` canaries beside the candidate that stay unread and unchanged.
+`tests/test_memory_modules.py` covers: default generation with no memory module; no consent; consent without selection; selection without choices; local-only consent for both modules with every background switch off; remote-write refusal without `openviking`; `openviking` without the capture consent, without the remote consent, without selection and without choices; its package declaration after the in-tree packages, its two launch variables in both states, its activation record, its gaps and its setup line; the variable names and the bounds against `shared/config-schema.mjs` of the vendored package; its invalid choice shapes with a secret canary, and the refusal of an endpoint or a credential name; missing memory role; unsupported wiki thinking; missing child provider for `llama.cpp`, `openai-codex-2`, and a gateway role; every invalid choice shape with a secret canary, including `wikiHome` with a quiet wiki; the process-local `WIKI_HOME` fact; hostile Hermes file shapes in comparison; guarded publication of the Hermes file with tamper rejection; redacted comparison of the Hermes file and the wiki section; and a CLI generate-and-compare run in a disposable HOME with blocked sockets and subprocesses, ambient `~/.llm-wiki` and `~/.pi/agent/hermes-memory-config.json` canaries beside the candidate that stay unread and unchanged; and a CLI plan, generate and compare run of an `openviking` profile in a disposable HOME with blocked sockets and subprocesses, with canary values in `~/.openviking/ovcli.conf`, `~/.openviking/ov.conf` and the `OPENVIKING_*` credential variables that reach no output. `tests/test_carry.py` covers the carry of the two `openviking` fields.
 
-Not verified: the published `dependencies` of both packages before peer overrides; see `docs/host-peer-overrides.md`. Not run: any Pi start with either package, the `direct` or `subprocess` review against a fixture provider, the peer override on a fresh install, and the wiki vault creation. Those stay `unverified` in every plan.
+Not verified for `openviking`: a start of a generated profile against a live server, `npm ci` of the package on a clean client, and the effect of `captureToolResults` on storage. The kit tests do not run the test suite of the vendored package. Not verified: the published `dependencies` of the two npm packages before peer overrides; see `docs/host-peer-overrides.md`. Not run: any Pi start with a memory package, the `direct` or `subprocess` review against a fixture provider, the peer override on a fresh install, and the wiki vault creation. Those stay `unverified` in every plan.

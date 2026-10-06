@@ -19,16 +19,26 @@ This directory is the published source. The installed copy under
 `<agent dir>/extensions/promptr/` is separate: editing here changes nothing
 until you rebuild and reinstall (see *Install*).
 
+## Bounded Herdr role handoff
+
+The internal role handoff API starts one explicitly requested visible Pi role
+with a full interactive session. A shared adapter builds Herdr arguments and
+checks identities. Write-once run receipts distinguish attempted, submitted,
+uncertain and collected outcomes. Collection requires a fresh, session-bound
+report with a completion marker. Uncertain sends never replay automatically.
+See [the handoff guide](docs/herdr-handoff.md) for the API boundary and evidence.
+The live Pi pilot, its measurements and the Claude path are not proved.
+
 ## Requirements and versions
 
 | Piece | Required | Checked by |
 | --- | --- | --- |
 | Node | `>=22.22.0 <23` (`engines`) | `promptr-doctor` |
-| Pi (`@earendil-works/pi-coding-agent`) | 1.0.x. The build, the tests and a start without a model are verified on 1.0.2. The sidebar uses private Pi renderer adapters; a session with a model is not verified on this line, and other lines are untested | `promptr-doctor`, `/promptr-doctor` |
+| Pi (`@earendil-works/pi-coding-agent`) | 1.0.x. The build, 756 tests, typecheck and offline smoke pass with the 1.0.4 pins. A start without a model is historical evidence from 1.0.2. The sidebar uses private Pi renderer adapters. A package load or a session with a model on 1.0.4 is not verified | `promptr-doctor`, `/promptr-doctor` |
 | Herdr | 0.9.x; needed for `/coordinatr-herdr`, Start fresh and the standalone generator. The sidebar works without it | `promptr-doctor` |
 | OpenKnowledge | an HTTPS origin plus `OPENKNOWLEDGE_USERNAME` / `OPENKNOWLEDGE_PASSWORD` exported in the shell that launches Pi and the companion. Optional: everything works locally without it | `promptr-doctor` (presence only), `--online` reads the bound brief |
 | Tracker | Gitea (default) or GitHub, read-only, chosen per project or machine with `promptr-tracker-init` / `/promptr-tracker init`; tokens `GITEA_TOKEN` / `GITHUB_TOKEN` for private repositories | `promptr-doctor`, `/promptr-tracker status`, `--online` reads page 1 |
-| Providers/models | whatever Pi has loaded and authenticated; the shipped workflow matrix names `openai-codex` models, a local override retargets it (see *Workflow overrides*) | `/promptr-workflows check` |
+| Providers/models | whatever Pi has loaded and authenticated; the shipped workflow matrix uses neutral provider and model ids, a local override names the real ones (see *Workflow overrides*) | `/promptr-workflows check` |
 
 Credentials are never bundled, stored or printed. Promptr reads them from the
 environment of the process that runs it; a companion pane needs them exported
@@ -37,9 +47,9 @@ in its own shell (Herdr inherits the launching shell).
 ## Install (fresh client)
 
 ```sh
-git clone <this repository> && cd promptr/extension
+git clone <this repository> && cd <clone directory>/packages/promptr
 npm ci --ignore-scripts
-# pi-tui 1.0.2 is a pinned runtime dependency; pi-coding-agent 1.0.2 is a build/test dependency.
+# pi-tui 1.0.4 is a pinned runtime dependency; pi-coding-agent 1.0.4 is a build/test dependency.
 npm run build && npm run typecheck && npm test && npm run smoke
 npm run smoke:installed        # isolated install into a temporary agent dir (needs npm registry access)
 npm run install:local          # → <agent dir>/extensions/promptr, previous copy backed up
@@ -47,7 +57,7 @@ npm run install:local          # → <agent dir>/extensions/promptr, previous co
 
 `install:local` runs `npm pack`, unpacks the tarball into
 `<PI_CODING_AGENT_DIR|~/.pi/agent>/extensions/promptr`, installs the runtime
-dependency (`@earendil-works/pi-tui`, pinned 1.0.2) there, and moves any previous copy to
+dependency (`@earendil-works/pi-tui`, pinned 1.0.4) there, and moves any previous copy to
 `~/.local/share/promptr-handoffs/install-backups/<stamp>-<tag>/`. Flags:
 `--agent-dir <dir>`, `--backup-root <dir>`, `--tag <label>`, `--dry-run`,
 `--uninstall`. The package carries `dist/`, `skills/` (the
@@ -93,7 +103,7 @@ are documented in [`docs/workflow-overrides.md`](docs/workflow-overrides.md).
 Quick start for a GitHub Copilot-only machine:
 
 ```sh
-promptr-workflows-init --provider github-copilot --all-pi --keep-models
+promptr-workflows-init --example copilot
 # in Pi: /login (github-copilot), then /promptr-workflows check, then /promptr-workflows probe
 ```
 
@@ -118,7 +128,7 @@ Companion keys (`promptr-companion-spike --help` prints the same list):
 | `Ctrl+U`, `x` (panel) | clear the queue after `y/n` |
 | queue cards (panel) | `j/k` focus, `Ctrl+J/K` reorder, `e` edit in the composer, `d` delete, `s` review then send, `y` duplicate, `u` undo last delete, `n`/`w` jump to COMPOSE/NOTEBOOK |
 | `Ctrl+O` | project briefing overview (see below) |
-| workboard | `↑↓ PgUp PgDn Home End` move over issue rows, `Enter` opens the issue, `g` Generate Prompt, `r` refresh, `c` Catch-Me-Up, `Esc` back |
+| workboard | `↑↓ PgUp PgDn Home End` move over issue rows, `Enter` opens the issue, `g` Generate Prompt, `f` folds or expands a map, `r` refresh, `c` Catch-Me-Up, `Esc` back |
 | issue detail | `g` starts workflow → provider → execution (Pi subagents or Herdr native sessions) → role preview; `Enter` prepares the packet and places the deterministic draft in the composer; `g` in the preview also launches the generator; `p` lists saved requests; `c` Catch-Me-Up |
 | `Esc` | cancel review/confirmation, leave the workboard, else close (state kept) |
 | `Ctrl+C` | ask, then close the companion (persistent state kept) |
@@ -128,6 +138,10 @@ with its children (`wayfinder:parent:<n>`) beneath it, then a `FREE-STANDING`
 section for issues on no open map, bucketed by status (`active`, `ready`,
 `review`, `blocked`, `later`, `unknown`). Membership is not blocking: only
 native dependencies mark `blocked`; an unread dependency graph stays `unknown`.
+Each map row shows the count of its open children. When more than one map is
+open, `f` on a child folds its map to that one row (`+Map`), and `f` or `Enter`
+on the folded row expands it. A map starts expanded; the fold is view state and
+is not saved.
 The rule names the provider and repository, the open count and the snapshot
 age; an unreachable provider shows `offline · <reason>` with the cached rows.
 
@@ -317,7 +331,7 @@ normal interactive Pi session in Herdr, not a pi-subagents child and not an
 implicit `--continue`. Load exactly the one skill with `--no-skills --skill
 <absolute SKILL.md>`, suppress unrelated discovery with `--no-prompt-templates
 --no-context-files`, and pass `--no-extensions` plus only the required `-e`
-extensions (`herdr-agent-state.ts`, and `openai-codex-2.ts` for that provider).
+extension (`herdr-agent-state.ts`).
 These flags are resource controls, not a sandbox: the generator gets a private
 scratch cwd, the bounded packet on disk, and `--tools read,write` only. Task text
 and output paths never enter argv; the first message names paths and identifiers.

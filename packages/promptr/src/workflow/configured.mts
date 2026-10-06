@@ -16,8 +16,7 @@
  *   an unknown workflow/role is an error, and a route change must name its
  *   provider rather than inherit one silently.
  * - Static instructions are recomputed from the *effective* roles, so a
- *   Copilot-only client is never told "every role runs on the selected OpenAI
- *   provider".
+ *   single-provider client is never told a route summary that is no longer true.
  *
  * Pure module: no process/env, filesystem, network or Pi APIs. Reading the
  * file is `load.mts`.
@@ -118,7 +117,7 @@ function effectiveProviders(base: WorkflowCatalogPort, config: WorkflowConfig): 
   return Object.freeze(ordered.map((id) => Object.freeze({
     id,
     label: id,
-    // Shipped descriptions name OpenAI roles. Once an override can rebind any
+    // Shipped descriptions name the shipped provider. Once an override can rebind any
     // role that claim is no longer safe to repeat, so it is not reused.
     description: id === preferred ? `${PROVIDER_DESCRIPTION}${DEFAULT_PROVIDER_SUFFIX}` : PROVIDER_DESCRIPTION,
   })));

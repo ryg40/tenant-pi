@@ -3,7 +3,8 @@
  *
  * The data module (src/tracking/board.mts) is the authority on these shapes; the
  * view only needs their structure, so it declares them here and never imports
- * the builder. Display data only: the view never mutates a board.
+ * the builder. Display data only: the view never mutates a board. Which map
+ * groups are folded is state of the view, not a field of these shapes.
  */
 export type WorkStatus = "active" | "ready" | "review" | "blocked" | "later" | "unknown";
 

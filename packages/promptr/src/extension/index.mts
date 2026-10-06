@@ -1026,7 +1026,7 @@ Git: ${snap.ref || "unknown"} @ ${snap.head}${snap.dirty ? " (dirty)" : ""}
         ? `Workflow override INVALID — ${effective.error}\nThe picker offers nothing and dispatch is blocked until the file is fixed or deleted.`
         : effective.configured
           ? `Workflow override active: ${effective.path} (configuration, not verified availability).`
-          : `Workflow overrides: none (shipped defaults). Optional file: ${effective.path}`;
+          : `Workflow overrides: none (shipped defaults do not launch); expected file ${effective.path}`;
       const probeFile = resolveCapabilityProbeFile(process.env);
       if (probeFile.error) { ctx.ui.notify(probeFile.error, "error"); return; }
       if (verb === "status") {

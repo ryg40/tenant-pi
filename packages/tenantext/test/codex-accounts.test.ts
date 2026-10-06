@@ -184,6 +184,14 @@ test("accepts an absolute tokenFile and rejects a relative one", () => {
 	assert.throws(() => validateCodexAccounts({ accounts: [accounts[0], { ...accounts[1], tokenFile: "codex2/auth.json" }] }), /absolute/);
 });
 
+test("preferredAccount has no default and accepts only a gateway account name", () => {
+	assert.equal("preferredAccount" in validateCodexAccounts({ accounts }), false);
+	assert.equal(validateCodexAccounts({ accounts, preferredAccount: "codex1" }).preferredAccount, "codex1");
+	for (const bad of ["", "codex0", "Codex 1", "openai-codex", 2]) {
+		assert.throws(() => validateCodexAccounts({ accounts, preferredAccount: bad }), /preferredAccount/);
+	}
+});
+
 test("reads LiteLLM and Codex CLI token files and skips expired ones", () => {
 	const dir = mkdtempSync(join(tmpdir(), "codex-token-"));
 	const write = (name: string, data: unknown) => { const path = join(dir, name); writeFileSync(path, JSON.stringify(data)); return path; };

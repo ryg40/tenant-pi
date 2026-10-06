@@ -1,4 +1,4 @@
-"""Runtime check contract: range grammar, the four statuses, exactly three processes, no leftover directory."""
+"""Runtime check contract: range grammar, the five statuses, exactly three processes, no leftover directory."""
 import contextlib
 import hashlib
 import io
@@ -21,8 +21,14 @@ from scripts.validate import Invalid, load
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
 RUNTIME = load(ROOT / "config/manifest.json")["runtime"]
+PIN = RUNTIME["piVersion"]
+PI_RANGE = RUNTIME["piAcceptedRange"]
+PI_FIELDS = {"tested": PIN, "acceptedRange": PI_RANGE}
+LOWER, UPPER = parse_range(PI_RANGE, "f")
+IN_RANGE = ".".join(map(str, (*LOWER[:2], LOWER[2] + 1)))
+OUTSIDE = ".".join(map(str, UPPER))
 CANARY = "CANARY_SECRET"
-GOOD = {"pi": "1.0.3", "node": "v22.22.0", "python3": "Python 3.11.2"}
+GOOD = {"pi": PIN, "node": "v22.22.0", "python3": "Python 3.11.2"}
 # Every process-creation audit event of CPython; the hook of the fixture records each one.
 SPAWN_EVENTS = ("subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.fork", "os.forkpty",
                 "pty.spawn")
@@ -34,15 +40,25 @@ class Done:
 
 
 class GrammarTests(unittest.TestCase):
-    def test_range_grammar_is_the_two_manifest_forms(self):
+    def test_range_grammar_is_a_lower_bound_with_an_optional_upper_bound(self):
         self.assertEqual(((22, 22, 0), (23, 0, 0)), parse_range(">=22.22.0 <23", "f"))
         self.assertEqual(((3, 11, 0), None), parse_range(">=3.11", "f"))
         self.assertEqual(((1, 2, 3), (1, 4, 0)), parse_range(">=1.2.3 <1.4", "f"))
         for bad in ("", "22", ">=22", "^22.22.0", ">22.22.0", ">=22.22.0  <23", ">=22.22.0 <23 ", ">=22.22.0 <=23",
-                    ">=22.22.0 || >=24", ">=a.b", ">=3.11\n", ">=1.2.3.4", None, 3, [">=3.11"], CANARY):
+                    ">=22.22.0 || >=24", ">=a.b", ">=3.11\n", ">=1.2.3.4", ">=1.2.3 <1.2.3", ">=2.0 <1", None, 3, [">=3.11"], CANARY):
             with self.assertRaises(Invalid) as caught:
                 parse_range(bad, "manifest.runtime.nodeRange")
             self.assertEqual("runtime_range: manifest.runtime.nodeRange", str(caught.exception))
+
+    def test_bounded_range_requires_an_upper_bound(self):
+        self.assertEqual(((1, 2, 3), (1, 4, 0)), parse_range(">=1.2.3 <1.4", "f", bounded=True))
+        for unbounded in (">=3.11", ">=1.0.3"):
+            with self.assertRaises(Invalid) as caught:
+                parse_range(unbounded, "manifest.runtime.piAcceptedRange", bounded=True)
+            self.assertEqual("range_without_upper_bound: manifest.runtime.piAcceptedRange", str(caught.exception))
+        with self.assertRaises(Invalid) as caught:
+            parse_range("^1.0.3", "manifest.runtime.piAcceptedRange", bounded=True)
+        self.assertEqual("runtime_range: manifest.runtime.piAcceptedRange", str(caught.exception))
 
     def test_range_bounds(self):
         node = parse_range(RUNTIME["nodeRange"], "f")
@@ -93,7 +109,7 @@ class CheckTests(unittest.TestCase):
 
     def setUp(self):
         self.calls = []
-        self.output = {"/bin/pi": Done(b"1.0.3\n"), "/bin/node": Done(b"v22.22.0\n"), "/bin/python3": Done(b"Python 3.11.2\n")}
+        self.output = {"/bin/pi": Done((PIN + "\n").encode()), "/bin/node": Done(b"v22.22.0\n"), "/bin/python3": Done(b"Python 3.11.2\n")}
 
     def run_fake(self, argv, **options):
         self.calls.append((argv, options))
@@ -107,7 +123,7 @@ class CheckTests(unittest.TestCase):
 
     def test_match_runs_three_fixed_commands_without_a_shell(self):
         report = self.check()
-        self.assertEqual({"pi": {"installed": "1.0.3", "required": "1.0.3", "status": "match"},
+        self.assertEqual({"pi": {"installed": PIN, "required": PIN, "status": "match", **PI_FIELDS},
                           "node": {"installed": "22.22.0", "required": ">=22.22.0 <23", "status": "match"},
                           "python": {"installed": "3.11.2", "required": ">=3.11", "status": "match"}}, report)
         self.assertTrue(matches(report))
@@ -144,11 +160,11 @@ class CheckTests(unittest.TestCase):
         report = self.check(which=lambda name: None)
         self.assertEqual({"missing"}, {r["status"] for r in report.values()})
         self.assertEqual([], self.calls)
-        self.assertEqual(set(STATUSES), {"match", "mismatch", "missing", "unparsed"})
+        self.assertEqual(set(STATUSES), {"match", "untested_in_range", "mismatch", "missing", "unparsed"})
 
     def test_each_report_is_a_valid_runtime_report_for_plan_and_generate(self):
         outputs = ({}, {"/bin/pi": Done(b"0.99.2\n"), "/bin/node": Done(b"v23.0.0\n"), "/bin/python3": Done(b"Python 3.10.14\n")},
-                   {"/bin/pi": Done(b"1.0.3-beta.1\n"), "/bin/node": Done(b"v22.22.0-rc.1\n"), "/bin/python3": Done(b"Python 3.14.0rc1\n")},
+                   {"/bin/pi": Done((PIN + "-beta.1\n").encode()), "/bin/node": Done(b"v22.22.0-rc.1\n"), "/bin/python3": Done(b"Python 3.14.0rc1\n")},
                    {"/bin/pi": Done((CANARY + "\n").encode()), "/bin/node": Done(b"v22.22.0\n", returncode=3),
                     "/bin/python3": subprocess.TimeoutExpired(["x"], TIMEOUT)},
                    {"/bin/pi": FileNotFoundError(), "/bin/node": PermissionError(), "/bin/python3": OSError(8, "format")})
@@ -161,20 +177,32 @@ class CheckTests(unittest.TestCase):
         self.assertEqual({"missing"}, {entry["status"] for entry in runtime_report(absent, RUNTIME).values()})
 
     def test_prerelease_pi_is_a_mismatch_and_stderr_is_read_when_stdout_is_empty(self):
-        self.output["/bin/pi"] = Done(b"1.0.3-beta.1\n")
+        self.output["/bin/pi"] = Done((PIN + "-beta.1\n").encode())
         self.output["/bin/python3"] = Done(b"", b"Python 3.12.1\n")
         report = self.check()
-        self.assertEqual(("1.0.3-beta.1", "mismatch"), (report["pi"]["installed"], report["pi"]["status"]))
+        self.assertEqual((PIN + "-beta.1", "mismatch"), (report["pi"]["installed"], report["pi"]["status"]))
         self.assertEqual(("3.12.1", "match"), (report["python"]["installed"], report["python"]["status"]))
 
-    def test_pin_is_1_0_3_and_each_earlier_pin_is_a_mismatch(self):
-        self.assertEqual("1.0.3", RUNTIME["piVersion"])
-        self.assertEqual({"installed": "1.0.3", "required": "1.0.3", "status": "match"}, self.check()["pi"])
+    def test_manifest_pin_matches_and_each_earlier_pin_is_a_mismatch(self):
+        self.assertEqual({"installed": PIN, "required": PIN, "status": "match", **PI_FIELDS}, self.check()["pi"])
         for earlier in ("1.0.2", "1.0.0", "0.99.2"):
             self.output["/bin/pi"] = Done(earlier.encode() + b"\n")
             report = self.check()
-            self.assertEqual({"installed": earlier, "required": "1.0.3", "status": "mismatch"}, report["pi"])
+            self.assertEqual({"installed": earlier, "required": PIN, "status": "mismatch", **PI_FIELDS}, report["pi"])
             self.assertFalse(matches(report))
+
+    def test_pi_tested_accepted_and_outside_range_states(self):
+        cases = ((PIN, "match"), (IN_RANGE, "untested_in_range"),
+                 (IN_RANGE + "-rc.1", "untested_in_range"), (PIN + "+build.5", "untested_in_range"),
+                 (".".join(map(str, LOWER)) + "-rc.1", "mismatch"),
+                 (OUTSIDE, "mismatch"), (OUTSIDE + "-rc.1", "mismatch"), ("0.0.0", "mismatch"))
+        for installed, status in cases:
+            with self.subTest(installed=installed):
+                self.output["/bin/pi"] = Done(installed.encode() + b"\n")
+                report = self.check()
+                self.assertEqual({"installed": installed, "required": PIN, "status": status, **PI_FIELDS}, report["pi"])
+                self.assertEqual(status != "mismatch", matches(report))
+                self.assertIs(report, runtime_report(report, RUNTIME))
 
     def test_lower_bound_prerelease_is_a_mismatch(self):
         self.output["/bin/node"] = Done(b"v22.22.0-rc.1\n")
@@ -228,23 +256,24 @@ class CheckTests(unittest.TestCase):
             with patch("scripts.check_runtime.TIMEOUT", 1):
                 report = check(RUNTIME, {"pi": str(slow)}, which=lambda name: None, environ={})
             elapsed = time.monotonic() - started
-            self.assertEqual({"installed": None, "required": RUNTIME["piVersion"], "status": "unparsed"}, report["pi"])
+            self.assertEqual({"installed": None, "required": PIN, "status": "unparsed", **PI_FIELDS}, report["pi"])
             self.assertGreaterEqual(elapsed, 1)
             self.assertLess(elapsed, 2.5)
             self.assertFalse(os.path.lexists(marker.read_text()))
 
     def test_explicit_path_replaces_the_lookup(self):
-        self.output["/opt/pin/pi"] = Done(b"1.0.3\n")
+        self.output["/opt/pin/pi"] = Done((PIN + "\n").encode())
         looked = []
         self.check({"pi": "/opt/pin/pi"}, which=lambda name: looked.append(name) or "/bin/" + name)
         self.assertEqual(["node", "python3"], looked)
         self.assertEqual(["/opt/pin/pi", "--version"], self.calls[0][0])
 
     def test_bad_range_starts_no_process(self):
-        with self.assertRaises(Invalid) as caught:
-            check({**RUNTIME, "pythonRange": "^3.11"}, run=self.run_fake, which=lambda name: "/bin/" + name, environ={})
-        self.assertEqual("runtime_range: manifest.runtime.pythonRange", str(caught.exception))
-        self.assertEqual([], self.calls)
+        for field in ("piAcceptedRange", "nodeRange", "pythonRange"):
+            with self.subTest(field=field), self.assertRaises(Invalid) as caught:
+                check({**RUNTIME, field: "^3.11"}, run=self.run_fake, which=lambda name: "/bin/" + name, environ={})
+            self.assertEqual("runtime_range: manifest.runtime." + field, str(caught.exception))
+            self.assertEqual([], self.calls)
 
     def test_directory_is_removed_when_the_runner_fails(self):
         seen = []
@@ -347,7 +376,7 @@ class CliTests(unittest.TestCase):
         result = self.run_cli()
         self.assertEqual((0, ""), (result.returncode, result.stderr))
         self.assertEqual('{"node":{"installed":"22.22.0","required":">=22.22.0 <23","status":"match"},'
-                         '"pi":{"installed":"1.0.3","required":"1.0.3","status":"match"},'
+                         f'"pi":{{"acceptedRange":"{PI_RANGE}","installed":"{PIN}","required":"{PIN}","status":"match","tested":"{PIN}"}},'
                          '"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}\n', result.stdout)
         self.check_no_other_process([self.bin / "pi", self.bin / "node", self.bin / "python3"])
         directory, state = self.seen.read_text().splitlines()
@@ -366,6 +395,22 @@ class CliTests(unittest.TestCase):
             self.assertFalse([path for path in opened if path.endswith(private)], private)
         self.assertNotIn(CANARY, result.stdout)
 
+    def test_accepted_pi_exits_zero_and_outside_versions_exit_one(self):
+        for installed, status, code in ((IN_RANGE, "untested_in_range", 0),
+                                         (IN_RANGE + "-rc.1", "untested_in_range", 0),
+                                         (OUTSIDE, "mismatch", 1), (OUTSIDE + "-rc.1", "mismatch", 1),
+                                         (".".join(map(str, LOWER)) + "-rc.1", "mismatch", 1),
+                                         ("0.0.0", "mismatch", 1)):
+            with self.subTest(installed=installed):
+                self.tools(pi=installed)
+                result = self.run_cli()
+                self.assertEqual((code, ""), (result.returncode, result.stderr))
+                self.assertEqual({"installed": installed, "required": PIN, "status": status, **PI_FIELDS},
+                                 json.loads(result.stdout)["pi"])
+                self.assertEqual([], os.listdir(self.tmp))
+        self.tools(pi=IN_RANGE, node="v23.0.0")
+        self.assertEqual(1, self.run_cli().returncode)
+
     def test_mismatch_exits_1(self):
         self.tools(pi="0.99.2", node="v23.1.0", python3="Python 3.10.14")
         result = self.run_cli()
@@ -373,7 +418,7 @@ class CliTests(unittest.TestCase):
         report = json.loads(result.stdout)
         self.assertEqual({"pi": "mismatch", "node": "mismatch", "python": "mismatch"}, self.statuses(result))
         self.assertEqual(["0.99.2", "23.1.0", "3.10.14"], [report[k]["installed"] for k in ("pi", "node", "python")])
-        self.assertEqual(["1.0.3", ">=22.22.0 <23", ">=3.11"], [report[k]["required"] for k in ("pi", "node", "python")])
+        self.assertEqual([PIN, ">=22.22.0 <23", ">=3.11"], [report[k]["required"] for k in ("pi", "node", "python")])
         self.check_no_other_process([self.bin / "pi", self.bin / "node", self.bin / "python3"])
         self.assertEqual([], os.listdir(self.tmp))
 

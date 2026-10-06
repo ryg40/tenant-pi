@@ -1,5 +1,8 @@
 # Pi update checks
 
+`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
+Replace `<new version>` with the detected version before running an example command.
+
 `scripts/pi_update.py` detects releases, tests a candidate, and reads release notes. It does not change the kit pin or an installed profile.
 
 Python 3.11+, Node and npm are required. Qualification of a Git checkout also requires `git` on the runner's allow-list PATH. Qualification is Linux-first. Each action prints one JSON object on standard output, including failures.
@@ -8,9 +11,9 @@ Python 3.11+, Node and npm are required. Qualification of a Git checkout also re
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py detect
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version 1.0.4 --workdir /tmp/pi-qualification
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version 1.0.4 --workdir /tmp/pi-qualification --strict-baseline
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py notes --from 1.0.3 --to 1.0.4 --workdir /tmp/pi-notes
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir /tmp/pi-qualification
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir /tmp/pi-qualification --strict-baseline
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py notes --from "<pin>" --to "<new version>" --workdir /tmp/pi-notes
 ```
 
 | Action | Network use | Result |
@@ -60,13 +63,13 @@ Each step has `name`, `exitCode`, and an absolute `log` path. A skipped dependen
 
 A failed step fails qualification. Independent later steps still run. Each package log includes its native test output.
 
-The candidate copy changes `runtime.piVersion` and the core spec in `config/manifest.json`, plus the core anchor in `scripts/validate.py`. These match the pin edits of the update request adapter. The checkout stays unchanged.
+The candidate copy changes `runtime.piVersion`, `runtime.piAcceptedRange` and the core spec in `config/manifest.json`, plus the core anchor in `scripts/validate.py`. A changed stable pin sets the lower bound to that version and the upper bound to the next minor line. See [the pin move rule](guides/release-checklist.md#gates). The update request adapter imports this file by path and calls the same `pin_contents` function. The checkout stays unchanged.
 
 With `.git` present, the copy takes the working-tree bytes of tracked files, including uncommitted edits. Without `.git`, it copies every file, except entries under `.git`, `.local`, `node_modules`, or `__pycache__`. Those directories are excluded in both cases. This includes untracked files such as `.env` in a tree without Git metadata. Symbolic-link sources are refused. The copy has no Git metadata.
 
 A missing `git`, a Git timeout, or a nonzero Git exit fails the `candidate-copy` step. Its log records `git_unavailable`, `git_timeout`, or `git_failed`, without raw Git output. Qualification still prints one JSON object and records the final baseline comparison.
 
-`check-runtime` compares against the candidate pin. Pin-dependent test fixtures can still fail the candidate's unit-test step. The report preserves that failure and its log. It does not edit tests to force a pass. See [the runtime check](check-runtime.md).
+`check-runtime` compares against the candidate pin. Current-pin test fixtures read the manifest of the candidate copy. A failed check still fails qualification; the report keeps its log. It does not edit tests to force a pass. See [the runtime check](check-runtime.md).
 
 The print test selects `local-test/sum-model` explicitly. Its server binds only to `127.0.0.1` on an unused port. It returns a fixed reply, not a real model response. Success requires one request and exactly `43` plus a newline in the combined output log.
 

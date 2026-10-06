@@ -1,19 +1,24 @@
 """Only in-memory synthetic inputs exercise the pure planner."""
 import copy
 import json
+import re
 import shlex
 import unittest
 from unittest.mock import patch
 
-from scripts.profile_plan import GLOBAL_INSTALL_WARNING, OUTPUTS, prepare, readiness, runtime_report, setup_commands
+from scripts.profile_plan import (GLOBAL_INSTALL_WARNING, OUTPUTS, PROVIDER_KEY_NAMES, UNTESTED_PI_FACT, prepare,
+                                   provider_key_warning, readiness, runtime_report, setup_commands)
+from scripts.check_runtime import parse_range
 from tests.test_model_routes import NATIVE, GATEWAY, REGISTRY
 from scripts.validate import ROOT, Invalid, load, manifest
 
 TENANTEXT_PACKAGE = str(ROOT / "packages/tenantext")
 RUNTIME = load("config/manifest.json")["runtime"]
 PIN = RUNTIME["piVersion"]
-# One patch number after the pin: a Pi that is newer than the kit requires.
-NEWER = ".".join(PIN.split(".")[:2] + [str(int(PIN.split(".")[2]) + 1)])
+# A stable patch after the pin's numeric version, including a prerelease pin.
+major, minor, patch_number = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9A-Za-z.-]+)?", PIN).groups()
+IN_RANGE = f"{major}.{minor}.{int(patch_number) + 1}"
+NEWER = ".".join(map(str, parse_range(RUNTIME["piAcceptedRange"], "f")[1]))
 OLDER = "0.99.2"
 
 
@@ -24,8 +29,10 @@ def report(pi=PIN, node="22.22.0", python="3.11.2", **status):
     """
     found = {"pi": pi, "node": node, "python": python}
     required = {"pi": PIN, "node": RUNTIME["nodeRange"], "python": RUNTIME["pythonRange"]}
-    return {key: {"installed": found[key], "required": required[key], "status": status.get(key + "_status", "match")}
-            for key in found}
+    result = {key: {"installed": found[key], "required": required[key], "status": status.get(key + "_status", "match")}
+              for key in found}
+    result["pi"].update(tested=PIN, acceptedRange=RUNTIME["piAcceptedRange"])
+    return result
 
 
 class PlanTests(unittest.TestCase):
@@ -113,7 +120,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(self.overlay, result["files"][".tenant-pi/choices.json"]["content"]["overlay"])
         self.assertEqual(["env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
                          shlex.split(result["commands"]["launch"]))
-        self.assertEqual(["npm", "install", "--global", "--", "@earendil-works/pi-coding-agent@1.0.3"],
+        self.assertEqual(["npm", "install", "--global", "--", "@earendil-works/pi-coding-agent@" + PIN],
                          shlex.split(result["commands"]["setup"][0]))
         self.assertIn("target_absence_unverified", [g["code"] for g in result["readinessGaps"]])
         json.loads(json.dumps(result))
@@ -191,6 +198,8 @@ class PlanTests(unittest.TestCase):
         self.assertNotIn("SECRET_VALUE", str(caught.exception))
         del self.overlay["unknown"]
         self.enable("tracker-site")
+        self.manifest["components"]["tracker-site"].update(status="blocked", reason="Blocked for this test.")
+        self.manifest["components"]["tracker-site"]["configOwnership"].update(status="blocked", claims=[])
         with self.assertRaisesRegex(Invalid, "blocked_component"):
             prepare(self.manifest, self.overlay)
 
@@ -217,7 +226,8 @@ class PlanTests(unittest.TestCase):
     def test_one_tree_component_declares_the_package_once_with_its_own_filter(self):
         for cid, key, item in (("doctor", "extensions", "extensions/doctor/index.ts"),
                                ("resources", "extensions", "extensions/resources/index.ts"),
-                               ("herdr", "skills", "skills/herdr")):
+                               ("herdr", "skills", "skills/herdr"),
+                               ("tracker-site", "skills", "skills/tracker-site")):
             with self.subTest(cid=cid):
                 self.setUp()
                 self.enable(cid)
@@ -307,6 +317,20 @@ class ReadinessTests(unittest.TestCase):
                           {"code": "core_runtime_mismatch", "subject": self.core, "installed": OLDER, "required": PIN}],
                          both)
 
+    def test_accepted_untested_pi_keeps_an_explicit_gap(self):
+        data = report(pi=IN_RANGE, pi_status="untested_in_range")
+        runtime_report(data, RUNTIME)
+        expected = {"code": "core_runtime_untested_in_range", "subject": self.core,
+                    "installed": IN_RANGE, "required": PIN, "tested": PIN,
+                    "acceptedRange": RUNTIME["piAcceptedRange"], "fact": UNTESTED_PI_FACT}
+        before = copy.deepcopy(self.plan)
+        for generated in (False, True):
+            result = readiness(self.plan, report=data, generated=generated)
+            self.assertEqual(([] if generated else self.fixed[:1]) + [expected], result["readinessGaps"])
+            self.assertFalse(result["runtimeReady"])
+        self.assertIn("The kit tests ran on the tested version only.", expected["fact"])
+        self.assertEqual(before, self.plan)
+
     def test_absent_pi_is_a_missing_gap(self):
         result = readiness(self.plan, report=report(pi=None, pi_status="missing"), generated=True)
         self.assertEqual([{"code": "core_runtime_missing", "subject": self.core, "installed": None, "required": PIN}],
@@ -336,6 +360,8 @@ class ReadinessTests(unittest.TestCase):
 
     def test_report_is_validated_against_the_manifest_runtime(self):
         for good in (report(), report(pi=NEWER, pi_status="mismatch"), report(pi=PIN + "-beta.1", pi_status="mismatch"),
+                     report(pi=IN_RANGE, pi_status="untested_in_range"),
+                     report(pi=IN_RANGE + "-rc.1", pi_status="untested_in_range"),
                      report(node="22.22.0-rc.1", node_status="mismatch"), report(python="3.14.0rc1"),
                      report(pi=None, node=None, python=None, pi_status="missing", node_status="unparsed",
                             python_status="missing")):
@@ -354,6 +380,13 @@ class ReadinessTests(unittest.TestCase):
                  ({**report(), "pi": {**report()["pi"], canary: 1}}, "unknown_fields: runtime_report.pi"),
                  # A report of another pin or range is not evidence for this manifest.
                  (changed("pi", "required", OLDER), "runtime_report_required: runtime_report.pi.required"),
+                 (changed("pi", "tested", OLDER), "runtime_report_required: runtime_report.pi.tested"),
+                 (changed("pi", "acceptedRange", ">=0.0.0 <99"), "runtime_report_required: runtime_report.pi.acceptedRange"),
+                 (changed("pi", "status", "untested_in_range"), "runtime_report_status: runtime_report.pi.status"),
+                 (changed("node", "status", "untested_in_range"), "runtime_report_status: runtime_report.node.status"),
+                 (report(pi=None, pi_status="untested_in_range"), "runtime_report_installed: runtime_report.pi.installed"),
+                 (report(pi=IN_RANGE, pi_status="mismatch"), "runtime_report_status: runtime_report.pi.status"),
+                 (report(pi=NEWER, pi_status="untested_in_range"), "runtime_report_status: runtime_report.pi.status"),
                  (changed("node", "required", ">=20"), "runtime_report_required: runtime_report.node.required"),
                  (changed("python", "required", None), "runtime_report_required: runtime_report.python.required"),
                  (changed("pi", "status", "ok"), "runtime_report_status: runtime_report.pi.status"),
@@ -418,10 +451,19 @@ class PiInstallTests(unittest.TestCase):
         self.assertEqual({"setup": [], "piInstall": self.mark("not_needed", PIN)},
                          setup_commands(self.plan, report()))
 
+    def test_accepted_untested_pi_needs_no_replacement(self):
+        for installed in (IN_RANGE, IN_RANGE + "-rc.1"):
+            with self.subTest(installed=installed):
+                data = report(pi=installed, pi_status="untested_in_range")
+                runtime_report(data, RUNTIME)
+                self.assertEqual({"setup": [], "piInstall": self.mark("not_needed", installed)},
+                                 setup_commands(self.plan, data))
+                self.assertEqual([self.line], self.plan["commands"]["setup"])
+
     def test_newer_installed_marks_a_downgrade(self):
         result = setup_commands(self.plan, report(pi=NEWER, pi_status="mismatch"))
         self.assertEqual({"setup": [], "piInstall": self.mark("replaces_installed", NEWER, "downgrade")}, result)
-        for newer in ("2.0.0", "1.1.0", "10.0.0", NEWER + "-rc.1"):
+        for newer in (f"{int(major) + 1}.0.0", f"{major}.{int(minor) + 2}.0", NEWER + "-rc.1"):
             self.assertEqual("downgrade",
                              setup_commands(self.plan, report(pi=newer, pi_status="mismatch"))["piInstall"]["change"])
 
@@ -432,9 +474,9 @@ class PiInstallTests(unittest.TestCase):
         for older in ("0.9.10", "1.0.0", PIN + "-beta.1"):
             self.assertEqual("upgrade",
                              setup_commands(self.plan, report(pi=older, pi_status="mismatch"))["piInstall"]["change"])
-        # The same numbers with another build text: the kit gives no order, and still no default line.
-        result = setup_commands(self.plan, report(pi=PIN + "+build.5", pi_status="mismatch"))
-        self.assertEqual({"setup": [], "piInstall": self.mark("replaces_installed", PIN + "+build.5", "unordered")}, result)
+        # Build text differs from the tested token, but does not change range acceptance.
+        result = setup_commands(self.plan, report(pi=PIN + "+build.5", pi_status="untested_in_range"))
+        self.assertEqual({"setup": [], "piInstall": self.mark("not_needed", PIN + "+build.5")}, result)
 
     def test_absent_pi_marks_the_line_as_needed(self):
         self.assertEqual({"setup": [self.line], "piInstall": self.mark("needed")},
@@ -459,6 +501,37 @@ class PiInstallTests(unittest.TestCase):
              patch("subprocess.Popen", side_effect=AssertionError("process")), \
              patch("os.mkdir", side_effect=AssertionError("I/O")):
             result = setup_commands(self.plan, report(pi=NEWER, pi_status="mismatch"))
+        json.loads(json.dumps(result))
+
+
+class ProviderKeyWarningTests(unittest.TestCase):
+    """The warning for a provider key variable of the launching shell. Each input is a synthetic name list."""
+
+    def test_set_variables_give_a_warning_with_names_only(self):
+        value = "synthetic-value-not-a-key"
+        environment = {"OPENAI_API_KEY": value, "ANTHROPIC_BASE_URL": value, "HOME": "/home/EXAMPLE_USER",
+                       "UNRELATED_API_KEY": value}
+        result = provider_key_warning(list(environment))
+        self.assertEqual("provider_key_in_launching_environment", result["code"])
+        # The order is the order of the constant, not of the caller.
+        self.assertEqual(["ANTHROPIC_BASE_URL", "OPENAI_API_KEY"], result["variables"])
+        self.assertIn("profile with no login", result["fact"])
+        self.assertIn("--model '<provider>/<model>'", result["remedy"])
+        self.assertNotIn(value, json.dumps(result))
+        for name in PROVIDER_KEY_NAMES:
+            with self.subTest(name=name):
+                self.assertEqual([name], provider_key_warning({name})["variables"])
+
+    def test_no_known_variable_gives_no_warning(self):
+        for names in ((), ["HOME", "PATH", "TENANTEXT_LITELLM_API_KEY", "UNRELATED_API_KEY", "openai_api_key"]):
+            with self.subTest(names=names):
+                self.assertIsNone(provider_key_warning(names))
+
+    def test_warning_is_pure(self):
+        with patch("builtins.open", side_effect=AssertionError("I/O")), \
+             patch("os.environ", new=None), \
+             patch("subprocess.run", side_effect=AssertionError("process")):
+            result = provider_key_warning(["GROQ_API_KEY"])
         json.loads(json.dumps(result))
 
 

@@ -90,7 +90,7 @@ PATH_FIELD_LABELS = (
 )
 AUTHORITY_NOTE = "A suggested path is a proposal. It does not give permission to run it."
 BASIS_LABELS = {"current": "Checked at this snapshot", "carried-forward": "Carried forward, not re-checked"}
-SOURCE_LABELS = {"generated": "Generated from the brief", "owner": "Written by the owner"}
+SOURCE_LABELS = {"generated": "Generated from the brief", "requester": "Written by the requester"}
 
 
 def _e(value):
@@ -342,8 +342,8 @@ class _Page:
         for a in sorted(self.m["active"], key=lambda r: r["priority"]):
             state = readiness_state(a["readiness"])
             facts = [_state_chip(state), _badge("readiness", a["readiness"], READINESS_LABELS[a["readiness"]])]
-            if "owner" in a:
-                facts.append(f'<span class="tb-owner">Owner: {_e(a["owner"])}</span>')
+            if "requester" in a:
+                facts.append(f'<span class="tb-requester">Requester: {_e(a["requester"])}</span>')
             blocker = (
                 f'<p class="tb-blocker"><span class="tb-key">Blocker:</span> {_e(a["blocker"])}</p>'
                 if "blocker" in a else ""

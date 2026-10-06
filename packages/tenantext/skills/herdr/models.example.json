@@ -1,0 +1,14 @@
+{
+  "roles": {
+    "worker": {
+      "pi": {
+        "model": "<provider>/<model>",
+        "thinking": "high"
+      },
+      "claude": {
+        "model": "<alias>",
+        "thinking": "high"
+      }
+    }
+  }
+}

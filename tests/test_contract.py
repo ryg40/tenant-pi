@@ -6,8 +6,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from scripts.validate import Invalid, TREE_COMPONENTS, load, manifest, npm_parts, overlay
+from scripts.validate import Invalid, TREE_COMPONENTS, load, manifest, npm_parts, overlay, tree_items
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,7 +52,7 @@ class ContractTests(unittest.TestCase):
         data["selection"]["enable"].append("tracker-site")
         self.check_error(data, "selection_conflict")
         data["selection"]["disable"].remove("tracker-site")
-        self.check_error(data, "blocked_component")
+        overlay(data, self.components)
         data["selection"]["enable"] = ["model-routing"]
         self.check_error(data, "selection_conflict")
         data["selection"]["enable"] = ["core"]
@@ -192,10 +193,52 @@ class ContractTests(unittest.TestCase):
             with self.assertRaisesRegex(Invalid, "^reviewed_source:"):
                 manifest(changed)
         changed = copy.deepcopy(data)
+        changed["components"]["tracker-site"].update(status="blocked", reason="Blocked for this test.")
+        changed["components"]["tracker-site"]["configOwnership"].update(status="blocked", claims=[])
         changed["components"]["tracker-site"]["source"] = None
         manifest(changed)  # Missing provenance stays blocked.
         changed["components"]["tracker-site"]["source"] = {"kind": "local", "pathKey": "local-source"}
         manifest(changed)  # Local development also stays blocked.
+
+    def test_tested_pi_must_be_inside_a_valid_accepted_range(self):
+        data = load(ROOT / "config/manifest.json")
+        tested = data["runtime"]["piVersion"].split("-", 1)[0]
+        for accepted in (f">={tested} <99", ">=0.0.0 <99"):
+            changed = copy.deepcopy(data)
+            changed["runtime"]["piAcceptedRange"] = accepted
+            manifest(changed)
+        for accepted, rule in ((">=99.0.0 <100", "tested_outside_range"),
+                               (f">=0.0.0 <{tested}", "tested_outside_range"),
+                               (">=2.0 <1", "runtime_range"), ("^1.0.3", "runtime_range"),
+                               (None, "runtime_range"), ("CANARY_SECRET", "runtime_range")):
+            changed = copy.deepcopy(data)
+            changed["runtime"]["piAcceptedRange"] = accepted
+            with self.subTest(accepted=accepted), self.assertRaises(Invalid) as error:
+                manifest(changed)
+            self.assertEqual(rule + ": manifest.runtime.piAcceptedRange", str(error.exception))
+        changed = copy.deepcopy(data)
+        del changed["runtime"]["piAcceptedRange"]
+        with self.assertRaisesRegex(Invalid, "^required_fields: manifest.runtime$"):
+            manifest(changed)
+
+    def test_accepted_pi_range_requires_an_upper_bound(self):
+        data = load(ROOT / "config/manifest.json")
+        tested = data["runtime"]["piVersion"].split("-", 1)[0]
+        for accepted in (f">={tested}", ">=0.0", ">=0.0.0"):
+            changed = copy.deepcopy(data)
+            changed["runtime"]["piAcceptedRange"] = accepted
+            with self.subTest(accepted=accepted), self.assertRaises(Invalid) as error:
+                manifest(changed)
+            self.assertEqual("range_without_upper_bound: manifest.runtime.piAcceptedRange", str(error.exception))
+
+    def test_malformed_accepted_pi_range_fails(self):
+        data = load(ROOT / "config/manifest.json")
+        for accepted in ("", "1.0.3", "<1.1", ">=1.0.3 <=1.1", ">=1.0.3 <1.1 ", ">=1.0.3 || >=2.0", 3, [">=1.0.3 <1.1"]):
+            changed = copy.deepcopy(data)
+            changed["runtime"]["piAcceptedRange"] = accepted
+            with self.subTest(accepted=accepted), self.assertRaises(Invalid) as error:
+                manifest(changed)
+            self.assertEqual("runtime_range: manifest.runtime.piAcceptedRange", str(error.exception))
 
     def test_unsafe_urls_and_safe_https(self):
         for unsafe in ("https://example.invalid/;touch%20/tmp/CANARY_SECRET",
@@ -256,16 +299,23 @@ class ContractTests(unittest.TestCase):
 
     def test_disabled_local_path_and_duplicate_owner(self):
         data = load(ROOT / "config/manifest.json")
+        data["components"]["tracker-site"].update(status="blocked", reason="Blocked for this test.")
+        data["components"]["tracker-site"]["configOwnership"].update(status="blocked", claims=[])
         data["components"]["tracker-site"]["source"] = {"kind": "local", "pathKey": "local-source"}
         components = manifest(data)
         local = copy.deepcopy(self.base)
         local["paths"]["local-source"] = "/home/Example User/.config/tenant-pi"
         with self.assertRaisesRegex(Invalid, "^undeclared_path:"):
             overlay(local, components)
-        data["components"]["openviking"]["source"] = {"kind": "local", "pathKey": "local-source"}
+        # A second blocked component with the same path key. `openviking` is selectable, so the
+        # test blocks a copy of it first.
+        selectable = copy.deepcopy(data["components"]["openviking"])
+        data["components"]["openviking"].update(
+            status="blocked", reason="Blocked for this test.", source={"kind": "local", "pathKey": "local-source"},
+            configOwnership={"claims": [], "status": "blocked", "boundary": "Blocked for this test"})
         with self.assertRaisesRegex(Invalid, "^duplicate_path_owner:"):
             manifest(data)
-        data["components"]["openviking"]["source"] = None
+        data["components"]["openviking"] = selectable
         data["components"]["mcp"]["source"] = {"kind": "local", "pathKey": "other-source"}
         with self.assertRaisesRegex(Invalid, "^local_only:"):
             manifest(data)  # A tested module cannot take a local development source.
@@ -323,6 +373,62 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(Invalid, "^reviewed_source:"):
             manifest(data)
 
+    def test_tree_resources_come_from_the_manifest_and_exist_in_the_tree(self):
+        data = load(ROOT / "config/manifest.json")
+        # The table of the validator is the manifest of the kit, in manifest order. The file is read
+        # here with `json.load`, independent of `validate.py`, so the test guards the derivation.
+        with open(ROOT / "config/manifest.json", encoding="utf-8") as handle:
+            kit = json.load(handle)["components"]
+        expected = [(cid, c["source"]["path"], kind, tuple(c["resources"][kind]))
+                    for cid, c in kit.items() if isinstance(c["source"], dict) and c["source"]["kind"] == "tree"
+                    for kind in ("extensions", "skills", "prompts", "themes") if c["resources"][kind]]
+        self.assertEqual(expected, [(cid, path, kind, tuple(tree_items(item)))
+                                    for cid, (path, kind, item) in TREE_COMPONENTS.items()])
+        self.assertEqual(len(expected), len({cid for cid, *_ in expected}))
+        # A manifest from another place that names one more skill is not the manifest of the kit.
+        component = data["components"]["coordinator-skills"]
+        component["resources"]["skills"].append("skills/coordinator-skills/not-in-the-kit")
+        component["configOwnership"]["claims"].append(
+            {"file": "settings.json", "key": "package:packages/tenantext:skills/coordinator-skills/not-in-the-kit"})
+        with self.assertRaisesRegex(Invalid, "^unreviewed_claim:"):
+            manifest(data)
+        # The manifest of the kit names a path that the tree does not hold, or no path.
+        from scripts import validate
+        for skills in (["skills/herdr", "skills/not-in-the-kit"], []):
+            with self.subTest(skills=skills):
+                data = load(ROOT / "config/manifest.json")
+                component = data["components"]["herdr"]
+                component["resources"]["skills"] = skills
+                component["configOwnership"]["claims"] = [
+                    {"file": "settings.json", "key": "package:packages/tenantext:" + skill} for skill in skills]
+                with mock.patch.dict(validate.REVIEWED_CLAIMS, {"herdr": {
+                        ("settings.json", "package:packages/tenantext:" + skill) for skill in skills}}), \
+                        mock.patch.dict(validate.REVIEWED_RESOURCES, {"herdr": validate._tree_resources("skills", tuple(skills))}):
+                    with self.assertRaisesRegex(Invalid, "^tree_resource_missing:"):
+                        manifest(data)
+
+    def test_unreadable_kit_manifest_fails_closed_with_its_cause(self):
+        from scripts import validate
+        self.assertIsNone(validate.TREE_COMPONENTS_CAUSE)
+        with tempfile.TemporaryDirectory() as tmp:
+            for text, cause in ((None, "FileNotFoundError: "), ("{", "JSONDecodeError: "),
+                                ('{"components": {"x": {"source": {"kind": "tree"}}}}', "KeyError: 'resources'")):
+                with self.subTest(cause=cause), mock.patch.object(validate, "ROOT", Path(tmp)):
+                    if text is not None:
+                        (Path(tmp) / "config").mkdir(exist_ok=True)
+                        (Path(tmp) / "config/manifest.json").write_text(text, encoding="utf-8")
+                    table, found = validate._tree_components()
+                    self.assertEqual({}, table)
+                    self.assertTrue(found.startswith(cause), found)
+        # The empty table removes the tree anchors; the finding of `manifest()` prints the cause.
+        anchors = {cid: source for cid, source in validate.REVIEWED_SOURCES.items()
+                   if cid not in validate.TREE_COMPONENTS}
+        with mock.patch.dict(validate.REVIEWED_SOURCES, anchors, clear=True), \
+                mock.patch.object(validate, "TREE_COMPONENTS_CAUSE", "KeyError: 'path'"):
+            with self.assertRaisesRegex(Invalid, r"^reviewed_components: manifest\.components \(kit manifest "
+                                                 r"config/manifest\.json not read: KeyError: 'path'\)$"):
+                manifest(load(ROOT / "config/manifest.json"))
+
     def test_tree_path_rejects_a_link_that_leaves_packages(self):
         from scripts import validate
         with tempfile.TemporaryDirectory() as tmp:
@@ -347,21 +453,30 @@ class ContractTests(unittest.TestCase):
                        if c["source"] == {"kind": "tree", "path": "packages/tenantext"} and c["resources"]["extensions"]}
         self.assertEqual(declared, in_manifest)
         for package_dir in ("packages/tenantext", "packages/promptr"):
-            skills = {"skills/" + p.name for p in (ROOT / package_dir / "skills").iterdir() if p.is_dir()}
+            # A skill directory holds `SKILL.md`; a directory without it is a component of several skills.
+            skills = {"skills/" + s.relative_to(ROOT / package_dir / "skills").as_posix()
+                      for p in (ROOT / package_dir / "skills").iterdir() if p.is_dir()
+                      for s in ([p] if (p / "SKILL.md").is_file() else [d for d in p.iterdir() if d.is_dir()])}
             from scripts.publish_check import excluded_files, private_excludes
             skills = {skill for skill in skills
                       if not excluded_files({f"{package_dir}/{skill}/SKILL.md"}, private_excludes(ROOT))}
-            self.assertEqual(skills, {c["resources"]["skills"][0] for c in data["components"].values()
-                                      if c["source"] == {"kind": "tree", "path": package_dir} and c["resources"]["skills"]})
-        self.assertEqual(17, len(TREE_COMPONENTS))
+            self.assertEqual(skills, {skill for c in data["components"].values()
+                                      if c["source"] == {"kind": "tree", "path": package_dir}
+                                      for skill in c["resources"]["skills"]})
+        self.assertEqual(19, len(TREE_COMPONENTS))
         for cid in TREE_COMPONENTS:
             component = data["components"][cid]
             path, kind, item = TREE_COMPONENTS[cid]
-            self.assertTrue((ROOT / path / item).exists(), cid)
+            items = tree_items(item)
+            for one in items:
+                self.assertTrue((ROOT / path / one).exists(), cid)
             self.assertIn("core", component["requires"])
             self.assertIn(component["status"], ("unverified", "blocked"))  # No `tested` without a test here.
             self.assertTrue(component["gaps"], cid)
-            self.assertEqual(1, sum(len(v) for v in component["resources"].values()))
+            self.assertEqual(len(items), sum(len(v) for v in component["resources"].values()))
+            self.assertEqual(items, component["resources"][kind])
+            # Only a skill component of several skills names more than one resource.
+            self.assertTrue(len(items) == 1 or (kind == "skills" and cid == "coordinator-skills"), cid)
             self.assertIn(cid, self.base["selection"]["disable"])
         self.assertEqual(["core"], self.base["selection"]["enable"])
         self.assertEqual(["TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY"], data["components"]["codex-accounts"]["env"])
@@ -370,12 +485,29 @@ class ContractTests(unittest.TestCase):
             self.assertIn("env." + name, routing)
         self.assertNotIn("gitea", json.dumps(data))
 
+    def test_tracker_skill_is_selectable_with_explicit_runtime_gap(self):
+        component = self.components["tracker-site"]
+        self.assertEqual("unverified", component["status"])
+        self.assertIsNone(component["reason"])
+        self.assertEqual({"host_tool_required", "pi_line_unqualified", "kit_test_missing"},
+                         {gap["code"] for gap in component["gaps"]})
+        self.assertEqual("reviewed", component["configOwnership"]["status"])
+        self.assertEqual([{"file": "settings.json", "key": "package:packages/tenantext:skills/tracker-site"}],
+                         component["configOwnership"]["claims"])
+
     def test_pi_line_gap_facts_do_not_claim_a_stale_readme_version(self):
         components = manifest(load(ROOT / "config/manifest.json"))
-        facts = [gap["fact"] for name, component in components.items() for gap in component.get("gaps", [])
-                 if name != "resources" and gap["code"] == "pi_line_unqualified"]
-        self.assertEqual(11, len(facts))
-        self.assertEqual({"No test in this repository loads the component with the kit pin."}, set(facts))
+        facts = {name: gap["fact"] for name, component in components.items() for gap in component.get("gaps", [])
+                 if gap["code"] == "pi_line_unqualified"}
+        self.assertEqual(13, len(facts))
+        self.assertEqual("The component uses the resource settings syntax of the reviewed Pi release "
+                         "(see docs/resources.md). No test in this repository loads it with the kit pin.",
+                         facts.pop("resources"))
+        common = "No test in this repository loads the component with the kit pin."
+        self.assertEqual(common, facts["coordinator-skills"])
+        for name, fact in facts.items():
+            with self.subTest(component=name):
+                self.assertEqual(common, fact)
 
     def test_status_and_gaps_rules(self):
         for change, rule in (
@@ -383,7 +515,8 @@ class ContractTests(unittest.TestCase):
                 (lambda c: c["doctor"].update(gaps=[]), "status_gaps"),
                 (lambda c: c["doctor"].pop("gaps"), "status_gaps"),
                 (lambda c: c["core"].update(gaps=[{"code": "x", "fact": "A fact"}]), "status_gaps"),
-                (lambda c: c["tracker-site"].update(status="qualified"), "status"),
+                (lambda c: (c["tracker-site"]["configOwnership"].update(status="blocked", claims=[]),
+                            c["tracker-site"].update(status="qualified")), "status"),
                 (lambda c: c["doctor"].update(reason="CANARY_SECRET"), "status_reason"),
                 (lambda c: c["doctor"]["gaps"].append(copy.deepcopy(c["doctor"]["gaps"][0])), "duplicate_gap"),
                 (lambda c: c["doctor"]["gaps"][0].update(code="Bad Code"), "gap_code"),
@@ -391,7 +524,7 @@ class ContractTests(unittest.TestCase):
                 (lambda c: c["doctor"]["gaps"][0].update(note="CANARY_SECRET"), "unknown_fields"),
                 (lambda c: c["doctor"].update(gaps="CANARY_SECRET"), "array"),
                 (lambda c: c["doctor"]["configOwnership"].update(status="blocked", claims=[]), "ownership_blocked"),
-                (lambda c: c["tracker-site"].update(status="unverified", reason=None), "ownership_blocked")):
+                (lambda c: c["tracker-site"]["configOwnership"].update(status="blocked", claims=[]), "ownership_blocked")):
             data = load(ROOT / "config/manifest.json")
             change(data["components"])
             with self.assertRaisesRegex(Invalid, "^" + rule + ":") as error:
@@ -414,11 +547,14 @@ class ContractTests(unittest.TestCase):
         data["selection"]["enable"].append("promptr")
         data["selection"]["disable"].remove("promptr")
         overlay(data, self.components)
-        for cid in ("tracker-site", "openviking"):
-            data = copy.deepcopy(self.base)
-            data["selection"]["enable"].append(cid)
-            data["selection"]["disable"].remove(cid)
-            self.check_error(data, "blocked_component")
+        data = copy.deepcopy(self.base)
+        data["selection"]["enable"].append("tracker-site")
+        data["selection"]["disable"].remove("tracker-site")
+        overlay(data, self.components)
+        blocked = copy.deepcopy(self.components)
+        blocked["tracker-site"].update(status="blocked", reason="Blocked for this test.")
+        with self.assertRaisesRegex(Invalid, "^blocked_component:"):
+            overlay(data, blocked)
         data = copy.deepcopy(self.base)
         data["selection"]["enable"].append("ops-footer")
         data["selection"]["disable"].remove("ops-footer")

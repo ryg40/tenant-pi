@@ -5,6 +5,7 @@
  * caches through injected readers/writers and reports boards and notes
  * through callbacks, so it can be proven without a terminal.
  */
+import { parseHerdrResult } from "../herdr/adapter.mts";
 import { buildWorkBoard, type WorkBoard } from "../tracking/board.mts";
 import type { TrackingRepo, TrackingSnapshot } from "../tracking/gitea.mts";
 
@@ -39,11 +40,7 @@ export function pickTrackingRepo(
 
 export function parseAgentStatus(stdout: string): AgentStatus {
   try {
-    const parsed = JSON.parse(stdout) as unknown;
-    if (typeof parsed !== "object" || parsed === null) return "unknown";
-    const result = (parsed as Record<string, unknown>).result;
-    if (typeof result !== "object" || result === null) return "unknown";
-    const pane = (result as Record<string, unknown>).pane;
+    const pane = parseHerdrResult(stdout)?.pane;
     if (typeof pane !== "object" || pane === null) return "unknown";
     const status = (pane as Record<string, unknown>).agent_status;
     if (status === "idle" || status === "working" || status === "blocked") return status;

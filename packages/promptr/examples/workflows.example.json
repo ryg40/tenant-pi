@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "providers": ["openai-codex", "openai-codex-2"],
-  "defaultProvider": "openai-codex",
+  "providers": ["example-provider", "second-provider"],
+  "defaultProvider": "example-provider",
   "workflows": {
-    "openai-codex-simple": {
-      "description": "Well-developed Wayfinder task. Sol xhigh coordinator, Sol medium worker (shipped default, restated here so it is easy to edit).",
+    "worker-simple": {
+      "description": "Well-developed Wayfinder task. Every role is written out so it is easy to edit. The provider ids and the model ids are sample values: replace them with the exact ids that pi --list-models shows.",
       "roles": {
         "coordinator": { "model": "gpt-5.6-sol", "thinking": "xhigh" },
         "scout": { "model": "gpt-5.6-luna", "thinking": "xhigh" },
@@ -14,9 +14,9 @@
         "generator": { "model": "gpt-5.6-sol", "thinking": "medium" }
       }
     },
-    "openai-codex-high": {
+    "worker-high": {
       "roles": {
-        "worker": { "thinking": "medium" }
+        "worker": { "model": "gpt-6-astra", "thinking": "medium" }
       }
     }
   }

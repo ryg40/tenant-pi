@@ -2,10 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { expandWorkflow } from '../../dist/src/workflow/catalog.mjs';
 
-const SIMPLE = ['openai-codex-simple', 'openai-claude-simple'];
-const HEAVIER = ['openai-codex-medium', 'openai-codex-high', 'openai-claude'];
+const SIMPLE = ['worker-simple', 'reviewer-simple'];
+const HEAVIER = ['worker-medium', 'worker-high', 'reviewer'];
 
-function expand(template, readiness, provider = 'openai-codex') {
+function expand(template, readiness, provider = 'default-provider') {
  return expandWorkflow({ template, provider, readiness });
 }
 
@@ -27,7 +27,7 @@ test('a ready task adds no readiness warning beyond the runtime-unverified one',
 
 test('simple workflows refuse an unresolved design outright and name no automatic fallback', () => {
  for (const template of SIMPLE) {
-  for (const provider of ['openai-codex', 'openai-codex-2']) {
+  for (const provider of ['default-provider']) {
    const result = expand(template, 'unresolved-design', provider);
    assert.equal(result.ok, false);
    assert.equal(result.value, undefined);
@@ -61,8 +61,8 @@ test('the heavier templates keep unknown or unresolved evidence for the Coordina
 });
 
 test('readiness never changes the role matrix, only the warnings', () => {
- const ready = expand('openai-codex-high', 'ready').value;
- const unknown = expand('openai-codex-high', 'unknown').value;
+ const ready = expand('worker-high', 'ready').value;
+ const unknown = expand('worker-high', 'unknown').value;
  assert.deepEqual(unknown.roles, ready.roles);
  assert.deepEqual(unknown.instructions, ready.instructions);
  assert.equal(unknown.warnings.length, ready.warnings.length + 1);

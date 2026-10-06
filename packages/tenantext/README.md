@@ -29,7 +29,7 @@ The tenantext extension has three functions:
 | Piece | Version |
 | --- | --- |
 | Node | `>=22.22.0 <23` |
-| Pi (`@earendil-works/pi-coding-agent`) | 1.0.3 (kit pin; runtime qualification remains incomplete) |
+| Pi (`@earendil-works/pi-coding-agent`) | `runtime.piVersion` in `../../config/manifest.json`; runtime qualification remains incomplete |
 
 No build step. Pi loads the TypeScript resource entry points directly.
 
@@ -50,7 +50,7 @@ npm ci --ignore-scripts
 ```
 
 Observed with Pi 0.99.1: a generated profile loads the components tested on that version after dependency installation.
-Not verified: loading all selectable components with Pi 1.0.3, the kit pin, or on a clean client.
+Not verified: loading all selectable components with the kit pin, or on a clean client.
 See [package tests and qualification limits](../../docs/packages.md#tenantext-packagestenantext).
 No direct Git-subdirectory `pi install` command is verified for this kit.
 
@@ -71,6 +71,7 @@ The suite loads these stable resources:
 | resources | `extensions/resources/index.ts` |
 | slopscore-pr skill | `skills/slopscore-pr/SKILL.md` |
 | herdr skill | `skills/herdr/SKILL.md` |
+| coordinator skills (the table in [skills/coordinator-skills/README.md](skills/coordinator-skills/README.md)) | `skills/coordinator-skills/<skill>/SKILL.md` |
 
 When the enabled extension loads, its status shows `STE on · guard armed` until the first prompt.
 
@@ -114,13 +115,11 @@ Tenantext uses `tenantext/settings.json` relative to the profile's Pi agent dire
 | `/tenantext on`, `/tenantext off` | Language rules for this session |
 | `/tenantext guard on`, `/tenantext guard off` | Startup guard for this session |
 | `/tenantext settings` | Interactive TUI menu for main and footer settings; changes save and apply now |
-| `/tenantext-ifs-enable on`, `off`, `status` | Allow or block calls to a decision server that answers a `choice` question at `nextMoveUrl`; saved and applied immediately |
+| `/tenantext-decisions on`, `off`, `status` | Allow or block calls to a decision server that answers a `choice` question at `nextMoveUrl`; saved and applied immediately |
 | `/tenantext save` | Store the current on/off states as defaults for new sessions |
 | `/tenantext context` | Startup context report by source (Markdown table) |
 | `/tenantext rules` | Print the rule block sent to the model |
 | `/tenantext help` | Command table |
-
-IFS is the command name for the decision-server switch. It controls optional next-move requests, not the main model.
 
 Defaults: rules on, guard on.
 
@@ -146,7 +145,7 @@ Print the current block with `/tenantext rules`.
 
 ## The guard
 
-Observed with Pi 0.85.1: the guard relies on these lifecycle behaviors. Not verified on Pi 1.0.3: these lifecycle behaviors.
+Observed with Pi 0.85.1: the guard relies on these lifecycle behaviors. Not verified on the kit pin: these lifecycle behaviors.
 
 - Pi's lifecycle sends no provider request before the first prompt. The footer figure at startup is a local estimate of context size, not spend.
 - Extensions can start a run with `pi.sendUserMessage` (goes through the `input` event with `source: "extension"`) or `pi.sendMessage({triggerTurn: true})`.
@@ -214,7 +213,7 @@ Automatic routes use the optional `litellm-codex` provider. Set `TENANTEXT_LITEL
 Supply `TENANTEXT_LITELLM_API_KEY`, or save a separate gateway API key in Pi's credential storage.
 The supported model IDs are `codex-auto/luna`, `codex-auto/sol`, and `codex-auto/astra`.
 GPT-6 Terra is excluded because ChatGPT Codex rejects `gpt-6-terra` for subscription accounts.
-Each request sends complete active history. The gateway prefers Codex 2 and permits one safe fallback to Codex 1.
+Each request sends complete active history. The gateway applies its own account policy and can fall back once.
 Fallback cannot succeed when both accounts are exhausted.
 See [Codex routing](docs/codex-routing.md) for configuration, explicit account routes, and verification limits.
 
@@ -373,7 +372,7 @@ Unavailable sources remain unknown; tool presence does not prove service health.
 
 The context meter can also show a suggested next move, such as `next: compact 0.99`, from a local decision server. It is off by default; see "Next-move chip" in the context meter guide.
 
-`/tenantext-ifs-enable off` blocks every Tenantext decision-server call and clears the chip. `on` restores them.
+`/tenantext-decisions off` blocks every Tenantext decision-server call and clears the chip. `on` restores them.
 The profile's `tenantext/settings.json` stores this switch.
 The switch is the `decisions` key; the `/tenantext settings` menu lists it as "Decision-server calls".
 A failing endpoint is called at most once per cooldown: 30 s after the first failure, doubling to 10 minutes.
@@ -407,7 +406,7 @@ python3 -m unittest discover -s tracker/tests -t .
 
 The refresh pipeline never calls a model by itself. `prepare` writes a bounded input packet (at most 32 KiB) for a model step in a fresh context, and `apply --synthesis FILE` takes its output.
 When the model step fails, `minimal` builds a brief from scripted facts and labels it as minimal.
-The backend, not the renderer, writes the next-session prompt. A prompt that you edit (`source: owner`) survives refreshes.
+The backend, not the renderer, writes the next-session prompt. A prompt that you edit (`source: requester`) survives refreshes.
 Publication is opt-in. It sends the page to an artifact service with an idempotency key and keeps the edit-token receipt with mode 0600 outside Git.
 A suggested path is a proposal. It never gives permission to deploy, publish or pass an approval gate.
 
@@ -415,7 +414,7 @@ Not verified: writing through the OpenKnowledge project API. The adapter only de
 
 ## Claude Code plugin
 
-`claude-code/` holds a Claude Code plugin that applies the same rule block. Claude Code has no per-turn system prompt hook, so the delivery differs:
+`claude-code/` holds a Claude Code plugin that ships `herdr` and `slopscore-pr` and applies the same rule block. Claude Code has no per-turn system prompt hook, so the delivery differs:
 
 | Pi extension | Claude Code plugin |
 | --- | --- |
@@ -469,15 +468,15 @@ Model tiers. Models are a commodity; only the tier moves the score.
 | Tier | Weight | Models |
 | --- | ---: | --- |
 | T1 frontier top | 1.00 | Fable 5.1, Mythos |
-| T2 frontier | 0.90 | Astra, Opus 5, Opus 4.8 |
-| T3 frontier commodity | 0.80 | Sol, Kimi K3, GLM 5.3, Muse Spark 1.3, Luna, Sonnet 5. Interchangeable |
-| T4 lesser | 0.45 | Terra, Haiku, Sonnet 4.x, Opus 4.x, Qwen 3.6 27B and 35B, Gemini, and other mid models |
+| T2 frontier | 0.90 | `gpt-6-astra`, Opus 5, Opus 4.8 |
+| T3 frontier commodity | 0.80 | `gpt-5.6-sol`, `gpt-6.1-sol`, Kimi K3, GLM 5.3, Muse Spark 1.3, `gpt-5.6-luna`, `gpt-6-luna`, Sonnet 5. Interchangeable |
+| T4 lesser | 0.45 | `gpt-5.6-terra`, `gpt-6-terra`, Haiku, Sonnet 4.x, Opus 4.x, Qwen 3.6 27B and 35B, Gemini, and other mid models |
 | T5 small local | 0.30 | Qwen3 8B fp16 and other 8B class. Valid for researcher or reviewer with proper context |
 | unknown | 0.40 | Anything unmatched. Add a pattern to the config |
 
 Thinking factors: max and xhigh 1.0, high 0.95, medium 0.85, low 0.7, minimal or off 0.6, unknown 0.9.
 
-Effort share = Σ spend × tier weight × thinking factor, divided by Σ spend. Model points = effort share × 20, the "Coordinator model" criterion of the Effort Score. Luna sits in T3 by assumption. Override any tier, price or factor in `~/.pi/agent/slopscore/tiers.json` (or `SLOPSCORE_CONFIG`).
+Effort share = Σ spend × tier weight × thinking factor, divided by Σ spend. Model points = effort share × 20, the "Coordinator model" criterion of the Effort Score. Override any tier, price or factor in `~/.pi/agent/slopscore/tiers.json` (or `SLOPSCORE_CONFIG`). The default patterns hold model ids only; to score a nickname of your setup, add it as a pattern to the `tiers` list of that file, which replaces the default list.
 
 Commands:
 
@@ -564,7 +563,7 @@ Layout:
 | `skills/` | Pi skill resources included with the suite |
 | `tracker/` | Restart brief parser, renderer, refresh pipeline, tests and fixtures |
 | `claude-code/` | Claude Code plugin, see above |
-| `licenses/` | Third-party license texts retained by the Codex quota fork |
+| `licenses/` | Third-party license texts: the Codex quota fork and the adapted coordinator skills |
 
 ## Herdr skill
 
@@ -594,11 +593,14 @@ Layout and names ([`LAYOUT.md`](skills/herdr/LAYOUT.md)):
 - A coordinator handoff starts the next coordinator below the active coordinator pane.
 - An agent name is `<project>-<role>-<n>`, for example `tenantext-scout-2`. The pane label starts with that name.
 
-A role is an order of preference with fallbacks, not a set of limits. Each role prompt starts with "The task has priority". The researcher and the scout are both context gatherers with the same tools; the researcher starts with the web and the scout starts with the local machine. For the web, both prefer Hound MCP, then a desktop browser process if the machine has one, then the other web tools of the harness. `spawn.py` removes no tool unless `--strict` is given, and starts each Claude Code session in the `auto` permission mode.
+A role is an order of preference with fallbacks, not a set of limits. Each role prompt starts with "The task has priority". The researcher and the scout are both context gatherers with the same tools; the researcher starts with the web and the scout starts with the local machine. For the web, both use the web tools of the harness. A machine file can put optional entries before them, for example a search MCP server or a desktop browser skill; `skills/herdr/SPAWN.md` explains the entries. `spawn.py` removes no tool unless `--strict` is given, and starts each Claude Code session in the `auto` permission mode.
 
-The skill stores no model name. The model and the thinking level come from the request; with none, the harness uses its own default.
+The skill ships no model choice. Optional `~/.config/herdr-skill/models.json` supplies defaults per role and harness; `models.example.json` shows the shape.
+`XDG_CONFIG_HOME` replaces `~/.config` when set. A named model skips the file; a requested thinking level wins.
+With no local choice, the harness uses its own default.
 
-Install at user level for both harnesses:
+The Claude Code plugin ships the skill and `/spawn_agent`; plugin users do not need the installer.
+Install at user level for Pi or Claude Code without the plugin:
 
 ```bash
 skills/herdr/install.sh

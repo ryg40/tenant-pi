@@ -42,19 +42,19 @@ class LocalStoreTests(unittest.TestCase):
         rev2 = self.store.write("two\n", rev)
         self.assertNotEqual(rev, rev2)
 
-    def test_owner_edit_after_read_refuses_the_write(self):
+    def test_requester_edit_after_read_refuses_the_write(self):
         rev = self.store.write("base\n", None)
-        self.store.path.write_text("base\nowner edit\n")
+        self.store.path.write_text("base\nrequester edit\n")
         with self.assertRaises(st.ConflictError):
             self.store.write("tool update\n", rev)
-        self.assertEqual(self.store.path.read_text(), "base\nowner edit\n", "owner edit is untouched")
+        self.assertEqual(self.store.path.read_text(), "base\nrequester edit\n", "requester edit is untouched")
 
     def test_store_brief_conflict_keeps_both(self):
         rev = self.store.write("base\n", None)
-        self.store.path.write_text("owner edit\n")
+        self.store.path.write_text("requester edit\n")
         result = st.store_brief(self.store, self.queue, "tool update\n", base_revision=rev)
         self.assertEqual(result["result"], "conflict")
-        self.assertEqual(self.store.path.read_text(), "owner edit\n")
+        self.assertEqual(self.store.path.read_text(), "requester edit\n")
         self.assertEqual(self.queue.text(), "tool update\n")
         self.assertTrue(self.queue.load()["conflict"])
 
@@ -117,13 +117,13 @@ class PendingQueueTests(unittest.TestCase):
         self.assertIsNone(self.queue.load())
         self.assertTrue(list(self.queue.dir.glob("synced-*/brief.md")), "applied briefs are archived, not deleted")
 
-    def test_sync_refuses_when_owner_edited(self):
+    def test_sync_refuses_when_requester_edited(self):
         rev = self.store.write("base\n", None)
         self.queue.enqueue("new\n", base_revision=rev, location="brief.md", reason="down")
-        self.store.path.write_text("owner edit\n")
+        self.store.path.write_text("requester edit\n")
         result = self.queue.sync(self.store)
         self.assertEqual(result["result"], "conflict")
-        self.assertEqual(self.store.path.read_text(), "owner edit\n")
+        self.assertEqual(self.store.path.read_text(), "requester edit\n")
         self.assertEqual(self.queue.text(), "new\n")
         self.assertTrue(self.queue.load()["conflict"])
 
@@ -171,7 +171,7 @@ class FragmentTests(unittest.TestCase):
             self.assertIn(needle, str(ctx.exception))
             self.assertIn("line", str(ctx.exception))
 
-    def test_lenient_mode_skips_owner_code_blocks(self):
+    def test_lenient_mode_skips_requester_code_blocks(self):
         text = "prose\n```sh\nnpm test\n```\n```gate\nid: g\nkind: allowed\ntext: t\n```\n"
         frag = st.parse_fragment(text, strict=False)
         self.assertEqual([t for t, _, _ in frag["records"]], ["gate"])
@@ -223,7 +223,7 @@ def base_model():
         "unknowns": [{"id": "unk-a", "kind": "missing", "severity": "normal", "text": "Unknown A."}],
         "paths": [{"id": "path-a", "title": "Path A", "role": "recommended"}],
         "evidence": [{"id": "ev-a", "label": "A", "kind": "note", "ref": "note", "confidence": "reported"}],
-        "notes": {"Where things stand": ["Owner note: keep it short."]},
+        "notes": {"Where things stand": ["Requester note: keep it short."]},
     }
 
 
@@ -254,19 +254,19 @@ class MergeTests(unittest.TestCase):
     def test_paths_replace_leading_roles_and_keep_backlog(self):
         base = base_model()
         base["paths"] = [{"id": "path-a", "role": "recommended"}, {"id": "path-b", "role": "alternative"},
-                         {"id": "path-owner", "role": "backlog"}]
+                         {"id": "path-requester", "role": "backlog"}]
         frag = st.parse_fragment("```path\nid: path-new\ntitle: New\nrole: recommended\n```\n")
         merged = st.merge_update(base, frag)
-        self.assertEqual([p["id"] for p in merged["paths"]], ["path-new", "path-owner"])
+        self.assertEqual([p["id"] for p in merged["paths"]], ["path-new", "path-requester"])
         frag = st.parse_fragment("```path\nid: path-extra\ntitle: Extra\nrole: backlog\n```\n")
         merged = st.merge_update(base, frag)
-        self.assertEqual([p["id"] for p in merged["paths"]], ["path-a", "path-b", "path-owner", "path-extra"],
+        self.assertEqual([p["id"] for p in merged["paths"]], ["path-a", "path-b", "path-requester", "path-extra"],
                          "a backlog-only update keeps the recommended and alternative paths")
         frag = st.parse_fragment("```path\nid: path-a\ntitle: A\nrole: backlog\n```\n"
                                  "```path\nid: path-b\ntitle: B\nrole: recommended\n```\n")
         merged = st.merge_update(base, frag)
         self.assertEqual([(p["id"], p["role"]) for p in merged["paths"]],
-                         [("path-b", "recommended"), ("path-a", "backlog"), ("path-owner", "backlog")])
+                         [("path-b", "recommended"), ("path-a", "backlog"), ("path-requester", "backlog")])
 
     def test_issue_merge_and_retire(self):
         frag = st.parse_fragment("```issue\nid: 3\ntitle: T\nstate: open\nprogress: merged\nurl: %s/issues/3\n"
@@ -280,8 +280,8 @@ class MergeTests(unittest.TestCase):
 
     def test_fragment_handoffs_are_ignored_by_the_merge(self):
         base = base_model()
-        base["handoffs"] = [{"id": "handoff-path-a", "path": "path-a", "source": "owner",
-                             "generated": "2026-09-01T00:00:00Z", "basis": "current", "text": "Owner."}]
+        base["handoffs"] = [{"id": "handoff-path-a", "path": "path-a", "source": "requester",
+                             "generated": "2026-09-01T00:00:00Z", "basis": "current", "text": "Requester."}]
         frag = st.parse_fragment("```handoff\nid: handoff-x\npath: path-a\nsource: generated\n"
                                  "generated: 2026-09-02T00:00:00Z\nbasis: current\ntext: |\n  Model text.\n```\n")
         self.assertEqual(st.merge_update(base, frag)["handoffs"], base["handoffs"])
@@ -329,15 +329,15 @@ class MergeTests(unittest.TestCase):
         self.assertEqual(by_id["ev-issue-3"]["ref"], S.REPO_URL + "/issues/3", "facts replace model-typed links")
 
     @unittest.skipUnless(HAS_BRIEF, "needs tracker.brief")
-    def test_owner_notes_survive_byte_for_byte(self):
+    def test_requester_notes_survive_byte_for_byte(self):
         from tracker import brief
         text = S.previous_brief("abc1234", "2026-09-01T00:00:00Z")
         model = brief.parse(text)
         frag = st.parse_fragment("```position\nid: pos-main\ntext: New position.\nstatus: verified\n```\n")
         out = brief.dump(st.merge_update(model, frag))
-        for note in ("Owner note: keep this brief short. Long history belongs in the issue tracker.",
-                     "Owner note: the owner reviews every publication.",
-                     "Owner note: evidence links point at the placeholder host."):
+        for note in ("Requester note: keep this brief short. Long history belongs in the issue tracker.",
+                     "Requester note: the requester reviews every publication.",
+                     "Requester note: evidence links point at the placeholder host."):
             self.assertIn(note, out)
         self.assertEqual(brief.parse(out)["notes"], model["notes"])
         self.assertEqual(brief.parse(out)["paths"], model["paths"], "unchanged sections are not regenerated")

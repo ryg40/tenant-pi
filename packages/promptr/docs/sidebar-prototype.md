@@ -24,13 +24,13 @@ It changes the Promptr surface, not the orchestration architecture.
 ## Try it in isolation
 
 ```bash
-cd extension
+cd packages/promptr
 npm ci && npm run build
 bash scripts/preview-sidebar.sh              # fullscreen; add --tui-mode regular to compare
 ```
 
 - The preview uses `~/.local/state/promptr-sidebar-preview` as its Pi agent directory (`PROMPTR_PREVIEW_AGENT_DIR` selects another). That directory holds the preview's own settings, notebook and queue.
-- It loads the Tenantext footer when a checkout is found (`../tenantext` or `<stack-dir>/tenantext` when `PROMPTR_STACK_DIR=<stack-dir>` is set). `PROMPTR_PREVIEW_FOOTER=<path>` selects another footer; `none` runs stock Pi. The footer's quota row needs its normal account providers, which the preview does not load.
+- It loads the Tenantext footer when a checkout is found (`<stack-dir>/tenantext` when `PROMPTR_STACK_DIR=<stack-dir>` is set, else `packages/tenantext` beside this package). It also falls back to `packages/tenantext` when `<stack-dir>` is set but has no footer. `PROMPTR_PREVIEW_FOOTER=<path>` selects another footer; `none` runs stock Pi. The footer's quota row needs its normal account providers, which the preview does not load.
 - If Pi asks whether to trust the project, choose session-only trust or dismiss it.
 - Do not submit a real prompt during a UI trial. Start a new Pi process after each rebuild: `/reload` can keep cached compiled modules.
 
@@ -91,7 +91,7 @@ Default order, all shown: Agent, Activity, Tasks, Notebook, Queue, Draft, Alerts
 
 ## Known limits
 
-- Built and tested on Pi 1.0.2. The sidebar uses private Pi renderer adapters; a start on 1.0.2 shows the sidebar, a session with a model is not verified there, and other Pi lines are untested.
+- Built and tested with the Pi 1.0.4 dependencies. The sidebar uses private Pi renderer adapters. A start on 1.0.2 showed the sidebar. A package load or a session with a model on 1.0.4 is not verified.
 - A persistent overlay from another extension keeps the sidebar waiting and blocks panels/usage until it closes.
 - Pi refuses a regular/fullscreen switch while any overlay is shown, including the sidebar. Hide the sidebar (`/promptr off`), switch, then show it again.
 - A contributed panel taller than the sidebar is truncated; its lower rows cannot be reached. Very short terminals can leave room for only a panel header.

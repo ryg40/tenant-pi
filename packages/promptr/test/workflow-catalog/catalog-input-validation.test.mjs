@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { expandWorkflow, serializeWorkflow } from '../../dist/src/workflow/catalog.mjs';
 
-const GOOD = { template: 'openai-codex-medium', provider: 'openai-codex', readiness: 'ready' };
+const GOOD = { template: 'worker-medium', provider: 'default-provider', readiness: 'ready' };
 
 function failure(input) {
  const result = expandWorkflow(input);
@@ -15,7 +15,7 @@ function failure(input) {
 // The caller is a TUI reading an untrusted selection, so the types are a
 // convenience, not a guarantee: these all arrive at runtime.
 test('a non-object input is rejected rather than throwing', () => {
- for (const input of [undefined, null, 'openai-codex-simple', 42, [], () => GOOD]) {
+ for (const input of [undefined, null, 'worker-simple', 42, [], () => GOOD]) {
   assert.match(failure(input), /must be an object|must be a string/);
  }
 });
@@ -26,13 +26,13 @@ test('a missing or non-string template or provider is rejected', () => {
 });
 
 test('an unknown workflow or provider is rejected and lists what is known', () => {
- const template = failure({ ...GOOD, template: 'openai-codex-ultra' });
- assert.match(template, /unknown workflow 'openai-codex-ultra'/);
- assert.match(template, /openai-codex-simple, openai-codex-medium, openai-codex-high, openai-claude-simple, openai-claude/);
+ const template = failure({ ...GOOD, template: 'worker-ultra' });
+ assert.match(template, /unknown workflow 'worker-ultra'/);
+ assert.match(template, /worker-simple, worker-medium, worker-high, reviewer-simple, reviewer/);
 
- const provider = failure({ ...GOOD, provider: 'anthropic' });
- assert.match(provider, /unknown provider 'anthropic'/);
- assert.match(provider, /openai-codex, openai-codex-2/);
+ const provider = failure({ ...GOOD, provider: 'second-provider' });
+ assert.match(provider, /unknown provider 'second-provider'/);
+ assert.match(provider, /Known providers: default-provider\./);
 });
 
 test('an unknown execution mode is rejected; omitted means pi-subagents', () => {
@@ -54,8 +54,8 @@ test('an unknown readiness value is rejected instead of being treated as ready',
 });
 
 test('a workflow id is not matched case-insensitively or with surrounding space', () => {
- assert.match(failure({ ...GOOD, template: 'OpenAI-Codex-Medium' }), /unknown workflow/);
- assert.match(failure({ ...GOOD, template: ' openai-codex-medium ' }), /unknown workflow/);
+ assert.match(failure({ ...GOOD, template: 'Worker-Medium' }), /unknown workflow/);
+ assert.match(failure({ ...GOOD, template: ' worker-medium ' }), /unknown workflow/);
 });
 
 test('serializeWorkflow refuses a malformed expansion rather than emitting a half packet', () => {

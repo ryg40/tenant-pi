@@ -8,7 +8,7 @@ import json
 import shlex
 
 # Only the pure grammar of the runtime check is used here; this module starts no process.
-from scripts.check_runtime import STATUSES, TOOLS, in_range, parse_range, parse_version
+from scripts.check_runtime import STATUSES, TOOLS, in_range, parse_range, parse_version, pi_status
 from scripts.memory_modules import MEMORY, render_memory
 from scripts.model_routes import BASE_NAME, KEY_NAME, render
 from scripts.validate import ENV, OWNER_RESOURCES, ROLE_NAMES, ROOT, fail, fields, manifest, npm_name, overlay
@@ -22,15 +22,26 @@ RUNTIME_GAPS = {
     "node_runtime_unverified": ("node", {"mismatch": "node_runtime_mismatch", "missing": "node_runtime_missing",
                                          "unparsed": "node_runtime_unparsed"}),
     "core_runtime_unverified": ("pi", {"mismatch": "core_runtime_mismatch", "missing": "core_runtime_missing",
-                                       "unparsed": "core_runtime_unparsed"}),
+                                       "unparsed": "core_runtime_unparsed",
+                                       "untested_in_range": "core_runtime_untested_in_range"}),
 }
 # The mark of the global Pi install line for each Pi status of the report; no report is `None`.
 PI_INSTALL = {None: "installed_version_unknown", "unparsed": "installed_version_unknown", "missing": "needed",
-              "match": "not_needed", "mismatch": "replaces_installed"}
+              "match": "not_needed", "untested_in_range": "not_needed", "mismatch": "replaces_installed"}
 # With these marks the line is not a default step, so it leaves the setup lines.
 PI_INSTALL_NOT_DEFAULT = ("not_needed", "replaces_installed")
 # One `pi` command serves every profile of the user; a global install changes it for all of them.
 GLOBAL_INSTALL_WARNING = "global_install_replaces_pi_for_all_profiles"
+UNTESTED_PI_FACT = "The installed Pi is accepted by the range rule. The kit tests ran on the tested version only."
+# Common names of provider key variables and of the variables that redirect or authorize a provider.
+# The list is not complete: Pi can read a name that is not here.
+PROVIDER_KEY_NAMES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "AZURE_OPENAI_API_KEY",
+                      "DEEPSEEK_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
+                      "OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENROUTER_API_KEY", "XAI_API_KEY", "ZAI_API_KEY")
+PROVIDER_KEY_WARNING = "provider_key_in_launching_environment"
+PROVIDER_KEY_FACT = ("Pi reads a provider key from the environment of the launching shell, including in a profile with "
+                     "no login. A model reply can come from a provider that you did not choose.")
+PROVIDER_KEY_REMEDY = "Name the model on the launch line: --model '<provider>/<model>'"
 
 
 def _package_source(source):
@@ -153,6 +164,8 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
         identity = _package_identity(source)
         package = _package_source(source)
         resources = copy.deepcopy(component["resources"])
+        if memory is not None and cid in MEMORY and source["kind"] == "tree":
+            continue  # The vendored memory package: declared below in the memory render order, with its gaps.
         if source["kind"] == "tree":
             # Components of one in-tree package share one declaration; each adds only its own filter.
             entry = tree_packages.get(identity)
@@ -237,13 +250,19 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
         for path in overlay_data.get("ownerResources", {}).get(kind, []):
             settings.setdefault(kind, []).append(path)
             gaps.append({"code": "owner_resource_unqualified", "subject": kind + ":" + path})
-    if memory is not None or mcp is not None:
+    # The npm memory modules. The vendored OpenViking package is a path inside the kit: Pi installs
+    # nothing for it, and it lists no host module as a dependency.
+    npm_memory = any(components[cid]["source"]["kind"] == "npm" for cid in enabled & set(MEMORY))
+    if npm_memory or mcp is not None:
         # Pi reconciles declared packages with `pi update --extensions` (packages.md).
         setup.append("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " pi update --extensions")
-    if memory is not None:
+    if npm_memory:
         # The peer override corrects host-provided `dependencies` in the installed memory manifests;
         # the adapter lists none, so the mcp module alone needs no override.
         setup.append("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " node scripts/patch_extension_peers.mjs")
+    if "openviking" in enabled:
+        # The one dependency of the vendored package is not in the tree (manifest gap `install_step_required`).
+        setup.append("npm --prefix " + shlex.quote(_package_source(components["openviking"]["source"])) + " ci --ignore-scripts")
     if route and overlay_data["modelRoutes"]["gateway"] is not None:
         base = next(item["instruction"] for item in route["setup"] if item["kind"] == "process_environment")
         launch = base + " " + launch
@@ -272,23 +291,31 @@ def runtime_report(data, runtime):
     for key, _, field in TOOLS:
         at = "runtime_report." + key
         entry = data[key]
-        fields(entry, ("installed", "required", "status"), [], at)
+        fields(entry, ("installed", "required", "status", "tested", "acceptedRange") if key == "pi" else
+               ("installed", "required", "status"), [], at)
         if type(entry["required"]) is not str or entry["required"] != runtime[field]:
             fail("runtime_report_required", at + ".required")
+        if key == "pi":
+            for name, value in (("tested", runtime["piVersion"]), ("acceptedRange", runtime["piAcceptedRange"])):
+                if type(entry[name]) is not str or entry[name] != value:
+                    fail("runtime_report_required", at + "." + name)
         status, installed = entry["status"], entry["installed"]
-        if type(status) is not str or status not in STATUSES:
+        if type(status) is not str or status not in STATUSES or (key != "pi" and status == "untested_in_range"):
             fail("runtime_report_status", at + ".status")
+        version_statuses = ("match", "untested_in_range", "mismatch")
         if installed is None:
-            if status in ("match", "mismatch"):
+            if status in version_statuses:
                 fail("runtime_report_installed", at + ".installed")
             continue
         found = parse_version(installed.encode("ascii")) if type(installed) is str and installed.isascii() else None
         # The text is the version token itself: no name, no `v`, no space, no second line.
-        if status not in ("match", "mismatch") or found is None or found[0] != installed:
+        if status not in version_statuses or found is None or found[0] != installed:
             fail("runtime_report_installed", at + ".installed")
-        matched = (installed == runtime[field] if key == "pi" else
-                   in_range(found[1], parse_range(runtime[field], "manifest.runtime." + field), found[2]))
-        if matched != (status == "match"):
+        expected = (pi_status(found, runtime, parse_range(runtime["piAcceptedRange"],
+                                                        "manifest.runtime.piAcceptedRange")) if key == "pi" else
+                    "match" if in_range(found[1], parse_range(runtime[field], "manifest.runtime." + field), found[2])
+                    else "mismatch")
+        if expected != status:
             fail("runtime_report_status", at + ".status")
     return data
 
@@ -313,6 +340,8 @@ def readiness(plan, *, report=None, generated=False):
                 continue
             gap = {"code": codes[entry["status"]], "subject": gap["subject"],
                    "installed": entry["installed"], "required": entry["required"]}
+            if entry["status"] == "untested_in_range":
+                gap.update(tested=entry["tested"], acceptedRange=entry["acceptedRange"], fact=UNTESTED_PI_FACT)
         gaps.append(gap)
     return {"readinessGaps": gaps, "runtimeReady": False}
 
@@ -326,8 +355,8 @@ def _version_order(token):
 def setup_commands(plan, report=None):
     """The setup lines of a plan and the mark of the global Pi install line. The plan does not change.
 
-    `report` is a validated `check-runtime` report, or None. With a `match` the line is not needed.
-    With a `mismatch` the line replaces the installed Pi, so it is not a default step: both cases
+    `report` is a validated `check-runtime` report, or None. A tested or accepted Pi needs no install.
+    With a `mismatch` the line replaces the installed Pi, so it is not a default step: these cases
     remove it from the setup lines. `piInstall` always shows the line with its mark and the warning.
     """
     manifest_data = plan["files"][".tenant-pi/choices.json"]["content"]["manifest"]
@@ -344,3 +373,15 @@ def setup_commands(plan, report=None):
     return {"setup": lines,
             "piInstall": {"command": command, "status": status, "installed": entry["installed"], "required": required,
                           "change": change, "warning": GLOBAL_INSTALL_WARNING}}
+
+
+def provider_key_warning(names):
+    """The warning for the known provider key variables among `names`, or None when none is there.
+
+    `names` holds the names of the variables that are set where the plan runs. The caller gives names only:
+    no value reaches this function, and the warning holds none.
+    """
+    found = [name for name in PROVIDER_KEY_NAMES if name in names]
+    if not found:
+        return None
+    return {"code": PROVIDER_KEY_WARNING, "variables": found, "fact": PROVIDER_KEY_FACT, "remedy": PROVIDER_KEY_REMEDY}

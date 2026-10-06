@@ -1,0 +1,30 @@
+{
+  "id": "cli:agent:get",
+  "result": {
+    "agent": {
+      "agent": "pi",
+      "agent_session": {
+        "agent": "pi",
+        "kind": "path",
+        "source": "herdr:pi",
+        "value": "/sessions/role.jsonl"
+      },
+      "agent_status": "working",
+      "cwd": "/project",
+      "focused": false,
+      "foreground_cwd": "/project",
+      "interactive_ready": true,
+      "name": "example-worker",
+      "pane_id": "wA:p2",
+      "revision": 1,
+      "screen_detection_skipped": true,
+      "state_change_seq": 10,
+      "tab_id": "wA:t2",
+      "terminal_id": "term_example",
+      "terminal_title": "Pi - example",
+      "terminal_title_stripped": "Pi - example",
+      "workspace_id": "wA"
+    },
+    "type": "agent_info"
+  }
+}

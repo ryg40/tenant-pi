@@ -172,7 +172,7 @@ export function checkExpansion(expansion: WorkflowExpansion, capabilities: reado
   }));
 }
 
-/** One line per role: `ok           worker      github-copilot/gpt-5.6-sol:medium via pi`. */
+/** One line per role: `ok           worker      example-provider/example-model:medium via pi`. */
 export function describeRoleChecks(checks: readonly RoleCheck[]): string[] {
   return checks.map((check) => {
     const label = `${check.provider}/${check.model}:${check.thinking} via ${check.route}`;

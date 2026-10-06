@@ -7,8 +7,8 @@
  * - Pure functions only. No process/env, filesystem, network, child
  *   processes or Pi APIs. Expanding a workflow launches nothing and
  *   sends nothing; it describes a prompt template.
- * - Provider/model/thinking values are *static candidates* taken from
- *   provider source. They are not runtime auth qualification, so
+ * - Provider/model/thinking values are *static candidates* with neutral
+ *   names. They are not runtime auth qualification, so
  *   every expansion carries an explicit "runtime unverified" warning.
  * - Runtime availability is a separate, explicit step:
  *   `validateWorkflowCapabilities`. A missing capability list is a
@@ -127,13 +127,16 @@ export function isQuotaFallbackInstruction(line: string): boolean {
   return line.startsWith(QUOTA_FALLBACK_PREFIX);
 }
 
-/** Static candidates taken from provider source, not availability. */
-const MODEL_SOL = "gpt-5.6-sol";
-const MODEL_LUNA = "gpt-5.6-luna";
-const MODEL_ASTRA = "gpt-6-astra";
-const CLAUDE_PROVIDER = "anthropic";
-const CLAUDE_WORKER_MODEL = "claude-opus-5";
-const CLAUDE_REVIEWER_MODEL = "claude-sonnet-5";
+/**
+ * Neutral tier names, not model IDs of a provider. A local override file
+ * replaces them with the exact IDs the target machine lists.
+ */
+const MODEL_STANDARD = "standard-model";
+const MODEL_LIGHT = "light-model";
+const MODEL_LARGE = "large-model";
+const CLAUDE_PROVIDER = "claude";
+const CLAUDE_WORKER_MODEL = "claude-large-model";
+const CLAUDE_REVIEWER_MODEL = "claude-standard-model";
 
 /** Role order is stable everywhere: preview, serialization and packets. */
 const ROLE_ORDER: readonly WorkflowRoleName[] = [
@@ -146,20 +149,15 @@ const DEFAULT_EXECUTION: WorkflowExecution = "pi-subagents";
 
 const PROVIDERS: readonly WorkflowChoice[] = [
   {
-    id: "openai-codex",
-    label: "openai-codex",
-    description: "Primary OpenAI provider for every OpenAI role, including the generator.",
-  },
-  {
-    id: "openai-codex-2",
-    label: "openai-codex-2",
-    description: "Second OpenAI provider (its own custom extension) for every OpenAI role.",
+    id: "default-provider",
+    label: "default-provider",
+    description: "Neutral provider for every Pi-route role, including the generator. A local override names the real provider.",
   },
 ];
 
 /**
- * A role slot before the OpenAI provider is bound. Claude slots carry
- * their own provider and never redirect through the OpenAI selection.
+ * A role slot before the selected provider is bound. Claude slots carry
+ * their own provider and never redirect through the selection.
  */
 interface RoleSpec {
   readonly role: WorkflowRoleName;
@@ -187,69 +185,69 @@ function claude(role: WorkflowRoleName, model: string, thinking: WorkflowThinkin
 
 /** Evidence stages are identical across templates; only the tiers move. */
 const EVIDENCE_ROLES: readonly RoleSpec[] = [
-  pi("scout", MODEL_LUNA, "xhigh"),
-  pi("researcher", MODEL_LUNA, "xhigh"),
+  pi("scout", MODEL_LIGHT, "xhigh"),
+  pi("researcher", MODEL_LIGHT, "xhigh"),
 ];
 
-/** The generator is fixed: selected OpenAI provider, Sol medium, Pi route. */
-const GENERATOR_ROLE: RoleSpec = pi("generator", MODEL_SOL, "medium");
+/** The generator is fixed: selected provider, standard model at medium, Pi route. */
+const GENERATOR_ROLE: RoleSpec = pi("generator", MODEL_STANDARD, "medium");
 
 const TEMPLATES: readonly TemplateSpec[] = [
   {
-    id: "openai-codex-simple",
-    label: "OpenAI Codex — simple",
-    description: "Well-developed Wayfinder task. Sol xhigh coordinator, Sol medium worker.",
+    id: "worker-simple",
+    label: "Pi roles: simple",
+    description: "Well-developed Wayfinder task. Standard-model coordinator at xhigh, standard-model worker at medium.",
     requiresResolvedDesign: true,
     roles: [
-      pi("coordinator", MODEL_SOL, "xhigh"),
+      pi("coordinator", MODEL_STANDARD, "xhigh"),
       ...EVIDENCE_ROLES,
-      pi("worker", MODEL_SOL, "medium"),
-      pi("reviewer", MODEL_LUNA, "xhigh"),
+      pi("worker", MODEL_STANDARD, "medium"),
+      pi("reviewer", MODEL_LIGHT, "xhigh"),
     ],
   },
   {
-    id: "openai-codex-medium",
-    label: "OpenAI Codex — medium",
-    description: "Astra low coordinator for design work, Sol medium worker.",
+    id: "worker-medium",
+    label: "Pi roles: medium",
+    description: "Large-model coordinator at low for design work, standard-model worker at medium.",
     requiresResolvedDesign: false,
     roles: [
-      pi("coordinator", MODEL_ASTRA, "low"),
+      pi("coordinator", MODEL_LARGE, "low"),
       ...EVIDENCE_ROLES,
-      pi("worker", MODEL_SOL, "medium"),
-      pi("reviewer", MODEL_LUNA, "xhigh"),
+      pi("worker", MODEL_STANDARD, "medium"),
+      pi("reviewer", MODEL_LIGHT, "xhigh"),
     ],
   },
   {
-    id: "openai-codex-high",
-    label: "OpenAI Codex — high",
-    description: "Astra medium coordinator and Astra low worker for harder design.",
+    id: "worker-high",
+    label: "Pi roles: high",
+    description: "Large-model coordinator at medium and large-model worker at low for harder design.",
     requiresResolvedDesign: false,
     roles: [
-      pi("coordinator", MODEL_ASTRA, "medium"),
+      pi("coordinator", MODEL_LARGE, "medium"),
       ...EVIDENCE_ROLES,
-      pi("worker", MODEL_ASTRA, "low"),
-      pi("reviewer", MODEL_LUNA, "xhigh"),
+      pi("worker", MODEL_LARGE, "low"),
+      pi("reviewer", MODEL_LIGHT, "xhigh"),
     ],
   },
   {
-    id: "openai-claude-simple",
-    label: "OpenAI Codex + Claude — simple",
-    description: "Well-developed Wayfinder task. Sol xhigh coordinator; Claude Opus 5 worker and Claude Sonnet 5 reviewer via Herdr.",
+    id: "reviewer-simple",
+    label: "Claude worker and reviewer: simple",
+    description: "Well-developed Wayfinder task. Standard-model coordinator at xhigh; Claude worker and Claude reviewer via Herdr.",
     requiresResolvedDesign: true,
     roles: [
-      pi("coordinator", MODEL_SOL, "xhigh"),
+      pi("coordinator", MODEL_STANDARD, "xhigh"),
       ...EVIDENCE_ROLES,
       claude("worker", CLAUDE_WORKER_MODEL, "high"),
       claude("reviewer", CLAUDE_REVIEWER_MODEL, "high"),
     ],
   },
   {
-    id: "openai-claude",
-    label: "OpenAI Codex + Claude",
-    description: "Astra low coordinator; Claude Opus 5 worker and Claude Sonnet 5 reviewer via Herdr.",
+    id: "reviewer",
+    label: "Claude worker and reviewer",
+    description: "Large-model coordinator at low; Claude worker and Claude reviewer via Herdr.",
     requiresResolvedDesign: false,
     roles: [
-      pi("coordinator", MODEL_ASTRA, "low"),
+      pi("coordinator", MODEL_LARGE, "low"),
       ...EVIDENCE_ROLES,
       claude("worker", CLAUDE_WORKER_MODEL, "high"),
       claude("reviewer", CLAUDE_REVIEWER_MODEL, "high"),
@@ -282,7 +280,7 @@ const HERDR_NATIVE_INSTRUCTIONS: readonly string[] = [
 ];
 
 const PI_ONLY_INSTRUCTION =
-  "Every role runs as a Pi session on the selected OpenAI provider.";
+  "Every role runs as a Pi session on the selected provider.";
 const HERDR_CLAUDE_INSTRUCTION =
   "Claude worker and reviewer run through Herdr; their Claude permissions stay independently controlled and are not granted by this workflow.";
 
@@ -342,7 +340,7 @@ function bindRole(spec: RoleSpec, providerId: string): WorkflowRole {
  * Expand a template + provider + readiness into an inert role plan.
  *
  * Readiness is a caller-supplied fact, not something this module guesses.
- * `openai-codex-simple` refuses an unresolved design outright — silently
+ * `worker-simple` refuses an unresolved design outright — silently
  * promoting the task to a heavier template would hide the decision.
  */
 export function expandWorkflow(input: WorkflowInput): WorkflowResult {
@@ -377,7 +375,7 @@ export function expandWorkflow(input: WorkflowInput): WorkflowResult {
   if (template.requiresResolvedDesign && readiness === "unresolved-design") {
     return fail(
       `${template.id} is for well-developed tasks only, but this task's design is unresolved. `
-      + "Resolve the design first or choose openai-codex-medium, openai-codex-high or openai-claude. "
+      + "Resolve the design first or choose worker-medium, worker-high or reviewer. "
       + "No template is substituted automatically.",
     );
   }

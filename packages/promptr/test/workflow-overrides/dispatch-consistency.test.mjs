@@ -21,7 +21,7 @@ const COPILOT_CONFIG = {
  providers: ['github-copilot'],
  defaultProvider: 'github-copilot',
  workflows: {
-  'openai-codex-simple': {
+  'worker-simple': {
    label: 'Copilot - simple',
    roles: {
     coordinator: { model: 'copilot-big', thinking: 'high' },
@@ -39,7 +39,7 @@ function copilotExpansion() {
  const parsed = parseWorkflowConfig(COPILOT_CONFIG);
  const built = createConfiguredCatalog(catalogPort, parsed.value, { source: '/tmp/workflows.json' });
  const result = built.catalog.expandWorkflow({
-  template: 'openai-codex-simple', provider: 'github-copilot', readiness: 'ready',
+  template: 'worker-simple', provider: 'github-copilot', readiness: 'ready',
  });
  assert.equal(result.ok, true, result.ok ? '' : result.error);
  return result.value;
@@ -109,18 +109,15 @@ test('the packet freezes the effective expansion; preview, draft and generator a
   assert.ok(draft.includes(`${role.provider}/${role.model}`),
    `draft must show ${role.role} as ${role.provider}/${role.model}`);
  }
- // The template ID still reads `openai-codex-simple`; what must not appear is
+ // The template ID still reads `worker-simple`; what must not appear is
  // a role bound to that provider once the override moved it.
- assert.ok(!draft.includes('openai-codex/'), 'draft must not bind a role to the replaced provider');
- assert.ok(!draft.includes('anthropic/'), 'the simple template has no Claude role to keep');
+ assert.ok(!draft.includes('default-provider/'), 'draft must not bind a role to the replaced provider');
+ assert.ok(!draft.includes('claude/'), 'the simple template has no Claude role to keep');
  assert.equal(runtimeLabel(runtime), 'github-copilot/copilot-mid:medium');
 });
 
-test('a Copilot generator never requires the second OpenAI account extension', () => {
- assert.deepEqual(requiredExtensions('github-copilot', '/agent'), ['/agent/extensions/herdr-agent-state.ts']);
- assert.deepEqual(requiredExtensions('openai-codex', '/agent'), ['/agent/extensions/herdr-agent-state.ts']);
- assert.deepEqual(requiredExtensions('openai-codex-2', '/agent'),
-  ['/agent/extensions/herdr-agent-state.ts', '/agent/extensions/openai-codex-2.ts']);
+test('a generator requires the Herdr state extension and no provider extension', () => {
+ assert.deepEqual(requiredExtensions('/agent'), ['/agent/extensions/herdr-agent-state.ts']);
 });
 
 test('frozen configured expansion still requires a probe after override deletion', async () => {
@@ -133,15 +130,20 @@ test('frozen configured expansion still requires a probe after override deletion
  assert.deepEqual(h.calls, []);
 });
 
-test('shipped defaults retain legacy no-probe dispatch', async () => {
- const workflow = catalogPort.expandWorkflow({ template: 'openai-codex-simple', provider: 'openai-codex', readiness: 'ready' }).value;
+test('shipped defaults without an override file stop before any call and name the init command', async () => {
+ // The provider id comes from the shipped catalog, so the gate follows a rename.
+ const provider = catalogPort.listProviders()[0].id;
+ const workflow = catalogPort.expandWorkflow({ template: 'worker-simple', provider, readiness: 'ready' }).value;
  const h = harness({ workflow });
- assert.equal((await h.run()).ok, true);
+ const result = await h.run();
+ assert.equal(result.ok, false);
+ assert.match(result.reason, /no workflow override file; run promptr-workflows-init/);
+ assert.deepEqual(h.calls, [], 'no tab, agent or prompt call may be made');
 });
 
 test('a probe that does not cover the effective runtime blocks dispatch before any call', async () => {
  const probe = JSON.stringify([
-  { provider: 'openai-codex', model: 'gpt-5.6-sol', thinking: ['medium'], route: 'pi' },
+  { provider: 'default-provider', model: 'standard-model', thinking: ['medium'], route: 'pi' },
  ]);
  const h = harness({
   workflow: copilotExpansion(),

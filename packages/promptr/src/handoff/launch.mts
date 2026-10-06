@@ -8,7 +8,7 @@
  * registration lag), submit the successor prompt exactly once. An uncertain
  * prompt outcome is reported as such and never retried.
  */
-import { parseAgent, parseTabCreate } from "../generate/launch.mts";
+import { parseAgent, parseTabCreate, matchesAgentIdentity, buildTabCreateArgs, buildInteractiveStartArgs, buildPromptArgs } from "../herdr/adapter.mts";
 import { isHerdrPaneInWorkspace, isHerdrWorkspaceId } from "../herdr/identity.mts";
 import { herdrRoleNameFromList } from "../herdr/naming.mts";
 import {
@@ -45,21 +45,9 @@ export type HandoffLaunchResult =
 const READY_TIMEOUT_MS = 60_000;
 const READY_POLL_MS = 2_000;
 
-export function buildHandoffTabArgs(workspace: string, cwd: string, label: string): string[] {
-  return ["tab", "create", "--workspace", workspace, "--cwd", cwd, "--label", label, "--no-focus"];
-}
-
-/** Full interactive Coordinator peer: no extension, skill or tool restrictions. */
-export function buildHandoffAgentStartArgs(name: string, pane: string, runtime: HandoffRuntime): string[] {
-  return [
-    "agent", "start", name, "--kind", "pi", "--pane", pane, "--timeout", "60000",
-    "--", "--provider", runtime.provider, "--model", runtime.model, "--thinking", runtime.thinking,
-  ];
-}
-
-export function buildHandoffPromptArgs(pane: string, message: string): string[] {
-  return ["agent", "prompt", pane, message, "--wait", "--until", "working", "--timeout", "10000"];
-}
+export const buildHandoffTabArgs = buildTabCreateArgs;
+export const buildHandoffAgentStartArgs = buildInteractiveStartArgs;
+export const buildHandoffPromptArgs = buildPromptArgs;
 
 function isReadyStatus(status: unknown): boolean {
   return status === "idle" || status === "done";
@@ -81,12 +69,10 @@ export async function launchHandoffSuccessor(input: HandoffLaunchInput, deps: Ha
   for (;;) {
     let source;
     try { source = parseAgent(await deps.exec(["agent", "get", sourcePane])); } catch { source = undefined; }
-    if (!source || source.agent !== "pi" || source.pane_id !== sourcePane
-      || source.cwd !== input.cwd || source.foreground_cwd !== input.cwd
-      || source.agent_session?.kind !== "path" || source.agent_session?.value !== input.sessionFile) {
+    if (!matchesAgentIdentity(source, { pane: sourcePane, cwd: input.cwd, foreground: true, session: input.sessionFile })) {
       return { ok: false, stage: "source", reason: "source Pi identity could not be verified" };
     }
-    if (isReadyStatus(source.agent_status)) break;
+    if (isReadyStatus(source?.agent_status)) break;
     if (deps.now().getTime() >= sourceDeadline) {
       return { ok: false, stage: "source", reason: "source Pi did not become idle; handoff saved, nothing launched" };
     }
@@ -113,9 +99,8 @@ export async function launchHandoffSuccessor(input: HandoffLaunchInput, deps: Ha
     let out = "";
     try { out = await deps.exec(["agent", "get", pane]); } catch { out = ""; }
     const agent = parseAgent(out);
-    if (agent && agent.agent === "pi" && agent.pane_id === pane && agent.cwd === input.cwd
-      && agent.foreground_cwd === input.cwd && agent.agent_session?.kind === "path"
-      && typeof agent.agent_session.value === "string" && isReadyStatus(agent.agent_status)) {
+    if (matchesAgentIdentity(agent, { pane, cwd: input.cwd, foreground: true })
+      && typeof agent?.agent_session?.value === "string" && isReadyStatus(agent.agent_status)) {
       successorSession = agent.agent_session.value;
       break;
     }

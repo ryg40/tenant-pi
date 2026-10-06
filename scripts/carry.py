@@ -42,7 +42,7 @@ KNOWN_SEGMENTS = frozenset((
     *CHOICES_KEYS, "schemaVersion", "target", "agentDir", "selection", "enable", "disable", "paths", "endpoints",
     "env", "roles", "provider", "model", "thinking", "route", "inputs", "modelsFile", "mcpFile", "consent",
     "memoryCapture", "remoteMemoryWrites", "telemetry", "ownerPackages", "unmanaged", "ownerResources",
-    "modelRoutes", "cycle", "gateway", "auth", "runtime", "piVersion", "nodeRange", "pythonRange", "components",
+    "modelRoutes", "cycle", "gateway", "auth", "runtime", "piVersion", "piAcceptedRange", "nodeRange", "pythonRange", "components",
     "status", "metadata",
     # the overlay `memory` block and `ownerResources` (docs/memory-modules.md, docs/owner-resources.md)
     *MEMORY, *(name for group in MODULE_FIELDS.values() for names in group for name in names), *OWNER_RESOURCES,

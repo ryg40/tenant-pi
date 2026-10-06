@@ -11,11 +11,11 @@ cannot be reached. A missing document has revision None.
 
 When the canonical store is unavailable, the PendingQueue keeps the brief locally.
 `sync` applies it later only if the canonical revision still equals the base
-revision. Otherwise it reports a conflict and keeps both. Newer owner edits are
+revision. Otherwise it reports a conflict and keeps both. Newer requester edits are
 never overwritten.
 
 The incremental update helpers work on the normalized model from tracker.brief.
-They replace only the sections a synthesis step changed and keep owner prose
+They replace only the sections a synthesis step changed and keep requester prose
 notes untouched. This module has no network code.
 """
 from __future__ import annotations
@@ -44,7 +44,7 @@ INT_FIELDS = {"priority"}
 # Sections a synthesis replaces wholesale when it emits at least one record of that type.
 REPLACE_SECTIONS = ("active", "unknown")
 # Sections merged record by record. Removal needs an explicit `retire` id, so a
-# synthesis cannot drop an approval gate or an owner record by leaving it out.
+# synthesis cannot drop an approval gate or a requester record by leaving it out.
 MERGE_SECTIONS = ("issue", "gate", "evidence")
 RETIRE_SECTIONS = ("issues", "gates", "evidence", "unknowns", "paths", "active")
 _ROLE_ORDER = {"recommended": 0, "alternative": 1, "backlog": 2}
@@ -81,7 +81,7 @@ def content_revision(text: str | None) -> str | None:
 # ---------------------------------------------------------------- adapters
 
 class LocalFileStore:
-    """Canonical brief as a Markdown file, for example inside the repo's `.okf/` bundle."""
+    """Canonical brief as a Markdown file, for example in the repository's `docs/` directory."""
 
     kind = "local-file"
 
@@ -406,7 +406,7 @@ def parse_fragment(text: str, *, strict: bool = True) -> dict:
 
     Returns {"records": [(type, record, line)], "retire": [ids]}. A `retire` block
     (`ids:` list) names records to remove from the registers. Raises FragmentError.
-    With strict=False, fenced blocks of other types (owner code samples) are skipped.
+    With strict=False, fenced blocks of other types (requester code samples) are skipped.
     A handoff `text: |` block value keeps its line breaks; other fields cannot take one.
     """
     lines, offset = _strip_wrapper(text.splitlines()) if strict else (text.splitlines(), 0)
@@ -561,12 +561,12 @@ def merge_update(base: dict, fragment: dict) -> dict:
     - `active`, `unknown`: the section is replaced when the output holds at least one
       record of that type; otherwise it is kept unchanged.
     - `path`: emitted recommended or alternative paths replace the old recommended and
-      alternative paths. Backlog paths merge by id, so owner backlog stays.
+      alternative paths. Backlog paths merge by id, so requester backlog stays.
     - `issue`, `gate`, `evidence`: merged by id (replace or add).
     - `retire` ids are removed. This is the only way to drop a gate or a backlog path.
     - `handoff` records in the fragment are ignored. The base handoff is kept here;
-      the refresh then rebuilds it with `tracker.handoff.refresh` (owner handoffs stay).
-    - `notes` (owner prose) and `meta` are kept from the base unchanged.
+      the refresh then rebuilds it with `tracker.handoff.refresh` (requester handoffs stay).
+    - `notes` (requester prose) and `meta` are kept from the base unchanged.
     """
     model = copy.deepcopy(base)
     grouped: dict = {t: [] for t in RECORD_TYPES}

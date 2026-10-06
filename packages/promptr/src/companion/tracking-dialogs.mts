@@ -76,7 +76,7 @@ function hint(view: TrackingNavState["view"], width: number, freshness: string):
     provider: ["↑↓ choose · Enter selects a provider · Esc cancels", "↑↓ · Enter · Esc", "Esc"],
     execution: ["↑↓ choose · Enter selects how delegated roles run (Pi subagents or Herdr native) · Esc cancels", "↑↓ · Enter · Esc", "Esc"],
     preview: [
-      `↑↓ scroll · Enter: Prepare request → draft to composer (no launch) · g: also launch generator (Sol medium, fresh Pi) · ${freshness} · Esc cancels`,
+      `↑↓ scroll · Enter: Prepare request → draft to composer (no launch) · g: also launch generator (generator role, fresh Pi) · ${freshness} · Esc cancels`,
       `↑↓ · Enter prepares draft · g launches generator · ${freshness} · Esc`,
       `Enter · g · ${freshness} · Esc`,
     ],

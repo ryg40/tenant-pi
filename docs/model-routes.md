@@ -32,7 +32,7 @@ The returned JSON-compatible dictionary contains `settings`, `roles`, `cycle`, `
 
 ## Source-backed mappings
 
-These mappings use Pi 0.99.1 source observations. The kit pin is Pi 1.0.3. Not verified: these runtime behaviours on Pi 1.0.3.
+These mappings use Pi 0.99.1 source observations. The kit pin is `runtime.piVersion` in `config/manifest.json`. Not verified: these runtime behaviours on the kit pin.
 
 | Choice | Source observed with Pi 0.99.1 | Native destination and limit |
 | --- | --- | --- |

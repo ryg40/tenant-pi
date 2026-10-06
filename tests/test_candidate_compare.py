@@ -9,6 +9,7 @@ from scripts.profile_write import _provenance
 from scripts.validate import Invalid, load
 from tests.test_model_routes import NATIVE, REGISTRY
 
+PIN = load("config/manifest.json")["runtime"]["piVersion"]
 CANARY = "CANARY_SECRET"
 
 
@@ -89,13 +90,28 @@ class CompareTests(unittest.TestCase):
         previous[".tenant-pi/state.json"]["provenance"] = _provenance(choices, ["settings.json", ".tenant-pi/choices.json"])
         report = compare(previous, self.old)
         changed = {(c["file"], c["field"]): c for c in report["changes"] if c["change"] == "changed"}
-        self.assertEqual(({"value": "npm:@earendil-works/pi-coding-agent@0.87.1"}, {"value": "npm:@earendil-works/pi-coding-agent@1.0.3"}),
+        self.assertEqual(({"value": "npm:@earendil-works/pi-coding-agent@0.87.1"}, {"value": "npm:@earendil-works/pi-coding-agent@" + PIN}),
                          (changed[(".tenant-pi/choices.json", "/manifest/components/core/source")]["left"],
                           changed[(".tenant-pi/choices.json", "/manifest/components/core/source")]["right"]))
         self.assertEqual({"value": "0.87.1"}, changed[(".tenant-pi/choices.json", "/manifest/runtime/piVersion")]["left"])
         self.assertEqual({"value": "0.87.1"}, changed[(".tenant-pi/state.json", "/provenance/piVersion")]["left"])
         self.assertEqual({"status": "not_computable", "rule": "core_runtime_pin: manifest.runtime.piVersion"}, report["left"]["drift"])
         self.assertEqual("none", report["right"]["drift"]["status"])
+
+    def test_accepted_range_is_a_marker_and_older_records_still_compare(self):
+        older = copy.deepcopy(self.old)
+        del older[".tenant-pi/choices.json"]["manifest"]["runtime"]["piAcceptedRange"]
+        report = compare(older, self.old)
+        entry = next(c for c in report["changes"] if c["field"] == "/manifest/runtime/piAcceptedRange")
+        self.assertEqual({"file": ".tenant-pi/choices.json", "field": "/manifest/runtime/piAcceptedRange",
+                          "change": "added"}, entry)
+        self.assertEqual([], report["unsupported"])
+        self.assertEqual({"status": "not_computable", "rule": "required_fields: manifest.runtime"}, report["left"]["drift"])
+        hostile = copy.deepcopy(self.old)
+        hostile[".tenant-pi/choices.json"]["manifest"]["runtime"]["piAcceptedRange"] = CANARY
+        report = compare(self.old, hostile)
+        self.assertNotIn(CANARY, json.dumps(report))
+        self.assertEqual([], report["unsupported"])
 
     def test_owner_edits_and_unknown_fields_are_visible_without_values(self):
         edited = copy.deepcopy(self.new)
@@ -257,7 +273,7 @@ class CompareTests(unittest.TestCase):
         block["hermes"].update({"backgroundReview": CANARY, "reviewTransport": CANARY, "childExtensionPaths": {"0": "/" + CANARY},
                                 "extra": CANARY, "bad key\n": CANARY})
         block["wiki"] = [CANARY]
-        block["openviking"] = {"endpoint": CANARY}
+        block["openviking"] = {"endpoint": CANARY, "captureToolResults": CANARY, "recallContextTimeoutMs": 10 ** 6}
         block["other"] = {"x": CANARY}
         report = compare(memory, hostile)
         dump = json.dumps(report)
@@ -266,9 +282,11 @@ class CompareTests(unittest.TestCase):
         statuses = {(u["field"], u["status"]) for u in report["unsupported"] if u["field"].startswith(at)}
         self.assertEqual({(at + "/hermes/childExtensionPaths", "unsupported_shape"), (at + "/hermes/extra", "unsupported_field"),
                           (at + "/hermes/<redacted>", "unsupported_field_name"), (at + "/wiki", "unsupported_shape"),
-                          (at + "/openviking", "unsupported_shape"), (at + "/other", "unsupported_field")}, statuses)
+                          (at + "/openviking/endpoint", "unsupported_field"), (at + "/other", "unsupported_field")}, statuses)
         values = {c["field"]: c.get("right") for c in report["changes"]}
-        for field in ("/schemaVersion", "/hermes/backgroundReview", "/hermes/reviewTransport"):
+        # The module has no field for an endpoint or a key; a switch or a number of the wrong form is not echoed.
+        for field in ("/schemaVersion", "/hermes/backgroundReview", "/hermes/reviewTransport",
+                      "/openviking/captureToolResults", "/openviking/recallContextTimeoutMs"):
             self.assertEqual({"status": "unsupported_value"}, values[at + field], field)
         # A block that is not an object is one `unsupported_shape` entry.
         for value in (CANARY, [CANARY], 7, None):

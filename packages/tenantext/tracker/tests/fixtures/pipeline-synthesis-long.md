@@ -39,8 +39,8 @@ evidence:
 id: act-publish
 title: Decide the publication target
 readiness: needs-decision
-next: Ask the owner which artifact service to use.
-blocker: The owner has not chosen a service.
+next: Ask the requester which artifact service to use.
+blocker: The requester has not chosen a service.
 priority: 1
 evidence:
   - ev-issue-4
@@ -65,17 +65,17 @@ readiness: needs-decision
 issues:
   - 4
 repo: owner/demo
-objective: Record the owner's choice of artifact service.
+objective: Record the requester's choice of artifact service.
 read_first:
   - ev-issue-4
 scope: A decision note only.
-authority: Draft the question for the owner.
+authority: Draft the question for the requester.
 needs_approval:
   - Any publication
 acceptance:
-  - The owner answers
+  - The requester answers
 output: A decision note.
-next_action: Draft two options for the owner.
+next_action: Draft two options for the requester.
 ```
 
 ```path
@@ -86,13 +86,13 @@ readiness: approval-gated
 issues:
   - 3
 repo: owner/demo
-objective: Close the storage issue once the owner reviews the merge.
+objective: Close the storage issue once the requester reviews the merge.
 scope: Issue state only.
 authority: Draft the closing comment.
 needs_approval:
   - Closing the issue
 acceptance:
-  - The owner approves the close
+  - The requester approves the close
 output: A closing comment draft.
 next_action: Draft the closing comment with the merge commit.
 ```

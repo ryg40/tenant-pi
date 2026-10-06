@@ -1,14 +1,16 @@
 """Opt-in publication of the rendered brief to an artifact service.
 
 The endpoint, credential file and receipt directory are configuration. Nothing here
-runs unless the owner asks for publication.
+runs unless the requester asks for publication.
 
 Contract (artifact service v1):
 - First publication: POST {endpoint}/v1/artifacts with `Authorization: Bearer`, a
   stable `Idempotency-Key` and a JSON body {content, contentType, fileName, title}.
   The response holds `shareUrl`, `artifact` (with `slug`, `expiresAt`) and `editToken`.
-- Refresh: PUT {endpoint}/v1/artifacts/{slug} with the bearer token and
-  `X-Orca-Edit-Token`. The link stays the same.
+- Refresh: PUT {endpoint}/v1/artifacts/{slug} with the bearer token and the edit
+  token in the edit-token header. The link stays the same. The header name is the
+  setting `publish.edit_token_header`; the default is `X-Edit-Token`. Set it to the
+  name that the artifact service documents.
 - Verify: GET the HTTPS share URL; expect HTTP 200 and the exact uploaded bytes.
 
 The full create response (with the edit token) goes to a mode-0600 receipt outside
@@ -30,6 +32,9 @@ from tracker.checkpoint import (atomic_write, format_utc, home_relative, one_lin
 
 HttpRequest = Callable[[str, str, dict, "bytes | None"], tuple]
 DEFAULT_FILE_NAME = "tracker-brief.html"
+DEFAULT_EDIT_TOKEN_HEADER = "X-Edit-Token"
+# The publisher sets these itself. The edit token must not replace one of them.
+RESERVED_HEADERS = ("authorization", "content-type", "accept", "idempotency-key")
 
 
 class PublishError(RuntimeError):
@@ -53,6 +58,13 @@ def _https(url: str | None, what: str) -> str:
     if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
         raise PublishError("%s must be a credential-free HTTPS URL" % what)
     return urllib.parse.urlunsplit(parts).rstrip("/")
+
+
+def _header_name(name: str | None) -> str:
+    name = (name or DEFAULT_EDIT_TOKEN_HEADER).strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,63}", name) or name.lower() in RESERVED_HEADERS:
+        raise PublishError("the edit-token header must be a header name that the publisher does not set itself")
+    return name
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -84,7 +96,7 @@ def read_credential(path) -> str:
 class Publisher:
     def __init__(self, *, endpoint: str, credential_file, receipt_dir, repo_slug: str, state_dir,
                  title: str, repo_root=None, file_name: str = DEFAULT_FILE_NAME,
-                 http: HttpRequest | None = None, clock=None):
+                 edit_token_header: str | None = None, http: HttpRequest | None = None, clock=None):
         self.endpoint = _https(endpoint, "publication endpoint")
         self.credential_file = Path(credential_file).expanduser() if credential_file else None
         self.receipt_dir = Path(receipt_dir).expanduser()
@@ -92,6 +104,7 @@ class Publisher:
         self.state_dir = Path(state_dir)
         self.title = one_line(title, 120)
         self.file_name = file_name
+        self.edit_token_header = _header_name(edit_token_header)
         self.http = http or default_http
         self.clock = clock or utc_now
         # Receipts hold the edit token: keep them out of the repository and the state directory.
@@ -149,7 +162,7 @@ class Publisher:
         if receipt and slug and edit_token and not replace:
             method = "PUT"
             url = "%s/v1/artifacts/%s" % (self.endpoint, urllib.parse.quote(slug))
-            status, _, data = self._request("PUT", url, dict(base_headers, **{"X-Orca-Edit-Token": edit_token}),
+            status, _, data = self._request("PUT", url, dict(base_headers, **{self.edit_token_header: edit_token}),
                                             payload, secrets)
             if status == 404:
                 raise PublishError("the existing artifact is expired or deleted; rerun publish with --replace "

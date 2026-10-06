@@ -1,5 +1,7 @@
 # Continuous integration
 
+`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
+
 Continuous integration (CI) runs checks after a change. These workflows check the kit and propose Pi updates. They never publish a portable snapshot.
 
 ## Workflows
@@ -83,9 +85,10 @@ Warning: npm packages can execute install scripts. Use a disposable runner witho
 
 Qualification and notes run independently after a successful preflight with `eligible=true`. Each retains its JSON reports and `.log` files, even after failure, for 14 days. No profile, authentication file or installed package tree is uploaded. Detection also retains its report and log. Preflight retains its status report. Failed qualification produces a failed run, not an issue, and cannot start the request job.
 
-The request changes both `runtime.piVersion` and the core package spec in `config/manifest.json`. It also changes the matching core anchor in `scripts/validate.py`; without this change, the strict validator refuses the new pin.
+The request imports `scripts/pi_update.py` by path and calls `pin_contents`.
+That function changes `runtime.piVersion`, `runtime.piAcceptedRange` and the core package spec in `config/manifest.json`. A stable pin move sets `>=<new version> <next minor>` as the accepted range. It also changes the matching core anchor in `scripts/validate.py`; without this change, the strict validator refuses the new pin.
 
-The pull request body contains the notes. A breaking change adds `BREAKING:` to the title and `Breaking changes: YES` to the body. The request does not update pin-specific test fixtures or approve a merge. Review those fixtures and the full checks before merging.
+The pull request body contains the notes. A breaking change adds `BREAKING:` to the title and `Breaking changes: YES` to the body. Current-pin test fixtures read the candidate manifest. The request does not approve a merge. Run the full checks before merging.
 
 The branch name is `automation/pi-<version>`. Preflight checks open pull requests with bounded pagination, then checks the branch. An existing open request or a claimed branch gives `eligible=false`, so qualification and notes are skipped. Preflight makes no server write. API failures stop preflight without enabling qualification.
 
@@ -137,11 +140,11 @@ Run each update stage without the request stage:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci_update.py detect --directory .local/ci/detect
-UPDATE_VERSION=1.0.4 PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci_update.py qualify --directory .local/ci/qualify
-UPDATE_FROM=1.0.3 UPDATE_VERSION=1.0.4 PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci_update.py notes --directory .local/ci/notes
+UPDATE_VERSION="<new version>" PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci_update.py qualify --directory .local/ci/qualify
+UPDATE_FROM="<pin>" UPDATE_VERSION="<new version>" PYTHONDONTWRITEBYTECODE=1 python3 scripts/ci_update.py notes --directory .local/ci/notes
 ```
 
-These versions are examples. Use the current pin and the detected version. Detection returns success after either valid outcome and writes `selection.json` with `new`, `current` and `version`.
+Replace `<pin>` and `<new version>` with the current pin and the detected version. Detection returns success after either valid outcome and writes `selection.json` with `new`, `current` and `version`.
 
 To run the read-only preflight, set `UPDATE_SERVER`, `UPDATE_REPOSITORY`, `UPDATE_VERSION` and `UPDATE_TOKEN` as described below. Then run:
 
@@ -155,8 +158,8 @@ The underlying command interface is:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py detect
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version 1.0.4 --workdir /tmp/pi-qualification
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py notes --from 1.0.3 --to 1.0.4 --workdir /tmp/pi-notes
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir /tmp/pi-qualification
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py notes --from "<pin>" --to "<new version>" --workdir /tmp/pi-notes
 ```
 
 The adapter is safer in a shell with credentials because it clears the child environment. The underlying command must provide its own Pi isolation.

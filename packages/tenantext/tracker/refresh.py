@@ -134,7 +134,7 @@ def load_config(*, repo_path=None, state_dir=None, config_file=None, env=None, g
     if env.get("TRACKER_STORE_PATH"):
         store["path"] = env["TRACKER_STORE_PATH"]
     if store["backend"] == "local" and not store.get("path"):
-        store["path"] = ".okf/tracker-brief.md" if (root / ".okf").is_dir() else "tracker-brief.md"
+        store["path"] = "docs/tracker-brief.md" if (root / "docs").is_dir() else "tracker-brief.md"
     publish = dict(data.get("publish") or {})
     for key, var in (("endpoint", "TRACKER_PUBLISH_ENDPOINT"), ("credential_file", "TRACKER_PUBLISH_CREDENTIAL_FILE"),
                      ("receipt_dir", "TRACKER_RECEIPT_DIR")):
@@ -814,8 +814,8 @@ class Refresh:
             self.say("Canonical store unavailable (%s). The brief waits in %s; run `sync` later."
                      % (result["reason"], home_relative(self.queue.dir)))
             return EXIT_OK
-        run.fail("store", "conflict: %s; the owner's version is untouched and this brief is kept in the pending "
-                          "queue. Start a new checkpoint to rebuild on the owner's version." % result["reason"],
+        run.fail("store", "conflict: %s; the requester's version is untouched and this brief is kept in the pending "
+                          "queue. Start a new checkpoint to rebuild on the requester's version." % result["reason"],
                  self.now(), conflict=True)
         self.say("Conflict: %s. Nothing was overwritten. This brief is kept in %s. Run `checkpoint` and refresh "
                  "again to build on the newer version." % (result["reason"], home_relative(self.queue.dir)))
@@ -850,7 +850,8 @@ class Refresh:
                                   receipt_dir=cfg.get("receipt_dir") or DEFAULT_RECEIPT_DIR,
                                   repo_slug=self.config.slug, state_dir=self.state,
                                   title=cfg.get("title") or self.config.title, repo_root=self.config.repo_path,
-                                  file_name=cfg.get("file_name") or DEFAULT_FILE_NAME, http=self.http,
+                                  file_name=cfg.get("file_name") or DEFAULT_FILE_NAME,
+                                  edit_token_header=cfg.get("edit_token_header"), http=self.http,
                                   clock=self.clock)
             result = publisher.publish(html, replace=replace)
         except PublishError as exc:
@@ -893,8 +894,8 @@ class Refresh:
             return EXIT_FAILED
         else:
             self.say("Conflict: the canonical brief changed after the queued brief was prepared. Both are kept: "
-                     "the owner's version in %s and the queued one in %s. Run `checkpoint` to rebuild on the "
-                     "owner's version." % (self.store.location, home_relative(self.queue.dir)))
+                     "the requester's version in %s and the queued one in %s. Run `checkpoint` to rebuild on the "
+                     "requester's version." % (self.store.location, home_relative(self.queue.dir)))
             return EXIT_FAILED
         if publish and run and run.stage("publish")["status"] in ("queued", "interrupted"):
             return self.publish()
@@ -1006,7 +1007,7 @@ class Refresh:
     def _next_step(data: dict) -> str:
         run = data["run"]
         if data["pending"] and data["pending"].get("conflict"):
-            return "python3 -m tracker.refresh checkpoint (rebuild on the owner's newer version)"
+            return "python3 -m tracker.refresh checkpoint (rebuild on the requester's newer version)"
         if data["pending"]:
             return "python3 -m tracker.refresh sync"
         if not run or run["complete"]:
@@ -1018,7 +1019,7 @@ class Refresh:
                 return ("run the model step on synthesis-input.md, then `apply --synthesis FILE`; "
                         "or `minimal`")
             if name == "publish":
-                return "python3 -m tracker.refresh publish (only when the owner asks)"
+                return "python3 -m tracker.refresh publish (only when the requester asks)"
             return "python3 -m tracker.refresh run"
         return "nothing"
 

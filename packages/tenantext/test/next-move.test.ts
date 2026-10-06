@@ -252,7 +252,7 @@ test("service: many agent runs against a failing endpoint make one call, then th
   service.dispose();
 });
 
-test("service: /tenantext-ifs-enable off stops calls and clears the chip; on resumes; a saved off never asks", async t => {
+test("service: /tenantext-decisions off stops calls and clears the chip; on resumes; a saved off never asks", async t => {
   const server = await decisionServer(t);
   agentDir(t, server.url);
   let handlers = new Map<string, Handler[]>();
@@ -285,7 +285,7 @@ test("service: /tenantext-ifs-enable off stops calls and clears the chip; on res
   for (let i = 0; i < 20; i++) await emit("agent_end");
   await settle(100);
   assert.equal(server.count, 2, "a saved off is read at session start");
-  assert.match(quiet.report(), /Next-move chip: off by \/tenantext-ifs-enable off\./);
+  assert.match(quiet.report(), /Next-move chip: off by \/tenantext-decisions off\./);
   quiet.dispose();
 });
 
@@ -306,7 +306,7 @@ test("service: shutdown aborts the call in flight and a second trigger never sta
   assert.equal(service.state().nextMove, undefined);
 });
 
-test("/tenantext-ifs-enable saves the switch, emits the bus event, reports status, and completes its arguments", async t => {
+test("/tenantext-decisions saves the switch, emits the bus event, reports status, and completes its arguments", async t => {
   const dir = agentDir(t, "http://127.0.0.1:1/choice");
   const handlers = new Map<string, Handler[]>();
   const bus = new Map<string, Set<(value: unknown) => void>>();
@@ -317,7 +317,7 @@ test("/tenantext-ifs-enable saves the switch, emits the bus event, reports statu
   const notices: string[] = [];
   const ctx = { ...fakeCtx(), ui: { notify: (text: string) => notices.push(text), setStatus() {} } } as unknown as ExtensionContext;
   tenantext(pi);
-  const command = commands.get("tenantext-ifs-enable");
+  const command = commands.get("tenantext-decisions");
   assert.ok(command, "command registered");
   assert.deepEqual(command.getArgumentCompletions("o"), [{ value: "on", label: "on" }, { value: "off", label: "off" }]);
   assert.equal(command.getArgumentCompletions("x"), null);

@@ -21,6 +21,8 @@ ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 ENV = re.compile(r"[A-Z][A-Z0-9_]*\Z")
 HEX = re.compile(r"[0-9a-f]{40}\Z")
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
+# The shared range grammar uses stable bounds; omitted numbers are zero.
+RANGE = re.compile(r">=(\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?(?: <(\d{1,9})(?:\.(\d{1,9}))?(?:\.(\d{1,9}))?)?\Z")
 # An npm spec is a package name, optionally followed by one exact version. A tag, a range,
 # `latest`, and every other form are rejected. Without a version the package follows the
 # registry at install time; `pi update` moves it.
@@ -43,43 +45,64 @@ MEMORY = frozenset(("hermes", "wiki", "openviking"))
 # Selectable states. `unverified` has no test in this repository yet; its `gaps` enter every plan.
 SELECTABLE = ("tested", "unverified")
 PACKAGES = "packages"
-# In-tree optional modules: component ID -> (package directory, resource kind, resource path).
-# One component per extension and per skill; the package directory is the Pi package root.
-TREE_COMPONENTS = {
-    "tenantext": ("packages/tenantext", "extensions", "extensions/tenantext/index.ts"),
-    "codex-accounts": ("packages/tenantext", "extensions", "extensions/codex-accounts/index.ts"),
-    "slopscore": ("packages/tenantext", "extensions", "extensions/slopscore/index.ts"),
-    "context-meter": ("packages/tenantext", "extensions", "extensions/context-meter/index.ts"),
-    "ops-footer": ("packages/tenantext", "extensions", "extensions/ops-footer/index.ts"),
-    "copilot-usage": ("packages/tenantext", "extensions", "extensions/copilot-usage/index.ts"),
-    "anthropic-usage": ("packages/tenantext", "extensions", "extensions/anthropic-usage/index.ts"),
-    "doctor": ("packages/tenantext", "extensions", "extensions/doctor/index.ts"),
-    "resources": ("packages/tenantext", "extensions", "extensions/resources/index.ts"),
-    "herdr": ("packages/tenantext", "skills", "skills/herdr"),
-    "slopscore-pr": ("packages/tenantext", "skills", "skills/slopscore-pr"),
-    "tracker-site": ("packages/tenantext", "skills", "skills/tracker-site"),
-    "promptr": ("packages/promptr", "extensions", "index.ts"),
-    "promptr-generate-task-prompt": ("packages/promptr", "skills", "skills/promptr-generate-task-prompt"),
-    "promptr-handoff": ("packages/promptr", "skills", "skills/promptr-handoff"),
-    "promptr-openknowledge-project-pages": ("packages/promptr", "skills", "skills/openknowledge-project-pages"),
-    "promptr-watch-herdr-agents": ("packages/promptr", "skills", "skills/watch-herdr-agents"),
-}
+MANIFEST = "config/manifest.json"
+RESOURCE_KINDS = ("extensions", "skills", "prompts", "themes")
+
+
+def _tree_components():
+    """The in-tree optional modules of the kit manifest, in manifest order.
+
+    Component ID -> (package directory, resource kind, resource paths). A component is in the
+    table when its source kind is `tree`. One component per extension and per skill; the package
+    directory is the Pi package root. A skill component with more than one skill directory names
+    more than one resource path. An unreadable manifest gives an empty table and its cause (the
+    exception class and message): `manifest()` then fails with `reviewed_components` and the cause.
+    """
+    try:
+        components = json.loads((ROOT / MANIFEST).read_text(encoding="utf-8"))["components"]
+        found = {}
+        for cid, component in components.items():
+            source = component["source"]
+            if not isinstance(source, dict) or source.get("kind") != "tree":
+                continue
+            resources = component["resources"]
+            kind = next((key for key in RESOURCE_KINDS if resources[key]), RESOURCE_KINDS[0])
+            items = tuple(resources[kind])
+            if not all(isinstance(one, str) for one in (cid, source["path"], *items)):
+                raise TypeError("a component ID, a source path or a resource path is not text")
+            found[cid] = (source["path"], kind, items)
+        return found, None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        return {}, f"{type(exc).__name__}: {exc}"
+
+
+# The kit manifest is the one source of the tree components and of their resource paths. This
+# table is the copy of the kit that a manifest from another place (a generated profile) is
+# compared with. `manifest()` checks each resource path against the tree. The cause is None when
+# the kit manifest is readable; it is about the kit file, never about the checked input.
+TREE_COMPONENTS, TREE_COMPONENTS_CAUSE = _tree_components()
+
+
+def tree_items(item):
+    """The resource paths of one `TREE_COMPONENTS` entry, in manifest order."""
+    return [item] if isinstance(item, str) else list(item)
 
 
 def _tree_resources(kind, item):
-    return {key: [item] if key == kind else [] for key in ("extensions", "skills", "prompts", "themes")}
+    return {key: tree_items(item) if key == kind else [] for key in RESOURCE_KINDS}
 
 
 # Reviewed anchors are independent of editable manifest claims. Pins are intentionally
 # repeated here so an altered manifest cannot bless an unrelated upstream source.
 REVIEWED_SOURCES = {
-    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.3"},
+    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.4"},
     "model-routing": {"kind": "builtin"},
+    # A tree component has no upstream pin: its anchor is the tree of this kit. The `openviking`
+    # memory module is one of them: `packages/openviking-pi` is a vendored copy.
     **{cid: {"kind": "tree", "path": path} for cid, (path, _, _) in TREE_COMPONENTS.items()},
     "mcp": {"kind": "npm", "spec": "pi-mcp-adapter"},
     "hermes": {"kind": "npm", "spec": "pi-hermes-memory"},
     "wiki": {"kind": "npm", "spec": "@zosmaai/pi-llm-wiki"},
-    "openviking": None,
 }
 # File/key claims are only for native Pi settings documented at this version.
 REVIEWED_CLAIMS = {
@@ -88,8 +111,10 @@ REVIEWED_CLAIMS = {
     "model-routing": {("settings.json", "/defaultProvider"), ("settings.json", "/defaultModel"),
                       ("settings.json", "/defaultThinkingLevel"), ("settings.json", "/enabledModels"),
                       ("settings.json", "/modelThinkingLevels")},
-    # A tree component owns one filter entry of the shared package declaration, never the whole entry.
-    **{cid: {("settings.json", "package:" + path + ":" + item)} for cid, (path, _, item) in TREE_COMPONENTS.items()},
+    # A tree component owns one filter entry for each of its resource paths in the shared package
+    # declaration, never the whole entry.
+    **{cid: {("settings.json", "package:" + path + ":" + one) for one in tree_items(item)}
+       for cid, (path, _, item) in TREE_COMPONENTS.items()},
     # An empty pointer claims the whole named file (RFC 6901 root); Hermes owns its config file.
     "hermes": {("settings.json", "package:pi-hermes-memory"), ("hermes-memory-config.json", "")},
     "wiki": {("settings.json", "package:@zosmaai/pi-llm-wiki"), ("settings.json", "/llm-wiki")},
@@ -142,6 +167,32 @@ def fail(rule, field, line=None, column=None):
 def place(exc):
     """The `line` and `column` of a JSON syntax error as a mapping, else an empty one; never input text."""
     return {} if exc.line is None else {"line": exc.line, "column": exc.column}
+
+
+def parse_range(value, field, *, bounded=False):
+    """Return `(lower, upper)` as number triples; `upper` is None without a `<` bound.
+
+    `bounded` requires the `<` bound.
+    """
+    found = RANGE.fullmatch(value) if isinstance(value, str) else None
+    if not found:
+        fail("runtime_range", field)
+    parts = found.groups()
+    lower = tuple(int(part or 0) for part in parts[:3])
+    upper = tuple(int(part or 0) for part in parts[3:]) if parts[3] else None
+    if bounded and upper is None:
+        fail("range_without_upper_bound", field)
+    if upper is not None and upper <= lower:
+        fail("runtime_range", field)
+    return lower, upper
+
+
+def in_range(version, bounds, prerelease=False):
+    """Use stable numeric bounds; exclude prereleases of either boundary version."""
+    lower, upper = bounds
+    if prerelease and version == lower:
+        return False
+    return version >= lower and (upper is None or version < upper)
 
 
 def pairs_unique(pairs):
@@ -292,7 +343,7 @@ def manifest(data):
     if type(data["schemaVersion"]) is not int or data["schemaVersion"] != 1:
         fail("schema_version", "manifest.schemaVersion")
     runtime = data["runtime"]
-    fields(runtime, ("piVersion", "nodeRange", "pythonRange"), (), "manifest.runtime")
+    fields(runtime, ("piVersion", "piAcceptedRange", "nodeRange", "pythonRange"), (), "manifest.runtime")
     if not isinstance(runtime["piVersion"], str) or not VERSION.fullmatch(runtime["piVersion"]):
         fail("exact_version", "manifest.runtime.piVersion")
     if runtime["nodeRange"] != ">=22.22.0 <23" or runtime["pythonRange"] != ">=3.11":
@@ -302,8 +353,13 @@ def manifest(data):
         fail("core_required", "manifest.components")
     if runtime["piVersion"] != npm_parts(REVIEWED_SOURCES["core"]["spec"])[1]:
         fail("core_runtime_pin", "manifest.runtime.piVersion")
+    bounds = parse_range(runtime["piAcceptedRange"], "manifest.runtime.piAcceptedRange", bounded=True)
+    tested = runtime["piVersion"].split("-", 1)
+    if not in_range(tuple(int(part) for part in tested[0].split(".")), bounds, len(tested) > 1):
+        fail("tested_outside_range", "manifest.runtime.piAcceptedRange")
     if set(components) != set(REVIEWED_SOURCES):
-        fail("reviewed_components", "manifest.components")
+        fail("reviewed_components", "manifest.components" if TREE_COMPONENTS_CAUSE is None else
+             f"manifest.components (kit manifest {MANIFEST} not read: {TREE_COMPONENTS_CAUSE})")
     claims = []
     path_keys = set()
     for cid, component in components.items():
@@ -390,6 +446,11 @@ def manifest(data):
                 fail("duplicate_resource", at + ".resources." + key)
         if cid in REVIEWED_RESOURCES and resources != REVIEWED_RESOURCES[cid]:
             fail("reviewed_resources", at + ".resources")
+        if component["source"] is not None and component["source"]["kind"] == "tree":
+            # The manifest names the resource paths; the tree of the kit holds each of them.
+            paths = [item for items in resources.values() for item in items]
+            if not paths or not all((ROOT / component["source"]["path"] / item).exists() for item in paths):
+                fail("tree_resource_missing", at + ".resources")
     if components["core"]["requires"] or components["core"]["source"] != REVIEWED_SOURCES["core"]:
         fail("core_source", "manifest.components.core")
     for i, (file, key) in enumerate(claims):

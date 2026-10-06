@@ -50,7 +50,7 @@ function xmlLength(str: string): number {
 /**
  * Approximate the skills section size the way pi's formatSkillsForPrompt lays it out.
  * Constants measured against Pi 0.85.1: 368 chars of header and footer, 97 chars of
- * XML wrapper per skill. Not re-verified on the kit pin, Pi 1.0.3.
+ * XML wrapper per skill. Not re-verified on the kit pin.
  * Used only when the exact formatter is not available.
  */
 export function estimateSkillsChars(skills: SkillLike[] | undefined): number {

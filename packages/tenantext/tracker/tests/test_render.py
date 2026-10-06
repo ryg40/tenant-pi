@@ -366,10 +366,10 @@ class HandoffRenderTests(unittest.TestCase):
         self.assertIn('<span class="tb-badge" data-source="generated">Generated from the brief</span>', self.card)
         self.assertIn('As of <time datetime="2030-01-23T06:30:00Z">', self.card)
         model = example_model()
-        model["handoffs"][0].update(basis="carried-forward", source="owner")
+        model["handoffs"][0].update(basis="carried-forward", source="requester")
         html = render(model)
         self.assertIn('<span class="tb-badge" data-basis="carried-forward">Carried forward, not re-checked</span>', html)
-        self.assertIn('<span class="tb-badge" data-source="owner">Written by the owner</span>', html)
+        self.assertIn('<span class="tb-badge" data-source="requester">Written by the requester</span>', html)
         self.assertIn("Carried forward, not re-checked", Outline(html).visible_text())
 
     def test_no_prompt_without_a_recommended_path(self):

@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 package_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-repo_dir="$(dirname -- "$package_dir")"
+packages_dir="$(dirname -- "$package_dir")"
+kit_root="$(dirname -- "$packages_dir")"
 if [[ ! -f "$package_dir/dist/src/sidebar/controller.mjs" ]]; then
-  printf '%s\n' 'Build first: cd extension && npm ci && npm run build' >&2
+  printf '%s\n' 'Build first: cd packages/promptr && npm ci && npm run build' >&2
   exit 1
 fi
 # Separate settings and Promptr data. No global install or existing notebook writes.
 export PI_CODING_AGENT_DIR="${PROMPTR_PREVIEW_AGENT_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/promptr-sidebar-preview}"
 mkdir -p -- "$PI_CODING_AGENT_DIR"
-cd -- "$repo_dir"
+# Pi starts in the kit root, the parent of packages/.
+cd -- "$kit_root"
 # Load the Tenantext footer so the trial checks real footer coexistence.
 # PROMPTR_PREVIEW_FOOTER=<path> must exist; PROMPTR_PREVIEW_FOOTER=none runs stock Pi.
-# Without it, use a Tenantext checkout beside this repository, then $PROMPTR_STACK_DIR/tenantext when PROMPTR_STACK_DIR is set.
+# Without it, use $PROMPTR_STACK_DIR/tenantext when PROMPTR_STACK_DIR is set, then the Tenantext package beside this package (packages/tenantext).
 footer_args=()
 if [[ -n "${PROMPTR_PREVIEW_FOOTER:-}" ]]; then
   footer="$PROMPTR_PREVIEW_FOOTER"
@@ -22,7 +24,7 @@ if [[ -n "${PROMPTR_PREVIEW_FOOTER:-}" ]]; then
   fi
 else
   footer=none
-  for candidate in "$repo_dir/../tenantext/extensions/ops-footer/index.ts" ${PROMPTR_STACK_DIR:+"$PROMPTR_STACK_DIR/tenantext/extensions/ops-footer/index.ts"}; do
+  for candidate in ${PROMPTR_STACK_DIR:+"$PROMPTR_STACK_DIR/tenantext/extensions/ops-footer/index.ts"} "$packages_dir/tenantext/extensions/ops-footer/index.ts"; do
     if [[ -f "$candidate" ]]; then footer="$candidate"; break; fi
   done
 fi

@@ -23,7 +23,7 @@ from urllib.request import ProxyHandler, build_opener
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.tenant_pi import _dir_state, _load_input
-from scripts.validate import Invalid, absolute, fail, manifest, npm_parts
+from scripts.validate import Invalid, absolute, fail, in_range, manifest, npm_parts, parse_range
 
 PACKAGE = "@earendil-works/pi-coding-agent"
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
@@ -201,8 +201,12 @@ def link_packages(run, package):
     return versions
 
 
-def pin_contents(manifest_text, validator_text, requested):
-    """Return the same two pin edits used by the update request adapter."""
+def pin_contents(manifest_text, validator_text, requested, *, accepted_range=None):
+    """Move the tested pin and its accepted minor line in the same two files.
+
+    A separate reviewed range can be supplied, including for a prerelease pin.
+    Without one, a changed pin starts at its stable version and ends at the next minor.
+    """
     version(requested)
     data = json.loads(manifest_text)
     previous = version(data["runtime"]["piVersion"])
@@ -211,7 +215,16 @@ def pin_contents(manifest_text, validator_text, requested):
     old = '"core": {"kind": "npm", "spec": "' + PACKAGE + "@" + previous + '"}'
     if validator_text.count(old) != 1:
         fail("source_anchor", "pi-update.candidate")
+    numbers = requested.split("-", 1)
+    major, minor, patch = (int(part) for part in numbers[0].split("."))
+    if accepted_range is None:
+        accepted_range = (data["runtime"]["piAcceptedRange"] if previous == requested else
+                          f">={major}.{minor}.{patch} <{major}.{minor + 1}")
+    bounds = parse_range(accepted_range, "manifest.runtime.piAcceptedRange", bounded=True)
+    if not in_range((major, minor, patch), bounds, len(numbers) > 1):
+        fail("tested_outside_range", "manifest.runtime.piAcceptedRange")
     data["runtime"]["piVersion"] = requested
+    data["runtime"]["piAcceptedRange"] = accepted_range
     data["components"]["core"]["source"]["spec"] = PACKAGE + "@" + requested
     return {"config/manifest.json": json.dumps(data, indent=2) + "\n",
             "scripts/validate.py": validator_text.replace(old, old.replace(PACKAGE + "@" + previous,
@@ -257,8 +270,12 @@ def candidate_copy(run, requested, env):
         destination = candidate / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
-    contents = pin_contents((candidate / "config/manifest.json").read_text(encoding="utf-8"),
-                            (candidate / "scripts/validate.py").read_text(encoding="utf-8"), requested)
+    try:
+        contents = pin_contents((candidate / "config/manifest.json").read_text(encoding="utf-8"),
+                                (candidate / "scripts/validate.py").read_text(encoding="utf-8"), requested)
+    except Invalid as exc:
+        # The step log names the rule of the refused pin, never the input text.
+        raise CandidateCopyError(str(exc).split(":", 1)[0], 1) from None
     for name, content in contents.items():
         (candidate / name).write_text(content, encoding="utf-8")
     return candidate

@@ -17,7 +17,7 @@ test('configured workflows cannot launch without a readable default probe', () =
  assert.match(result.reason, /require a readable capability probe/);
 });
 test('unknown defaultProvider without provider list is rejected', () => {
- const text = '{"version":1,"defaultProvider":"typo","workflows":{"openai-codex-simple":{"roles":{"worker":{"thinking":"high"}}}}}';
+ const text = '{"version":1,"defaultProvider":"typo","workflows":{"worker-simple":{"roles":{"worker":{"thinking":"high"}}}}}';
  const result = loadEffectiveCatalog(catalogPort, { PI_CODING_AGENT_DIR: '/fixture' }, { exists: () => true, readFile: () => text });
  assert.match(result.error, /effective providers/);
 });

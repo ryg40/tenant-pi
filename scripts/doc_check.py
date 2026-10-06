@@ -3,8 +3,9 @@
 
 Rules: relative links and `#anchors` resolve; each fenced `json` block parses; each
 `tenant_pi.py <action>` and its `--flag` exist in the parser of `scripts/tenant_pi.py`;
-each parser action is named in a guide under `docs/guides/`. A diagnostic is `rule: path:line`
-and never holds file content. No process, no network, no write.
+each parser action is named in a guide under `docs/guides/`; the skill table in the README of a
+component of several skills is the skill list of `config/manifest.json`. A diagnostic is
+`rule: path:line` and never holds file content. No process, no network, no write.
 """
 import sys
 
@@ -43,6 +44,10 @@ CLI = re.compile(r"tenant_pi\.py(?=\s|$)([^;&|>\n]*)")
 FLAG = re.compile(r"(?:(?<=\s)|(?<=\[))(--[a-z][a-z0-9-]*)")
 STANDALONE_FLAG = re.compile(r"^(--[a-z][a-z0-9-]*)(?:[ =].*)?$")
 ENV_NAME = re.compile(r"\b((?:TENANTEXT|PI|WIKI)_[A-Z0-9_]+)\b")
+# The header line of a skill table: the first cell is `Skill`. The table ends at the next blank line.
+SKILL_HEADER = re.compile(r"^\|\s*Skill\s*\|")
+# One row of a skill table: the first cell is one code span with the skill name.
+SKILL_ROW = re.compile(r"^\|\s*`([a-z0-9][a-z0-9-]*)`\s*\|")
 
 
 class _Captured(Exception):
@@ -179,13 +184,40 @@ def commands(prose, blocks):
             yield first, pending
 
 
+def skill_table(lines):
+    """The lines of the first skill table: from its header line to the next blank line.
+
+    A README with no skill table gives no line. Another table of the README is not read.
+    """
+    start = next((index for index, line in enumerate(lines) if SKILL_HEADER.match(line)), None)
+    if start is None:
+        return []
+    end = next((index for index in range(start, len(lines)) if not lines[index].strip()), len(lines))
+    return lines[start:end]
+
+
+def skill_lists(components):
+    """(README path, skill names) of each tree component with more than one skill, in manifest order.
+
+    The README is in the parent directory of the skill directories. It holds the one document list
+    of the skills of the component; the other documents point at it.
+    """
+    for component in components.values():
+        skills = component["resources"]["skills"]
+        if component["source"] and component["source"]["kind"] == "tree" and len(skills) > 1:
+            parents = {PurePosixPath(skill).parent.as_posix() for skill in skills}
+            yield (f"{component['source']['path']}/{sorted(parents)[0]}/README.md",
+                   [PurePosixPath(skill).name for skill in skills] if len(parents) == 1 else None)
+
+
 def check(root=ROOT, files=None):
     """Sorted unique diagnostics and counts for the Markdown files of the publish set."""
+    every_list = files is None
     files = sorted(name for name in PUBLISH if name.endswith(".md")) if files is None else sorted(files)
     top, actions = cli_tree()
     every_flag = top.union(*actions.values())
-    env_names = LAUNCH_ENV | {name for component in manifest(load(root / "config/manifest.json")).values()
-                              for name in component["env"]}
+    components = manifest(load(root / "config/manifest.json"))
+    env_names = LAUNCH_ENV | {name for component in components.values() for name in component["env"]}
     parsed, findings, guided = {}, set(), set()
     counts = {"files": 0, "links": 0, "json": 0}
     for name in files:
@@ -267,6 +299,18 @@ def check(root=ROOT, files=None):
                 for env in ENV_NAME.findall(line):
                     if env not in env_names:
                         findings.add(f"env_name: {name}:{number}")
+    # A synthetic file list checks a skill table only when it names the README.
+    for name, expected in skill_lists(components):
+        if not every_list and name not in files:
+            continue
+        try:
+            lines = (root / name).read_text(encoding="utf-8").split("\n")
+        except (OSError, UnicodeError):
+            findings.add(f"skill_list: {name}")
+            continue
+        rows = [match.group(1) for match in map(SKILL_ROW.match, skill_table(lines)) if match]
+        if rows != expected:
+            findings.add(f"skill_list: {name}")
     for action in sorted(set(actions) - guided):
         findings.add(f"action_unguided: scripts/tenant_pi.py:{action}")
     counts["actions"] = len(actions)

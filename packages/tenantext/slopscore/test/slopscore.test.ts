@@ -7,16 +7,23 @@ import { DEFAULT_PRICES, DEFAULT_TIERS, loadConfig, priceCall, thinkingFactor, t
 
 const cfg = loadConfig("/nonexistent/tiers.json");
 
-test("tiers: fable top, astra next, sol group interchangeable, small local lowest, unknown flagged", () => {
+test("tiers: fable top, gpt-6-astra next, gpt-5.6-sol group interchangeable, small local lowest, unknown flagged", () => {
 	assert.equal(tierFor("claude-fable-5-1").weight, 1.0);
 	assert.equal(tierFor("gpt-6-astra").weight, 0.9);
 	assert.equal(tierFor("gpt-5.6-sol").weight, 0.8);
+	assert.equal(tierFor("gpt-5.6-luna").weight, 0.8);
+	assert.equal(tierFor("gpt-5.6-terra").weight, 0.45);
+	for (const id of ["gpt-6.1-sol", "gpt-6-luna"]) assert.equal(tierFor(id).weight, 0.8);
+	assert.equal(tierFor("gpt-6-terra").weight, 0.45);
 	assert.equal(tierFor("moonshotai/kimi-k3").weight, 0.8);
 	assert.equal(tierFor("zai/glm-5.3").weight, 0.8);
 	assert.equal(tierFor("meta/muse-spark-1.3").weight, 0.8);
 	assert.equal(tierFor("Qwen3.6-27B-Q6_K.gguf").weight, 0.45);
 	assert.equal(tierFor("qwen3-8b-fp16").weight, 0.3);
 	assert.equal(tierFor("mystery-model").name, "unknown");
+	for (const nickname of ["astra", "sol", "luna", "terra"]) assert.equal(tierFor(nickname).name, "unknown");
+	const withNickname = [{ name: "T2 frontier", weight: 0.9, patterns: ["astra"] }, ...DEFAULT_TIERS];
+	assert.equal(tierFor("astra", withNickname).weight, 0.9);
 	assert.equal(thinkingFactor("xhigh"), 1.0);
 	assert.equal(thinkingFactor("medium"), 0.85);
 	assert.equal(thinkingFactor(undefined), 0.9);
@@ -57,7 +64,7 @@ test("aggregate: tool split, role and model buckets, effort share and points", (
 	assert.ok(Math.abs(agg.byTool.get("read")!.cost - 0.2) < 1e-9);
 	assert.ok(Math.abs(agg.byTool.get("bash")!.cost - 0.2) < 1e-9);
 	assert.ok(Math.abs(agg.byTool.get("(no tool)")!.cost - 0.2) < 1e-9);
-	// sol 0.8 × medium 0.85
+	// gpt-5.6-sol 0.8 × medium 0.85
 	assert.ok(Math.abs(effortShare(agg.total) - 0.68) < 1e-9);
 	assert.equal(points(agg.total), 14);
 	const md = renderReport(agg, cfg, "t");

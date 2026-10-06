@@ -84,9 +84,12 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(model["position"]["id"], "pos-demo")
         self.assertEqual([a["priority"] for a in model["active"]], [1, 2, 3])
         self.assertIsInstance(model["changes"][0]["evidence"], list)
-        self.assertNotIn("owner", model["active"][2])  # optional and absent
+        self.assertNotIn("requester", model["active"][2])  # optional and absent
         self.assertNotIn("blocker", model["active"][0])
-        self.assertEqual(model["notes"], {"Where things stand": ["Owner note: keep this brief short. Long history belongs in the issue tracker."]})
+        self.assertEqual(model["notes"], {"Where things stand": [
+            "Requester note: keep this brief short. Long history belongs in the issue tracker.\n"
+            "The default brief path is `docs/tracker-brief.md` when `docs/` is a directory, "
+            "else `tracker-brief.md` at the repository root."]})
         # The model is plain JSON data.
         self.assertEqual(json.loads(json.dumps(model)), model)
 
@@ -100,8 +103,8 @@ class ParseTests(unittest.TestCase):
         plain = json.loads(json.dumps(parse(example_text())))
         self.assertEqual(parse(dump(plain)), plain)
 
-    def test_owner_notes_survive_byte_for_byte(self):
-        note_a = "Owner: <b>keep</b> \"quotes\" & 'apostrophes'  \n  indented line\t\n### a sub-heading stays prose"
+    def test_requester_notes_survive_byte_for_byte(self):
+        note_a = "Requester: <b>keep</b> \"quotes\" & 'apostrophes'  \n  indented line\t\n### a sub-heading stays prose"
         note_b = "Second note with trailing spaces   "
         text = swap(
             example_text(),
@@ -189,8 +192,8 @@ class ParseTests(unittest.TestCase):
         self.assertSyntax(text, "record-syntax", line_of(text, "   - ev-pr-1"))
 
     def test_empty_value(self):
-        text = swap(example_text(), "owner: coordinator", "owner:")
-        self.assertSyntax(text, "value-empty", line_of(text, "owner:"))
+        text = swap(example_text(), "requester: coordinator", "requester:")
+        self.assertSyntax(text, "value-empty", line_of(text, "requester:"))
 
     def test_priority_must_be_integer(self):
         text = swap(example_text(), "priority: 1", "priority: high")
@@ -234,6 +237,11 @@ class ValidateTests(unittest.TestCase):
     def test_unknown_record_key(self):
         text = swap(example_text(), "title: Parser merged", "title: Parser merged\ncolour: green")
         self.assertDiag(text, "key-unknown", line_of(text, "colour: green"))
+
+    def test_old_owner_key_names_the_new_key(self):
+        text = swap(example_text(), "requester: coordinator", "owner: coordinator")
+        matches = self.assertDiag(text, "key-unknown", line_of(text, "owner: coordinator"))
+        self.assertIn("unknown key 'owner' (renamed to 'requester')", matches[0].message)
 
     def test_unknown_frontmatter_key(self):
         text = swap(example_text(), "synthesis: model", "synthesis: model\nauthor: someone")
@@ -376,7 +384,7 @@ class ValidateTests(unittest.TestCase):
     def test_list_and_scalar_types(self):
         text = swap(example_text(), "evidence:\n  - ev-issue-4\n```\n\n## Issues", "evidence: ev-issue-4\n```\n\n## Issues")
         self.assertDiag(text, "value-type", line_of(text, "evidence: ev-issue-4"))
-        text = swap(example_text(), "owner: coordinator", "owner:\n  - a\n  - b")
+        text = swap(example_text(), "requester: coordinator", "requester:\n  - a\n  - b")
         self.assertDiag(text, "value-type")
 
     def test_staleness_only_with_now(self):

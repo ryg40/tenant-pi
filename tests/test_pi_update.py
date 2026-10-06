@@ -15,6 +15,7 @@ from scripts import pi_update as update
 
 ROOT = Path(__file__).resolve().parents[1]
 PIN = json.loads((ROOT / "config/manifest.json").read_text())["runtime"]["piVersion"]
+OLDER = "1.0.2"
 
 FAKE_PI = '''import json, os, pathlib, sys, urllib.request
 home = pathlib.Path(os.environ["HOME"])
@@ -49,7 +50,7 @@ if "install" in args:
         path = scope / name
         path.mkdir(parents=True)
         (path / "package.json").write_text(json.dumps({"version": VERSION}))
-    (scope / "pi-coding-agent/CHANGELOG.md").write_text("## [1.0.3] - example\\n### Fixed\\nA fix.\\n### Breaking Changes\\nAn API changed.\\n## [1.0.2] - example\\nOlder.\\n")
+    (scope / "pi-coding-agent/CHANGELOG.md").write_text("## [" + VERSION + "] - example\\n### Fixed\\nA fix.\\n### Breaking Changes\\nAn API changed.\\n## [1.0.2] - example\\nOlder.\\n")
     binary = modules / ".bin/pi"
     binary.parent.mkdir()
     binary.write_text(PI_SCRIPT)
@@ -91,6 +92,114 @@ class UpdateTests(unittest.TestCase):
         offline = (("offline-fixture", ["-c", "print('offline fixture')"]),)
         with patch.object(update, "OFFLINE", offline):
             return update.qualify(requested, str(self.work), **kwargs)
+
+    def test_pin_contents_changes_only_the_manifest_pin_and_reviewed_anchor(self):
+        manifest_text = ('{\n  "runtime": {\n    "piVersion": "1.0.3",\n    "piAcceptedRange": ">=1.0.3 <1.1"\n  },\n'
+                         '  "components": {\n    "core": {\n      "source": {\n'
+                         '        "spec": "@earendil-works/pi-coding-agent@1.0.3"\n      }\n    }\n  }\n}\n')
+        validator_text = ('REVIEWED_SOURCES = {\n'
+                          '    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.3"},\n}\n')
+        original = {"config/manifest.json": manifest_text, "scripts/validate.py": validator_text}
+        self.assertEqual(original, update.pin_contents(manifest_text, validator_text, "1.0.3"))
+        expected = {
+            "config/manifest.json": '{\n  "runtime": {\n    "piVersion": "1.0.4",\n    "piAcceptedRange": ">=1.0.4 <1.1"\n  },\n'
+                '  "components": {\n    "core": {\n      "source": {\n'
+                '        "spec": "@earendil-works/pi-coding-agent@1.0.4"\n      }\n    }\n  }\n}\n',
+            "scripts/validate.py": 'REVIEWED_SOURCES = {\n'
+                '    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.4"},\n}\n',
+        }
+        result = update.pin_contents(manifest_text, validator_text, "1.0.4")
+        self.assertEqual(expected, result)
+        self.assertEqual(original, update.pin_contents(result["config/manifest.json"], result["scripts/validate.py"], "1.0.3"))
+
+    def test_pin_move_sets_the_minor_line_and_preserves_a_same_pin_range(self):
+        manifest_text = (ROOT / "config/manifest.json").read_text()
+        validator_text = (ROOT / "scripts/validate.py").read_text()
+        for requested, accepted in (("1.0.4", ">=1.0.4 <1.1"), ("2.3.0", ">=2.3.0 <2.4"),
+                                     ("9.9.9", ">=9.9.9 <9.10")):
+            contents = update.pin_contents(manifest_text, validator_text, requested)
+            self.assertEqual({"config/manifest.json", "scripts/validate.py"}, set(contents))
+            self.assertEqual(accepted, json.loads(contents["config/manifest.json"])["runtime"]["piAcceptedRange"])
+        reviewed = update.pin_contents(manifest_text, validator_text, PIN, accepted_range=">=0.0.0 <99")
+        again = update.pin_contents(reviewed["config/manifest.json"], reviewed["scripts/validate.py"], PIN)
+        self.assertEqual(reviewed, again)
+        with self.assertRaisesRegex(update.Invalid, "^tested_outside_range:"):
+            update.pin_contents(manifest_text, validator_text, "2.3.0-rc.1")
+        preview = update.pin_contents(manifest_text, validator_text, "2.3.0-rc.1", accepted_range=">=2.2.0 <2.4")
+        self.assertEqual(">=2.2.0 <2.4", json.loads(preview["config/manifest.json"])["runtime"]["piAcceptedRange"])
+        with self.assertRaisesRegex(update.Invalid, "^tested_outside_range:"):
+            update.pin_contents(manifest_text, validator_text, "2.3.0", accepted_range=">=2.4.0 <2.5")
+
+    def test_range_without_upper_bound_fails_before_candidate_text(self):
+        manifest_text = (ROOT / "config/manifest.json").read_text()
+        validator_text = (ROOT / "scripts/validate.py").read_text()
+        for requested, accepted in ((PIN, ">=0.0.0"), ("2.3.0", ">=2.3.0"), ("2.3.0-rc.1", ">=2.2")):
+            with self.subTest(requested=requested), self.assertRaises(update.Invalid) as caught:
+                update.pin_contents(manifest_text, validator_text, requested, accepted_range=accepted)
+            self.assertEqual("range_without_upper_bound: manifest.runtime.piAcceptedRange", str(caught.exception))
+        # A same-pin run keeps the range of the manifest, so an unbounded one stops the candidate copy.
+        data = json.loads(manifest_text)
+        data["runtime"]["piAcceptedRange"] = ">=0.0.0"
+        source = self.base / "source"
+        for name, text in (("config/manifest.json", json.dumps(data, indent=2) + "\n"),
+                           ("scripts/validate.py", validator_text)):
+            (source / name).parent.mkdir(parents=True)
+            (source / name).write_text(text)
+        out = io.StringIO()
+        with patch.object(update, "ROOT", source), contextlib.redirect_stdout(out):
+            status = update.main(["qualify", "--version", PIN, "--workdir", str(self.work)])
+        self.assertEqual(1, status)
+        steps = {step["name"]: step for step in json.loads(out.getvalue())["steps"]}
+        self.assertEqual(1, steps["candidate-copy"]["exitCode"])
+        self.assertEqual({"error": "range_without_upper_bound"},
+                         json.loads(Path(steps["candidate-copy"]["log"]).read_text()))
+        self.assertNotIn("install", steps)
+
+    def test_synthetic_pin_reaches_validation_plan_provenance_and_runtime(self):
+        requested = "9.9.9"
+        agent = self.base / "empty-agent"
+        agent.mkdir()
+        env = {"PATH": str(self.bin) + ":/usr/bin:/bin", "HOME": str(self.home), "TMPDIR": str(self.base),
+               "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", "PI_CODING_AGENT_DIR": str(agent)}
+        candidate = update.candidate_copy(self.base, PIN, env)
+        names = ("config/manifest.json", "scripts/validate.py")
+        before = {name: (ROOT / name).read_bytes() for name in names}
+        contents = update.pin_contents(*[(candidate / name).read_text() for name in names], requested)
+        for name, content in contents.items():
+            (candidate / name).write_text(content, encoding="utf-8")
+
+        def run(*args):
+            result = subprocess.run([sys.executable, "-B", *args], cwd=candidate, env=env,
+                                    stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+            self.assertEqual((0, ""), (result.returncode, result.stderr), result.stdout + result.stderr)
+            return result.stdout
+
+        self.assertEqual("accepted\n", run("-c", 'from scripts.validate import load, manifest; '
+                         'manifest(load("config/manifest.json")); print("accepted")'))
+        target = self.base / "profile"
+        overlay = json.loads((candidate / "config/config.example.json").read_text())
+        overlay["target"]["agentDir"] = str(target)
+        overlay_file = self.base / "overlay.json"
+        overlay_file.write_text(json.dumps(overlay), encoding="utf-8")
+        cli = str(candidate / "scripts/tenant_pi.py")
+        plan = json.loads(run(cli, "plan", "--overlay", str(overlay_file)))
+        self.assertEqual(">=9.9.9 <9.10", json.loads((candidate / "config/manifest.json").read_text())["runtime"]["piAcceptedRange"])
+        self.assertEqual("9.9.9", plan["commands"]["piInstall"]["required"])
+        self.assertEqual("npm install --global -- @earendil-works/pi-coding-agent@9.9.9",
+                         plan["commands"]["piInstall"]["command"])
+        generated = json.loads(run(cli, "generate", "--overlay", str(overlay_file), "--target", str(target)))
+        self.assertTrue(generated["filesComplete"])
+        provenance = json.loads((target / ".tenant-pi/state.json").read_text())["provenance"]
+        self.assertEqual("9.9.9", provenance["piVersion"])
+        self.assertEqual("npm:@earendil-works/pi-coding-agent@9.9.9", provenance["pins"]["core"])
+        fake_pi = self.bin / "pi"
+        fake_pi.write_text("#!" + sys.executable + "\nVERSION = " + repr(requested) + "\n" + FAKE_PI)
+        fake_pi.chmod(0o700)
+        runtime = json.loads(run(cli, "check-runtime", "--pi", str(fake_pi),
+                                 "--node", str(self.bin / "node"), "--python", sys.executable))
+        self.assertEqual({"installed": "9.9.9", "required": "9.9.9", "status": "match",
+                          "tested": "9.9.9", "acceptedRange": ">=9.9.9 <9.10"}, runtime["pi"])
+        self.assertEqual(before, {name: (ROOT / name).read_bytes() for name in names})
 
     def test_detect_no_new_and_new_exit_codes(self):
         for newest, code in ((PIN, 0), ("99.0.0", 10)):
@@ -205,18 +314,18 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(codes["print-response"], 0)
 
     def test_notes_breaking_first_from_fake_npm(self):
-        report = update.notes("1.0.2", "1.0.3", str(self.work))
+        report = update.notes(OLDER, PIN, str(self.work))
         self.assertTrue(report["passed"])
         self.assertTrue(report["breaking"])
         self.assertTrue(report["entries"][0]["text"].startswith("### Breaking Changes"))
         self.assertTrue(report["entries"][1]["text"].startswith("### Fixed"))
-        self.assertEqual({row["version"] for row in report["entries"]}, {"1.0.3"})
+        self.assertEqual({row["version"] for row in report["entries"]}, {PIN})
 
     def test_notes_bounds_and_no_breaking(self):
-        text = "## [1.0.3]\n### Fixed\nNew.\n## [1.0.2]\nOld.\n"
-        self.assertFalse(update.changelog_entries(text, "1.0.2", "1.0.3")["breaking"])
-        self.assertEqual(update.changelog_entries(text, "1.0.3", "1.0.3")["entries"], [])
-        for start, end in (("1.0.0", "1.0.3"), ("1.0.3", "1.0.2")):
+        text = "## [" + PIN + "]\n### Fixed\nNew.\n## [1.0.2]\nOld.\n"
+        self.assertFalse(update.changelog_entries(text, OLDER, PIN)["breaking"])
+        self.assertEqual(update.changelog_entries(text, PIN, PIN)["entries"], [])
+        for start, end in (("1.0.0", PIN), (PIN, "1.0.2")):
             with self.assertRaisesRegex(update.Invalid, "notes_range"):
                 update.changelog_entries(text, start, end)
 

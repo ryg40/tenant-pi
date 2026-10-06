@@ -5,6 +5,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { atomicWrite } from "../state/paths.mts";
 import { herdrWorkspaceFromPaneId, isHerdrPaneId } from "../herdr/identity.mts";
+import { parseAgent, parseSplitPane, matchesAgentIdentity, buildInteractiveStartArgs, buildPromptArgs } from "../herdr/adapter.mts";
 import { herdrRoleNameFromList } from "../herdr/naming.mts";
 import type { BriefingDialogs } from "../briefing/overview.mts";
 import { validateBriefing } from "../briefing/openknowledge.mts";
@@ -75,8 +76,7 @@ export function buildFreshSplitArgs(source: FreshSource, runtime: FreshRuntime):
 /** Start canonical Pi in the new pane with the exact source runtime flags. */
 export function buildFreshAgentStartArgs(name: string, paneId: string, runtime: FreshRuntime, displayName?: string): string[] {
   return [
-    "agent", "start", name, "--kind", "pi", "--pane", paneId, "--timeout", "60000",
-    "--", "--provider", runtime.provider, "--model", runtime.model, "--thinking", runtime.thinking,
+    ...buildInteractiveStartArgs(name, paneId, runtime),
     ...(displayName ? ["--name", displayName] : []),
   ];
 }
@@ -86,24 +86,10 @@ function packetPath(source: FreshSource, text: string): string {
   return path.join(source.cwd, ".promptr", "briefing-history", `${key}-fresh-attempt.json`);
 }
 
-interface AgentRecord {
-  agent?: unknown; pane_id?: unknown; cwd?: unknown; foreground_cwd?: unknown;
-  agent_status?: unknown; agent_session?: { kind?: unknown; value?: unknown }; terminal_id?: unknown;
-}
-
-function parseAgent(stdout: string): AgentRecord | undefined {
-  try {
-    const data = JSON.parse(stdout);
-    return data?.result?.agent as AgentRecord | undefined;
-  } catch { return undefined; }
-}
-
 async function readySource(source: FreshSource, exec: HerdrExecutor): Promise<string> {
   const agent = parseAgent(await exec(["agent", "get", source.pane]));
-  if (!agent || agent.agent !== "pi" || agent.pane_id !== source.pane
-    || agent.cwd !== source.cwd || agent.foreground_cwd !== source.cwd
-    || agent.agent_status !== "idle" || agent.agent_session?.kind !== "path"
-    || agent.agent_session?.value !== source.sessionFile || typeof agent.terminal_id !== "string") {
+  if (!matchesAgentIdentity(agent, { pane: source.pane, cwd: source.cwd, foreground: true, session: source.sessionFile })
+    || agent?.agent_status !== "idle" || typeof agent.terminal_id !== "string") {
     throw new Error("Source Pi identity/readiness changed.");
   }
   return agent.terminal_id;
@@ -111,25 +97,12 @@ async function readySource(source: FreshSource, exec: HerdrExecutor): Promise<st
 
 async function readySuccessor(paneId: string, cwd: string, exec: HerdrExecutor): Promise<{ terminal: string; session: string }> {
   const agent = parseAgent(await exec(["agent", "get", paneId]));
-  if (!agent || agent.agent !== "pi" || agent.pane_id !== paneId
-    || agent.cwd !== cwd || agent.foreground_cwd !== cwd || agent.agent_status !== "idle"
-    || agent.agent_session?.kind !== "path" || typeof agent.agent_session?.value !== "string"
+  if (!matchesAgentIdentity(agent, { pane: paneId, cwd, foreground: true }) || agent?.agent_status !== "idle"
+    || typeof agent.agent_session?.value !== "string"
     || typeof agent.terminal_id !== "string") {
     throw new Error("Successor identity/readiness unverified.");
   }
   return { terminal: agent.terminal_id, session: agent.agent_session.value };
-}
-
-function parseSplitPane(stdout: string, sourcePane: string): string | undefined {
-  try {
-    const data = JSON.parse(stdout);
-    if (data && typeof data === "object" && "error" in data) return undefined;
-    const pane = (data as { result?: { pane?: { pane_id?: unknown } } })?.result?.pane;
-    const id = typeof pane?.pane_id === "string" ? pane.pane_id : undefined;
-    if (!isHerdrPaneId(id) || id === sourcePane
-      || herdrWorkspaceFromPaneId(id) !== herdrWorkspaceFromPaneId(sourcePane)) return undefined;
-    return id;
-  } catch { return undefined; }
 }
 
 /** Explicit Start fresh. Returns true only when a launch sequence ran. */
@@ -195,7 +168,7 @@ export async function startFreshBriefingInNewPi(
   } catch { ui.notify(`Successor in ${freshPane} failed identity/readiness; nothing submitted. Inspect the pane; prompt it manually if healthy. Packet retained: ${packet}.`, "warning"); return false; }
 
   try {
-    await exec(["agent", "prompt", freshPane, text, "--wait", "--until", "working", "--timeout", "10000"]);
+    await exec(buildPromptArgs(freshPane, text));
   } catch { ui.notify(`Successor prompt uncertain in ${freshPane}; inspect it before any manual recovery. Packet retained: ${packet}. No retry.`, "warning"); return true; }
 
   try {

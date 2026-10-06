@@ -55,7 +55,7 @@ The kit rejects these keys outright, whatever the value:
 
 The kit never resolves a `${NAME}` reference, never reads the environment, and never checks that a command or URL exists.
 
-Not verified: the Pi 0.99.1 behaviour described below with Pi 1.0.3, the current kit pin.
+Not verified: the Pi 0.99.1 behaviour described below with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
 ## MCP: what the pinned source does
 
@@ -99,16 +99,18 @@ Observed with Pi 0.99.1: `docs/mcp.md` says that an installed extension that reg
 
 Source: the in-tree package `packages/promptr` (`tree` source): `package.json`, `index.ts`, `scripts/install.mjs`, `README.md`, `src/extension/index.mts`.
 
-The table records observations with Pi 1.0.2. The kit pins Pi 1.0.3; the package is not verified on that version. The component `promptr` and its four skill components are `unverified`. `met` applies only to the stated version. `open` means that the fact is a gap of the component.
+The table separates historical package loads on Pi 1.0.2 and Pi 1.0.3 from build and test results with the 1.0.4 dependencies. No package load on Pi 1.0.4 is verified. The component `promptr` and its four skill components are `unverified`. `met` applies only to the stated version. `open` means that the fact is a gap of the component.
 
 | Prerequisite | Fact | Status |
 | --- | --- | --- |
-| `local_package_load` | Pi 1.0.2 loads the built `packages/promptr` as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills. | met |
-| `pi_line_build_and_tests` | `package.json` pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` at 1.0.2. Observed with Pi 1.0.2: the build, tests and smoke scripts pass. Not verified: the same checks with Pi 1.0.3. | met |
+| `local_package_load` | Observed with Pi 1.0.2 and Pi 1.0.3: Pi loads the built `packages/promptr` as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills. | met |
+| `pi_line_build_and_tests` | `package.json` pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` at 1.0.4. The build, the 756 tests, the typecheck and `npm run smoke` pass with those dependencies. `npm run smoke:installed` did not run on 1.0.4. | met |
 | `build_step_required` | `packages/promptr/index.ts` re-exports `dist/src/extension/index.mjs`; `dist/` is ignored and absent in the tree. Run `npm ci --ignore-scripts` and `npm run build` in `packages/promptr` before the first start. `scripts/publish_check.py` ignores `dist/`. | open |
-| `host_module_dependency` | `dependencies` pins `@earendil-works/pi-tui@1.0.2`, because the companion process (`promptr-companion-spike`) runs outside Pi and needs it. Pi 1.0.2 prints one warning at each start: host packages belong under `peerDependencies`. For the built files, Pi loads a second copy of `pi-tui` from `packages/promptr/node_modules`. Observed with Pi 1.0.2: both copies have version 1.0.2. The kit pins Pi 1.0.3 with `pi-tui` `^1.0.3`, so the two copies differ now: `pi-tui` 1.0.3 changed the default keys of `Home` and `End` (see [the changes in Pi 1.0.3](check-runtime.md#the-changes-in-pi-103)). Not verified: the effect on key handling, for example in a terminal with the kitty key protocol. The install into `<agent dir>/extensions/promptr` prints no warning. | open |
+| `host_module_dependency` | `dependencies` pins `@earendil-works/pi-tui@1.0.4`, because the companion process (`promptr-companion-spike`) runs outside Pi and needs it. Pi 1.0.2 and Pi 1.0.3 print one warning at each start: host packages belong under `peerDependencies`. Those releases load a second copy from `packages/promptr/node_modules` for the built files. The package pins now align at 1.0.4, but Pi's caret dependency permits a later copy. Not verified on Pi 1.0.4: the warning and interactive key handling, including the kitty key protocol. | open |
 | `private_renderer_adapters` | The sidebar uses private Pi renderer adapters. Observed with Pi 1.0.2: the sidebar displays. Not verified: a session with a model. | open |
 | `automatic_dispatch_path_unverified` | `requestHandoff` is called with `automatic: true`; queue sends are manual, the handoff switch is unverified. | open |
+
+The `pi-tui` 1.0.4 defaults keep `Home` and `Ctrl+A` for line start, and `End` and `Ctrl+E` for line end. `Ctrl+Home` and `Ctrl+End` scroll the transcript to its top and bottom. Promptr documents `Home` and `End` for notebook lines and binds them directly for tracking navigation. It binds `Ctrl+E` to queue the composer and refuses that key in tracking dialogs. It has no explicit `Ctrl+A`, `Ctrl+Home` or `Ctrl+End` binding. These source checks do not prove interactive key handling.
 
 The matrix is recorded in every plan under `workflow.promptr`, whether or not Promptr is selected; `enabled` shows the selection. A plan that enables `promptr` names each open prerequisite and `kit_test_missing` under `readinessGaps`. A skill component needs `promptr` in `enable`. A fresh state is: no `<agent dir>/promptr/`, no project `.promptr/`, no tracker binding. The kit copies no queue, notebook, tracker credential, or handoff record and prints no command that sends a queued prompt.
 
@@ -121,6 +123,10 @@ The `promptr` component uses the `tree` source at `packages/promptr`; its four s
 ## Herdr skill: an optional component
 
 The Herdr skill is the selectable component `herdr` (`packages/tenantext`, `skills/herdr`, `unverified`). It loads from a generated profile only when the overlay enables it. The user-level install with `packages/tenantext/skills/herdr/install.sh` stays possible (install skill, Stage 8). Herdr-hosted and browser-hosted launch stay optional and unqualified in this release. A wider filter is a manifest and validator change with its own review.
+
+## Coordinator skills: an optional component
+
+The component `coordinator-skills` (`packages/tenantext`, `unverified`) ships more than one skill: one directory for each below `skills/coordinator-skills/`. `config/manifest.json` names them, and [the component README](../packages/tenantext/skills/coordinator-skills/README.md) lists them. It is the only component with more than one filter entry. It claims one filter entry for each skill. A generated profile loads the skills only when the overlay enables the component. The user-level install with `packages/tenantext/skills/coordinator-skills/install.sh` links each skill into the Claude Code and the Pi skill directory of the user. The offline test `tests/test_skill_invariants.py` reads each shipped skill text.
 
 ## Generated outputs
 

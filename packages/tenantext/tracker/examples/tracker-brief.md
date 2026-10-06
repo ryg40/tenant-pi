@@ -24,7 +24,8 @@ evidence:
   - ev-issue-3
 ```
 
-Owner note: keep this brief short. Long history belongs in the issue tracker.
+Requester note: keep this brief short. Long history belongs in the issue tracker.
+The default brief path is `docs/tracker-brief.md` when `docs/` is a directory, else `tracker-brief.md` at the repository root.
 
 ## What changed
 
@@ -64,7 +65,7 @@ id: act-storage
 title: Build the storage layer
 readiness: ready-offline
 next: Merge the adapter and conflict-check branches, then run the joint tests and review the example output.
-owner: coordinator
+requester: coordinator
 priority: 1
 evidence:
   - ev-issue-3
@@ -77,7 +78,7 @@ title: Reconcile validation tasks #5 and #6
 readiness: needs-decision
 next: Compare demo history with the closed pull requests, then update both tasks.
 blocker: Pull requests 7 and 8 closed without merge.
-owner: owner
+requester: requester
 priority: 2
 evidence:
   - ev-issue-6
@@ -91,7 +92,7 @@ id: act-export
 title: Export configuration
 readiness: approval-gated
 next: Import sample records from read-only files. Publication waits for approval.
-blocker: The owner has not approved publication.
+blocker: The requester has not approved publication.
 priority: 3
 evidence:
   - ev-issue-4
@@ -119,7 +120,7 @@ url: https://git.example.com/owner/demo/issues/4
 checked: 2030-01-23T06:25:00Z
 workstream: export
 blockers:
-  - Owner approval for publication
+  - Requester approval for publication
 note: Offline export works. Sample imports and compatibility checks remain.
 ```
 
@@ -176,7 +177,7 @@ text: Offline code, tests and docs in this repository.
 ```gate
 id: gate-publication
 kind: approval
-text: Publication needs owner approval, a backup and a rollback plan.
+text: Publication needs requester approval, a backup and a rollback plan.
 evidence:
   - ev-issue-4
 ```
@@ -190,7 +191,7 @@ text: Publishing the brief is opt-in. Tokens stay out of Markdown, HTML, logs an
 ```gate
 id: gate-no-launch
 kind: forbidden
-text: Do not start follow-up paths from this brief without a new owner request.
+text: Do not start follow-up paths from this brief without a new requester request.
 ```
 
 ## Unknowns and conflicts
@@ -263,7 +264,7 @@ read_first:
   - ev-pr-8
   - ev-commit-d4e5f6a
 scope: Read-only audit of history, pull requests and issue claims.
-authority: Issue comments need owner approval. No code changes.
+authority: Issue comments need requester approval. No code changes.
 acceptance:
   - Each validation task cites the commit that delivered it, or states what is missing.
 output: An evidence-backed issue update proposal.
@@ -344,12 +345,12 @@ text: |
   - Both feature branches are committed.
 
   Authority: Local branches and tests only. No push, publication or global install.
-  Needs separate owner approval:
+  Needs separate requester approval:
   - Publishing the rendered brief
   Approval gates in force:
-  - Needs approval: Publication needs owner approval, a backup and a rollback plan.
+  - Needs approval: Publication needs requester approval, a backup and a rollback plan.
   - Needs approval: Publishing the brief is opt-in. Tokens stay out of Markdown, HTML, logs and Git.
-  - Forbidden: Do not start follow-up paths from this brief without a new owner request.
+  - Forbidden: Do not start follow-up paths from this brief without a new requester request.
 
   Acceptance criteria:
   - The tracker unit tests pass.
@@ -359,7 +360,7 @@ text: |
   - npm test
   Expected output: A merged local branch and a short test report.
 
-  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the owner.
+  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the requester.
 ```
 
 ## Evidence

@@ -18,7 +18,7 @@ const COPILOT = {
  version: 1,
  providers: ['github-copilot'],
  defaultProvider: 'github-copilot',
- workflows: { 'openai-codex-simple': { roles: { worker: { model: 'gpt-5.1-codex', thinking: 'high' } } } },
+ workflows: { 'worker-simple': { roles: { worker: { model: 'gpt-5.1-codex', thinking: 'high' } } } },
 };
 
 test('the default path follows the Pi agent directory convention, never a hardcoded home', () => {
@@ -52,7 +52,7 @@ test('no file means shipped defaults and the shipped port object itself', () => 
   assert.equal(effective.error, undefined);
   assert.equal(effective.configured, false);
   assert.equal(effective.catalog, catalogPort);
-  assert.deepEqual(effective.catalog.listProviders().map((p) => p.id), ['openai-codex', 'openai-codex-2']);
+  assert.deepEqual(effective.catalog.listProviders().map((p) => p.id), ['default-provider']);
  } finally { cleanup(); }
 });
 
@@ -77,7 +77,7 @@ test('a malformed override blocks selection and every expansion, quoting the fil
   assert.deepEqual([...effective.catalog.listWorkflows()], []);
   assert.deepEqual([...effective.catalog.listProviders()], []);
   const expansion = effective.catalog.expandWorkflow({
-   template: 'openai-codex-simple', provider: 'openai-codex', readiness: 'ready',
+   template: 'worker-simple', provider: 'default-provider', readiness: 'ready',
   });
   assert.equal(expansion.ok, false);
   assert.match(expansion.error, /unknown key 'tier'/);
@@ -91,19 +91,19 @@ test('editing the file and refreshing shows the new matrix; renders do not re-re
   const file = path.join(dir, 'promptr', 'workflows.json');
   const env = { PI_CODING_AGENT_DIR: dir };
   const reloading = createReloadingCatalog(catalogPort, env, nodeWorkflowLoadDeps);
-  assert.deepEqual(reloading.port.listProviders().map((p) => p.id), ['openai-codex', 'openai-codex-2']);
+  assert.deepEqual(reloading.port.listProviders().map((p) => p.id), ['default-provider']);
   assert.match(reloading.describe(), /workflow overrides: none/);
 
   writeFileSync(file, JSON.stringify(COPILOT));
   // Not refreshed yet: the cached snapshot is what the picker keeps showing.
-  assert.deepEqual(reloading.port.listProviders().map((p) => p.id), ['openai-codex', 'openai-codex-2']);
+  assert.deepEqual(reloading.port.listProviders().map((p) => p.id), ['default-provider']);
 
   const refreshed = reloading.refresh();
   assert.equal(refreshed.configured, true);
   assert.deepEqual(reloading.port.listProviders().map((p) => p.id), ['github-copilot']);
   assert.match(reloading.describe(), /workflow override active/);
   const worker = reloading.port.expandWorkflow({
-   template: 'openai-codex-simple', provider: 'github-copilot', readiness: 'ready',
+   template: 'worker-simple', provider: 'github-copilot', readiness: 'ready',
   }).value.roles.find((r) => r.role === 'worker');
   assert.deepEqual(worker, {
    role: 'worker', provider: 'github-copilot', model: 'gpt-5.1-codex', thinking: 'high', route: 'pi',

@@ -6,7 +6,7 @@
  */
 import path from "node:path";
 import { WORKFLOWS_FILE_ENV } from "../workflow/config.mts";
-import { loadWorkflowConfig, loadEffectiveCatalog, resolveWorkflowsFile, resolveCapabilityProbeFile } from "../workflow/load.mts";
+import { NO_OVERRIDE_HINT, loadWorkflowConfig, loadEffectiveCatalog, resolveWorkflowsFile, resolveCapabilityProbeFile } from "../workflow/load.mts";
 import { catalogPort } from "../workflow/catalog.mts";
 import { parseCapabilityProbe } from "../workflow/registry.mts";
 import { resolveTracker } from "../tracking/config.mts";
@@ -114,7 +114,7 @@ function ownership(probe: DoctorProbe, id: string, label: string, dir: string): 
     : check(id, "ok", `${label}: ${dir} (owner-only, uid ${String(facts.uid)})`);
 }
 
-/** The Pi release line this package is built and tested against (the pinned pi-tui/pi-coding-agent 1.0.2). */
+/** The Pi release line this package is built and tested against (the pinned pi-tui/pi-coding-agent 1.0.4). */
 export const TESTED_PI_LINE = "1.0";
 const testedPi = (version: string) => version === TESTED_PI_LINE || version.startsWith(`${TESTED_PI_LINE}.`);
 
@@ -174,7 +174,7 @@ export function runDoctor(probe: DoctorProbe): DoctorReport {
   const effective = loadEffectiveCatalog(catalogPort, env, fileDeps);
   if (effective.error !== undefined) checks.push(check("workflows", "fail", `Workflow override invalid: ${wfPath}`, effective.error));
   else if (!workflows.ok) checks.push(check("workflows", "fail", `Workflow override invalid: ${wfPath}`, workflows.error));
-  else if (workflows.config === undefined) checks.push(check("workflows", "info", `Workflow overrides: none (shipped defaults); optional file ${wfPath}${env[WORKFLOWS_FILE_ENV] ? " (from " + WORKFLOWS_FILE_ENV + ")" : ""}`));
+  else if (workflows.config === undefined) checks.push(check("workflows", "warn", `Workflow overrides: none (shipped defaults); expected file ${wfPath}${env[WORKFLOWS_FILE_ENV] ? " (from " + WORKFLOWS_FILE_ENV + ")" : ""}`, `The shipped defaults name a neutral provider and do not launch; ${NO_OVERRIDE_HINT}.`));
   else checks.push(check("workflows", "ok", `Workflow override active: ${wfPath}`, `providers ${workflows.config.providers?.join(", ") ?? "(shipped)"}; configured intent, not verified availability`));
   const resolvedProbe = resolveCapabilityProbeFile(env);
   const probeFile = resolvedProbe.path;
@@ -182,7 +182,9 @@ export function runDoctor(probe: DoctorProbe): DoctorReport {
   if (resolvedProbe.error) {
     checks.push(check("capabilities", "fail", resolvedProbe.error));
   } else if (probeText === undefined) {
-    checks.push(check("capabilities", workflows.ok && workflows.config === undefined ? "warn" : "fail", `No capability probe at ${probeFile}`, "Run /promptr-workflows probe inside Pi. Configured workflow launches require a readable probe; shipped defaults remain static candidates."));
+    checks.push(check("capabilities", workflows.ok && workflows.config === undefined ? "warn" : "fail", `No capability probe at ${probeFile}`, workflows.ok && workflows.config === undefined
+      ? "Write a workflow override file first (promptr-workflows-init), then run /promptr-workflows probe inside Pi. Shipped defaults do not launch."
+      : "Run /promptr-workflows probe inside Pi. Configured workflow launches require a readable probe."));
   } else {
     const parsed = parseCapabilityProbe(probeText);
     const facts = probe.stat(probeFile);

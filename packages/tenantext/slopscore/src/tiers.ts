@@ -17,17 +17,17 @@ export interface Tier {
 
 export const DEFAULT_TIERS: Tier[] = [
 	{ name: "T1 frontier top", weight: 1.0, patterns: ["fable-5-1", "fable-5.1", "fable", "mythos"] },
-	{ name: "T2 frontier", weight: 0.9, patterns: ["astra", "opus-5", "opus-4-8", "opus-4.8"] },
+	{ name: "T2 frontier", weight: 0.9, patterns: ["gpt-6-astra", "opus-5", "opus-4-8", "opus-4.8"] },
 	{
 		name: "T3 frontier commodity",
 		weight: 0.8,
-		patterns: ["gpt-5.6-sol", "sol", "kimi-k3", "glm-5.3", "glm5.3", "muse-spark", "gpt-5.6-luna", "luna", "sonnet-5"],
-		note: "Interchangeable. luna placed here by assumption; move it in tiers.json if you disagree.",
+		patterns: ["gpt-5.6-sol", "gpt-6.1-sol", "kimi-k3", "glm-5.3", "glm5.3", "muse-spark", "gpt-5.6-luna", "gpt-6-luna", "sonnet-5"],
+		note: "Interchangeable. Move a model in tiers.json if you disagree.",
 	},
 	{
 		name: "T4 lesser",
 		weight: 0.45,
-		patterns: ["gpt-5.6-terra", "terra", "haiku", "sonnet-4", "opus-4", "qwen3.6-35b", "qwen3.6-27b", "qwen3.6", "gemini", "gpt-5-mini", "gpt-5.5", "deepseek", "mistral", "llama"],
+		patterns: ["gpt-5.6-terra", "gpt-6-terra", "haiku", "sonnet-4", "opus-4", "qwen3.6-35b", "qwen3.6-27b", "qwen3.6", "gemini", "gpt-5-mini", "gpt-5.5", "deepseek", "mistral", "llama"],
 	},
 	{
 		name: "T5 small local",

@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
   "runtime": {
-    "piVersion": "1.0.3",
+    "piVersion": "1.0.4",
+    "piAcceptedRange": ">=1.0.4 <1.1",
     "nodeRange": ">=22.22.0 <23",
     "pythonRange": ">=3.11"
   },
@@ -9,7 +10,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.0.3"
+        "spec": "@earendil-works/pi-coding-agent@1.0.4"
       },
       "status": "tested",
       "reason": null,
@@ -469,7 +470,7 @@
       "gaps": [
         {
           "code": "pi_line_unqualified",
-          "fact": "The component uses the resource settings syntax of Pi 1.0.3, the kit pin; the kit has no load test on that line."
+          "fact": "The component uses the resource settings syntax of the reviewed Pi release (see docs/resources.md). No test in this repository loads it with the kit pin."
         },
         {
           "code": "kit_test_missing",
@@ -533,6 +534,109 @@
         "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
       }
     },
+    "coordinator-skills": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/coordinator-skills/grilling",
+          "skills/coordinator-skills/grill-me",
+          "skills/coordinator-skills/wayfinder",
+          "skills/coordinator-skills/research",
+          "skills/coordinator-skills/prototype",
+          "skills/coordinator-skills/domain-modeling",
+          "skills/coordinator-skills/to-spec",
+          "skills/coordinator-skills/to-tickets",
+          "skills/coordinator-skills/pr",
+          "skills/coordinator-skills/show-me",
+          "skills/coordinator-skills/retro",
+          "skills/coordinator-skills/writing-for-agents"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "GITEA_TOKEN"
+      ],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "On Pi the grilling skill asks through the ask_user_question tool of an extension that the kit does not install or check; a search, a research ticket and a prototype ticket need the herdr skill and the herdr CLI; the wayfinder, research and prototype skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/grilling"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/grill-me"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/wayfinder"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/research"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/prototype"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/domain-modeling"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/to-spec"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/to-tickets"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/pr"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/show-me"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/retro"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/writing-for-agents"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry for each skill of the component in the packages/tenantext package declaration only; native settings of the skills stay owned by them"
+      }
+    },
     "slopscore-pr": {
       "source": {
         "kind": "tree",
@@ -584,8 +688,8 @@
         "kind": "tree",
         "path": "packages/tenantext"
       },
-      "status": "blocked",
-      "reason": "The skill needs the tracker Python package of packages/tenantext/tracker on PYTHONPATH; the kit has no check of the Python needs",
+      "status": "unverified",
+      "reason": null,
       "requires": [
         "core"
       ],
@@ -602,8 +706,8 @@
       "env": [],
       "gaps": [
         {
-          "code": "python_package_required",
-          "fact": "The skill runs python3 -m tracker with PYTHONPATH set to packages/tenantext; the Python needs of tracker/ are not checked by the kit."
+          "code": "host_tool_required",
+          "fact": "The skill runs python3 -m tracker with PYTHONPATH set to packages/tenantext. It needs Python 3.11 or later and Git on PATH, with no third-party Python package. check-runtime verifies python3 but does not check Git on the client."
         },
         {
           "code": "pi_line_unqualified",
@@ -615,9 +719,14 @@
         }
       ],
       "configOwnership": {
-        "claims": [],
-        "status": "blocked",
-        "boundary": "Native file and key namespace unverified; activation blocked"
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/tracker-site"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
       }
     },
     "promptr": {
@@ -648,7 +757,7 @@
         },
         {
           "code": "host_module_dependency",
-          "fact": "packages/promptr/package.json lists @earendil-works/pi-tui at 1.0.2 under dependencies because the companion process needs it; Pi 1.0.2 prints one warning for it at each start. For the built files Pi loads a second copy of pi-tui from packages/promptr/node_modules. The kit pins Pi 1.0.3 with pi-tui ^1.0.3, so the two copies differ: pi-tui 1.0.3 changed the default keys of Home and End. The effect on key handling is not verified."
+          "fact": "packages/promptr/package.json pins @earendil-works/pi-tui at 1.0.4 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.0.4, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.0.4 are not verified."
         },
         {
           "code": "placeholder_defaults",
@@ -664,7 +773,7 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+          "fact": "No test in this repository loads the component in a generated profile with the kit pin."
         }
       ],
       "configOwnership": {
@@ -707,7 +816,7 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+          "fact": "No test in this repository loads the component in a generated profile with the kit pin."
         }
       ],
       "configOwnership": {
@@ -750,7 +859,7 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+          "fact": "No test in this repository loads the component in a generated profile with the kit pin."
         }
       ],
       "configOwnership": {
@@ -797,7 +906,7 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+          "fact": "No test in this repository loads the component in a generated profile with the kit pin."
         }
       ],
       "configOwnership": {
@@ -844,7 +953,7 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile. Not verified: loading on Pi 1.0.3."
+          "fact": "No test in this repository loads the component in a generated profile with the kit pin."
         }
       ],
       "configOwnership": {
@@ -971,25 +1080,57 @@
       }
     },
     "openviking": {
-      "source": null,
-      "status": "blocked",
-      "reason": "No reviewed source exists in this release; activation is blocked.",
+      "source": {
+        "kind": "tree",
+        "path": "packages/openviking-pi"
+      },
+      "status": "unverified",
+      "reason": null,
       "requires": [
         "core"
       ],
       "owner": "openviking",
-      "license": "AGPL-3.0",
+      "license": "Apache-2.0",
       "resources": {
-        "extensions": [],
+        "extensions": [
+          "index.ts"
+        ],
         "skills": [],
         "prompts": [],
         "themes": []
       },
       "env": [],
+      "gaps": [
+        {
+          "code": "install_step_required",
+          "fact": "packages/openviking-pi/package.json lists @modelcontextprotocol/client at 2.0.0 and node_modules is not in the tree, so npm ci --ignore-scripts must run in packages/openviking-pi before the first start."
+        },
+        {
+          "code": "server_required",
+          "fact": "The extension needs an OpenViking server with viking://~ home alias support. The endpoint and the key resolve from OPENVIKING_* variables, ~/.openviking/ovcli.conf or ~/.openviking/ov.conf; the kit writes none of them and has no field for them."
+        },
+        {
+          "code": "package_runtime_unverified",
+          "fact": "No Pi start in this repository loads the extension; the capture, the recall and the tools against a live server are not verified."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        },
+        {
+          "code": "capture_cost_unmeasured",
+          "fact": "The extension captures no tool result output unless captureToolResults is true. With it on, each tool part is capped by captureToolMaxChars and the server externalizes larger output. Not measured: the growth of session storage and the effect on memory extraction."
+        }
+      ],
       "configOwnership": {
-        "claims": [],
-        "status": "blocked",
-        "boundary": "Native file and key namespace unverified; activation blocked"
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/openviking-pi:index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/openviking-pi package declaration only; the settings of the extension resolve from OPENVIKING_* variables, the workspace file .openviking/config.json and ~/.openviking/, which the kit does not own"
       }
     }
   }

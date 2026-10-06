@@ -64,8 +64,8 @@ export default function codexAccounts(pi: ExtensionAPI) {
 	const settings = loadCodexAccountsSettings();
 	registerCodexAccountProviders(pi, settings.accounts);
 	const status = createCodexStatus(pi, settings.accounts, collectLimitsFor(settings.explicit === true));
-	const enabled = registerGateway(pi, status.setRouting);
-	status.setRouting({ state: "unknown", preferredAccount: enabled ? "codex2" : undefined,
+	const enabled = registerGateway(pi, status.setRouting, settings.preferredAccount);
+	status.setRouting({ state: "unknown", preferredAccount: enabled ? settings.preferredAccount : undefined,
 		summary: enabled ? "Gateway status endpoint unavailable." : "Gateway disabled: configuration or catalog unavailable." });
 
 	pi.registerEntryRenderer(ENTRY_TYPE, (entry) => {

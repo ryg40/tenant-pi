@@ -24,7 +24,7 @@ The Coordinator is a stronger model that already knows the standing rules (desig
 - Every bullet names something from the packet (a path, an issue number, a label, a dependency, a role) or asks a question the Coordinator must answer. Delete any bullet that would read the same for another task.
 - Do not solve the task: no proposed code, no chosen design, no invented acceptance criteria, tests, commits or completion state. Where the packet is silent, write `UNKNOWN: <what>` so the Coordinator verifies it.
 - A closed issue or a dependency marked done is a fact to report, not proof of delivered work. An open issue is not proof work remains.
-- Readiness: `openai-codex-simple` is for well-developed tasks. If the body leaves a required design decision open, say so under the design section and tell the Coordinator to resolve it with the user or choose a heavier template; never upgrade silently.
+- Readiness: `worker-simple` and `reviewer-simple` are for well-developed tasks. If the body leaves a required design decision open, say so under the design section and tell the Coordinator to resolve it with the user or choose a heavier template; never upgrade silently.
 
 ## Role briefs
 The cheaper roles run on smaller models with fresh context. Their briefs must be answerable without judgment calls. Use exactly these shapes; the Coordinator fills anything in `<angle brackets>` at dispatch.

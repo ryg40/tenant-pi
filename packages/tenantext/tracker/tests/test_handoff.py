@@ -96,7 +96,7 @@ class BuildTests(unittest.TestCase):
     def test_ends_with_the_proposal_statement(self):
         self.assertTrue(self.text.endswith(handoff.PROPOSAL))
         for phrase in ["is a proposal", "no permission to deploy, publish, change issues or pass an approval gate",
-                       "stop and ask the owner"]:
+                       "stop and ask the requester"]:
             self.assertIn(phrase, self.text)
 
     def test_plain_text_one_fact_per_line(self):
@@ -185,17 +185,17 @@ class RefreshTests(unittest.TestCase):
         self.assertNotIn("Next action: Run the new first step.", model["handoffs"][0]["text"], "input unchanged")
         self.assertEqual(errors(out), [])
 
-    def test_keeps_an_owner_handoff_for_the_same_path(self):
+    def test_keeps_an_requester_handoff_for_the_same_path(self):
         model = example()
-        owner = dict(model["handoffs"][0], source="owner", text="Owner prompt.\n\nKeep it as written.")
-        model["handoffs"] = [owner]
+        requester = dict(model["handoffs"][0], source="requester", text="Requester prompt.\n\nKeep it as written.")
+        model["handoffs"] = [requester]
         out = handoff.refresh(model, basis="carried-forward")
-        self.assertEqual(out["handoffs"], [owner])
+        self.assertEqual(out["handoffs"], [requester])
         self.assertEqual(parse(dump(out)), out)
 
-    def test_replaces_an_owner_handoff_when_the_recommended_path_changes(self):
+    def test_replaces_an_requester_handoff_when_the_recommended_path_changes(self):
         model = example()
-        model["handoffs"] = [dict(model["handoffs"][0], source="owner", text="Owner prompt.")]
+        model["handoffs"] = [dict(model["handoffs"][0], source="requester", text="Requester prompt.")]
         model["paths"][0]["role"] = "backlog"
         model["paths"][1]["role"] = "recommended"
         out = handoff.refresh(model)

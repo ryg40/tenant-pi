@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { parseHerdrResult } from "./adapter.mts";
 
 export type HerdrRole = "coordinator" | "researcher" | "planner" | "reviewer" | "worker" | "generator";
 
@@ -13,10 +14,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** Parse one complete, bounded `herdr workspace list` response. */
 export function parseHerdrWorkspaceList(stdout: string, limit = 64): HerdrWorkspaceNameInput[] | undefined {
-  let root: unknown;
-  try { root = JSON.parse(stdout); } catch { return undefined; }
-  if (!isRecord(root) || "error" in root || !isRecord(root.result)) return undefined;
-  const raw = root.result.workspaces;
+  const raw = parseHerdrResult(stdout)?.workspaces;
   if (!Array.isArray(raw) || raw.length > limit) return undefined;
   const workspaces: HerdrWorkspaceNameInput[] = [];
   const ids = new Set<string>();

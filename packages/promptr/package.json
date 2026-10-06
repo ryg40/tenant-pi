@@ -31,10 +31,10 @@
     "doctor": "node dist/src/doctor/cli.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-tui": "1.0.2"
+    "@earendil-works/pi-tui": "1.0.4"
   },
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.0.2",
+    "@earendil-works/pi-coding-agent": "1.0.4",
     "@types/node": "22.20.1",
     "typescript": "5.9.3"
   },

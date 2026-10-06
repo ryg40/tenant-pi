@@ -15,8 +15,8 @@ from tracker.store import BRIEF_SCHEMA, add_fact_evidence, all_ids, apply_issue_
 
 MINIMAL_PREFIX = "unk-min-"
 DEFAULT_GATE = {
-    "id": "gate-owner-approval", "kind": "approval",
-    "text": "Pushing, merging, deploying and publishing need explicit owner approval.",
+    "id": "gate-requester-approval", "kind": "approval",
+    "text": "Pushing, merging, deploying and publishing need explicit requester approval.",
 }
 
 

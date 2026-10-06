@@ -55,7 +55,7 @@ Do not write `handoff` records. The tool writes the prompt for the next session 
 - The tool builds the next-session prompt (the `handoff` record) from the fields of the recommended path. It ignores `handoff` records in your output.
 - `issue`, `gate` and `evidence` records merge by id. A record you omit stays. Only `retire` removes one.
 - The tool sets `title`, `state`, `url` and `checked` of issues from the facts. You set `progress` and `note`.
-- The tool keeps owner prose notes. You cannot change them.
+- The tool keeps requester prose notes. You cannot change them.
 - The tool validates the result. Invalid output gives a minimal brief without your records.
 
 ## Evidence ids
@@ -73,11 +73,11 @@ Storage and export use issue records #3 and #4.
 ## Rules
 
 1. Never invent progress. A closed issue does not prove a merge, a deployment or a passed test. Use `status: reported` or `status: proposal` when no evidence verifies a claim.
-2. Select. At most 3 changes and 3 active items. Choose what matters to an owner who returns after days away. Do not list every commit or issue.
+2. Select. At most 3 changes and 3 active items. Choose what matters to a requester who returns after days away. Do not list every commit or issue.
 3. Propose one recommended path and at most two alternatives. A path is a proposal. It does not authorize execution. `authority` says what the path may do without approval. `needs_approval` lists the other actions. A fresh session starts from the recommended path's fields alone, so write `objective`, `scope`, `acceptance`, `output` and `next_action` so that they need no other context.
 4. Put validation commands in `validate` only when the packet shows that the command exists. Do not make up commands.
 5. State uncertainty. When facts conflict with the previous brief, write an `unknown` record with `kind: conflict`. When a source is missing, use `kind: missing` or `kind: inaccessible`. A safety-critical conflict uses `severity: critical`.
-6. Keep approval gates. Retire a gate only when the handoff notes say that the owner changed it.
+6. Keep approval gates. Retire a gate only when the handoff notes say that the requester changed it.
 7. Values are plain text on one line: no HTML, no Markdown, no line breaks.
 8. Ids match `[a-z0-9][a-z0-9-]{0,63}` and are unique in the whole brief. Reuse the id of a record that continues.
 9. Keep the default view short. Position, changes, active items, approval gates, critical unknowns, the recommended path title, objective and next action, and the alternative titles: at most 400 words together.
@@ -88,7 +88,7 @@ R = required, O = optional, L = list.
 
 - `position`: `id` R, `text` R, `milestone` O, `status` R, `evidence` L O.
 - `change`: `id` R, `title` R, `summary` R (max 40 words), `status` R, `evidence` L R.
-- `active`: `id` R, `title` R, `readiness` R, `next` R (max 30 words), `owner` O, `blocker` O, `priority` R, `evidence` L O.
+- `active`: `id` R, `title` R, `readiness` R, `next` R (max 30 words), `requester` O, `blocker` O, `priority` R, `evidence` L O.
 - `issue`: `id` R, `title` R, `state` R, `progress` R, `url` R, `checked` R, `workstream` O, `blockers` L O, `note` O.
 - `gate`: `id` R, `kind` R (`allowed`, `forbidden`, `approval`), `text` R, `evidence` L O.
 - `unknown`: `id` R, `kind` R (`stale`, `missing`, `conflict`, `inaccessible`), `severity` R (`critical`, `normal`), `text` R, `evidence` L O.

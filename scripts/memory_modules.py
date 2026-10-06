@@ -7,14 +7,14 @@ import copy
 import re
 import shlex
 
-from scripts.validate import MEMORY as _MEMORY, absolute, fail, fields
+from scripts.validate import MEMORY as _MEMORY, ROOT, absolute, fail, fields
 
 MEMORY = tuple(sorted(_MEMORY))  # One reviewed set; the validator anchors own it.
 # The overlay fields of each module: the required names, then the optional names. The validator,
-# `compare` and `carry` use this one table. `openviking` is blocked and accepts `null` only.
+# `compare` and `carry` use this one table.
 MODULE_FIELDS = {"hermes": (("backgroundReview",), ("reviewTransport", "childExtensionPaths")),
                  "wiki": (("ambientPersonalVault", "backgroundTasks"), ("wikiHome",)),
-                 "openviking": ((), ())}
+                 "openviking": (("captureToolResults",), ("recallContextTimeoutMs",))}
 HERMES_CONFIG = "hermes-memory-config.json"
 HERMES_PACKAGE = "pi-hermes-memory"
 WIKI_PACKAGE = "@zosmaai/pi-llm-wiki"
@@ -29,6 +29,13 @@ LLAMA_PROVIDER = "llama.cpp"
 # Hermes `config.ts` (reviewed at 0.9.9; the kit declares no version) background paths. Off means no model call originates from Hermes.
 HERMES_OFF = {"reviewEnabled": False, "correctionDetection": False, "flushOnCompact": False,
               "flushOnShutdown": False, "memoryOverflowStrategy": "reject", "autoConsolidate": False}
+# The vendored OpenViking extension (`packages/openviking-pi`) reads no file of the profile. Its
+# `shared/config-schema.mjs` names one `OPENVIKING_*` variable for each setting; the environment
+# is the first layer that it reads. Overlay field -> variable name.
+OPENVIKING_ENV = {"captureToolResults": "OPENVIKING_CAPTURE_TOOL_RESULTS",
+                  "recallContextTimeoutMs": "OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS"}
+# `config-schema.mjs`, `recallContextTimeoutMs`: an integer from 0 to 600000; 0 keeps the built-in default.
+OPENVIKING_TIMEOUT_MAX = 600000
 HERMES_ON = {"reviewEnabled": True, "correctionDetection": True, "flushOnCompact": True,
              "flushOnShutdown": True, "memoryOverflowStrategy": "auto-consolidate", "autoConsolidate": True}
 
@@ -96,6 +103,17 @@ def _wiki(overlay, choice):
             fail("unsupported_wiki_thinking", "overlay.roles.memory.thinking")
 
 
+def _openviking(overlay, choice):
+    at = "overlay.memory.openviking"
+    fields(choice, *MODULE_FIELDS["openviking"], at)
+    if type(choice["captureToolResults"]) is not bool:
+        fail("boolean", at + ".captureToolResults")
+    if "recallContextTimeoutMs" in choice:
+        value = choice["recallContextTimeoutMs"]
+        if type(value) is not int or not 0 <= value <= OPENVIKING_TIMEOUT_MAX:
+            fail("timeout_ms", at + ".recallContextTimeoutMs")
+
+
 def validate_memory(overlay, components):
     """Validate the optional `memory` block against selection and consent.
 
@@ -113,6 +131,9 @@ def validate_memory(overlay, components):
         fail("schema_version", "overlay.memory.schemaVersion")
     if active and not overlay["consent"]["memoryCapture"]:
         fail("memory_consent_required", "overlay.consent.memoryCapture")
+    # Every capture of the OpenViking extension is a write to its server.
+    if "openviking" in active and not overlay["consent"]["remoteMemoryWrites"]:
+        fail("remote_memory_consent_required", "overlay.consent.remoteMemoryWrites")
     for cid in MEMORY:
         choice = block[cid]
         if choice is None:
@@ -126,12 +147,14 @@ def validate_memory(overlay, components):
         elif cid == "wiki":
             _wiki(overlay, choice)
         else:
-            fail("memory_module_disabled", "overlay.memory." + cid)
+            _openviking(overlay, choice)
 
 
 def _package(components, cid):
     source = components[cid]["source"]
-    return {"source": "npm:" + source["spec"], **copy.deepcopy(components[cid]["resources"])}
+    # Pi takes a local package as a plain path; a tree package directory is inside this kit.
+    name = str(ROOT / source["path"]) if source["kind"] == "tree" else "npm:" + source["spec"]
+    return {"source": name, **copy.deepcopy(components[cid]["resources"])}
 
 
 def render_memory(overlay, components):
@@ -141,6 +164,7 @@ def render_memory(overlay, components):
     `packages` are Pi package declarations, `settings` are settings.json keys, `files`
     are whole extra profile files, `setup` are process-local launch facts, `gaps` are
     readiness gaps, and `activation` is the public truth table recorded with the plan.
+    `ROOT` is used only as text, for the path of the in-tree package.
     """
     enabled = set(overlay["selection"]["enable"])
     result = {"packages": [], "settings": {}, "files": {}, "setup": [], "gaps": [], "activation": {}}
@@ -152,6 +176,22 @@ def render_memory(overlay, components):
             continue
         choice = block[cid]
         result["packages"].append(_package(components, cid))
+        if cid == "openviking":
+            # A tree package: its gaps are the manifest gaps, and it lists no host module as a dependency.
+            result["gaps"].extend({"code": gap["code"], "subject": cid} for gap in components[cid].get("gaps", []))
+            # `true` and `false` are words that `coerceKnobValue` of the extension accepts. Both
+            # states are written, so a lower layer cannot turn the capture of tool results on.
+            values = {"captureToolResults": "true" if choice["captureToolResults"] else "false"}
+            if "recallContextTimeoutMs" in choice:
+                values["recallContextTimeoutMs"] = str(choice["recallContextTimeoutMs"])
+            for key, value in values.items():
+                result["setup"].append({"kind": "process_environment", "name": OPENVIKING_ENV[key],
+                                        "instruction": OPENVIKING_ENV[key] + "=" + value})
+            # The pending queue, the recall ledger and the workspace registry live under `~/.openviking/`.
+            result["gaps"].append({"code": "shared_home_state", "subject": cid})
+            result["activation"][cid] = {"enabled": True, "localCapture": False, "backgroundModelCalls": False,
+                                         "remoteWrites": True, "captureToolResults": choice["captureToolResults"]}
+            continue
         result["gaps"].append({"code": "package_runtime_unverified", "subject": cid})
         result["gaps"].append({"code": "peer_override_required", "subject": cid})
         if cid == "hermes":

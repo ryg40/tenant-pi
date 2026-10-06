@@ -22,7 +22,7 @@ evidence:
   - ev-issue-3
 ```
 
-Owner note: keep this brief short. Long history belongs in the issue tracker.
+Requester note: keep this brief short. Long history belongs in the issue tracker.
 
 ## What changed
 
@@ -42,7 +42,7 @@ id: act-storage
 title: Build the storage layer
 readiness: ready-offline
 next: Finish the conflict check, then run the offline tests.
-owner: coordinator
+requester: coordinator
 priority: 1
 evidence:
   - ev-issue-3
@@ -52,8 +52,8 @@ evidence:
 id: act-publish
 title: Decide the publication target
 readiness: needs-decision
-next: Ask the owner which artifact service to use.
-blocker: The owner has not chosen a service.
+next: Ask the requester which artifact service to use.
+blocker: The requester has not chosen a service.
 priority: 2
 ```
 
@@ -98,10 +98,10 @@ text: Offline code, tests and docs in this repository.
 ```gate
 id: gate-deploy
 kind: approval
-text: Pushing, merging, deploying and publishing need owner approval.
+text: Pushing, merging, deploying and publishing need requester approval.
 ```
 
-Owner note: the owner reviews every publication.
+Requester note: the requester reviews every publication.
 
 ## Unknowns and conflicts
 
@@ -146,13 +146,13 @@ readiness: needs-decision
 issues:
   - 4
 repo: owner/demo
-objective: Record the owner's choice of artifact service.
+objective: Record the requester's choice of artifact service.
 scope: A decision note only.
-authority: Draft the question for the owner.
+authority: Draft the question for the requester.
 acceptance:
-  - The owner answers
+  - The requester answers
 output: A decision note.
-next_action: Draft two options for the owner.
+next_action: Draft two options for the requester.
 ```
 
 ```path
@@ -204,16 +204,16 @@ text: |
   - #3 Storage layer (open, in-progress): https://git.example.com/owner/demo/issues/3
 
   Authority: Edit code and run offline tests in this repository.
-  Needs separate owner approval:
+  Needs separate requester approval:
   - Push or merge
   Approval gates in force:
-  - Needs approval: Pushing, merging, deploying and publishing need owner approval.
+  - Needs approval: Pushing, merging, deploying and publishing need requester approval.
 
   Acceptance criteria:
   - Offline tests pass
   Expected output: A branch with the storage layer and tests.
 
-  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the owner.
+  This path is a proposal. It gives no permission to deploy, publish, change issues or pass an approval gate. When a step needs approval, stop and ask the requester.
 ```
 
 ## Evidence
@@ -245,4 +245,4 @@ confidence: verified
 checked: @SNAPSHOT@
 ```
 
-Owner note: evidence links point at the placeholder host.
+Requester note: evidence links point at the placeholder host.

@@ -2,13 +2,14 @@ import { readStoredCredential, type ExtensionAPI } from "@earendil-works/pi-codi
 import { createAssistantMessageEventStream, type AssistantMessage, type Credential, type SimpleStreamOptions, type Model } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { canonicalCodexProvider } from "./openai-codex.ts";
+import { ACCOUNT_NAME } from "./settings.ts";
 import type { CodexStatusSnapshot } from "./status.ts";
+
+export { ACCOUNT_NAME };
 
 export const GATEWAY_PROVIDER = "litellm-codex";
 // The gateway maps the short name sol to the newest Sol, gpt-6.1-sol. The pinned names do not move.
 export const ALIASES = { luna: "gpt-6-luna", sol: "gpt-6.1-sol", astra: "gpt-6-astra" } as const;
-// The gateway names its account services codex1, codex2, codex3, ... in X-Codex-Account.
-export const ACCOUNT_NAME = /^codex[1-9][0-9]*$/;
 // USD per million tokens from the Pi GPT-6 catalog; current API prices are not verified.
 // These are API-equivalent estimates, not charges to a Codex subscription.
 export const FALLBACK_API_PRICES = {
@@ -122,7 +123,7 @@ export const gatewayStream: typeof streamSimple = (model, context, options) => {
 	return output;
 };
 
-export function registerGateway(pi: ExtensionAPI, publish: (routing: NonNullable<CodexStatusSnapshot["routing"]>) => void) {
+export function registerGateway(pi: ExtensionAPI, publish: (routing: NonNullable<CodexStatusSnapshot["routing"]>) => void, preferredAccount?: string) {
 	const config = gatewayConfig();
 	let enabled = false;
 	if (config) {
@@ -135,7 +136,7 @@ export function registerGateway(pi: ExtensionAPI, publish: (routing: NonNullable
 	pi.on("after_provider_response", (event, ctx) => {
 		if (ctx.model?.provider !== GATEWAY_PROVIDER) return;
 		const selected = event.headers["x-codex-account"];
-		publish({ state: event.status >= 400 ? "error" : "unknown", preferredAccount: "codex2",
+		publish({ state: event.status >= 400 ? "error" : "unknown", preferredAccount,
 			selectedAccount: typeof selected === "string" && ACCOUNT_NAME.test(selected) ? selected : undefined,
 			summary: event.status >= 400 ? gatewayHttpError(event.status) : "Gateway status endpoint unavailable; account comes from the last response." });
 	});

@@ -61,7 +61,7 @@ test('a provider or an example is required, and they are mutually exclusive', ()
 });
 
 test('a generated file covers every workflow and role and re-parses as valid', () => {
- const built = buildInitConfig(catalogPort, 'openai-codex', false);
+ const built = buildInitConfig(catalogPort, 'default-provider', false);
  assert.equal(built.ok, true);
  const parsed = parseWorkflowConfigText(built.text);
  assert.equal(parsed.ok, true, parsed.ok ? '' : parsed.error);
@@ -74,7 +74,7 @@ test('a generated file covers every workflow and role and re-parses as valid', (
  // Shipped models are kept for a shipped provider; the Claude route is untouched.
  const configured = createConfiguredCatalog(catalogPort, parsed.value, { source: 'generated' });
  const mixed = configured.catalog.expandWorkflow({
-  template: 'openai-claude', provider: 'openai-codex', readiness: 'ready',
+  template: 'reviewer', provider: 'default-provider', readiness: 'ready',
  }).value;
  assert.equal(mixed.roles.find((r) => r.role === 'worker').route, 'herdr-claude');
 });
@@ -92,26 +92,26 @@ test('an unknown provider gets placeholder models, so nothing is invented', () =
  assert.equal(filled.ok, true, filled.ok ? '' : filled.error);
  const configured = createConfiguredCatalog(catalogPort, filled.value, { source: 'generated' });
  const mixed = configured.catalog.expandWorkflow({
-  template: 'openai-claude', provider: 'github-copilot', readiness: 'ready',
+  template: 'reviewer', provider: 'github-copilot', readiness: 'ready',
  }).value;
  assert.deepEqual([...new Set(mixed.roles.map((r) => r.route))], ['pi']);
  assert.deepEqual([...new Set(mixed.roles.map((r) => r.provider))], ['github-copilot']);
- assert.match(configured.catalog.listWorkflows().find((w) => w.id === 'openai-claude').description,
+ assert.match(configured.catalog.listWorkflows().find((w) => w.id === 'reviewer').description,
   /retargeted to Pi sessions on github-copilot/);
 });
 
 test('without --all-pi the shipped Claude route is written out verbatim', () => {
  const built = buildInitConfig(catalogPort, 'github-copilot', false);
  const text = built.text;
- assert.match(text, /"provider": "anthropic"/);
+ assert.match(text, /"provider": "claude"/);
  assert.match(text, /"route": "herdr-claude"/);
- assert.match(text, /"model": "claude-opus-5"/);
+ assert.match(text, /"model": "claude-large-model"/);
 });
 
 test('writing refuses an existing file and says how to proceed', () => {
  const target = '/tmp/promptr-init-fixture/workflows.json';
  const { files, log, deps } = harness({ [target]: '{"version":1}' });
- const outcome = runWorkflowInit(['--provider', 'openai-codex', '--path', target], {}, deps, catalogPort);
+ const outcome = runWorkflowInit(['--provider', 'default-provider', '--path', target], {}, deps, catalogPort);
  assert.equal(outcome.ok, false);
  assert.match(outcome.error, /already exists\. Nothing was written/);
  assert.match(outcome.error, /--force/);
@@ -122,7 +122,7 @@ test('writing refuses an existing file and says how to proceed', () => {
 test('--force overwrites and reports that nothing was launched or verified', () => {
  const target = '/tmp/promptr-init-fixture/workflows.json';
  const { files, log, deps } = harness({ [target]: '{"version":1}' });
- const outcome = runWorkflowInit(['--provider', 'openai-codex', '--path', target, '--force'], {}, deps, catalogPort);
+ const outcome = runWorkflowInit(['--provider', 'default-provider', '--path', target, '--force'], {}, deps, catalogPort);
  assert.equal(outcome.ok, true);
  assert.equal(outcome.written, true);
  assert.equal(outcome.valid, true);
@@ -133,7 +133,7 @@ test('--force overwrites and reports that nothing was launched or verified', () 
 test('--print writes nothing at all', () => {
  const target = '/tmp/promptr-init-fixture/absent.json';
  const { files, log, deps } = harness();
- const outcome = runWorkflowInit(['--provider', 'openai-codex', '--path', target, '--print'], {}, deps, catalogPort);
+ const outcome = runWorkflowInit(['--provider', 'default-provider', '--path', target, '--print'], {}, deps, catalogPort);
  assert.equal(outcome.ok, true);
  assert.equal(outcome.written, false);
  assert.deepEqual(Object.keys(files), []);
@@ -160,11 +160,11 @@ test('--example copies the packaged Copilot example to the target path', () => {
 
 test('the default target follows PROMPTR_WORKFLOWS_FILE, then the agent directory', () => {
  const { files, deps } = harness();
- runWorkflowInit(['--provider', 'openai-codex'], { PROMPTR_WORKFLOWS_FILE: '/tmp/promptr-init-fixture/env.json' }, deps, catalogPort);
+ runWorkflowInit(['--provider', 'default-provider'], { PROMPTR_WORKFLOWS_FILE: '/tmp/promptr-init-fixture/env.json' }, deps, catalogPort);
  assert.ok(Object.hasOwn(files, '/tmp/promptr-init-fixture/env.json'));
 
  const second = harness();
- runWorkflowInit(['--provider', 'openai-codex'], { PI_CODING_AGENT_DIR: '/tmp/promptr-init-fixture/agent' }, second.deps, catalogPort);
+ runWorkflowInit(['--provider', 'default-provider'], { PI_CODING_AGENT_DIR: '/tmp/promptr-init-fixture/agent' }, second.deps, catalogPort);
  assert.ok(Object.hasOwn(second.files, '/tmp/promptr-init-fixture/agent/promptr/workflows.json'));
 });
 
@@ -178,14 +178,14 @@ test('--keep-models keeps the shipped IDs for a provider that serves them, and s
  const parsed = parseWorkflowConfigText(built.text);
  assert.equal(parsed.ok, true, parsed.ok ? '' : parsed.error);
  const configured = createConfiguredCatalog(catalogPort, parsed.value, { source: 'generated' });
- const simple = configured.catalog.expandWorkflow({ template: 'openai-codex-simple', provider: 'github-copilot', readiness: 'ready' }).value;
+ const simple = configured.catalog.expandWorkflow({ template: 'worker-simple', provider: 'github-copilot', readiness: 'ready' }).value;
  assert.deepEqual(simple.roles.map((r) => `${r.provider}/${r.model}:${r.thinking}`), [
-  'github-copilot/gpt-5.6-sol:xhigh', 'github-copilot/gpt-5.6-luna:xhigh', 'github-copilot/gpt-5.6-luna:xhigh',
-  'github-copilot/gpt-5.6-sol:medium', 'github-copilot/gpt-5.6-luna:xhigh', 'github-copilot/gpt-5.6-sol:medium',
+  'github-copilot/standard-model:xhigh', 'github-copilot/light-model:xhigh', 'github-copilot/light-model:xhigh',
+  'github-copilot/standard-model:medium', 'github-copilot/light-model:xhigh', 'github-copilot/standard-model:medium',
  ]);
- const mixed = configured.catalog.expandWorkflow({ template: 'openai-claude', provider: 'github-copilot', readiness: 'ready' }).value;
+ const mixed = configured.catalog.expandWorkflow({ template: 'reviewer', provider: 'github-copilot', readiness: 'ready' }).value;
  const worker = mixed.roles.find((r) => r.role === 'worker');
- assert.deepEqual(worker, { role: 'worker', provider: 'github-copilot', model: 'claude-opus-5', thinking: 'high', route: 'pi' });
+ assert.deepEqual(worker, { role: 'worker', provider: 'github-copilot', model: 'claude-large-model', thinking: 'high', route: 'pi' });
  // Without --keep-models the same call still writes placeholders.
  assert.match(buildInitConfig(catalogPort, 'github-copilot', true).text, /<set-worker-model-id>/);
 });

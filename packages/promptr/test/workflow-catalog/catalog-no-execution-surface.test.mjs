@@ -50,7 +50,7 @@ test('expanding a workflow is pure: no clock, no randomness, no I/O side effect'
  Math.random = () => { touched += 1; return 0; };
  try {
   const value = catalog.expandWorkflow({
-   template: 'openai-codex-high', provider: 'openai-codex', readiness: 'ready',
+   template: 'worker-high', provider: 'default-provider', readiness: 'ready',
   }).value;
   catalog.serializeWorkflow(value);
   catalog.validateWorkflowCapabilities(value, []);
@@ -65,7 +65,7 @@ test('expanding a workflow is pure: no clock, no randomness, no I/O side effect'
 
 test('the catalog never names a launch, send, queue or credential surface', () => {
  const value = catalog.expandWorkflow({
-  template: 'openai-claude', provider: 'openai-codex', readiness: 'ready',
+  template: 'reviewer', provider: 'default-provider', readiness: 'ready',
  }).value;
  const text = JSON.stringify(value);
  for (const forbidden of [/token/i, /credential/i, /secret/i, /api[_-]?key/i, /cookie/i]) {

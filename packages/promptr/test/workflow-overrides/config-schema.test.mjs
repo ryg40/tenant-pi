@@ -47,8 +47,8 @@ test('the version must be exactly 1', () => {
 test('unknown keys are configuration errors at every level', () => {
  const cases = [
   [{ ...MINIMAL, provider: 'x' }, /unknown key 'provider'/],
-  [{ version: 1, workflows: { 'openai-codex-simple': { tier: 'high' } } }, /unknown key 'tier'/],
-  [{ version: 1, workflows: { 'openai-codex-simple': { roles: { worker: { effort: 'high' } } } } }, /unknown key 'effort'/],
+  [{ version: 1, workflows: { 'worker-simple': { tier: 'high' } } }, /unknown key 'tier'/],
+  [{ version: 1, workflows: { 'worker-simple': { roles: { worker: { effort: 'high' } } } } }, /unknown key 'effort'/],
  ];
  for (const [raw, pattern] of cases) {
   const result = parseWorkflowConfig(raw);
@@ -62,10 +62,10 @@ test('empty identifiers, empty objects and duplicates are refused', () => {
   [{ version: 1, providers: [] }, /'providers' is empty/],
   [{ version: 1, providers: [''] }, /non-empty identifier/],
   [{ version: 1, providers: ['a', 'a'] }, /twice/],
-  [{ version: 1, providers: ['openai-codex '] }, /no surrounding whitespace/],
+  [{ version: 1, providers: ['default-provider '] }, /no surrounding whitespace/],
   [{ version: 1, workflows: {} }, /'workflows' is empty/],
-  [{ version: 1, workflows: { 'openai-codex-simple': {} } }, /is empty/],
-  [{ version: 1, workflows: { 'openai-codex-simple': { roles: { worker: {} } } } }, /is empty/],
+  [{ version: 1, workflows: { 'worker-simple': {} } }, /is empty/],
+  [{ version: 1, workflows: { 'worker-simple': { roles: { worker: {} } } } }, /is empty/],
   [{ version: 1 }, /sets nothing/],
  ];
  for (const [raw, pattern] of cases) {
@@ -77,13 +77,13 @@ test('empty identifiers, empty objects and duplicates are refused', () => {
 
 test('unsupported thinking levels and routes are named, never clamped', () => {
  const thinking = parseWorkflowConfig({
-  version: 1, workflows: { 'openai-codex-simple': { roles: { worker: { thinking: 'max' } } } },
+  version: 1, workflows: { 'worker-simple': { roles: { worker: { thinking: 'max' } } } },
  });
  assert.equal(thinking.ok, false);
  assert.match(thinking.error, /thinking is 'max'; supported levels are low, medium, high, xhigh/);
 
  const route = parseWorkflowConfig({
-  version: 1, workflows: { 'openai-codex-simple': { roles: { worker: { route: 'ssh' } } } },
+  version: 1, workflows: { 'worker-simple': { roles: { worker: { route: 'ssh' } } } },
  });
  assert.equal(route.ok, false);
  assert.match(route.error, /route is 'ssh'; supported routes are pi, herdr-claude/);
@@ -92,7 +92,7 @@ test('unsupported thinking levels and routes are named, never clamped', () => {
 test('an unreplaced example placeholder is a configuration error, not a model ID', () => {
  const result = parseWorkflowConfig({
   version: 1,
-  workflows: { 'openai-codex-simple': { roles: { worker: { model: '<copilot-worker-model-id>' } } } },
+  workflows: { 'worker-simple': { roles: { worker: { model: '<copilot-worker-model-id>' } } } },
  });
  assert.equal(result.ok, false);
  assert.match(result.error, /still the example placeholder/);
@@ -100,7 +100,7 @@ test('an unreplaced example placeholder is a configuration error, not a model ID
 });
 
 test('defaultProvider must be one of the listed providers', () => {
- const result = parseWorkflowConfig({ version: 1, providers: ['github-copilot'], defaultProvider: 'openai-codex' });
+ const result = parseWorkflowConfig({ version: 1, providers: ['github-copilot'], defaultProvider: 'default-provider' });
  assert.equal(result.ok, false);
  assert.match(result.error, /not listed in 'providers'/);
 });

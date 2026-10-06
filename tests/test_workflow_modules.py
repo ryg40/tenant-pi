@@ -20,6 +20,7 @@ from scripts.workflow_modules import (BUILTIN_MCP_OFF, MCP_CONFIG, MCP_MODE_NAME
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
+PIN = load(ROOT / "config/manifest.json")["runtime"]["piVersion"]
 CANARY = "CANARY_SECRET"
 SLOT = "inputs/mcp-adapter.json"
 HTTP_SERVER = {"url": "https://mcp.example.invalid/mcp", "headers": {"Authorization": "${MCP_EXAMPLE_TOKEN}"}}
@@ -197,6 +198,21 @@ class WorkflowPlanTests(unittest.TestCase):
         gap_codes = {gap["code"] for gap in self.components["promptr"]["gaps"]}
         self.assertLessEqual({p["code"] for p in PROMPTR_PREREQUISITES if p["status"] == "open"}, gap_codes)
 
+    def test_promptr_facts_separate_current_checks_from_historical_loads(self):
+        facts = {p["code"]: p["fact"] for p in PROMPTR_PREREQUISITES}
+        self.assertIn("Pi 1.0.2 and Pi 1.0.3 load", facts["local_package_load"])
+        self.assertIn("16 commands", facts["local_package_load"])
+        self.assertIn("four skills", facts["local_package_load"])
+        self.assertIn("pins pi-tui and pi-coding-agent 1.0.4", facts["pi_line_build_and_tests"])
+        self.assertIn("With both dependencies at 1.0.4, the build, the 756 tests, the typecheck and `npm run smoke` pass.",
+                      facts["pi_line_build_and_tests"])
+        self.assertIn("`npm run smoke:installed` and a package load on Pi 1.0.4 are not verified.",
+                      facts["pi_line_build_and_tests"])
+        self.assertEqual("@earendil-works/pi-tui@1.0.4", next(
+            p["subject"] for p in PROMPTR_PREREQUISITES if p["code"] == "host_module_dependency"))
+        self.assertIn("Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning", facts["host_module_dependency"])
+        self.assertNotIn("No build or test on the kit pin is verified", " ".join(facts.values()))
+
     def test_promptr_is_selectable_and_the_plan_declares_the_built_package(self):
         overlay = self.base(mcp=False)
         for cid in ("promptr", "promptr-handoff"):
@@ -240,7 +256,7 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertNotIn("$schema", content)
         self.assertEqual(["PI_MCP_CONFIG_MODE=exclusive", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
                          shlex.split(plan["commands"]["launch"]))
-        self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@1.0.3",
+        self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
                           "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi update --extensions"],
                          plan["commands"]["setup"])
         gaps = {(g["code"], g["subject"]) for g in plan["readinessGaps"]}

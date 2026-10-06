@@ -60,7 +60,21 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(second["share_url"], first["share_url"])
         self.assertEqual(len(self.service.artifacts), 1)
         put = [r for r in self.service.requests if r["method"] == "PUT"][0]
-        self.assertTrue(put["headers"]["X-Orca-Edit-Token"].startswith(EDIT))
+        self.assertTrue(put["headers"]["X-Edit-Token"].startswith(EDIT), "the neutral default header")
+
+    def test_the_edit_token_header_is_a_setting(self):
+        self.service = S.FakeArtifactService(BEARER, edit_prefix=EDIT, edit_header="X-Example-Edit-Token")
+        self.publisher(edit_token_header="X-Example-Edit-Token").publish(HTML)
+        second = self.publisher(edit_token_header="X-Example-Edit-Token").publish(HTML + "<p>More</p>")
+        self.assertEqual(second["method"], "PUT")
+        put = [r for r in self.service.requests if r["method"] == "PUT"][0]
+        self.assertTrue(put["headers"]["X-Example-Edit-Token"].startswith(EDIT))
+        self.assertNotIn("X-Edit-Token", put["headers"])
+        with self.assertRaises(PublishError):
+            self.publisher().publish(HTML + "<p>Other header</p>")
+        for bad in ("Authorization", "content-type", "X Edit", "X-Edit:Token", "X-Edit\nToken"):
+            with self.assertRaises(PublishError):
+                self.publisher(edit_token_header=bad)
 
     def test_receipt_is_private_and_outside_state(self):
         self.publisher().publish(HTML)

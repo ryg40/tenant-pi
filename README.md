@@ -67,7 +67,7 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 
 - The Python 3.11+ offline validator checks versioned module sources and a local JSON overlay. Only synthetic examples are tracked.
 - Core Pi is the only enabled example component. Model routes need an explicit offline registry file. The kit imports no host defaults.
-- Optional memory is off by default. Hermes and LLM Wiki need selection, `consent.memoryCapture` and a `memory` block together. OpenViking stays blocked.
+- Optional memory is off by default. Hermes and LLM Wiki need selection, `consent.memoryCapture` and a `memory` block together. OpenViking needs `consent.remoteMemoryWrites` too, because it writes to a server.
 - The MCP module uses `pi-mcp-adapter` with definitions from a private input file and disables the native Pi MCP. Promptr is `unverified` with a readiness matrix: it needs a build step, and no session with a model is verified.
 - No pi-subagents module exists. Agent fan-out uses the Herdr skill, outside this kit.
 - The two in-tree packages under `packages/` are optional. Each extension and each skill is one component of `config/manifest.json` with the source kind `tree`. `packages/tenantext` has eight extensions and three skills. `packages/promptr` has one extension and four skills.
@@ -75,6 +75,6 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 - `scripts/publish_portable.py` publishes the reviewed publish set as a portable snapshot branch.
 - No install, capture, update or live service command exists. `scripts/capture.py` and `scripts/install.py` stop at once with retirement messages.
 
-Pi warns about extension packages that list host-provided modules under `dependencies`. The warning was observed on Pi 0.99.x. Not verified: the warning on Pi 1.0.3, the kit pin. `scripts/patch_extension_peers.mjs` corrects the installed manifests. See [host peer overrides](docs/host-peer-overrides.md) for the packages and for how to reapply it after each extension update.
+Pi warns about extension packages that list host-provided modules under `dependencies`. The warning was observed on Pi 0.99.x. Not verified: the warning on the kit pin in `config/manifest.json`, key `runtime.piVersion`. `scripts/patch_extension_peers.mjs` corrects the installed manifests. See [host peer overrides](docs/host-peer-overrides.md) for the packages and for how to reapply it after each extension update.
 
 Warning: `.local/` may contain private client state. Its Git ignore rule is not a security or publication control.

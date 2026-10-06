@@ -13,7 +13,7 @@ A refused action prints one JSON object on standard error and exits with code 2:
 - The `error` text has the form `rule: field`. It never holds a path, a value or a secret.
 - A JSON syntax error (`invalid_json`) adds two keys, `line` and `column`. Both are integers, counted from 1. No other diagnostic has them.
 - `candidate_created` is `true` only when a directory exists after the failure. Inspect that directory. The kit has no rollback and deletes nothing.
-- `check-runtime` exits with 1 when a tool is not `match`. Its report is on standard output.
+- `check-runtime` exits with 0 when Node and Python match, and Pi is `match` or `untested_in_range`. A failed requirement gives exit code 1. Its report is on standard output.
 - `generate --launcher` exits with 1 when the profile is complete and the launcher file is not. The report is on standard output, with the rule under `launcher.error`.
 
 The tables list diagnostic rules. A row marked "documented" has no runtime observation.
@@ -40,7 +40,7 @@ The tables list diagnostic rules. A row marked "documented" has no runtime obser
 | `moved_key: overlay.endpoints.tenantext is now overlay.endpoints.codex-accounts` | The overlay uses the old gateway key. | Rename the key to `codex-accounts` in `endpoints` and `env`. |
 | `unknown_fields: overlay` | The overlay has a key that this kit does not define. (documented) | Remove the key. |
 | `input_missing: runtime_report.file`, `invalid_json: runtime_report.file` | The `--runtime-report` file is absent (`input_missing`), or it is empty or not JSON (`invalid_json`). A `check-runtime` run that stops with exit code 2 leaves an empty file behind a `>` redirect. (documented) | Run `python3 scripts/tenant_pi.py check-runtime > "<file>"` again and read its exit code. Exit code 1 still writes the report. |
-| `runtime_report_required: runtime_report.pi.required` | The report comes from a kit with another Pi pin. The same rule exists for `node` and `python`. (documented) | Make the report again with this kit. |
+| `runtime_report_required: runtime_report.pi.required`, `runtime_report.pi.tested` or `runtime_report.pi.acceptedRange` | The report comes from another tested version or range. The `required` rule also exists for `node` and `python`. (documented) | Make the report again with this kit. |
 | `runtime_report_status: runtime_report.pi.status`, `runtime_report_installed: runtime_report.pi.installed` | The file is not an unchanged `check-runtime` report: a status does not agree with its versions, or `installed` is not a version. (documented) | Make the report again. Do not edit the file. |
 
 The same rules apply to each JSON input, with another field: `manifest.file`, `registry.file`, `mcp.file`. [The CLI contract](../generator.md#input-file-errors) has the full table.
@@ -112,8 +112,9 @@ A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of t
 
 | Status | Fix |
 | --- | --- |
+| `untested_in_range` for `pi` | Keep the installed version and record `core_runtime_untested_in_range`. The kit tests ran on the tested version only. |
 | `missing` for `pi` | Install the pin by hand (setup Stage 6), or add its directory to `PATH` in the launching shell. |
-| `mismatch` for `pi` | Keep the other Pi and record the gap, or install `1.0.3` under a prefix. Do not run the global install line as a default step: it replaces the other Pi for every profile. Example: an installed Pi `0.99.2` is a `mismatch`. |
+| `mismatch` for `pi` | Keep the other Pi and record the gap, or install the manifest pin (`runtime.piVersion`) under a prefix. Do not run the global install line as a default step: it replaces the other Pi for every profile. Example: an installed Pi `0.99.2` is a `mismatch`. |
 | `mismatch` for `node` | Select Node 22 with your version manager in the launching shell. |
 | `unparsed` | Run the tool with `--version` by hand and read the output. |
 
@@ -127,7 +128,7 @@ The Node dependencies of `packages/tenantext` are absent. Run `npm ci --ignore-s
 
 ### Pi warns about host-provided extension packages
 
-Pi `0.99.x` printed this warning at start. Not verified: the warning on Pi `1.0.3`, the kit pin.
+Pi `0.99.x` printed this warning at start. Not verified: the warning on the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
 ```text
 Warning: Extension package ".../package.json": Host-provided extension packages must be declared in
@@ -150,7 +151,10 @@ An update of the package writes the old manifest again. See [host peer overrides
 
 ```text
 unreviewed_file: repository inventory
+.pytest_cache/.gitignore
 ```
+
+One path line follows the finding line for each such file. The sample shows the first.
 
 1. Remove the cache directory: `rm -rf .pytest_cache`. Check the path before you run it.
 2. Run the tests with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q`.

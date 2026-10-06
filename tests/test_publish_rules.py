@@ -4,6 +4,7 @@ Also the public reader rules: a negative control for each class, the two excepti
 the check on the publish set of this repository.
 """
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -16,6 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+PIN = json.loads((ROOT / "config/manifest.json").read_text())["runtime"]["piVersion"]
 import publish_check  # noqa: E402
 from publish_portable import publish_tracked, snapshot  # noqa: E402
 from validate import Invalid  # noqa: E402
@@ -194,7 +196,7 @@ CLEAN = ("An issue of the tracker has a number.", "Report an issue to the packag
          "/rootfs and /optional/stacks", "https://example.invalid/ro" + "ot/a", "~/root is a directory name",
          "The roadmap 2 and the map of 1.5 values", "Write the log on this host.", "Gate 6 needs a clean user.",
          "Observed with Pi 1.0.2: the file is new.", "Not verified: the same on macOS.", "a decision of the maintainer",
-         "Released on " + DATE + ".", "version 1.0.3 and " + DATE + "T12:00:00Z")
+         "Released on " + DATE + ".", "version " + PIN + " and " + DATE + "T12:00:00Z")
 DENY_VALUE = "host" + "name-" + "canary-51d0"
 
 
@@ -360,6 +362,46 @@ class CheckTests(unittest.TestCase):
             publish_check.build_output_guard(TRACKED | {"packages/promptr/dist/src/a.mjs"})
         publish_check.build_output_guard({"packages/promptr/distribution.md", "packages/tenantext/dist/a.js"})
 
+    def test_vendored_openviking_package_rule(self):
+        directory = "packages/openviking-pi"
+        self.assertIn((directory, ("node_modules/", "LICENSE")), publish_check.PUBLISH_DIRS)
+        self.assertIn(directory + "/LICENSE", publish_check.PUBLISH)
+        # `shared/` is committed source of the vendored copy, not build output.
+        self.assertFalse(any(name.startswith(directory) for name in publish_check.BUILD_DIRS))
+        tracked = publish_check.tracked_files(ROOT)
+        if tracked is not None:
+            self.assertIn(directory + "/shared/config-schema.mjs", tracked)
+            publish_check.build_output_guard(tracked)
+        published, excluded = publish_check.rule_files({directory + "/index.ts", directory + "/shared/config-schema.mjs",
+                                                        directory + "/LICENSE", directory + "/node_modules/x/package.json",
+                                                        directory + "/lib/LICENSE"})
+        self.assertEqual({directory + "/index.ts", directory + "/shared/config-schema.mjs", directory + "/lib/LICENSE"}, published)
+        self.assertEqual({directory + "/LICENSE", directory + "/node_modules/x/package.json"}, excluded)
+        # The copy of this tree is valid with the package; an installed dependency is ignored; a file of
+        # the package with a secret pattern is rejected; a tracked dependency is rejected.
+        self.assertTrue((self.root / directory / "shared/config-schema.mjs").is_file())
+        self.add(directory + "/node_modules/@modelcontextprotocol/client/package.json", "{}\n")
+        result = self.run_check()
+        self.assertEqual(0, result.returncode, result.stderr)
+        with self.assertRaisesRegex(Invalid, "^tracked_in_node_modules: " + directory + "/node_modules/x/package.json$"):
+            publish_check.node_modules_guard({directory + "/node_modules/x/package.json"})
+        self.add(directory + "/shared/extra.mjs", "const " + "api_key = " + '"' + "A" * 24 + '";\n')
+        result = self.run_check()
+        self.assertIn("publish_secret_pattern: " + directory + "/shared/extra.mjs", result.stderr)
+
+    def test_reviewed_lines_of_the_vendored_package_are_exact(self):
+        entries = [(path, line) for path, line in publish_check.PATTERN_ALLOW if path.startswith("packages/openviking-pi/")]
+        self.assertEqual(3, len(entries))
+        for path, line in entries:
+            with self.subTest(path=path):
+                text = (self.root / path).read_text(encoding="utf-8")
+                self.assertIn(line, text.split("\n"))
+                self.assertTrue(any(pattern.search(line) for pattern in publish_check.PATTERNS))
+                self.add(path, text.replace(line, line[:-1] + " "))
+                result = self.run_check()
+                self.assertIn("publish_secret_pattern: " + path, result.stderr)
+                self.add(path, text)
+
     def test_untracked_promptr_build_output_is_ignored(self):
         self.add("packages/promptr/dist/src/extension/index.mjs", "export {};\n")
         result = self.run_check()
@@ -384,9 +426,26 @@ class CheckTests(unittest.TestCase):
     def test_file_outside_the_rule_directory_is_rejected(self):
         self.add("packages/demo/index.mjs")
         self.add("packages/other/index.mjs")
+        self.add("notes/b.md")
+        self.add("notes/a.md")
         result = self.run_check(RULES)
         self.assertNotEqual(0, result.returncode)
         self.assertIn("unreviewed_file", result.stderr)
+        # Each unreviewed path follows the finding line, sorted, relative to the repository.
+        self.assertEqual(["unreviewed_file: repository inventory", "notes/a.md", "notes/b.md", "packages/other/index.mjs"],
+                         result.stderr.splitlines())
+
+    def test_reviewed_file_absent_from_the_checkout_is_named_as_missing(self):
+        # A tracked file of the private list, deleted from the working tree of a Git copy.
+        path = self.root / publish_check.DEV_ONLY_REL
+        path.write_text((path.read_text() if path.exists() else "") + "\nnotes/\n")
+        self.add("notes/a.md", "private\n")
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", ".")
+        (self.root / "notes/a.md").unlink()
+        result = self.run_check()
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(["unreviewed_file: repository inventory", "missing: notes/a.md"], result.stderr.splitlines())
 
     def test_rule_file_with_a_secret_pattern_is_rejected(self):
         self.add("packages/demo/index.mjs", "password = " + "Abc123" * 5 + "\n")

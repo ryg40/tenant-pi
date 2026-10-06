@@ -51,7 +51,7 @@ try {
   });
 
   step("workflow init --print for a shipped provider", () => {
-    const r = run([path.join(dist, "workflow", "init.mjs"), "--provider", "openai-codex", "--print", "--path", path.join(scratch, "wf.json")]);
+    const r = run([path.join(dist, "workflow", "init.mjs"), "--provider", "default-provider", "--print", "--path", path.join(scratch, "wf.json")]);
     if (r.code !== 0) throw new Error(`exit ${r.code}: ${r.out.slice(0, 300)}`);
     if (/not usable yet/.test(r.out)) throw new Error("shipped provider must not print placeholders");
     if (existsSync(path.join(scratch, "wf.json"))) throw new Error("--print must not write");

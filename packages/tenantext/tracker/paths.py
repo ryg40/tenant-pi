@@ -13,7 +13,7 @@ from .brief import resolve_issue, stored_handoff
 PACKET_SCHEMA = "tracker-path-packet/1"
 EXECUTION_NOTE = (
     "proposal-only: this packet does not authorize execution. "
-    "Follow current owner authority and the gates before any action."
+    "Follow current requester authority and the gates before any action."
 )
 
 

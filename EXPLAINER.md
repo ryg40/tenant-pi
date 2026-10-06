@@ -58,11 +58,11 @@ Status: Linux is the first target. The kit steps are tested offline. Not verifie
 | Pi | `<pin>` | The npm package `@earendil-works/pi-coding-agent`. Step 10 installs it when it is missing. |
 | Git | any current version | Only to clone the kit. |
 
-This document writes `<pin>` for the exact Pi version that the kit requires. This is the only line that holds the value:
+This document writes `<pin>` for the exact Pi version that the kit requires. Read it from `config/manifest.json`, key `runtime.piVersion`.
 
-| Name | Value in this release | Source |
+| Name | Where to read it | Source |
 | --- | --- | --- |
-| `<pin>` | `1.0.3` | `config/manifest.json`, key `runtime.piVersion` |
+| `<pin>` | Read `runtime.piVersion` | `config/manifest.json`, key `runtime.piVersion` |
 
 To read the three runtime requirements from your clone:
 
@@ -600,7 +600,7 @@ In `scripts/tenant_pi.py`, `main()` does this for `validate`, `plan` and `genera
 
 1. `_load_input()` reads `config/manifest.json` and the overlay through the bounded loader. The loader accepts a regular file of 1 MiB maximum, with UTF-8 text, unique keys and 64 nesting levels maximum. It follows no symbolic link.
 2. `prepare()` of `scripts/profile_plan.py` builds the **plan** in memory. It first calls `manifest()` and `overlay()` of `scripts/validate.py`.
-3. `manifest()` compares the manifest with reviewed values that are fixed in the script: `REVIEWED_SOURCES`, `REVIEWED_CLAIMS` and `REVIEWED_RESOURCES`. A changed pin in the manifest alone does not pass.
+3. `manifest()` compares the manifest with reviewed values that are fixed in the script: `REVIEWED_SOURCES`, `REVIEWED_CLAIMS` and `REVIEWED_RESOURCES`. A changed pin in the manifest alone does not pass. The values of a component with the source kind `tree` are not fixed in the script: the script reads them from `config/manifest.json` of the kit, and `manifest()` checks each resource path against the tree.
 4. `overlay()` checks each key of the overlay: the form, the selection rules, each path, each role, each reference.
 5. `_outside_kit()` refuses a target in the clone.
 6. A target equal to `SAMPLE_TARGET` gives `sample_target`.
@@ -710,6 +710,7 @@ The plan itself is **pure**: `prepare()` opens no file and starts no process. Th
 | `commands.launchStatus` | `not_runnable_until_generation_succeeds` in a plan. |
 | `commands.launcherDisplayOnly` | The launcher path of `--launcher`. |
 | `commands.piInstall` | The global install line of Pi, with a mark. See below. |
+| `commands.providerKeyWarning` | Only when a known provider key variable is set in the shell of the plan run: the names that are set, never a value. Absent here. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable). |
 | `commands.setupDisplayOnly` | The dependency lines that are default steps. Empty here, because Pi is installed and matches. |
 
 `commands.piInstall` has these keys:
@@ -1012,7 +1013,7 @@ The command prints `set` or `unset`.
 
 <details><summary>Not touched</summary>
 
-- The kit reads no credential file and no environment value for a credential. `init-private`, `baseline`, `validate`, `plan` and `generate` read `HOME` and no other environment value.
+- The kit reads no credential file and no environment value for a credential. `init-private`, `baseline`, `validate`, `plan` and `generate` read `HOME` and no other environment value, with one exception: `plan` tests whether a known provider key variable name is set and reads no value; see [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable).
 - `check-runtime` reads `PATH` to find the tools, and `TMPDIR` (or `TEMP` or `TMP`) for its temporary directory. It passes the whole environment of the shell to the three `--version` processes, with `PI_CODING_AGENT_DIR` replaced for Pi. So a provider key that the shell exports reaches these three processes.
 - The other actions read no environment value.
 - `auth.json` of the live profile. The kit copies no login from one profile to another, so the new profile starts with no login.

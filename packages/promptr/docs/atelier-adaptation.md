@@ -18,7 +18,7 @@ Do not follow upstream `main` or upgrade silently. A new pin is a separate, revi
 
 ## Imported modules
 
-All modules live in `extension/src/sidebar/vendor/atelier/<module>.mts`, copied from `src/<module>.ts` at the pin.
+All modules live in `packages/promptr/src/sidebar/vendor/atelier/<module>.mts`, copied from the upstream path `src/<module>.ts` at the pin.
 Every file starts with an attribution header. Relative `./x.js` imports became `./x.mts` for the Promptr build.
 The upstream sha256 is the hash of the unmodified tagged file.
 

@@ -106,7 +106,7 @@ export async function runChecks(options: DoctorOptions = {}): Promise<Check[]> {
 		const listed = configuredAccounts.length ? configured.filter((p): p is string => Boolean(p)) : [];
 		const accounts = [...new Set(["openai-codex", ...listed, ...codexProviders])]
 			.map(provider => configuredAccounts.find(a => a.provider === provider) ?? { provider, label: provider === "openai-codex" ? "Codex 1" : `Codex ${provider.split("-").at(-1)}` });
-		if (extra.length) add("codex", "warn", `Codex logins not in ${codexPath}: ${extra.join(", ")}.`, { description: `Write ${codexPath} with ${accounts.map(a => a.provider).join(", ")}`, apply: () => writeJson(codexPath, { accounts }) });
+		if (extra.length) add("codex", "warn", `Codex logins not in ${codexPath}: ${extra.join(", ")}.`, { description: `Write ${codexPath} with ${accounts.map(a => a.provider).join(", ")}`, apply: () => writeJson(codexPath, { ...record(readJson(codexPath)), accounts }) });
 		else add("codex", "ok", `Codex meter: ${codexProviders.map(p => tokenFiles.some(a => a.provider === p) ? `${p} (token file)` : p).join(", ")}.`);
 	}
 	add("codex-gateway", "info", env.TENANTEXT_LITELLM_BASE_URL ? "Codex automatic routing: TENANTEXT_LITELLM_BASE_URL is set." : "Codex automatic routing is off (optional; set TENANTEXT_LITELLM_BASE_URL to enable).");

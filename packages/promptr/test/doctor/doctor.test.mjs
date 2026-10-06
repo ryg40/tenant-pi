@@ -79,6 +79,8 @@ test('missing pieces are visible: no install, no skill, bad node, missing creden
  assert.equal(byId(report, 'install').level, 'warn');
  assert.equal(byId(report, 'skill:promptr-generate-task-prompt').level, 'fail');
  assert.equal(byId(report, 'capabilities').level, 'warn');
+ assert.equal(byId(report, 'workflows').level, 'warn');
+ assert.match(byId(report, 'workflows').detail, /do not launch; run promptr-workflows-init \(for example `--example copilot` or `--provider <id>`\)/);
  assert.equal(byId(report, 'openknowledge:auth').level, 'warn');
  assert.match(byId(report, 'openknowledge:auth').summary, /password missing/);
  assert.equal(byId(report, 'openknowledge:binding').level, 'info');

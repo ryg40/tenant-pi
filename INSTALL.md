@@ -4,6 +4,13 @@ This file is for an agent that a user points at this repository: Claude Code, Pi
 
 The kit prepares a separate Pi profile in a new directory. It never writes into an existing Pi profile directory. The companion guide `skills/tenant-pi-install/SKILL.md` follows the same order and asks a question at each stage. Its stage names and numbers differ from the ones here.
 
+`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
+
+`runtime.piAcceptedRange` is the accepted Pi range. `runtime.piVersion` is the tested version.
+A newer accepted Pi version works by the range rule. The kit tests ran on the tested version only.
+With `untested_in_range`, keep the installed Pi and record `core_runtime_untested_in_range` as a readiness gap.
+The Pi install line stays a plain command with `not_needed`, not `replaces_installed`.
+
 Words used below:
 
 - `<clone>`: the directory of this repository, for example `~/tenant-pi`.
@@ -47,7 +54,7 @@ The clone does not exist at this stage on a first install, so these manual comma
 python3 <clone>/scripts/tenant_pi.py check-runtime
 ```
 
-`check-runtime` runs `pi --version`, `node --version` and `python3 --version`, and compares each with the requirements below. It prints one JSON object with `installed`, `required` and `status` for `pi`, `node` and `python`. The status is `match`, `mismatch`, `missing` or `unparsed`. The exit code is 1 when a status is not `match`; at this stage that is a finding, not a failure. `--pi`, `--node` and `--python` take the absolute path of another executable. See `docs/check-runtime.md`.
+`check-runtime` runs `pi --version`, `node --version` and `python3 --version`, and compares each with the requirements below. It prints one JSON object with `installed`, `required` and `status` for each tool. The Pi entry also has `tested` and `acceptedRange`. The status is `match`, `untested_in_range` (Pi only), `mismatch`, `missing` or `unparsed`. The exit code is 0 with `match` for all tools, or `untested_in_range` for Pi and `match` for the others. It is 1 otherwise; at this stage that is a finding, not a failure. `--pi`, `--node` and `--python` take the absolute path of another executable. See `docs/check-runtime.md`.
 
 `check-runtime` sets `PI_CODING_AGENT_DIR` to an empty temporary directory itself and removes the directory. The manual commands stay the fallback when `python3` is absent or older than 3.11.
 
@@ -58,7 +65,7 @@ Requirements:
 | Node | `>=22.22.0 <23` |
 | Python | `>=3.11` |
 | Git | any current version |
-| Pi | `1.0.3` (Stage 3 installs it) |
+| Pi | `runtime.piAcceptedRange`; Stage 3 installs the tested `<pin>` when needed |
 | Linux | first target; not verified: a complete live run |
 | macOS | not qualified; the adaptations below are unqualified, see `docs/guides/release-checklist.md` |
 
@@ -96,6 +103,8 @@ Done when the tests pass and the publish check prints `publish set valid`.
 
 ## Stage 3: install Pi
 
+After the overlay exists, `python3 scripts/tenant_pi.py plan --overlay <file>` prints the same line in `commands.piInstall`, key `command`.
+
 ```sh
 python3 scripts/tenant_pi.py check-runtime
 ```
@@ -108,7 +117,7 @@ Fallback, when the action cannot run:
 PI_CODING_AGENT_DIR="$(mktemp -d)" pi --version
 ```
 
-If the status is `match` (the fallback prints `1.0.3`), skip the install.
+With `match` or `untested_in_range`, skip the Pi install.
 
 If the status is `missing` (`pi` is absent), first see whether the user can write the global npm prefix:
 
@@ -123,7 +132,9 @@ The test writes nothing into the npm prefix. `npm config get prefix` writes one 
 If it prints `writable`, show the global command and run it on yes:
 
 ```sh
-npm install --global -- @earendil-works/pi-coding-agent@1.0.3
+# Run from the kit root.
+pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && \
+  npm install --global -- @earendil-works/pi-coding-agent@"${pin:?}"
 ```
 
 Warning: a global install replaces the `pi` command that every profile of the user runs.
@@ -132,16 +143,18 @@ The user can refuse the global command and use the prefix form below in its plac
 
 The command fixes the version of the Pi package, not all versions of its dependencies. See [what the install command fixes](docs/check-runtime.md#what-the-install-command-fixes).
 
-If it prints `not writable` (for example a user without root on a Node that root owns), the global command fails. Show the prefix form and run its first line on yes:
+If it prints `not writable` (for example a user without root on a Node that root owns), the global command fails. Show the prefix form and run its install command on yes:
 
 ```sh
-npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@1.0.3
+# Run from the kit root.
+pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && \
+  npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@"${pin:?}"
 export PATH="$HOME/.npm-global/bin:$PATH"
 ```
 
 The directory `"$HOME/.npm-global"` is the example; the user can name another directory that the user owns (`--prefix <dir>`). The `export` line changes the current shell only. The kit never edits a shell startup file. The `PATH` line is the user's step. Record the prefix and its `PATH` line as an adaptation.
 
-If the status is `mismatch` (it prints another version), tell the user the installed and the required version, and ask. If the status is `unparsed`, run the fallback command, read its output, and ask. Three options:
+If the status is `mismatch` (outside the accepted range), tell the user the installed and the tested version, and ask. If the status is `unparsed`, run the fallback command, read its output, and ask. Three options:
 
 - Stop.
 - Keep the existing Pi, and record the version mismatch as a gap.
@@ -149,13 +162,13 @@ If the status is `mismatch` (it prints another version), tell the user the insta
 
 The global install command is not the default for a `mismatch`: it replaces the installed Pi for every profile of the user, and it is a downgrade when the installed Pi is newer.
 
-Run the global command for a `mismatch` only when the user asks for that replacement in clear words, after the warning above. The same holds for `unparsed` when the fallback command prints another version than `1.0.3`, or no version.
+Run the global command for a `mismatch` only when the user asks for that replacement in clear words, after the warning above. For `unparsed`, make a new report before deciding whether to replace the installed Pi.
 
 With the second option, Stage 6 shows the gap as `core_runtime_mismatch` with both versions. With the report of Stage 6, `commands.piInstall` marks the global command as `not_needed`, `needed` or `replaces_installed`, and a `mismatch` takes the command out of `commands.setupDisplayOnly`.
 
 Warning: `npm config set prefix` changes the npm configuration of the user for every later global install. Use `--prefix` on the single install command instead.
 
-Done when `check-runtime` reports `match` for `pi` (or `pi --version` prints `1.0.3`) in the shell that will launch Pi.
+Done when `check-runtime` reports `match` or `untested_in_range` for `pi` in the shell that will launch Pi. Record the gap for an untested version.
 
 ## Stage 4: package dependencies
 
@@ -226,10 +239,10 @@ The command prints `JSON valid`, or the line and the column of the first syntax 
 Edit `overlay.json` for the other answers of the user. A core-only profile needs none of them:
 
 1. `target.agentDir`: `--target` sets it. Change it by hand only as described above.
-2. `selection.enable` and `selection.disable`: move each chosen ID from `disable` to `enable`. Recommended full set: `core`, `model-routing`, `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `slopscore-pr`. `promptr` and its four skills are `unverified` and need the build step of Stage 4. Keep `tracker-site` and `openviking` in `disable`; they are blocked.
+2. `selection.enable` and `selection.disable`: move each chosen ID from `disable` to `enable`. Recommended full set: `core`, `model-routing`, `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `coordinator-skills`, `slopscore-pr`. `promptr` and its four skills are `unverified` and need the build step of Stage 4. `tracker-site` is selectable but `unverified`; it needs Python 3.11 or later and Git on `PATH`, with no third-party Python package. `check-runtime` checks Python, not Git. `openviking` is a memory module; see item 5.
 3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/model-routes.md`.
 4. Gateway, only when the user routes through the Tenantext gateway: `modelRoutes.gateway` is `{"auth": "env"}`; `endpoints.codex-accounts` is the gateway URL that ends in `/v1`; `env.codex-accounts` is `${TENANTEXT_LITELLM_API_KEY}`. The user exports the key themselves.
-5. `hermes` and `wiki`: optional, off by default. Both need `consent.memoryCapture: true` and a `memory` block. Read `docs/memory-modules.md` with the user first.
+5. `hermes`, `wiki` and `openviking`: optional, off by default. Each needs `consent.memoryCapture: true` and a `memory` block. `openviking` also needs `consent.remoteMemoryWrites: true`, an OpenViking server that the user set up, and `npm ci --ignore-scripts` in `packages/openviking-pi`. Read `docs/memory-modules.md` with the user first.
 6. `mcp`: optional, off by default. The server definitions go to `<private dir>/inputs/mcp-adapter.json`, and the overlay gets `inputs.mcpFile: "inputs/mcp-adapter.json"`. Every `validate`, `plan` and `generate` call then needs `--local-dir ~/.config/tenant-pi`. Read `docs/workflow-modules.md` with the user first.
 
 7. Registry, required when `modelRoutes` names a model for a role or the cycle: edit `~/.config/tenant-pi/registry.json` (mode 600; `init-private` creates it as `{}`, the fallback does not create it).
@@ -300,6 +313,7 @@ The first gaps of the list follow the facts:
 | --- | --- |
 | `target_absence_unverified` | `plan` does not prove that `<target>` is absent. `generate` proves it when it creates the directory, so the output of a complete `generate` does not list this gap. |
 | `node_runtime_unverified`, `core_runtime_unverified` | No `--runtime-report`: the Node or Pi version is not measured. |
+| `core_runtime_untested_in_range` | The installed Pi is accepted but untested. The gap names `installed`, `tested` and `acceptedRange`. |
 | `node_runtime_mismatch`, `core_runtime_mismatch` | The report has `mismatch`. The gap names the `installed` and the `required` version. |
 | `node_runtime_missing`, `core_runtime_missing` | The report has `missing`: the shell did not find the tool. |
 | `node_runtime_unparsed`, `core_runtime_unparsed` | The report has `unparsed`: the tool gave no readable version. |
@@ -312,7 +326,7 @@ A `match` in the report removes the gap of that tool. If the user kept another P
 | --- | --- | --- |
 | `installed_version_unknown` | No `--runtime-report`, or the report has `unparsed` for Pi. Do Stage 3 first. | yes |
 | `needed` | The report has `missing` for Pi. | yes |
-| `not_needed` | The report has `match` for Pi. Skip the install. | no |
+| `not_needed` | The report has `match` or `untested_in_range` for Pi. Skip the install. | no |
 | `replaces_installed` | The report has `mismatch`: the command replaces the `installed` version with the `required` version. `change` is `downgrade` when the installed Pi is newer, `upgrade` when it is older, and `unordered` when the numbers are equal. The three choices of Stage 3 apply. | no |
 
 `warning` is `global_install_replaces_pi_for_all_profiles` in each case: one `pi` command serves every profile of the user. Never run the command of a `replaces_installed` mark as a default step.
@@ -382,7 +396,7 @@ Rule: the profile keeps its sessions in `<target>/sessions`. The launch line hol
 
 ### Checks
 
-1. `pi --version` in that environment prints `1.0.3`.
+1. `pi --version` in that environment prints `<pin>` or an accepted version. Record the untested-version gap when needed.
 2. Startup prints no extension error and no peer warning.
 3. The chosen model replies to the fixed prompt, and the reply holds the expected number: see "Check 3: the model reply" below. An auth error with the gateway means the key did not reach the process.
 4. The profile stayed inside its directory. `ls -la '<target>'` shows the generated files plus what Pi wrote: `auth.json`, `sessions/`, `npm/`, the state directories of the extensions. The comparison of the live agent directory with its baseline gives `unchanged`: see "Check 4: the comparison with the baseline" below.
@@ -497,4 +511,4 @@ Carry wanted drift into the overlay first (`docs/candidate-compare.md`). To list
 
 ## Not in this kit
 
-The kit does not install operating-system packages on its own, edit shell startup files, store credentials, run a service, or migrate an existing agent directory. The tracker skill, OpenViking and subagent packages are not installable from this release. Not verified: a live qualification on a clean client.
+The kit does not install operating-system packages on its own, edit shell startup files, store credentials, run a service, or migrate an existing agent directory. The tracker skill is selectable but remains unverified in a generated profile. Subagent packages are not installable from this release. The kit ships the OpenViking extension for Pi as a memory module; it does not install or configure an OpenViking server. Not verified: a live qualification on a clean client.

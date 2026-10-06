@@ -67,6 +67,7 @@ import { gitRemoteUrl, gitSnapshot, type GitSnapshot } from "../git/snapshot.mts
 import { CompanionBriefingDialogs } from "./briefing-dialogs.mts";
 import { resumeBriefingInMainPi } from "./briefing-send.mts";
 import { executeHerdrFresh, startFreshBriefingInNewPi } from "./briefing-fresh.mts";
+import { buildPromptArgs } from "../herdr/adapter.mts";
 import { isHerdrPaneId } from "../herdr/identity.mts";
 import {
   isValidTrackingRepo, parseSnapshot, renderCompactLines, renderPlaceholderLines,
@@ -82,7 +83,7 @@ import { loadFreshCatchUp, loadLatestCatchUp, nodeCatchUpFs, nodeGitExec, runCat
 import { TrackingNavigationController } from "../tracking/selection.mts";
 import { TrackingModal } from "./tracking-dialogs.mts";
 import { catalogPort } from "../workflow/catalog.mts";
-import { createReloadingCatalog, nodeWorkflowLoadDeps } from "../workflow/load.mts";
+import { NEUTRAL_PROVIDER_ID, createReloadingCatalog, nodeWorkflowLoadDeps } from "../workflow/load.mts";
 import { buildWorkBoard, type BoardIssue, type WorkBoard } from "../tracking/board.mts";
 import { buildTaskPromptDraft } from "../tracking/prompt-draft.mts";
 import { draftFor, nodeRequestsPort } from "../tracking/requests.mts";
@@ -155,7 +156,7 @@ Shared-files coordinatr window (--state-dir):
     Enter = "Prepare request -> draft to composer (no launch)": the packet is
     saved under requests/ and a deterministic draft lands in the composer.
     g = the same, then a fresh generator Pi is started in a new Herdr tab
-    (Sol medium on the selected provider, one skill, read/write tools only);
+    (the generator role on the selected provider, one skill, read/write tools only);
     when it finishes, its output replaces the draft only if you have not
     edited it. Ctrl+S reviews before anything is sent. Closed, retired,
     natively blocked or unreadable issues block the request.
@@ -337,7 +338,7 @@ export function workspaceOkHeaderLabel(
 
 /** Exact direct-send argv for a valid Herdr pane; prompt text is one argv item. */
 export function buildHerdrPromptArgs(piPane: string, text: string): string[] | undefined {
-  return isHerdrPaneId(piPane) ? ["agent", "prompt", piPane, text] : undefined;
+  return isHerdrPaneId(piPane) ? buildPromptArgs(piPane, text, false) : undefined;
 }
 
 /**
@@ -1073,10 +1074,12 @@ function runInteractive(trackingLines: string[] = [], opts?: { stateDir?: string
         : generatorContext);
       const runtime = generatorRuntimeOverride(process.env) ?? generatorRuntime(packet.workflow);
       // Capability probe: written by `/promptr-workflows probe` in Pi.
-      // Absent means the launch is a static candidate and says so.
+      // The init hint shows only for the neutral provider of the shipped defaults.
       const probe = loadCapabilityProbe(process.env, readTextBestEffort);
       const verified = probe === undefined
-        ? "runtime unverified: no capability probe (run /promptr-workflows probe in Pi)"
+        ? runtime?.provider === NEUTRAL_PROVIDER_ID
+          ? "runtime unverified: no workflow override file and no capability probe (run promptr-workflows-init first, then /promptr-workflows probe in Pi)"
+          : "runtime unverified: no capability probe (run /promptr-workflows probe in Pi)"
         : probe.ok ? `checked against ${probe.path}` : "capability probe unusable — dispatch will be blocked";
       notice(`generator for #${String(n)}: launching ${runtime ? runtimeLabel(runtime) : "(no runtime)"} · ${verified} — draft kept until output is verified`);
       const result = await runGenerator(

@@ -15,7 +15,7 @@ The tool is the `tracker` Python package in the tenantext repository. Find the t
 PYTHONPATH=<tenantext root> python3 -m tracker.refresh --repo-path <repository> CMD
 ```
 
-Use absolute paths. The tool needs Python 3.11 and Git. It has no other dependencies.
+Use absolute paths. The tool needs Python 3.11 or later and Git on `PATH`. It needs no third-party Python package.
 
 ## 1. Start with status
 
@@ -74,7 +74,7 @@ The checkpoint is at most 8192 bytes. The synthesis packet is at most 32768 byte
 
 Run it only as part of a refresh that the user asked for. The tool never calls a model itself.
 
-1. Start a fresh subagent or session. Its only input is `synthesis-input.md` from the state directory. The packet holds the prompt, the checkpoint, the previous brief records and the facts.
+1. Start a fresh agent session. Its only input is `synthesis-input.md` from the state directory. The packet holds the prompt, the checkpoint, the previous brief records and the facts.
 2. The model writes records to the output file named in the packet. It writes nothing else.
 3. Apply the output: `tracker apply --synthesis <output file>` (or `tracker run --synthesis <output file>`).
 4. When the runtime reports usage, pass it: `--model-calls N --input-tokens N --output-tokens N`. Unknown values stay `null`. Never estimate them.
@@ -88,8 +88,8 @@ A refresh starts from the last canonical brief, not from the whole history.
 - Changes: only work since the previous snapshot. Old changes do not carry over.
 - Issues: title, state, URL and check time come from the issue tracker. Progress stays as the brief states it. A new open issue gets the note "Progress not assessed".
 - Gates and evidence merge by id. Only an explicit `retire` removes one.
-- Owner prose notes stay unchanged.
-- The next-session prompt is rebuilt from the recommended path on every refresh. A minimal brief labels it carried forward. An owner-written prompt (`source: owner`) stays while its path is still recommended. The model step never writes one.
+- Requester prose notes stay unchanged.
+- The next-session prompt is rebuilt from the recommended path on every refresh. A minimal brief labels it carried forward. A requester-written prompt (`source: requester`) stays while its path is still recommended. The model step never writes one.
 - The store writes only when the canonical brief is unchanged since the checkpoint.
 
 ## 7. Failures
@@ -98,7 +98,7 @@ A refresh starts from the last canonical brief, not from the whole history.
 | --- | --- | --- |
 | Model output invalid or missing | Writes a minimal brief and records the reason | Tell the user. Offer a new model step. |
 | Canonical store unavailable | Keeps the brief in the pending queue and the last-good copy | Run `tracker sync` later. |
-| The owner edited the brief during the refresh | Refuses the write. Keeps both versions. | Run `tracker checkpoint`, then refresh again. |
+| The requester edited the brief during the refresh | Refuses the write. Keeps both versions. | Run `tracker checkpoint`, then refresh again. |
 | Publication failed | Keeps the local HTML and Markdown. Queues a retry. | Run `tracker publish` later. |
 | Another refresh holds the lock | Refuses (exit code 4) | Wait. Remove the lock only when its process is gone. |
 | A stage failed three times | Stops that stage | Start a new checkpoint. |

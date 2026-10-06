@@ -33,14 +33,15 @@ SAFE_NAME = re.compile(r"[A-Za-z0-9_.:@-]{1,64}\Z")
 # provenance value is echoed only when it names something the kit itself declares.
 RANGES = (">=22.22.0 <23", ">=3.11")
 PLAIN_VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")  # no free-text prerelease tag
-DECLARED_ENV = frozenset(("TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY"))
+DECLARED_ENV = frozenset(("TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY", "GITEA_TOKEN"))
 REVIEWED_NPM = frozenset(npm_name(s["spec"]) for s in REVIEWED_SOURCES.values() if s and s["kind"] == "npm")
 REVIEWED_GIT = {(s["url"], s["subdir"]) for s in REVIEWED_SOURCES.values() if s and s["kind"] == "git"}
 REVIEWED_TREE = frozenset(s["path"] for s in REVIEWED_SOURCES.values() if s and s["kind"] == "tree")
 # The overlay `memory` fields: a switch and a closed name by value, a path as a marker.
 # `paths` is a positional list of private entries: one marker per index.
 MEMORY_POLICIES = {"backgroundReview": "bool", "reviewTransport": "transport", "childExtensionPaths": "paths",
-                   "ambientPersonalVault": "bool", "backgroundTasks": "bool", "wikiHome": "marker"}
+                   "ambientPersonalVault": "bool", "backgroundTasks": "bool", "wikiHome": "marker",
+                   "captureToolResults": "bool", "recallContextTimeoutMs": "int"}
 MISSING = object()
 # Provenance fields that differ between any two generations: listed under `markers`, never under `changes`.
 MARKERS = frozenset((".tenant-pi/state.json", "/provenance/" + key) for key in ("generatedAt", "kitCommit"))
@@ -302,8 +303,6 @@ def _overlay(side, file, data):
             names = (*MODULE_FIELDS[cid][0], *MODULE_FIELDS[cid][1])
             if block[cid] is None:
                 side.put(file, at, "disabled", "const")
-            elif not names:
-                side.skip(file, at, "unsupported_shape")  # A blocked module accepts `null` only.
             elif (choice := side.object(file, at, block[cid])) is not None:
                 for key in names:
                     if key not in choice:
@@ -345,7 +344,9 @@ def _manifest(side, file, data):
         side.put(file, pointer + "/runtime/piVersion", runtime.get("piVersion", MISSING), "version")
         for key in ("nodeRange", "pythonRange"):
             side.put(file, pointer + "/runtime/" + key, runtime.get(key, MISSING), "range")
-        side.known(file, pointer + "/runtime", runtime, ("piVersion", "nodeRange", "pythonRange"))
+        if "piAcceptedRange" in runtime:
+            side.put(file, pointer + "/runtime/piAcceptedRange", runtime["piAcceptedRange"], "marker")
+        side.known(file, pointer + "/runtime", runtime, ("piVersion", "piAcceptedRange", "nodeRange", "pythonRange"))
     if (components := side.object(file, pointer + "/components", manifest.get("components", MISSING))) is not None:
         for cid in sorted(components, key=str):
             if type(cid) is not str or not ID.fullmatch(cid):

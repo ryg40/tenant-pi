@@ -554,6 +554,7 @@ export const KEY_REFERENCE: Readonly<Record<SpikeFocus | "global", ReadonlyArray
     ["Home / End", "first / last task"],
     ["Enter", "open the task"],
     ["g", "Generate Prompt"],
+    ["f", "fold or expand the map of the task (more than one open map)"],
     ["r", "refresh from tracker"],
     ["c", "Catch-Me-Up: scan tracker, worktrees, handoffs"],
     ["?", "this list"],
@@ -880,8 +881,13 @@ export class CompanionSpikeView {
   private board: WorkBoard | undefined = undefined;
   /** Short host status appended to the tracking rule (`refreshing…`, `offline · cached 11h ago`). */
   private boardNote = "";
-  /** Display cursor over the board's issue rows, kept by issue number across setWorkBoard. */
+  /**
+   * Display cursor over the board's issue rows, kept by issue number across
+   * setWorkBoard. On a folded map row it holds the number of the map.
+   */
   private boardCursorNumber: number | undefined = undefined;
+  /** Numbers of the folded maps. View state only: never board data, never persisted. */
+  private readonly foldedMaps = new Set<number>();
   /** First board row currently scrolled into view. */
   private boardWindowStart = 0;
   /** Board rows shown by the last render, for PgUp/PgDn paging. */
@@ -1029,12 +1035,19 @@ export class CompanionSpikeView {
   setWorkBoard(board: WorkBoard | undefined, note?: string): void {
     this.board = board;
     this.boardNote = typeof note === "string" ? note.replace(/[\r\n\t]+/g, " ").trim().slice(0, 80) : "";
+    // A fold survives a refresh by map number. It ends when its map leaves the
+    // board, has no child left, or is the only open map.
+    const maps = (board?.rows ?? []).filter((row) => row.kind === "map");
+    for (const number of [...this.foldedMaps]) {
+      const foldable = maps.length > 1 && maps.some((map) => map.number === number && map.childCount > 0);
+      if (!foldable) this.foldedMaps.delete(number);
+    }
     const issues = this.boardIssueIndexes();
-    const keep = issues.find((row) => this.issueAt(row)?.number === this.boardCursorNumber);
+    const keep = issues.find((row) => this.stopNumberAt(row) === this.boardCursorNumber);
     const first = issues[0];
     this.boardCursorNumber = keep !== undefined
       ? this.boardCursorNumber
-      : first !== undefined ? this.issueAt(first)?.number : undefined;
+      : first !== undefined ? this.stopNumberAt(first) : undefined;
     this.invalidateLayoutBudget();
   }
 
@@ -1048,8 +1061,16 @@ export class CompanionSpikeView {
     return row === undefined ? undefined : this.issueAt(row);
   }
 
+  /** The rows the region shows: the board rows without the children of a folded map. */
   private boardRows(): readonly BoardRow[] {
-    return this.board?.rows ?? [];
+    const rows = this.board?.rows ?? [];
+    if (this.foldedMaps.size === 0) return rows;
+    let folded = false;
+    return rows.filter((row) => {
+      if (row.kind === "issue") return !(folded && row.depth === 1);
+      folded = row.kind === "map" && this.foldedMaps.has(row.number);
+      return true;
+    });
   }
 
   private issueAt(row: number): BoardIssue | undefined {
@@ -1057,23 +1078,74 @@ export class CompanionSpikeView {
     return entry?.kind === "issue" ? entry.issue : undefined;
   }
 
-  /** Row indexes of issue rows only: map and heading rows are never a cursor stop. */
+  /** Issue number, or map number on a folded map row: what the cursor is kept by. */
+  private stopNumberAt(row: number): number | undefined {
+    const entry = this.boardRows()[row];
+    if (entry?.kind === "issue") return entry.issue.number;
+    return entry?.kind === "map" && this.foldedMaps.has(entry.number) ? entry.number : undefined;
+  }
+
+  /**
+   * Row indexes of the cursor stops: issue rows, plus a folded map row so the
+   * map can be expanded again. Other map rows and heading rows are never a stop.
+   */
   private boardIssueIndexes(): number[] {
     const out: number[] = [];
     this.boardRows().forEach((row, index) => {
-      if (row.kind === "issue") out.push(index);
+      if (row.kind === "issue" || (row.kind === "map" && this.foldedMaps.has(row.number))) out.push(index);
     });
     return out;
+  }
+
+  /** Notice text for the row under the cursor. */
+  private boardStopNotice(row: number): string | undefined {
+    const entry = this.boardRows()[row];
+    if (entry?.kind === "map") return `Map #${entry.number} folded · ${entry.childCount} hidden · f expands`;
+    if (entry?.kind !== "issue") return undefined;
+    const issue = entry.issue;
+    return `#${issue.number} ${issue.status === "unknown" ? "?" : issue.status} · ${issue.title}`;
+  }
+
+  /**
+   * Fold the map of the task under the cursor, or expand the folded map under
+   * it. Offered only while more than one map is open: a single map is the board.
+   */
+  private toggleMapFold(): void {
+    const rows = this.boardRows();
+    if (rows.filter((row) => row.kind === "map").length < 2) {
+      this.notice = "f folds a map when more than one map is open";
+      return;
+    }
+    const at = this.boardCursorRow();
+    const entry = at === undefined ? undefined : rows[at];
+    if (at !== undefined && entry?.kind === "map") {
+      this.foldedMaps.delete(entry.number);
+      const child = this.issueAt(at + 1);
+      if (child) this.boardCursorNumber = child.number;
+      this.notice = `Map #${entry.number} expanded`;
+    } else if (at !== undefined && entry?.kind === "issue" && entry.depth === 1) {
+      let index = at - 1;
+      while (index >= 0 && rows[index]?.kind !== "map") index -= 1;
+      const map = rows[index];
+      if (map?.kind !== "map") return;
+      this.foldedMaps.add(map.number);
+      this.boardCursorNumber = map.number;
+      this.notice = `Map #${map.number} folded · ${map.childCount} hidden · f expands`;
+    } else {
+      this.notice = "f folds the map of a task · this task is on no open map";
+      return;
+    }
+    this.invalidateLayoutBudget();
   }
 
   /** Row index of the cursor issue; repairs a cursor whose issue left the board. */
   private boardCursorRow(): number | undefined {
     const issues = this.boardIssueIndexes();
     if (issues.length === 0) return undefined;
-    const found = issues.find((row) => this.issueAt(row)?.number === this.boardCursorNumber);
+    const found = issues.find((row) => this.stopNumberAt(row) === this.boardCursorNumber);
     if (found !== undefined) return found;
     const first = issues[0] as number;
-    this.boardCursorNumber = this.issueAt(first)?.number;
+    this.boardCursorNumber = this.stopNumberAt(first);
     return first;
   }
 
@@ -1086,18 +1158,17 @@ export class CompanionSpikeView {
     }
     const position = issues.indexOf(current);
     const next = Math.min(issues.length - 1, Math.max(0, position + delta));
-    const issue = this.issueAt(issues[next] as number);
-    this.boardCursorNumber = issue?.number;
-    if (issue) this.notice = `#${issue.number} ${issue.status === "unknown" ? "?" : issue.status} · ${issue.title}`;
+    const row = issues[next] as number;
+    this.boardCursorNumber = this.stopNumberAt(row);
+    this.notice = this.boardStopNotice(row) ?? this.notice;
   }
 
   private jumpBoardCursor(where: "home" | "end"): void {
     const issues = this.boardIssueIndexes();
     if (issues.length === 0) return this.moveBoardCursor(0);
     const row = where === "home" ? (issues[0] as number) : (issues[issues.length - 1] as number);
-    const issue = this.issueAt(row);
-    this.boardCursorNumber = issue?.number;
-    if (issue) this.notice = `#${issue.number} ${issue.status === "unknown" ? "?" : issue.status} · ${issue.title}`;
+    this.boardCursorNumber = this.stopNumberAt(row);
+    this.notice = this.boardStopNotice(row) ?? this.notice;
   }
 
   /** Replace the coordinatr-window tracking display (Gitea snapshot text). */
@@ -1420,9 +1491,15 @@ export class CompanionSpikeView {
     else if (matchesKey(data, "end")) this.jumpBoardCursor("end");
     else if (matchesKey(data, "enter") || data === "g" || data === "G") {
       const issue = this.getBoardCursor();
-      if (!issue) this.notice = this.board ? "workboard has no open tasks" : "no workboard yet · r refreshes";
+      const row = this.boardCursorRow();
+      if (!issue && row !== undefined) {
+        // The cursor is on a folded map row: Enter expands it, g has no task to use.
+        if (matchesKey(data, "enter")) this.toggleMapFold();
+        else this.notice = "this map is folded · f expands it";
+      } else if (!issue) this.notice = this.board ? "workboard has no open tasks" : "no workboard yet · r refreshes";
       else this.pushTrackingIntent(matchesKey(data, "enter") ? { kind: "open", issue } : { kind: "generate", issue });
-    } else if (data === "r" || data === "R") this.pushTrackingIntent({ kind: "refresh" });
+    } else if (data === "f" || data === "F") this.toggleMapFold();
+    else if (data === "r" || data === "R") this.pushTrackingIntent({ kind: "refresh" });
     else if (data === "?") this.showHelp();
     else this.notice = `TRACKING ignores ${escapeForDisplay(data)} — ? lists the keys`;
     return true;
@@ -2200,8 +2277,10 @@ export class CompanionSpikeView {
     if (row.kind === "map") {
       const counts = WORK_STATUS_ORDER.filter((status) => (row.counts[status] ?? 0) > 0)
         .map((status) => `${row.counts[status]} ${status}`);
-      const head = `  Map #${row.number} `;
-      const tasks = `${row.childCount} task${row.childCount === 1 ? "" : "s"}`;
+      // A folded map shows `+` and is a cursor stop; an expanded map row is unchanged.
+      const folded = this.foldedMaps.has(row.number);
+      const head = folded ? `${this.focusTarget === "tracking" && atCursor ? "▶" : " "}+Map #${row.number} ` : `  Map #${row.number} `;
+      const tasks = `${row.childCount} task${row.childCount === 1 ? "" : "s"}${folded ? " folded" : ""}`;
       // Counts are a courtesy: when they would squeeze the title below a
       // readable width, keep the title and the task count only.
       let tail = [tasks, ...counts].join(" · ");
@@ -2281,9 +2360,9 @@ export class CompanionSpikeView {
     if (line.includes("TRACKING · ")) return (this.focusTarget === "tracking" ? c.accentBold : c.muted)(line);
     if (line.startsWith("  no snapshot") || line.startsWith("  no open tasks") || line.startsWith("  ... ")) return c.dim(line);
     if (/^  [↑↓] \d+ more$/.test(line)) return c.dim(line);
-    if (line.startsWith("▶ #")) return c.accent(line);
+    if (line.startsWith("▶ #") || line.startsWith("▶+Map #")) return c.accent(line);
     if (/^  [A-Z?]+ \d+$/.test(line)) return c.bold(line);
-    if (line.startsWith("  Map #")) return c.muted(line);
+    if (line.startsWith("  Map #") || line.startsWith(" +Map #")) return c.muted(line);
     return tintProgressBars(line);
   }
 

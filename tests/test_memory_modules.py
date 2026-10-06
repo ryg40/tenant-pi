@@ -19,12 +19,15 @@ from tests.test_model_routes import REGISTRY
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
+PIN = load(ROOT / "config/manifest.json")["runtime"]["piVersion"]
 CANARY = "CANARY_SECRET"
 MEMORY_ROLE = {"provider": "fake-native", "model": "team/slash-id", "thinking": "high"}
 GATEWAY_ROLE = {"provider": "litellm-codex", "model": "codex-auto/sol", "thinking": "xhigh", "route": "gateway"}
 HERMES_ON = {"backgroundReview": True, "reviewTransport": "direct"}
 HERMES_OFF = {"backgroundReview": False}
 WIKI_OFF = {"ambientPersonalVault": False, "backgroundTasks": False}
+OPENVIKING = {"captureToolResults": True, "recallContextTimeoutMs": 5000}
+OPENVIKING_DIR = "packages/openviking-pi"
 
 
 class MemoryContractTests(unittest.TestCase):
@@ -75,18 +78,136 @@ class MemoryContractTests(unittest.TestCase):
         self.error(self.base("hermes"), "memory_choices_required")
         self.error(self.base("hermes", memory={}), "memory_choices_required")
 
-    def test_remote_write_refusal_and_openviking_stays_blocked(self):
+    def openviking(self, *others, remote=True, memory=None, **kwargs):
+        """An overlay with `openviking` selected; `remote` is `consent.remoteMemoryWrites`."""
+        data = self.base("openviking", *others, memory={"openviking": copy.deepcopy(OPENVIKING)} if memory is None else memory,
+                         **kwargs)
+        data["consent"]["remoteMemoryWrites"] = remote
+        return data
+
+    def test_openviking_needs_selection_and_both_consents(self):
+        # The remote consent has no consumer without the module.
         data = self.base("hermes", memory={"hermes": HERMES_OFF})
         data["consent"]["remoteMemoryWrites"] = True
         self.error(data, "remote_memory_disabled")
-        data = self.base(consent=False, memory={"openviking": {"enabled": True}})
-        self.error(data, "memory_module_disabled")
-        data = self.base(memory={})
-        data["selection"]["disable"].remove("openviking")
-        data["selection"]["enable"].append("openviking")
-        self.error(data, "blocked_component")
-        self.assertEqual("blocked", self.components["openviking"]["status"])
-        self.assertIsNone(self.components["openviking"]["source"])
+        data = self.base()
+        data["consent"]["remoteMemoryWrites"] = True
+        self.error(data, "memory_disabled")
+        # Choices without selection, with and without consent.
+        self.error(self.base(consent=False, memory={"openviking": copy.deepcopy(OPENVIKING)}), "memory_module_disabled")
+        # Selection without consent; then the capture consent without the remote consent.
+        self.error(self.openviking(consent=False, remote=False), "memory_consent_required")
+        self.error(self.openviking(consent=False), "memory_consent_required")
+        self.error(self.openviking(remote=False), "remote_memory_consent_required")
+        # Selection and both consents without choices.
+        self.error(self.openviking(memory={}), "memory_choices_required")
+        data = self.openviking()
+        del data["memory"]
+        self.error(data, "memory_choices_required")
+        overlay(self.openviking(), self.components)
+        component = self.components["openviking"]
+        self.assertEqual(("unverified", {"kind": "tree", "path": OPENVIKING_DIR}, "Apache-2.0"),
+                         (component["status"], component["source"], component["license"]))
+        self.assertEqual([{"file": "settings.json", "key": "package:" + OPENVIKING_DIR + ":index.ts"}],
+                         component["configOwnership"]["claims"])
+
+    def test_openviking_renders_the_package_and_the_two_launch_variables(self):
+        data = self.openviking("hermes", "promptr", memory={"openviking": copy.deepcopy(OPENVIKING), "hermes": HERMES_OFF})
+        overlay(data, self.components)
+        before = copy.deepcopy(data)
+        plan = prepare(self.manifest_data, data)
+        self.assertEqual(before, data)
+        settings = plan["files"]["settings.json"]["content"]
+        # The in-tree packages first, then the memory packages in their order.
+        self.assertEqual([str(ROOT / "packages/promptr"), "npm:pi-hermes-memory", str(ROOT / OPENVIKING_DIR)],
+                         [package["source"] for package in settings["packages"]])
+        self.assertEqual({"source": str(ROOT / OPENVIKING_DIR), "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
+                         settings["packages"][-1])
+        self.assertTrue((ROOT / OPENVIKING_DIR / "index.ts").is_file())
+        target = "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile"
+        self.assertEqual(["OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=5000", "OPENVIKING_CAPTURE_TOOL_RESULTS=true", "env", "-u",
+                          "PI_CODING_AGENT_SESSION_DIR", target, "pi", "--no-approve"], shlex.split(plan["commands"]["launch"]))
+        memory = plan["files"][".tenant-pi/choices.json"]["content"]["memory"]
+        self.assertEqual({"enabled": True, "localCapture": False, "backgroundModelCalls": False, "remoteWrites": True,
+                          "captureToolResults": True}, memory["activation"]["openviking"])
+        self.assertFalse(memory["activation"]["hermes"]["remoteWrites"])
+        self.assertEqual([{"kind": "process_environment", "name": "OPENVIKING_CAPTURE_TOOL_RESULTS",
+                           "instruction": "OPENVIKING_CAPTURE_TOOL_RESULTS=true"},
+                          {"kind": "process_environment", "name": "OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS",
+                           "instruction": "OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=5000"}], memory["setup"])
+        # The variable names are the names of the schema that the vendored extension reads.
+        schema = (ROOT / OPENVIKING_DIR / "shared/config-schema.mjs").read_text(encoding="utf-8")
+        for key, name, kind in (("captureToolResults", "OPENVIKING_CAPTURE_TOOL_RESULTS", "bool"),
+                                ("recallContextTimeoutMs", "OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS", "int")):
+            line = next(line for line in schema.splitlines() if '{ name: "' + key + '",' in line)
+            self.assertIn('env: "' + name + '"', line)
+            self.assertIn('type: "' + kind + '"', line)
+        self.assertIn("min: 0, max: 600000", next(line for line in schema.splitlines() if '{ name: "recallContextTimeoutMs",' in line))
+        # The gaps of the manifest, one time each, and no peer override for this package.
+        gaps = [(g["code"], g["subject"]) for g in plan["readinessGaps"] if g["subject"] == "openviking"]
+        self.assertEqual([*((gap["code"], "openviking") for gap in self.components["openviking"]["gaps"]),
+                          ("shared_home_state", "openviking")], gaps)
+        self.assertEqual({"install_step_required", "server_required", "package_runtime_unverified", "kit_test_missing",
+                          "capture_cost_unmeasured", "shared_home_state"}, {code for code, _ in gaps})
+        self.assertIn({"code": "peer_override_required", "subject": "hermes"}, plan["readinessGaps"])
+        agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
+        self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
+                          agent + " pi update --extensions", agent + " node scripts/patch_extension_peers.mjs",
+                          "npm --prefix " + shlex.quote(str(ROOT / OPENVIKING_DIR)) + " ci --ignore-scripts"],
+                         plan["commands"]["setup"])
+        # The module alone: no npm package to reconcile, no peer override, no file of its own.
+        data = self.openviking(memory={"openviking": {"captureToolResults": False}})
+        overlay(data, self.components)
+        plan = prepare(self.manifest_data, data)
+        self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
+                          "npm --prefix " + shlex.quote(str(ROOT / OPENVIKING_DIR)) + " ci --ignore-scripts"],
+                         plan["commands"]["setup"])
+        self.assertEqual({"settings.json", ".tenant-pi/choices.json"}, set(plan["files"]))
+        self.assertEqual([str(ROOT / OPENVIKING_DIR)], [p["source"] for p in plan["files"]["settings.json"]["content"]["packages"]])
+        # Both states of the switch are written; the optional number is absent when the overlay has none.
+        self.assertEqual(["OPENVIKING_CAPTURE_TOOL_RESULTS=false", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", target, "pi",
+                          "--no-approve"], shlex.split(plan["commands"]["launch"]))
+        self.assertFalse(plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["activation"]["openviking"]["captureToolResults"])
+        # No generated file holds a credential, an endpoint, or a setting of the extension beside the two.
+        dump = json.dumps({name: plan["files"][name]["content"] for name in plan["files"]})
+        for word in ("OPENVIKING_API_KEY", "OPENVIKING_URL", "ovcli.conf", "apiKey", "endpoint\":"):
+            self.assertNotIn(word, dump.replace(json.dumps(self.manifest_data["components"]["openviking"]["gaps"])[1:-1], ""), word)
+        rendered = render_memory(data, self.components)
+        self.assertEqual(({}, {}), (rendered["settings"], rendered["files"]))
+        validate_memory(data, self.components)
+
+    def test_openviking_invalid_choice_shapes_and_canaries(self):
+        for change, rule in ((lambda o: o.update(captureToolResults="true"), "boolean"),
+                             (lambda o: o.update(captureToolResults=1), "boolean"),
+                             (lambda o: o.pop("captureToolResults"), "required_fields"),
+                             (lambda o: o.update(recallContextTimeoutMs=CANARY), "timeout_ms"),
+                             (lambda o: o.update(recallContextTimeoutMs=True), "timeout_ms"),
+                             (lambda o: o.update(recallContextTimeoutMs=5000.0), "timeout_ms"),
+                             (lambda o: o.update(recallContextTimeoutMs=-1), "timeout_ms"),
+                             (lambda o: o.update(recallContextTimeoutMs=600001), "timeout_ms"),
+                             (lambda o: o.update(apiKey=CANARY), "unknown_fields"),
+                             (lambda o: o.update(endpoint="https://" + CANARY + ".example.invalid"), "unknown_fields"),
+                             (lambda o: o.update(takeover={"enabled": True}), "unknown_fields")):
+            with self.subTest(rule=rule):
+                data = self.openviking()
+                change(data["memory"]["openviking"])
+                self.error(data, rule)
+        for value in (CANARY, [CANARY], 7, True):
+            with self.subTest(value=type(value).__name__):
+                self.error(self.openviking(memory={"openviking": value}), "object")
+        # The bounds of the schema are valid values; 0 keeps the default of the extension.
+        for value in (0, 600000):
+            data = self.openviking(memory={"openviking": {"captureToolResults": True, "recallContextTimeoutMs": value}})
+            overlay(data, self.components)
+            self.assertIn("OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=" + str(value), shlex.split(prepare(self.manifest_data, data)["commands"]["launch"]))
+        # An endpoint or a credential name for the module is not an overlay field either.
+        data = self.openviking()
+        data["endpoints"]["openviking"] = "https://openviking.example.invalid"
+        self.error(data, "integration_configuration_unavailable")
+        data = self.openviking()
+        data["env"]["openviking"] = "${OPENVIKING_API_KEY}"
+        self.error(data, "undeclared_env")
+        self.assertEqual([], self.components["openviking"]["env"])
 
     def test_local_only_consent_disables_every_background_model_path(self):
         data = self.base("hermes", "wiki", memory={"hermes": HERMES_OFF, "wiki": WIKI_OFF})
@@ -115,7 +236,7 @@ class MemoryContractTests(unittest.TestCase):
                          ("session_backfill_scope_unverified", "hermes"), ("project_settings_override", "wiki")):
             self.assertIn(expected, codes)
         self.assertNotIn(("child_provider_unverified", "hermes"), codes)
-        self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@1.0.3",
+        self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
                           "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi update --extensions",
                           "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " node scripts/patch_extension_peers.mjs"],
                          plan["commands"]["setup"])
@@ -259,7 +380,7 @@ class MemoryPublicationTests(unittest.TestCase):
         self.assertEqual(plan["files"][HERMES_CONFIG]["content"], json.loads((self.target / HERMES_CONFIG).read_text()))
         state = json.loads((self.target / STATE).read_text())
         self.assertEqual(["settings.json", ".tenant-pi/choices.json", HERMES_CONFIG, STATE], state["provenance"]["outputs"])
-        self.assertEqual({"core": "npm:@earendil-works/pi-coding-agent@1.0.3", "hermes": "npm:pi-hermes-memory",
+        self.assertEqual({"core": "npm:@earendil-works/pi-coding-agent@" + PIN, "hermes": "npm:pi-hermes-memory",
                           "wiki": "npm:@zosmaai/pi-llm-wiki"}, state["provenance"]["pins"])
         self.assertNotIn("fake-native", (self.target / STATE).read_text())
         # Tampered plans are rejected before any file exists.
@@ -384,6 +505,84 @@ class MemoryPublicationTests(unittest.TestCase):
         self.assertNotIn(CANARY.lower(), compared.stdout)
         self.assertEqual("removed", next(c["change"] for c in report["changes"] if c["file"] == HERMES_CONFIG and c["field"] == "/reviewEnabled"))
         self.assertEqual({"status": "none", "fields": [], "metadata": "unchanged"}, report["right"]["drift"])
+
+    def test_cli_generates_an_openviking_profile_without_a_server_call_or_a_credential(self):
+        for cid in ("hermes", "wiki"):
+            self.data["selection"]["enable"].remove(cid)
+            self.data["selection"]["disable"].append(cid)
+        self.data["selection"]["disable"].remove("openviking")
+        self.data["selection"]["enable"].append("openviking")
+        self.data["consent"]["remoteMemoryWrites"] = True
+        self.data["roles"]["memory"] = None
+        self.data["memory"] = {"schemaVersion": 1, "hermes": None, "wiki": None, "openviking": copy.deepcopy(OPENVIKING)}
+        overlay_file = self.base_dir / "overlay.json"
+        overlay_file.write_text(json.dumps(self.data))
+        bin_dir = self.base_dir / "bin"
+        bin_dir.mkdir()
+        for name in ("pi", "npm", "node", "git", "sh", "curl", "ov"):
+            command = bin_dir / name
+            command.write_text("#!/bin/sh\nprintf CALLED > '" + str(self.base_dir / "called") + "'\n")
+            command.chmod(0o700)
+        hook = self.base_dir / "sitecustomize.py"
+        hook.write_text("import sys\nsys.dont_write_bytecode = True\nimport socket, subprocess\n"
+                        "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
+                        "socket.socket.connect = blocked\nsubprocess.Popen = blocked\n")
+        # The credential files and the variables of the extension stay unread: the canary is in none of the output.
+        (self.home / ".openviking").mkdir()
+        for name in ("ovcli.conf", "ov.conf"):
+            (self.home / ".openviking" / name).write_text(json.dumps({"url": "https://" + CANARY + ".example.invalid", "api_key": CANARY}))
+        (self.home / ".pi/agent/extensions/openviking").mkdir(parents=True)
+        (self.home / ".pi/agent/extensions/openviking/config.json").write_text(json.dumps({"captureToolResults": CANARY}))
+        env = dict(os.environ, HOME=str(self.home), PATH=str(bin_dir), PYTHONPATH=str(self.base_dir), PYTHONDONTWRITEBYTECODE="1",
+                   OPENVIKING_API_KEY=CANARY, OPENVIKING_URL="https://" + CANARY + ".example.invalid",
+                   OPENVIKING_CLI_CONFIG_FILE=str(self.home / ".openviking/ovcli.conf"))
+
+        def run(*args):
+            return subprocess.run([sys.executable, str(CLI), *args], cwd=self.base_dir, env=env, text=True, capture_output=True)
+
+        plan = run("plan", "--overlay", str(overlay_file))
+        self.assertEqual(0, plan.returncode, plan.stderr)
+        preview = json.loads(plan.stdout)
+        self.assertEqual([".", ".tenant-pi", ".tenant-pi/choices.json", "settings.json", STATE], [f["path"] for f in preview["files"]])
+        self.assertTrue(preview["memory"]["activation"]["openviking"]["remoteWrites"])
+        self.assertIn({"code": "server_required", "subject": "openviking"}, preview["readinessGaps"])
+        self.assertIn("npm --prefix " + shlex.quote(str(ROOT / OPENVIKING_DIR)) + " ci --ignore-scripts", preview["commands"]["setupDisplayOnly"])
+        launch = shlex.split(preview["commands"]["launchDisplayOnly"])
+        self.assertEqual(["OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=5000", "OPENVIKING_CAPTURE_TOOL_RESULTS=true"], launch[:2])
+        generated = run("generate", "--overlay", str(overlay_file), "--target", str(self.target))
+        self.assertEqual(0, generated.returncode, generated.stderr)
+        self.assertTrue(json.loads(generated.stdout)["filesComplete"])
+        self.assertEqual({"settings.json", ".tenant-pi", ".tenant-pi/choices.json", STATE},
+                         {str(p.relative_to(self.target)) for p in self.target.rglob("*")})
+        settings = json.loads((self.target / "settings.json").read_text())
+        self.assertEqual([{"source": str(ROOT / OPENVIKING_DIR), "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}],
+                         settings["packages"])
+        state = json.loads((self.target / STATE).read_text())
+        self.assertEqual("tree:" + OPENVIKING_DIR, state["provenance"]["pins"]["openviking"])
+        written = "".join(p.read_text() for p in self.target.rglob("*") if p.is_file())
+        self.assertNotIn(CANARY, written + plan.stdout + plan.stderr + generated.stdout + generated.stderr)
+        for word in ("OPENVIKING_API_KEY", "OPENVIKING_URL", "api_key"):
+            self.assertNotIn(word, written, word)
+        self.assertFalse((self.base_dir / "called").exists())
+        self.assertFalse((self.target / "config.json").exists())
+        self.assertEqual(["config.json"], [p.name for p in (self.home / ".pi/agent/extensions/openviking").iterdir()])
+        self.assertEqual(["ov.conf", "ovcli.conf"], sorted(p.name for p in (self.home / ".openviking").iterdir()))
+        # A second profile with the capture of tool results off: the comparison names the two fields by value.
+        self.data["target"]["agentDir"] = str(self.parent / "second")
+        self.data["memory"]["openviking"] = {"captureToolResults": False}
+        overlay_file.write_text(json.dumps(self.data))
+        second = run("generate", "--overlay", str(overlay_file), "--target", str(self.parent / "second"))
+        self.assertEqual(0, second.returncode, second.stderr)
+        compared = run("compare", "--left", str(self.target), "--right", str(self.parent / "second"))
+        self.assertEqual(0, compared.returncode, compared.stderr)
+        report = json.loads(compared.stdout)
+        at = "/overlay/memory/openviking/"
+        changes = {c["field"]: c for c in report["changes"] if c["field"].startswith(at)}
+        self.assertEqual({at + "captureToolResults": ("changed", {"value": True}, {"value": False}),
+                          at + "recallContextTimeoutMs": ("removed", {"value": 5000}, None)},
+                         {field: (c["change"], c.get("left"), c.get("right")) for field, c in changes.items()})
+        self.assertEqual({"status": "none", "fields": [], "metadata": "unchanged"}, report["right"]["drift"])
+        self.assertFalse((self.base_dir / "called").exists())
 
 
 if __name__ == "__main__":

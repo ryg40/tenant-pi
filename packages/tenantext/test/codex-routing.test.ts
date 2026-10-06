@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ModelRuntime, type ExtensionAPI, type ExtensionContext, type ProviderConfig } from "@earendil-works/pi-coding-agent";
 import { InMemoryCredentialStore, normalizeContext, type Model, type TranscriptContext } from "@earendil-works/pi-ai";
 import { isRetryableAssistantError, retryAssistantCall } from "@earendil-works/pi-ai/compat";
@@ -94,6 +97,35 @@ test("extension keeps direct providers and commands when gateway is missing", as
 	await h.commands.get("codex-accounts").handler("routing", h.ctx);
 	assert.match(JSON.stringify(h.entries), /Gateway disabled/);
 	await h.fire("session_shutdown");
+});
+
+test("the preferred account is a setting with no default", async (t) => {
+	environment(t, true);
+	const dir = mkdtempSync(join(tmpdir(), "codex-preferred-"));
+	const original = process.env.PI_CODING_AGENT_DIR;
+	process.env.PI_CODING_AGENT_DIR = dir;
+	t.after(() => { if (original === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = original; rmSync(dir, { recursive: true, force: true }); });
+	const report = async () => {
+		const h = harness();
+		codexAccounts(h.api);
+		await h.commands.get("codex-accounts").handler("routing", h.ctx);
+		await h.fire("session_shutdown");
+		return JSON.stringify(h.entries);
+	};
+	assert.match(await report(), /Preferred account: not set\./);
+	mkdirSync(join(dir, "codex-accounts"));
+	writeFileSync(join(dir, "codex-accounts", "settings.json"), JSON.stringify({ accounts, preferredAccount: "codex3" }));
+	assert.match(await report(), /Preferred account: codex3\./);
+
+	const states: NonNullable<CodexStatusSnapshot["routing"]>[] = [];
+	const h = harness();
+	registerGateway(h.api, (state) => states.push(state));
+	await h.fire("after_provider_response", { status: 200, headers: { "x-codex-account": "codex1" } });
+	assert.equal(states.at(-1)?.preferredAccount, undefined);
+	registerGateway(h.api, (state) => states.push(state), "codex3");
+	await h.fire("after_provider_response", { status: 200, headers: { "x-codex-account": "codex1" } });
+	assert.equal(states.at(-1)?.preferredAccount, "codex3");
+	assert.equal(states.at(-1)?.selectedAccount, "codex1");
 });
 
 test("malformed gateway configuration leaves the direct provider active", async (t) => {

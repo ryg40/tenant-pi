@@ -160,7 +160,7 @@ export function createCodexStatus(pi: ExtensionAPI, accounts: CodexAccountConfig
 		setRouting(routing: NonNullable<CodexStatusSnapshot["routing"]>) { snapshot = { ...snapshot, routing }; publish(); },
 		report() {
 			const routing = snapshot.routing;
-			return `## Codex routing\n\n- Preferred account: ${routing?.preferredAccount ?? "unknown"}.\n- Last response account: ${routing?.selectedAccount ?? "unknown"}.\n- Blocked-until time: unknown.\n- Quota cache duration: unknown.\n- ${routing?.summary ?? "Gateway status unavailable."}`;
+			return `## Codex routing\n\n- Preferred account: ${routing?.preferredAccount ?? "not set"}.\n- Last response account: ${routing?.selectedAccount ?? "unknown"}.\n- Blocked-until time: unknown.\n- Quota cache duration: unknown.\n- ${routing?.summary ?? "Gateway status unavailable."}`;
 		},
 	};
 }

@@ -1,5 +1,7 @@
 # Module guide
 
+`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
+
 Each component of `config/manifest.json` is one row below. Core Pi is always on. Every other component is optional and independent: enable it, or leave it in `selection.disable`.
 
 The table is the state of this release. It is not a claim that a module works on a clean client.
@@ -17,7 +19,7 @@ The manifest has three statuses. This guide maps them to four labels. The same l
 
 The manifest status `tested` means: the pin and the structure passed an offline review. It does not mean a clean-client trial. The manifest status `unverified` means: the module is in the tree and selectable, and the plan lists its `gaps` as readiness gaps. So both map to `unverified`.
 
-Not verified: loading all selectable Tenantext components with Pi `1.0.3`, the kit pin. The labels stay `unverified`.
+Not verified: loading all selectable Tenantext components with the kit pin. The labels stay `unverified`.
 
 ## Components
 
@@ -32,7 +34,7 @@ Columns:
 
 | Component | Required inputs | Maintained source (pin) | Credential method | State scope | Consent | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `core` | `target.agentDir` | npm `@earendil-works/pi-coding-agent@1.0.3` | Pi native `/login` after launch; Pi writes `auth.json` | Profile: `auth.json`, `sessions/`, `npm/` | none | `tested`, `unverified` |
+| `core` | `target.agentDir` | npm `@earendil-works/pi-coding-agent@<pin>` | Pi native `/login` after launch; Pi writes `auth.json` | Profile: `auth.json`, `sessions/`, `npm/` | none | `tested`, `unverified` |
 | `model-routing` | `roles`, optional `modelRoutes`; `--registry` file when `modelRoutes` names a model | builtin Pi settings | Native provider `/login` | Profile: `settings.json` keys | none | `tested`, `unverified` |
 | `tenantext` | none | tree `packages/tenantext` | none | Profile. Not verified: other paths. | none | `unverified`, `unverified` |
 | `codex-accounts` | `modelRoutes.gateway` `{"auth": "env"}`, `endpoints.codex-accounts` (HTTPS URL that ends in `/v1`), `env.codex-accounts` `${TENANTEXT_LITELLM_API_KEY}` | tree `packages/tenantext` | `TENANTEXT_LITELLM_API_KEY` in the launching shell; `TENANTEXT_LITELLM_BASE_URL` on the launch line. `auth: "login"` is `blocked`. | Profile | none | `unverified`, `unverified` |
@@ -44,8 +46,9 @@ Columns:
 | `doctor` | none | tree `packages/tenantext` | Reads `TENANTEXT_LITELLM_BASE_URL` for one line. Sends one read-only GET request to the Copilot usage endpoint and one to the Anthropic usage endpoint, each only when a login for it exists (source reading). Not verified live | Profile; reads `~/.copilot` through the `copilot-usage` files and `~/.claude/.credentials.json` through the `anthropic-usage` files (source reading) | none | `unverified`, `unverified` |
 | `resources` | none | tree `packages/tenantext` | none | Profile: `settings.json` toggles | none | `unverified`, `unverified` |
 | `herdr` | the `herdr` tool on `PATH` | tree `packages/tenantext`, `skills/herdr` | none | Herdr state, outside the profile | none | `unverified`, `unverified` |
+| `coordinator-skills` | On Pi: the `ask_user_question` tool of an extension that the kit does not install; without it the skill asks in plain text. For a search, a research ticket and a prototype ticket: the `herdr` skill. `wayfinder` needs `docs/agents/issue-tracker.md` and a Gitea tracker. The knowledge sources and the review tools that the skills name are host tools that the kit does not install | tree `packages/tenantext`, each skill directory below `skills/coordinator-skills/`; [the component README](../../packages/tenantext/skills/coordinator-skills/README.md) lists them | `GITEA_TOKEN` in the shell that starts the harness, for `to-spec`, `to-tickets` and `wayfinder`; the skills read it for the Gitea API and do not write it | The Gitea issue tracker, outside the profile | none | `unverified`, `unverified` |
 | `slopscore-pr` | host tools of the skill | tree `packages/tenantext`, `skills/slopscore-pr` | Not verified | Not verified | none | `unverified`, `unverified` |
-| `tracker-site` | the Python needs of `packages/tenantext/tracker` | tree `packages/tenantext` | Not verified | Not verified | none | `blocked` |
+| `tracker-site` | Python 3.11 or later and Git on `PATH`; `PYTHONPATH` set to `packages/tenantext`; no third-party Python package. `check-runtime` checks Python, not Git | tree `packages/tenantext` | Optional issue and publication credentials; see [configuration](../../packages/tenantext/skills/tracker-site/references/configuration.md) | Repository brief and separate tracker state directory | none | `unverified` |
 | `promptr` | `npm ci --ignore-scripts` and `npm run build` in `packages/promptr` | tree `packages/promptr` | none | Profile: `promptr/`; project `.promptr/` | none | `unverified`, `unverified` |
 | `promptr-generate-task-prompt` | `promptr` | tree `packages/promptr` | none | as `promptr` | none | `unverified`, `unverified` |
 | `promptr-handoff` | `promptr` | tree `packages/promptr` | none | as `promptr` | none | `unverified`, `unverified` |
@@ -54,7 +57,7 @@ Columns:
 | `mcp` | `inputs.mcpFile` `"inputs/mcp-adapter.json"` and that file under `--local-dir` | npm `pi-mcp-adapter`, no version; reviewed at 3.2.0 | `${NAME}` references in headers and env, exported by the user. OAuth and bearer stores use the OS keyring. | Profile: `mcp-adapter.json`, caches. HOME: OS keyring. `$TMPDIR`: spilled output. | none | `tested`, `unverified` |
 | `hermes` | `memory.hermes` block; `roles.memory` when `backgroundReview` is `true` | npm `pi-hermes-memory`, no version; reviewed at 0.9.9 | The parent session auth, or a child `pi -p` process | Profile: `pi-hermes-memory/`, memory files | `consent.memoryCapture: true` | `tested`, `unverified` |
 | `wiki` | `memory.wiki` block | npm `@zosmaai/pi-llm-wiki`, no version; reviewed at 0.12.4 | none; the kit writes no key field | HOME: `~/.llm-wiki/`, or `<wikiHome>/.llm-wiki/` | `consent.memoryCapture: true` | `tested`, `unverified` |
-| `openviking` | none accepted | none (`null`) | Not established; no reviewed source | Not established | `consent.remoteMemoryWrites` is refused | `blocked` |
+| `openviking` | `memory.openviking` block; `npm ci --ignore-scripts` in `packages/openviking-pi`; an OpenViking server | tree `packages/openviking-pi`, a vendored copy | `OPENVIKING_*` variables, `~/.openviking/ovcli.conf` or `~/.openviking/ov.conf`, set up by the user; the kit writes no endpoint and no key | HOME: `~/.openviking/`. Server: the sessions and the memories | `consent.memoryCapture: true` and `consent.remoteMemoryWrites: true` | `unverified`, `unverified` |
 
 "Source reading" means a fact read in the source code of the package, not seen at run time.
 
@@ -75,7 +78,7 @@ Requirements:
 
 | Item | Requirement | Source |
 | --- | --- | --- |
-| Pi | `1.0.3`, the kit pin. No test starts a Pi session with the component on the kit pin. Each component keeps the gap `pi_line_unqualified`. | `config/manifest.json`, `packages/tenantext/README.md` |
+| Pi | `<pin>`. No test starts a Pi session with the component on the kit pin. Each component keeps the gap `pi_line_unqualified`. | `config/manifest.json`, `packages/tenantext/README.md` |
 | Node | `>=22.22.0 <23` | `packages/tenantext/package.json` `engines` |
 | Source | `packages/tenantext` in the kit clone | [in-tree packages](../packages.md) |
 | Dependencies | `npm ci --ignore-scripts` in `packages/tenantext`, by hand (setup Stage 6) | [setup guide](setup.md#in-tree-packages) |

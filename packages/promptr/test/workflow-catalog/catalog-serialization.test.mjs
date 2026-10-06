@@ -4,7 +4,7 @@ import {
  catalogPort, expandWorkflow, listProviders, listWorkflows, serializeWorkflow,
 } from '../../dist/src/workflow/catalog.mjs';
 
-const INPUT = { template: 'openai-claude', provider: 'openai-codex-2', readiness: 'unknown' };
+const INPUT = { template: 'reviewer', provider: 'default-provider', readiness: 'unknown' };
 
 function expand(input = INPUT) {
  const result = expandWorkflow(input);
@@ -20,8 +20,8 @@ test('serialization is byte-identical across repeated expansions', () => {
 });
 
 test('serialized output carries no timestamp or random identifier', () => {
- for (const template of ['openai-codex-simple', 'openai-codex-medium', 'openai-codex-high', 'openai-claude-simple', 'openai-claude']) {
-  const text = serializeWorkflow(expand({ template, provider: 'openai-codex', readiness: 'ready' }));
+ for (const template of ['worker-simple', 'worker-medium', 'worker-high', 'reviewer-simple', 'reviewer']) {
+  const text = serializeWorkflow(expand({ template, provider: 'default-provider', readiness: 'ready' }));
   assert.doesNotMatch(text, /\d{4}-\d{2}-\d{2}T/);
   assert.doesNotMatch(text, /"(createdAt|fetchedAt|generatedAt|id|nonce|seed|uuid)"/);
  }
@@ -54,7 +54,7 @@ test('returned data is deeply frozen, so a preview cannot mutate the catalog', (
  assert.ok(Object.isFrozen(value.warnings));
  assert.throws(() => { value.roles[0].model = 'tampered'; }, TypeError);
  assert.throws(() => { value.warnings.push('extra'); }, TypeError);
- assert.equal(expand().roles[0].model, 'gpt-6-astra');
+ assert.equal(expand().roles[0].model, 'large-model');
 });
 
 test('choice lists are frozen and stable between calls', () => {

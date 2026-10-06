@@ -162,10 +162,12 @@ A deny list contains the patterns that it forbids. The scan does not report host
 1. Each path allowlist is removed.
 2. The global allowlist entry `(?i)^true|false|null$` is replaced with `^(?i:true|false|null)$`. The default entry has no group, so it hides each secret that contains `false` or `null`.
 3. The title is changed.
-4. The section "Local allowlists" is added. It has two content allowlists: placeholder values, and the test fixture of the in-tree Promptr package.
+4. The section "Local allowlists" is added. It has three content allowlists: placeholder values, the test fixture of the in-tree Promptr package, and the test fixture of the vendored OpenViking Pi package.
 5. The global table `[allowlist]` is changed to `[[allowlists]]`. The file holds more than one global allowlist, and only the array form permits that.
 
 The fixture allowlist permits one exact value for the rule `generic-api-key`: the project key `promptr-abc123`. Three Promptr test files use it (`packages/promptr/test/project/workstreams.test.mjs`, `packages/promptr/test/project/browse.test.mjs`, `packages/promptr/test/tracker-binding/binding.test.mjs`). It is the only value that gitleaks reports in these files.
+
+The OpenViking fixture allowlist permits one exact value for the rule `curl-auth-header`: the placeholder `bearer-value`. One test file uses it (`packages/openviking-pi/tests/capture-adapter.test.mjs`), in a command that the capture adapter must redact. The allowlist keeps the file equal to its upstream commit.
 
 To update gitleaks, take `config/gitleaks.toml` of the new version, apply the differences again, and change the pinned digest in `scripts/scan.sh`.
 

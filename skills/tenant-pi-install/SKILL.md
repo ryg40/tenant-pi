@@ -5,6 +5,13 @@ description: Guide an agent through installing a separate Pi profile with the te
 
 # Install a Pi profile with the tenant-pi kit
 
+`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
+
+`runtime.piAcceptedRange` is the accepted Pi range. `runtime.piVersion` is the tested version.
+A newer accepted Pi version works by the range rule. The kit tests ran on the tested version only.
+With `untested_in_range`, keep the installed Pi and record `core_runtime_untested_in_range` as a readiness gap.
+The Pi install line stays a plain command with `not_needed`, not `replaces_installed`.
+
 This is guidance, not a script. Each stage names a goal, what to look at, the questions to ask, the commands the kit already provides, and the check that proves the stage is done. Adapt the order to what exists on the machine. Do not invent commands that the kit or Pi do not document.
 
 Rules that hold at every stage:
@@ -34,7 +41,7 @@ test "${HERDR_ENV:-}" = 1 && echo "inside Herdr"
 
 The `for` loop prints one line for `~/.pi/agent`, and one more line for the directory in `PI_CODING_AGENT_DIR` when the variable is set. Each line says `present` or `absent`. No line is not `absent`: when a line is missing from the output, run the loop again.
 
-Requirements the kit pins: Linux first, Node `>=22.22.0 <23`, Python `>=3.11`, Pi `1.0.3`. macOS, Windows, browser-hosted Pi, and Herdr-hosted Pi are unqualified; say so if you see them, then continue only with the user's agreement.
+Requirements the kit pins: Linux first, Node `>=22.22.0 <23`, Python `>=3.11`, Pi inside `runtime.piAcceptedRange`. The install command uses the tested `<pin>`. macOS, Windows, browser-hosted Pi, and Herdr-hosted Pi are unqualified; say so if you see them, then continue only with the user's agreement.
 
 Ask when unclear:
 
@@ -59,11 +66,13 @@ Done when the unit tests and the publish check pass. If they fail, stop: the che
 
 ## Stage 2: install core Pi
 
-Goal: the pinned Pi on the chosen Node.
+Goal: a tested or accepted Pi on the chosen Node.
+
+After the overlay exists, `python3 scripts/tenant_pi.py plan --overlay <file>` prints the same line in `commands.piInstall`, key `command`.
 
 The kit prints the reviewed command; it never runs it. The rule is the rule of Stage 3 of `INSTALL.md`: read the `pi` status of `python3 scripts/tenant_pi.py check-runtime`.
 
-Status `match`: skip the install.
+With `match` or `untested_in_range`, skip the Pi install.
 
 Status `missing`: first see whether the user can write the global npm prefix:
 
@@ -78,24 +87,27 @@ The test writes nothing into the npm prefix. `npm config get prefix` writes one 
 If it prints `writable`, show the global command, then ask before running:
 
 ```sh
-npm install --global -- @earendil-works/pi-coding-agent@1.0.3
-pi --version
+# Run from the kit root.
+pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && \
+  npm install --global -- @earendil-works/pi-coding-agent@"${pin:?}"
 ```
 
 Ask: "Install Pi globally with this Node, or do you manage global npm packages another way?" Options: run the command as shown (recommended); user runs it; use the prefix form.
 
 The user can refuse the global command and use the prefix form below in its place.
 
-If it prints `not writable` (for example a user without root on a Node that root owns), the global command fails. Show the prefix form, then ask before running its first line:
+If it prints `not writable` (for example a user without root on a Node that root owns), the global command fails. Show the prefix form, then ask before running its install command:
 
 ```sh
-npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@1.0.3
+# Run from the kit root.
+pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && \
+  npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@"${pin:?}"
 export PATH="$HOME/.npm-global/bin:$PATH"
 ```
 
 The directory `"$HOME/.npm-global"` is the example; the user can name another directory that the user owns (`--prefix <dir>`). The `export` line changes the current shell only. The kit never edits a shell startup file. The `PATH` line is the user's step. Record the prefix and its `PATH` line as an adaptation.
 
-Status `mismatch` (a different Pi version is installed) or `unparsed`: do not guess. With `unparsed`, run `PI_CODING_AGENT_DIR="$(mktemp -d)" pi --version` and read its output first. Ask. Three options:
+Status `mismatch` (outside the accepted range) or `unparsed`: do not guess. With `unparsed`, run `PI_CODING_AGENT_DIR="$(mktemp -d)" pi --version` and read its output first. Ask. Three options:
 
 - Stop.
 - Keep the existing Pi, and record the version mismatch as a gap.
@@ -109,7 +121,8 @@ Warning: a global install replaces the `pi` command that every profile of the us
 
 The command fixes the version of the Pi package, not all versions of its dependencies. `docs/check-runtime.md` (section "What the install command fixes") has the fact.
 
-Done when `pi --version` prints `1.0.3`.
+Run `python3 scripts/tenant_pi.py check-runtime` after the install.
+Done when it reports `match` or `untested_in_range` for `pi`. Record the gap for an untested version.
 
 ## Stage 3: choose the target and write the private overlay
 
@@ -153,14 +166,14 @@ Ask, one at a time, and write the other answers into the overlay:
 
 5. "MCP servers through the adapter?" See Stage 6a. Default is none.
 6. "Which in-tree extensions and skills?" Default is none. Each one is a component of its own; `docs/packages.md` has the table.
-   - Extensions of `packages/tenantext`: `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`. Skills: `herdr`, `slopscore-pr`.
+   - Extensions of `packages/tenantext`: `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`. Skills: `herdr`, `coordinator-skills` (more than one skill; `packages/tenantext/skills/coordinator-skills/README.md` lists them), `slopscore-pr`.
    - Move each chosen ID from `selection.disable` to `selection.enable`. Enable each ID in `requires` too: `ops-footer` needs `context-meter`.
    - These components are `unverified`. Tell the user: no test in the kit loads these components with the kit pin. The plan shows each gap under `readinessGaps`.
    - The profile points at the package directory of this clone by its absolute path. Tell the user not to move or delete the clone.
 
 `promptr` and its four skills (`promptr-generate-task-prompt`, `promptr-handoff`, `promptr-openknowledge-project-pages`, `promptr-watch-herdr-agents`) are `unverified`. `promptr` needs `npm ci --ignore-scripts` and `npm run build` in `packages/promptr` before the first start; each skill needs `promptr`. Tell the user: no session with a model is verified, and Pi prints one warning about `pi-tui` at each start.
 
-`tracker-site` and `openviking` are blocked. Leave them in `disable` and say so if the user asks for them.
+`tracker-site` is `unverified` and selectable. It needs Python 3.11 or later and Git on `PATH`. `check-runtime` checks `python3` but does not check Git. `openviking` is a memory module; see the memory step.
 
 Validate after each edit:
 
@@ -198,7 +211,7 @@ python3 scripts/tenant_pi.py plan --overlay "$HOME/.config/tenant-pi/overlay.jso
 
 Read the plan with the user: the file list, `readinessGaps`, and the display-only `setupDisplayOnly` and `launchDisplayOnly` lines. Every gap is a fact to carry into later stages, not an error.
 
-- A `match` in the report removes the runtime gap of that tool. A `mismatch`, `missing` or `unparsed` gives a gap with that word in place of `unverified`, for example `core_runtime_mismatch` with the installed and the required version. Stage 6 of `INSTALL.md` has the gap codes.
+- A `match` in the report removes the runtime gap of that tool. An `untested_in_range`, `mismatch`, `missing` or `unparsed` gives a gap with that word in place of `unverified`, for example `core_runtime_mismatch` with the installed and the required version. Stage 6 of `INSTALL.md` has the gap codes.
 - `commands.piInstall` marks the global Pi install command. Read its `status` before you show the command. With `not_needed`, skip the install. With `replaces_installed`, the command is not in `setupDisplayOnly`: the three options of Stage 2 apply, and you never run the command as a default step.
 
 Ask: "Generate now into `<target>`?" Then:
@@ -225,23 +238,25 @@ Done when the user has launched Pi (Stage 9) and the fixed prompt of Stage 9 che
 
 ## Stage 6: memory modules (consent first)
 
-Goal: Hermes or LLM Wiki enabled only with informed consent, or left disabled.
+Goal: Hermes, LLM Wiki or OpenViking enabled only with informed consent, or left disabled.
 
 Before any overlay change, tell the user what each module does at this pin, from `docs/memory-modules.md`:
 
 - Hermes indexes every session into a SQLite store under the profile and keeps memory files there. With `backgroundReview: true` it also makes model calls on its own: review every 10 turns or 15 tool calls, correction detection, flush on compaction and shutdown, consolidation. That costs tokens on the `roles.memory` model.
 - LLM Wiki keeps a vault under HOME (`~/.llm-wiki/`), not under the profile. With `ambientPersonalVault: true` it creates that vault on first start and injects recall in every directory.
+- OpenViking sends each turn of each session to an OpenViking server and adds memories from that server to each prompt. It needs a server that the user set up, with the endpoint and the key in `OPENVIKING_*` variables or `~/.openviking/ovcli.conf`. The kit writes no endpoint and no key. With `captureToolResults: true` the output of each tool call goes to the server too.
 
 Ask, in this order:
 
 1. "Enable memory at all?" Default no. If no, stop here; the overlay keeps `consent.memoryCapture: false`.
-2. "Which module?" Hermes, wiki, or both.
+2. "Which module?" Hermes, wiki, OpenViking, or more than one.
 3. For Hermes: "Background model calls on or off?" Off is the recommended first state. On needs `roles.memory` and, for a `llama.cpp` or gateway model, a `childExtensionPaths` entry (`builtin:llama.cpp`, or the absolute path of the Tenantext `codex-accounts` extension inside the installed package). Ask for the transport: `direct` (recommended) or `subprocess`.
 4. For the wiki: "Ambient personal vault on or off?" Off is recommended. `wikiHome` is only allowed with ambient on.
+5. For OpenViking: "Do you agree that session content goes to your OpenViking server?" If no, leave the module disabled. If yes, ask "Capture tool results on or off?" and set `captureToolResults`. `recallContextTimeoutMs` is optional. Do not ask for the endpoint or the key, and do not read `~/.openviking/`.
 
-Then set `consent.memoryCapture: true`, add the `memory` block, enable the modules, and re-run `validate`. `remoteMemoryWrites` stays `false`; OpenViking is blocked.
+Then set `consent.memoryCapture: true`, add the `memory` block, enable the modules, and re-run `validate`. `remoteMemoryWrites` is `true` only with OpenViking and the agreement of step 5; else it stays `false`.
 
-Done when the plan shows the module's package declaration and the gaps `peer_override_required`, `native_addon_unverified` (Hermes), `shared_home_state` or `project_settings_override` (wiki), and the user has acknowledged them.
+Done when the plan shows the module's package declaration and the gaps `peer_override_required`, `native_addon_unverified` (Hermes), `shared_home_state` or `project_settings_override` (wiki), `install_step_required`, `server_required` and `capture_cost_unmeasured` (OpenViking), and the user has acknowledged them. For OpenViking, the user runs `npm ci --ignore-scripts` in `packages/openviking-pi` of the clone before the first start.
 
 ## Stage 6a: MCP adapter module (optional)
 
@@ -280,9 +295,9 @@ Done when `PI_CODING_AGENT_DIR='<target>' pi list` shows the declared sources an
 
 ## Stage 8: the Herdr skill (optional)
 
-Goal: agent fan-out through the Herdr skill, not through a subagents package.
+Goal: agent fan-out through the Herdr skill.
 
-The kit declares no subagents module and never will at this pin. If the user works inside Herdr:
+The kit declares no separate agent orchestration module at this pin. If the user works inside Herdr:
 
 - The kit holds the skill at `packages/tenantext/skills/herdr`. For one profile, enable the `herdr` component (Stage 3, question 6); the profile then loads the skill. For every harness of the user, use the installer of the skill, `packages/tenantext/skills/herdr/install.sh`, which links it under `~/.agents/skills/herdr` and into `~/.pi/agent/skills` and `~/.claude/skills`. Those are user-level locations shared by every profile.
 - Do not install the third-party `@ogulcancelik/pi-herdr` package.
@@ -310,7 +325,7 @@ Use the exact `launchDisplayOnly` line from the plan; it carries `env -u PI_CODI
 
 Checks, in order:
 
-1. `pi --version` inside the launch environment prints `1.0.3`.
+1. `pi --version` inside the launch environment prints `<pin>` or an accepted version. Record the untested-version gap when needed.
 2. Startup shows no extension warning. A peer warning means Stage 7 is incomplete.
 3. The chosen model replies to the fixed prompt, and the reply holds the expected number. With a gateway, an auth error means the key did not reach the process.
    - The fixed prompt is `What is 17 plus 26? Reply with the number only.` The expected reply is the number `43`. The prompt text does not hold that number. Use the prompt as it is, and do not give the user the expected reply before the check.
@@ -344,4 +359,4 @@ Read `changes`, `unsupported`, and `drift` with the user. User edits made inside
 
 ## What this skill does not do
 
-It does not install operating-system packages, edit shell startup files, store credentials, run a service, or migrate an existing agent directory. It does not connect an MCP server or enable Promptr, OpenViking, or subagents. Those need either a later kit release or the user's own hands.
+It does not install operating-system packages, edit shell startup files, store credentials, run a service, or migrate an existing agent directory. It does not connect an MCP server or enable Promptr, OpenViking, or agent orchestration packages. Those need either a later kit release or the user's own hands.

@@ -42,7 +42,7 @@ The requirement of each tool comes from `manifest.runtime`:
 
 | Tool | Field | Rule |
 | --- | --- | --- |
-| Pi | `piVersion` | The installed version text is equal to the pin. `1.0.3-beta.1` does not match `1.0.3`. |
+| Pi | `piVersion`, `piAcceptedRange` | Exact tested text gives `match`. Another accepted version gives `untested_in_range`. A version outside the range gives `mismatch`. |
 | Node | `nodeRange` | The version numbers are inside the range. |
 | Python | `pythonRange` | The version numbers are inside the range. |
 
@@ -51,31 +51,36 @@ The range grammar is the minimal grammar that the manifest uses, and nothing mor
 - `>=a.b.c <d`: lower bound included, upper bound excluded. Example: `>=22.22.0 <23`.
 - `>=a.b`: lower bound only. Example: `>=3.11`.
 
-The lower bound has two or three numbers. The upper bound has one to three numbers. A number that is not given is 0. Another form fails with `runtime_range` before a process starts. The manifest validator accepts only the two reviewed range texts today, so a different range fails earlier with `runtime_range: manifest.runtime`.
+The lower bound has two or three numbers. The upper bound has one to three numbers. An omitted number is 0. The upper bound must exceed the lower bound. Another form fails with `runtime_range` before a process starts. Node and Python still require the exact reviewed range texts. Pi accepts this grammar. `runtime.piAcceptedRange` requires both the lower bound (`>=`) and the upper bound (`<`). A Pi range without an upper bound fails with `range_without_upper_bound: manifest.runtime.piAcceptedRange`. The tested version must be inside the range. Otherwise the validator gives `tested_outside_range: manifest.runtime.piAcceptedRange`.
 
-A range comparison uses the first three numbers of the version. One exception: a prerelease of the lower bound itself is before the bound, so `22.22.0-rc.1` and `3.11.0a1` are `mismatch`. A prerelease above the lower bound, such as `3.14.0rc1`, is inside the range. A build suffix (`+...`) does not change the result.
+The kit uses stable numeric bounds, not the full npm range rules. A prerelease has version text before the stable release, such as `1.0.4-rc.1`. A prerelease of the lower bound is outside the range. A prerelease above the lower bound and below the upper bound is inside. A prerelease of the upper bound is outside too. For `>=1.0.3 <1.1`, `1.0.3-rc.1` and `1.1.0-rc.1` are `mismatch`; `1.0.4-rc.1` is `untested_in_range`. This rule keeps the existing Node and Python comparison and prevents entry into the next minor line. A build suffix (`+...`) does not change range acceptance. Different text still prevents Pi `match`.
 
 The version is the first line of standard output, or of standard error when standard output is empty. Only the first 256 bytes count. Accepted forms: `1.0.0`, `v22.22.0`, `Python 3.11.2`: an optional name of one word, an optional `v`, then the version token. The token is two or three numbers, then an optional prerelease (`-` and characters from `0-9A-Za-z.-`, or lower-case letters and digits such as `rc1`), then an optional build (`+` and characters from `0-9A-Za-z.-`). The token has 40 characters maximum. Other text after the numbers, or a longer token, is `unparsed`.
 
 ## Pin record
 
-The pin is `1.0.3` in `runtime.piVersion`, the `core` npm spec, and the reviewed constant in `scripts/validate.py`.
-See [the changes in Pi 1.0.3](#the-changes-in-pi-103). `tests/test_check_runtime.py` holds `1.0.3` as `match`, and `1.0.2`, `1.0.0` and `0.99.2` as `mismatch`.
+`<pin>` is `runtime.piVersion` in `config/manifest.json`. The core npm spec must match that field.
+The reviewed core anchor in `scripts/validate.py` must match too; `scripts/pi_update.py` function `pin_contents` edits both files.
+`runtime.piAcceptedRange` holds the accepted range. A changed stable pin moves the lower bound to that pin and the upper bound to the next minor line. A same-pin call preserves the range. See [the pin move](guides/release-checklist.md#gates) for a separate reviewed range and prerelease pins.
 
-A matching runtime report removes the Pi version gap and marks the Pi install line `not_needed`. It does not prove a launch.
+A newer accepted Pi version works by the range rule. The kit tests ran on the tested version only.
+A `match` removes the Pi version gap. `untested_in_range` keeps `core_runtime_untested_in_range`, with the installed and tested versions and that test limit. Both mark the plain Pi install command `not_needed`, not as a replacement. Neither proves a launch.
 
-Not verified: an install of Pi `1.0.3` by the Stage 6 command on a clean client.
-Not verified: an interactive launch of a generated profile with Pi `1.0.3` and the pin `1.0.3`, and a launch with a module.
+`tests/test_check_runtime.py` reads the manifest pin for `match`. Its historical versions below the range remain `mismatch`.
+
+Not verified: an install of the kit pin by the Stage 6 command on a clean client.
+Not verified: an interactive launch of a generated profile with the kit pin, or a launch with a module.
 
 ### What the install command fixes
 
-The command `npm install --global -- @earendil-works/pi-coding-agent@1.0.3` fixes the version of the Pi package only. From Pi 1.0.1, the published package has no `npm-shrinkwrap.json` (Pi changelog 1.0.1). So npm does not fix the versions of the transitive dependencies. The `@earendil-works/*` dependencies of Pi 1.0.3 have the range `^1.0.3`. A later install can then get a newer `pi-ai` or `pi-tui` below `2.0.0`. Two installs of the same pin on different dates can thus hold different dependency versions. `check-runtime` compares only the version of the Pi package and does not see this difference. The Pi changelog names the pi.dev installer as the install that fixes all dependencies. The kit does not use it.
+The command `npm install --global -- @earendil-works/pi-coding-agent@"<pin>"` fixes the version of the Pi package only. From Pi 1.0.1, the published package has no `npm-shrinkwrap.json` (Pi changelog 1.0.1). So npm does not fix the versions of the transitive dependencies. The reviewed release declares `@earendil-works/*` dependencies with caret ranges. A later install can then get a newer `pi-ai` or `pi-tui` below `2.0.0`. Two installs of the same pin on different dates can thus hold different dependency versions. `check-runtime` compares only the version of the Pi package and does not see this difference. The Pi changelog names the pi.dev installer as the install that fixes all dependencies. The kit does not use it.
 
-Not verified: an install of the pin that gets a dependency version other than `1.0.3`.
+Not verified: an install of the pin that gets a dependency version different from the Pi package version.
 
-### The changes in Pi 1.0.3
+### The reviewed release changes
 
-Sources: `CHANGELOG.md` of the package `@earendil-works/pi-coding-agent@1.0.3`, and a file comparison of the packages `1.0.2` and `1.0.3`.
+Historical source: `<reviewed release>` means Pi `1.0.3`, not the current pin.
+Sources: its package `CHANGELOG.md`, and a file comparison with Pi `1.0.2`.
 
 The changelog marks one change as breaking. Three more changes touch a built-in extension, the key bindings or the MCP code of Pi. No change touches a skill.
 
@@ -83,45 +88,48 @@ The changelog marks one change as breaking. Three more changes touch a built-in 
 | --- | --- | --- | --- |
 | The provider `azure-openai-responses` has the new name `azure` (Pi pull request 9714). | Breaking Changes | `settings.json` (`defaultProvider`, `enabledModels`, `modelThinkingLevels`), `models.json`, `auth.json`, and the type `KnownProvider` that an extension can import from `pi-ai` | See the text below the table. |
 | Output files are readable only by the user: the full text of a truncated tool output, a binary MCP resource and a codemode image. | Changed | The built-in MCP extension (`dist/extensions/mcp/tools.js`) and the built-in tools | No effect on a kit file. Pi writes these files to the temporary directory of the system, not to the agent directory. |
-| `Home` and `End` always move the editor cursor. `Ctrl+Home` and `Ctrl+End` go to the top and the bottom of the transcript. | Changed | The default keys of four key binding IDs in `pi-tui`: `tui.editor.cursorLineStart`, `tui.editor.cursorLineEnd`, `tui.altScreen.top` and `tui.altScreen.bottom` | The kit generates no `keybindings.json`. `packages/promptr` holds its own `pi-tui` 1.0.2 with the old default keys; see [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). |
+| `Home` and `End` always move the editor cursor. `Ctrl+Home` and `Ctrl+End` go to the top and the bottom of the transcript. | Changed | The default keys of four key binding IDs in `pi-tui`: `tui.editor.cursorLineStart`, `tui.editor.cursorLineEnd`, `tui.altScreen.top` and `tui.altScreen.bottom` | The kit generates no `keybindings.json`. At that review, `packages/promptr` held its own `pi-tui` 1.0.2 with the old default keys. It now pins 1.0.4; see [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). |
 | The codemode function `image()` also saves each image to a temporary file. A correction keeps codemode in operation after an update removed the running install. | New Features, Changed, Fixed | The built-in codemode extension | No effect on a kit file. |
 
-The provider name: the changelog tells the user to change the name in `auth.json` (or to run `/login` again), in `models.json` and in the three keys of `settings.json`. The kit writes these three keys from `roles` and `modelRoutes.cycle` of the overlay. It takes each provider name from the overlay. It compares the name with the `--registry` file of the user, not with the provider list of Pi. The kit holds no such list. So an overlay and a registry file that name `azure-openai-responses` must name `azure` for Pi `1.0.3`. No tracked file of the kit names this provider. The `AZURE_OPENAI_*` variables did not change.
+The provider name: the changelog tells the user to change the name in `auth.json` (or to run `/login` again), in `models.json` and in the three keys of `settings.json`. The kit writes these three keys from `roles` and `modelRoutes.cycle` of the overlay. It takes each provider name from the overlay. It compares the name with the `--registry` file of the user, not with the provider list of Pi. The kit holds no such list. So an overlay and a registry file that name `azure-openai-responses` must name `azure` for Pi `<reviewed release>`. No tracked file of the kit names this provider. The `AZURE_OPENAI_*` variables did not change.
 
 The other entries of the changelog touch no extension, no skill, no settings key and no MCP code: the Azure Foundry Chat Completions deployments, and two corrections (an OAuth token refresh after a cancelled request, and a crash report when the terminal goes away).
 
 The file comparison agrees with the changelog:
 
-- These files are byte-equal in `1.0.2` and `1.0.3`: `docs/settings.md`, `docs/extensions.md`, `docs/skills.md`, `docs/packages.md`, `docs/mcp.md`, `docs/environment-variables.md`, `dist/core/package-manager.js`, `dist/core/resource-loader.js`, `dist/core/settings-manager.js` and `dist/extensions/mcp/config.js`. So each source citation of [the resources page](resources.md) and of `packages/tenantext/extensions/resources/writers.ts` has the same line number in both versions.
-- The package `@earendil-works/pi-mcp` `1.0.3` differs from `1.0.2` only in `package.json` and `CHANGELOG.md`.
-- The `mcp` module of the kit is the npm package `pi-mcp-adapter`. It is not a part of a Pi release. Not verified: `pi-mcp-adapter` on Pi `1.0.3`.
+- These files are byte-equal in `1.0.2` and `<reviewed release>`: `docs/settings.md`, `docs/extensions.md`, `docs/skills.md`, `docs/packages.md`, `docs/mcp.md`, `docs/environment-variables.md`, `dist/core/package-manager.js`, `dist/core/resource-loader.js`, `dist/core/settings-manager.js` and `dist/extensions/mcp/config.js`. So each source citation of [the resources page](resources.md) and of `packages/tenantext/extensions/resources/writers.ts` has the same line number in both versions.
+- The package `@earendil-works/pi-mcp` `<reviewed release>` differs from `1.0.2` only in `package.json` and `CHANGELOG.md`.
+- The `mcp` module of the kit is the npm package `pi-mcp-adapter`. It is not a part of a Pi release. Not verified: `pi-mcp-adapter` on Pi `<reviewed release>`.
 
-Not verified: how Pi `1.0.3` treats a `settings.json` that still names `azure-openai-responses`. The changelog says only that a session of the old provider falls back to another model.
+Not verified: how Pi `<reviewed release>` treats a `settings.json` that still names `azure-openai-responses`. The changelog says only that a session of the old provider falls back to another model.
 
 ## Output
 
 One JSON object on standard output, with sorted keys and fixed separators. The same installed tools give the same bytes.
 
 ```json
-{"node":{"installed":"22.22.0","required":">=22.22.0 <23","status":"match"},"pi":{"installed":"1.0.2","required":"1.0.3","status":"mismatch"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
+{"node":{"installed":"22.22.0","required":">=22.22.0 <23","status":"match"},"pi":{"acceptedRange":"<accepted range>","installed":"<newer accepted version>","required":"<pin>","status":"untested_in_range","tested":"<pin>"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
 ```
 
 | Status | Meaning | `installed` |
 | --- | --- | --- |
-| `match` | The version satisfies the requirement. | The version |
+| `match` | Pi has the exact tested text; Node or Python satisfies its range. | The version |
+| `untested_in_range` | Pi is accepted by the range but differs from the tested text. Node and Python never use this status. | The version |
 | `mismatch` | The version is readable and does not satisfy the requirement. | The version |
 | `missing` | The system cannot find or may not start the executable: not on `PATH`, the named path does not exist, it has no execute permission, or it is a script whose interpreter (the `#!` line) does not exist. | `null` |
 | `unparsed` | The command ran or started and gave no usable version: unknown output, exit code other than 0, timeout, or a file that the system cannot execute. | `null` |
+
+The Pi entry always names `installed`, `tested` and `acceptedRange`. Its `required` field stays equal to `tested` for consumers of the previous report.
 
 `installed` holds only a version token of the grammar above (40 characters maximum). Other output of a command never appears in the result or in an error. The prerelease and build parts of a token are text from the command, inside that grammar and that bound.
 
 | Exit code | Meaning |
 | --- | --- |
-| 0 | All three tools are `match`. |
-| 1 | One or more tools have another status. The JSON object is still on standard output. |
+| 0 | Node and Python are `match`; Pi is `match` or `untested_in_range`. |
+| 1 | A tool is `mismatch`, `missing` or `unparsed`. The JSON object is still on standard output. |
 | 2 | Bad input, or a failed removal of the temporary directory. Standard error has `{"candidate_created": false, "error": "<rule>: <field>"}`. Bad input starts no process. |
 
-Exit code 0 means only that three version numbers agree with the manifest. It is not a runtime qualification.
+Exit code 0 means only that the versions satisfy the manifest rules. It is not a runtime qualification.
 
 ### The report as input of `plan` and `generate`
 
@@ -132,7 +140,7 @@ python3 scripts/tenant_pi.py check-runtime > /path/to/runtime.json
 python3 scripts/tenant_pi.py plan --overlay /path/to/overlay.json --runtime-report /path/to/runtime.json
 ```
 
-A `match` then removes the gap of that tool. Another status gives a gap that names the installed and the required version, for example `core_runtime_mismatch`. The `python` entry adds no gap. The file must be the unchanged report of this kit version: `plan` and `generate` refuse a report whose `required` values differ from `manifest.runtime`. See [the plan](profile-plan.md#readiness-after-measured-facts).
+A `match` then removes the gap of that tool. Another status gives a gap that names the installed and the required version, for example `core_runtime_mismatch`. The `python` entry adds no gap. The file must be the unchanged report of this kit version. `plan` and `generate` check `required`, Pi `tested` and Pi `acceptedRange` against `manifest.runtime`. See [the plan](profile-plan.md#readiness-after-measured-facts).
 
 ## Limits
 
@@ -146,11 +154,11 @@ A `match` then removes the gap of that tool. Another status gives a gap that nam
 
 - The range grammar and its bounds, the version output forms, the 40 character bound, a free-text suffix (`unparsed`, not echoed), and a prerelease of the lower bound (`mismatch`).
 - Each status with an injected runner: the three exact argument lists, no shell, the 20 second timeout, the replaced `PI_CODING_AGENT_DIR`, and removal of the directory when the runner fails. A patched `rmtree` that raises gives `cleanup_failed: check-runtime.tmpdir`, and exit code 2 through the CLI. One test runs a real fake `pi` that sleeps 3 seconds with the timeout set to 1 second: the result is `unparsed` and the directory is gone.
-- The real action in a disposable HOME with fake `pi`, `node` and `python3` executables on `PATH`, for `match`, `mismatch`, `missing` and `unparsed`. The fake `pi` records that its directory is empty and is not the live directory, then writes a file into it; the test proves that the directory is gone after the run.
+- The real action in a disposable HOME with fake `pi`, `node` and `python3` executables on `PATH`, for all five statuses. Pi prereleases inside and outside the range, a version below the range, and exit codes are covered. The fake `pi` records that its directory is empty and is not the live directory, then writes a file into it; the test proves that the directory is gone after the run.
 - No other process: an audit hook records every process-creation event of the CLI process (`subprocess.Popen`, `os.system`, `os.exec`, `os.spawn`, `os.posix_spawn`, `os.fork`, `os.forkpty`, `pty.spawn`). The test accepts only the three expected executables. Decoy `npm`, `git`, `sh`, `curl`, `env` and `which` commands on `PATH` stay unused. Sockets are blocked.
 - No read of the canary files `auth.json`, `models.json`, `settings.json` and `sessions` by the CLI process (file-open audit; this is a list of forbidden names, not a proof that no other file is opened, and the audit does not see the child processes). No canary text in the output, an unchanged manifest, and static diagnostics for a relative path, a missing manifest, a symlink manifest and a changed range.
 
 Not verified: that `pi --version` with `PI_CODING_AGENT_DIR` set writes nothing outside that directory and opens no network connection. The kit sets the variable and removes the directory; the behaviour of Pi is not measured.
-Not verified: the output form of `pi --version` on versions other than `1.0.0`, `1.0.2` and `1.0.3`, and behaviour on macOS, with a Node version manager shim, or with a `python3` older than 3.4 (which prints its version on standard error).
+Not verified: the output form of `pi --version` on versions other than `1.0.0`, `1.0.2`, `1.0.3` and `1.0.4`, and behaviour on macOS, with a Node version manager shim, or with a `python3` older than 3.4 (which prints its version on standard error).
 Not verified: that a child process of a tool stops at the timeout. The timeout stops the tool itself.
 Not verified: a real failed removal of the temporary directory. The tests force it with a patched `rmtree`.

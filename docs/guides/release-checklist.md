@@ -18,7 +18,39 @@ Record each gate as passed, failed, blocked or not run. Never write "passed" for
 
 Gates 1 to 4 are the four offline checks that `scripts/publish_portable.py` runs itself. Gate 1 includes [the documentation check](#documentation-check). The test `DocCheckRepoTests` of `tests/test_doc_check.py` runs it on the publish set. A finding fails the unit tests. Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
 
-When the kit pin changes, run `grep -rn '<old version>' . --exclude-dir=.git --exclude=package-lock.json` and review each match.
+Gate 1 also includes the skill text check of the component `coordinator-skills`. The test `tests/test_skill_invariants.py` reads each shipped skill of `packages/tenantext/skills/coordinator-skills/` and the label table of [the issue tracker document](../agents/issue-tracker.md). A finding fails the unit tests.
+
+A pin move changes two tracked files: `config/manifest.json` and the reviewed core anchor in `scripts/validate.py`.
+Use `scripts/pi_update.py` function `pin_contents` for both edits; the CI request calls the same function.
+`runtime.piVersion` is the tested version. `runtime.piAcceptedRange` is the accepted range.
+A changed stable pin automatically sets `>=<new version> <next minor>` in the same manifest edit.
+The range therefore moves with the pin, including a move to another minor or major line.
+A same-pin call preserves a separately reviewed range. The validator requires the tested version inside the range.
+Replace `<new version>` with the approved version. Run this block from the kit root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 - <<'EOF'
+from pathlib import Path
+from scripts.pi_update import pin_contents
+
+contents = pin_contents(Path("config/manifest.json").read_text(encoding="utf-8"),
+                        Path("scripts/validate.py").read_text(encoding="utf-8"), "<new version>")
+for name, content in contents.items():
+    Path(name).write_text(content, encoding="utf-8")
+EOF
+```
+
+Warning: this block replaces both tracked files. Keep a copy of any uncommitted edits before you run it.
+
+To use a separate reviewed range, pass `accepted_range="<reviewed range>"` to `pin_contents`.
+This still changes only those two files. Review the range before accepting the candidate.
+Bounds use stable versions. A prerelease pin needs an explicit range with a lower stable bound before its numeric version.
+Otherwise the automatic lower bound excludes that prerelease and the editor refuses the move.
+See [the prerelease rule](../check-runtime.md#comparison).
+
+Tests read the current pin from the manifest. Guides point to `runtime.piVersion` instead of copying its value.
+Historical observations and package-specific dependency pins stay fixed; review them before qualifying a new release.
+Run the offline gates on the candidate copy before accepting the move.
 
 ### Gate 6: the clean Linux core trial
 
@@ -28,7 +60,7 @@ When the kit pin changes, run `grep -rn '<old version>' . --exclude-dir=.git --e
 - Record the `check-baseline` result for `~/.pi/agent` of that user (setup Stage 9 check 4). For a user with no Pi profile the result is `unchanged`, with `was` and `now` both `absent`.
 - A model reply (Stage 9 check 3) needs a credential. Report it separately as passed, failed, blocked or not run.
 
-Not verified: this gate with Pi `1.0.3`.
+Not verified: this gate with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
 ### Gate 7: optional live services are never implied
 

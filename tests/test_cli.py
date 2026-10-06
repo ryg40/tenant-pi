@@ -15,18 +15,112 @@ import unittest
 from unittest.mock import patch
 
 from scripts import tenant_pi
+from scripts.profile_plan import PROVIDER_KEY_NAMES
 from scripts.profile_write import WriteError
+from scripts.check_runtime import parse_range
 from scripts.validate import SAMPLE_TARGET, load
 from tests.test_model_routes import NATIVE, GATEWAY, REGISTRY
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
+RUNTIME = load(ROOT / "config/manifest.json")["runtime"]
+OUTSIDE = ".".join(map(str, parse_range(RUNTIME["piAcceptedRange"], "f")[1]))
+_lower = parse_range(RUNTIME["piAcceptedRange"], "f")[0]
+IN_RANGE = ".".join(map(str, (*_lower[:2], _lower[2] + 1)))
+
+
+def ignored_paths(root):
+    """The paths under `root` that Git ignores, relative to it; None when `root` is not the top of a checkout.
+
+    An ignored directory is one entry. Git does not list what is inside it.
+    """
+    try:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=root, text=True, capture_output=True)
+        if top.returncode != 0 or Path(top.stdout.strip()).resolve() != Path(root).resolve():
+            return None
+        result = subprocess.run(["git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"],
+                                cwd=root, text=True, capture_output=True)
+    except OSError:
+        return None
+    if result.returncode != 0:
+        return None
+    return {name.rstrip("/") for name in result.stdout.split("\0") if name}
 
 
 def inventory(root):
-    return {str(p.relative_to(root)): (os.lstat(p).st_mode,
-            hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None)
-            for p in root.rglob("*")}
+    """Mode and content hash of each path under `root`.
+
+    In a Git checkout, the paths that Git ignores (`.local/`, `node_modules/`) and `.git` are left out:
+    another session can write there during a test. Without Git, the walk takes every path.
+    """
+    ignored = ignored_paths(root)
+    if ignored is None:
+        return {str(p.relative_to(root)): (os.lstat(p).st_mode,
+                hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None)
+                for p in root.rglob("*")}
+    ignored.add(".git")
+    found = {}
+    for directory, directories, files in os.walk(root):
+        relative = Path(directory).relative_to(root)
+        # Do not go down into an ignored directory.
+        directories[:] = [name for name in directories if (relative / name).as_posix() not in ignored]
+        for name in (*directories, *files):
+            if (relative / name).as_posix() not in ignored:
+                p = Path(directory) / name
+                found[str(p.relative_to(root))] = (os.lstat(p).st_mode,
+                                                   hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None)
+    return found
+
+
+class InventoryTests(unittest.TestCase):
+    def test_file_that_git_ignores_leaves_the_inventory_unchanged(self):
+        if ignored_paths(ROOT) is None:
+            self.skipTest("no Git checkout: the inventory takes every path")
+        before = inventory(ROOT)
+        local = ROOT / ".local"
+        created = not local.exists()
+        local.mkdir(exist_ok=True)
+        self.addCleanup(lambda: created and not any(local.iterdir()) and local.rmdir())
+        planted = Path(tempfile.mkdtemp(prefix="inventory-test-", dir=local))
+        self.addCleanup(shutil.rmtree, planted)
+        (planted / "log.txt").write_text("written by another session\n")
+        self.assertTrue((planted / "log.txt").is_file())
+        self.assertEqual(before, inventory(ROOT))
+        self.assertFalse(any(name == ".git" or name.startswith((".git/", ".local")) for name in before))
+
+    def test_inventory_of_a_temporary_checkout_and_of_a_plain_directory(self):
+        with tempfile.TemporaryDirectory(prefix="tenant-pi-inventory-") as temp:
+            plain, checkout = Path(temp) / "plain", Path(temp) / "checkout"
+            for root in (plain, checkout):
+                (root / ".local/coordination").mkdir(parents=True)
+                (root / ".gitignore").write_text(".local/\n*.pyc\n")
+                (root / "kept.txt").write_text("a\n")
+            # Without Git metadata, the walk takes every path.
+            self.assertIsNone(ignored_paths(plain))
+            self.assertEqual({".gitignore", "kept.txt", ".local", ".local/coordination"}, set(inventory(plain)))
+            if subprocess.run(["git", "init", "-q", str(checkout)], capture_output=True).returncode != 0:
+                self.skipTest("git is not available")
+            before = inventory(checkout)
+            self.assertEqual({".gitignore", "kept.txt"}, set(before))
+            (checkout / ".local/coordination/log.txt").write_text("b\n")
+            (checkout / "module.pyc").write_text("c\n")
+            self.assertEqual(before, inventory(checkout))
+            # A file that Git does not ignore, an empty directory and a changed file are still seen.
+            (checkout / "new.txt").write_text("d\n")
+            (checkout / "empty").mkdir()
+            self.assertEqual({"new.txt", "empty"}, set(inventory(checkout)) - set(before))
+            (checkout / "kept.txt").write_text("changed\n")
+            self.assertNotEqual(before["kept.txt"], inventory(checkout)["kept.txt"])
+
+    def test_inventory_without_a_git_binary_is_the_full_walk(self):
+        with tempfile.TemporaryDirectory(prefix="tenant-pi-inventory-") as temp:
+            root = Path(temp)
+            (root / ".local").mkdir()
+            (root / ".gitignore").write_text(".local/\n")
+            (root / ".local/log.txt").write_text("a\n")
+            with patch.dict(os.environ, {"PATH": "/nonexistent"}):
+                self.assertIsNone(ignored_paths(ROOT))
+                self.assertEqual({".gitignore", ".local", ".local/log.txt"}, set(inventory(root)))
 
 
 class CliTests(unittest.TestCase):
@@ -174,11 +268,12 @@ class CliTests(unittest.TestCase):
     def runtime_report(self, pi="match", node="match", name="runtime.json"):
         """A `check-runtime` report file for the kit manifest, with one installed version for each status."""
         runtime = load(self.manifest)["runtime"]
-        installed = {"pi": {"match": runtime["piVersion"], "mismatch": "1.0.99", "missing": None},
+        installed = {"pi": {"match": runtime["piVersion"], "mismatch": OUTSIDE, "untested_in_range": IN_RANGE, "missing": None},
                      "node": {"match": "22.22.2", "mismatch": "24.1.0", "missing": None}}
         path = self.base / name
         path.write_text(json.dumps({
-            "pi": {"installed": installed["pi"][pi], "required": runtime["piVersion"], "status": pi},
+            "pi": {"installed": installed["pi"][pi], "required": runtime["piVersion"], "status": pi,
+                   "tested": runtime["piVersion"], "acceptedRange": runtime["piAcceptedRange"]},
             "node": {"installed": installed["node"][node], "required": runtime["nodeRange"], "status": node},
             "python": {"installed": "3.14.7", "required": runtime["pythonRange"], "status": "match"}}))
         return path
@@ -189,7 +284,7 @@ class CliTests(unittest.TestCase):
         absent = {"code": "target_absence_unverified", "subject": str(self.target)}
         unverified = [{"code": "node_runtime_unverified", "subject": ">=22.22.0 <23"},
                       {"code": "core_runtime_unverified", "subject": core}]
-        mismatch = {"code": "core_runtime_mismatch", "subject": core, "installed": "1.0.99", "required": pin}
+        mismatch = {"code": "core_runtime_mismatch", "subject": core, "installed": OUTSIDE, "required": pin}
         before_source, before_fixture = inventory(ROOT), None
         # Node matches, Pi is another version.
         report = self.runtime_report(pi="mismatch")
@@ -209,7 +304,7 @@ class CliTests(unittest.TestCase):
         with_report = {name: (self.target / name).read_bytes() for name in ("settings.json", ".tenant-pi/choices.json")}
         state = json.loads((self.target / ".tenant-pi/state.json").read_text())
         for text in (*map(bytes.decode, with_report.values()), json.dumps(state)):
-            self.assertNotIn("1.0.99", text)
+            self.assertNotIn(OUTSIDE, text)
             self.assertNotIn("runtime_mismatch", text)
         # Without a report, the same target gets the same bytes and the two runtime gaps stay.
         shutil.rmtree(self.target)
@@ -252,6 +347,30 @@ class CliTests(unittest.TestCase):
         self.assertFalse((self.base / "called").exists())
         self.assertEqual("OLD", (self.old / "settings.json").read_text())
 
+    def test_accepted_untested_pi_gap_and_plain_install_line_in_plan_and_generate(self):
+        runtime = load(self.manifest)["runtime"]
+        core = load(self.manifest)["components"]["core"]["source"]["spec"]
+        report = self.runtime_report(pi="untested_in_range")
+        expected = {"code": "core_runtime_untested_in_range", "subject": core,
+                    "installed": IN_RANGE, "required": runtime["piVersion"], "tested": runtime["piVersion"],
+                    "acceptedRange": runtime["piAcceptedRange"],
+                    "fact": "The installed Pi is accepted by the range rule. The kit tests ran on the tested version only."}
+        for action, extra in (("plan", ()), ("generate", ("--target", str(self.target)))):
+            with self.subTest(action=action):
+                result = self.run_cli(action, *extra, "--runtime-report", str(report))
+                self.assertEqual(0, result.returncode, result.stderr)
+                output = json.loads(result.stdout)
+                self.assertIn(expected, output["readinessGaps"])
+                self.assertFalse(output["runtimeReady"])
+                mark = output["commands"]["piInstall"]
+                self.assertEqual("not_needed", mark["status"])
+                self.assertIsNone(mark["change"])
+                self.assertEqual("npm install --global -- " + core, mark["command"])
+                self.assertNotIn(mark["command"], output["commands"]["setupDisplayOnly"])
+        choices = json.loads((self.target / ".tenant-pi/choices.json").read_text())
+        self.assertNotIn("untested_in_range", json.dumps(choices))
+        self.assertFalse((self.base / "called").exists())
+
     def test_pi_install_line_is_marked_and_is_no_default_step_for_another_installed_pi(self):
         pin = load(self.manifest)["runtime"]["piVersion"]
         line = "npm install --global -- @earendil-works/pi-coding-agent@" + pin
@@ -268,7 +387,7 @@ class CliTests(unittest.TestCase):
                                    "required": pin, "change": None, "warning": warning}), commands("plan"))
         # A newer Pi is installed. The line is not in the default steps.
         newer = self.runtime_report(pi="mismatch")
-        replaced = ([], {"command": line, "status": "replaces_installed", "installed": "1.0.99", "required": pin,
+        replaced = ([], {"command": line, "status": "replaces_installed", "installed": OUTSIDE, "required": pin,
                          "change": "downgrade", "warning": warning})
         self.assertEqual(replaced, commands("plan", "--runtime-report", str(newer)))
         self.assertEqual(replaced, commands("generate", "--target", str(self.target), "--runtime-report", str(newer)))
@@ -289,8 +408,10 @@ class CliTests(unittest.TestCase):
         link.symlink_to(self.base / "runtime.json")
         stale = copy.deepcopy(good)
         stale["pi"]["required"] = "0.99.2"
+        stale_range = copy.deepcopy(good)
+        stale_range["pi"]["acceptedRange"] = ">=0.0.0 <99"
         wrong = copy.deepcopy(good)
-        wrong["pi"]["installed"] = "1.0.99"
+        wrong["pi"]["installed"] = OUTSIDE
         leak = copy.deepcopy(good)
         leak["pi"]["installed"] = "CANARY_SECRET"
         cases = ((b'{"CANARY_SECRET":', "invalid_json: runtime_report.file"),
@@ -300,6 +421,7 @@ class CliTests(unittest.TestCase):
                  (b'{"pi":{}}', "required_fields: runtime_report"),
                  (json.dumps({**good, "CANARY_SECRET": 1}).encode(), "unknown_fields: runtime_report"),
                  (json.dumps(stale).encode(), "runtime_report_required: runtime_report.pi.required"),
+                 (json.dumps(stale_range).encode(), "runtime_report_required: runtime_report.pi.acceptedRange"),
                  (json.dumps(wrong).encode(), "runtime_report_status: runtime_report.pi.status"),
                  (json.dumps(leak).encode(), "runtime_report_installed: runtime_report.pi.installed"))
         for action in ("plan", "generate"):
@@ -555,6 +677,14 @@ class CliTests(unittest.TestCase):
         self.data["selection"]["disable"].remove("tracker-site")
         self.data["selection"]["enable"].append("tracker-site")
         self.save()
+        result = self.run_cli("plan")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn({"code": "host_tool_required", "subject": "tracker-site"},
+                      json.loads(result.stdout)["readinessGaps"])
+        manifest = json.loads(self.manifest.read_text())
+        manifest["components"]["tracker-site"].update(status="blocked", reason="Blocked for this test.")
+        manifest["components"]["tracker-site"]["configOwnership"].update(status="blocked", claims=[])
+        self.manifest.write_text(json.dumps(manifest))
         self.assertIn("blocked_component", self.run_cli("plan").stderr)
 
     def test_input_symlink_fifo_and_size_rejected_before_read(self):
@@ -771,6 +901,31 @@ class CliTests(unittest.TestCase):
                 self.assertTrue((target / ".tenant-pi/choices.json").is_file())
         self.assertEqual(before, inventory(self.old))
         self.assertEqual("OLD", (self.old / "settings.json").read_text())
+
+    def test_plan_warns_about_a_provider_key_variable_and_prints_no_value(self):
+        # A controlled environment: no known provider key name of the real shell reaches the CLI.
+        clean = {name: value for name, value in self.env.items() if name not in PROVIDER_KEY_NAMES}
+        value = "synthetic-value-not-a-key"
+        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        result = self.run_cli("plan", env=clean)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("providerKeyWarning", json.loads(result.stdout)["commands"])
+        result = self.run_cli("plan", env=dict(clean, OPENAI_API_KEY=value, XAI_API_KEY="", UNRELATED_API_KEY=value))
+        self.assertEqual(0, result.returncode, result.stderr)
+        warning = json.loads(result.stdout)["commands"]["providerKeyWarning"]
+        self.assertEqual("provider_key_in_launching_environment", warning["code"])
+        # A variable with an empty value is set too: the plan does not read the value.
+        self.assertEqual(["OPENAI_API_KEY", "XAI_API_KEY"], warning["variables"])
+        self.assertIn("--model '<provider>/<model>'", warning["remedy"])
+        self.assertNotIn(value, result.stdout + result.stderr)
+        # `generate` and `validate` do not test the names.
+        result = self.run_cli("generate", "--target", str(self.target), env=dict(clean, OPENAI_API_KEY=value))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("providerKeyWarning", result.stdout)
+        self.assertNotIn(value, result.stdout + result.stderr)
+        self.assertNotIn("providerKeyWarning", self.run_cli("validate", env=dict(clean, OPENAI_API_KEY=value)).stdout)
+        shutil.rmtree(self.target)
+        self.check_unchanged(before_source, before_fixture)
 
     def test_target_rule_needs_home_and_reads_no_other_environment_value(self):
         named = self.base / "env agent"

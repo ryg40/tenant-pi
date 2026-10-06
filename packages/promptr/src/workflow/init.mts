@@ -16,7 +16,7 @@
  * documented confirmation for overwriting one.
  *
  * For a provider whose model IDs this machine cannot know (anything other
- * than the shipped OpenAI providers), model values are written as
+ * than the shipped provider), model values are written as
  * `<angle-bracket>` placeholders. Those are rejected by the loader until they
  * are replaced with the exact IDs the target machine lists, so an unedited
  * file blocks visibly instead of failing later with a provider error.
@@ -65,7 +65,7 @@ export const INIT_HELP = [
   "",
   "Options:",
   "  --provider <id>   Provider ID this machine uses, exactly as Pi loads it",
-  "                    (for example openai-codex or github-copilot).",
+  "                    (for example github-copilot).",
   "  --example <name>  Copy a packaged example instead of generating one.",
   `                    Known examples: ${EXAMPLES.join(", ")}.`,
   "  --path <file>     Absolute path to write. Defaults to",

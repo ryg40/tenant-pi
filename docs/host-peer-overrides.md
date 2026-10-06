@@ -1,7 +1,7 @@
 # Host-provided peer overrides for Pi extension packages
 
 Status: reviewed script and offline test. The kit does not install it, run it, or configure a service.
-The observations below use Pi 0.99.1. Not verified: the same runtime behaviour with Pi 1.0.3, the kit pin.
+The observations below use Pi 0.99.1. Not verified: the same runtime behaviour with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
 ## Why it is needed
 

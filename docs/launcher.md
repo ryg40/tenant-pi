@@ -17,7 +17,7 @@ python3 scripts/tenant_pi.py generate --overlay /home/EXAMPLE_USER/.config/tenan
 - `generate --launcher` applies the static rules and the ancestor and absence checks before it creates the target. It writes the launcher file only after the profile is complete (`filesComplete` is `true`). A failed generation writes no launcher file.
 - Without `--launcher`, the output of `plan` and `generate` does not change.
 
-With `--launcher`, the two actions read `HOME` to find `~/.pi/agent`, as `init-private` does. They read no other environment value. `HOME` must be set and must be an absolute path without a trailing slash.
+With `--launcher`, the two actions read `HOME` to find `~/.pi/agent`, as `init-private` does. The launcher rules read no other environment value. `HOME` must be set and must be an absolute path without a trailing slash.
 
 ## The file
 
@@ -46,7 +46,9 @@ Rule: a generated profile keeps its sessions in `<target>/sessions`. The launch 
 
 Why the rule is necessary: a login shell can export `PI_CODING_AGENT_SESSION_DIR` (for example, a script in `/etc/profile.d` can do this). Pi then writes the sessions of every profile to that directory, not to `<target>/sessions`.
 
-These facts come from the documents and the source of Pi 1.0.2 (`@earendil-works/pi-coding-agent`). The kit pin is Pi 1.0.3. A comparison found each document and each source file that this page cites byte-equal in Pi 1.0.2 and Pi 1.0.3, with one exception: `dist/config.js` has changes, and its function `getAgentDir` has none. The `dist/` files of the two versions read the same set of environment variable names.
+These facts come from the documents and the source of Pi 1.0.2 (`@earendil-works/pi-coding-agent`). The kit pin is `runtime.piVersion` in `config/manifest.json`.
+A comparison with Pi 1.0.3 found each cited document and source file byte-equal, with one exception.
+`dist/config.js` has changes, and its function `getAgentDir` has none. The `dist/` files of the two versions read the same set of environment variable names.
 
 - Precedence: `--session-dir`, then `PI_CODING_AGENT_SESSION_DIR`, then the `sessionDir` field of `settings.json`, then the default (`docs/cli.md`, `docs/sessions.md`, `docs/settings.md`; `dist/main.js` lines 548 to 551).
 - The default is `<agent dir>/sessions/--<working directory>--/`: one directory for each working directory (`dist/core/session-manager.js`, `getDefaultSessionDirPath`). The agent directory is the value of `PI_CODING_AGENT_DIR` (`dist/config.js`, `getAgentDir`).
@@ -103,18 +105,19 @@ Observed separately with Pi 1.0.3: the same results with no provider key and the
 `PI_OFFLINE=1`, `PI_SKIP_VERSION_CHECK=1` and `PI_TELEMETRY=0`.
 Both observations cover a generated core-only profile and a loopback test endpoint, not a live provider.
 
-Pi reads a provider key from the environment of the launching shell, including in a profile with no login.
+Rule: Pi reads a provider key from the environment of the launching shell, including in a profile with no login.
+The launch line and the launcher file do not clear such a variable. The model reply check names the model with `--model '<provider>/<model>'`.
+The `plan` action warns when a known provider key variable is set; see [the warning](profile-plan.md#the-warning-for-a-provider-key-variable).
 Not verified: which variable names Pi reads for each provider. Use the name that the Pi documentation gives.
-Give `--model '<provider>/<model>'` when the reply must come from one named model.
 
 Not verified: print mode after a `/login` of a native provider, where the credential is in `<target>/auth.json`.
 Not verified: print mode with the gateway route, with an in-tree extension, or with the `mcp`, `hermes` or `wiki` module.
-Not verified: print mode on Pi 1.0.3 without the three `PI_*` variables above, and with a provider key in the environment.
+Not verified: print mode on that observed release without the three `PI_*` variables above, and with a provider key in the environment.
 Not verified: print mode on macOS, and from a shell without a terminal.
 
 ## Output
 
-`plan` and `generate` print one JSON object with sorted keys and fixed separators. `--launcher` adds the key `commands.launcherDisplayOnly`, the path as given. `generate` also adds a `launcher` object:
+`plan` and `generate` print one JSON object with sorted keys and fixed separators. `--launcher` adds the key `commands.launcherDisplayOnly`, the path as given. `plan` adds the key `commands.providerKeyWarning` when a known provider key variable is set in the shell of the plan run; see [the warning](profile-plan.md#the-warning-for-a-provider-key-variable). `generate` also adds a `launcher` object:
 
 ```json
 {"complete":true,"fileCreated":true,"mode":"0700","path":"/home/EXAMPLE_USER/.config/tenant-pi/launch-main.sh","warnings":[]}

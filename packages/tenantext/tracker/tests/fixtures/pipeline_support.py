@@ -145,8 +145,9 @@ class FakeIssueAPI:
 class FakeArtifactService:
     """Artifact API v1 fake: idempotent POST, PUT with edit token, GET share link."""
 
-    def __init__(self, token: str, *, edit_prefix: str = "EDIT"):
+    def __init__(self, token: str, *, edit_prefix: str = "EDIT", edit_header: str = "X-Edit-Token"):
         self.token = token
+        self.edit_header = edit_header
         self.edit_prefix = edit_prefix
         self.artifacts: dict = {}
         self.keys: dict = {}
@@ -196,7 +197,7 @@ class FakeArtifactService:
             art = self.artifacts.get(slug)
             if not art:
                 return 404, {}, b'{"code":"artifact_not_found"}'
-            if headers.get("X-Orca-Edit-Token") != art["edit"]:
+            if headers.get(self.edit_header) != art["edit"]:
                 return 403, {}, b'{"code":"invalid_edit_token"}'
             art["content"] = payload["content"]
             art["version"] += 1

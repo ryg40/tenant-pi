@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install the herdr skill at user level for Claude Code and pi.
+# Install the herdr skill at user level for Pi or Claude Code without the plugin.
+# Claude Code plugin users do not need this installer.
 # Usage: skills/herdr/install.sh
 # It is safe to run again. It replaces the installed copy.
 set -euo pipefail

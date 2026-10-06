@@ -345,6 +345,34 @@ class CarryMemoryAndResourceTests(unittest.TestCase):
         self.assertEqual([{"op": "replace", "path": "/memory/hermes/reviewTransport", "value": "subprocess"}], output["patches"])
         self.assertEqual(["/srv/ext/target"], apply_patches(target, output["patches"])["memory"]["hermes"]["childExtensionPaths"])
 
+    def test_openviking_fields_carry_by_value_and_the_remote_consent_stays_a_decision(self):
+        def remote(data):
+            data["consent"]["remoteMemoryWrites"] = True
+            return data
+        a = remote(with_memory("openviking", memory={"openviking": {"captureToolResults": False}}))
+        b = remote(with_memory("openviking", memory={"openviking": {"captureToolResults": True, "recallContextTimeoutMs": 5000}}))
+        files_b = candidate(copy.deepcopy(b))
+        report = report_for(candidate(copy.deepcopy(a)), files_b)
+        at = "/overlay/memory/openviking/"
+        self.assertEqual({at + "captureToolResults": "changed", at + "recallContextTimeoutMs": "added"},
+                         {c["field"]: c["change"] for c in report["changes"] if c["field"].startswith(at)})
+        output = carry(report, copy.deepcopy(a), copy.deepcopy(self.manifest), files_b, RIGHT)
+        self.assertEqual([{"op": "replace", "path": "/memory/openviking/captureToolResults", "value": True},
+                          {"op": "add", "path": "/memory/openviking/recallContextTimeoutMs", "value": 5000}], output["patches"])
+        self.assertEqual({"status": "valid"}, output["patchedOverlay"])
+        self.assertEqual(b, apply_patches(a, output["patches"]))
+        # The module goes from `null` to an object: the fields carry, the two consent switches do not.
+        base = overlay_for(TARGET)
+        report = report_for(candidate(copy.deepcopy(base)), files_b)
+        output = carry(report, with_memory(memory={}), copy.deepcopy(self.manifest), files_b, RIGHT)
+        self.assertEqual([], [p for p in output["patches"] if p["path"].startswith("/consent")])
+        self.assertEqual({"captureToolResults": True, "recallContextTimeoutMs": 5000},
+                         apply_patches(with_memory(memory={}), output["patches"])["memory"]["openviking"])
+        for key in ("memoryCapture", "remoteMemoryWrites"):
+            self.assertIn({"file": ".tenant-pi/choices.json", "field": "/overlay/consent/" + key, "reason": "consent_decision"},
+                          output["notCarried"])
+        self.assertEqual("invalid", output["patchedOverlay"]["status"])
+
     def test_all_null_block_change_never_touches_a_module_object_of_the_target(self):
         # The report names no `hermes` field, so `hermes` of the patched overlay stays.
         target = with_memory("hermes", memory={"hermes": {"backgroundReview": True, "reviewTransport": "direct",
@@ -566,6 +594,15 @@ class CarryRuleTests(unittest.TestCase):
         self.assertEqual("rendered_field", reasons[("settings.json", "/prompts/0")])
         # The record is derived metadata and selects no unit.
         self.assertEqual("not_owner_owned", reasons[(".tenant-pi/choices.json", "/memory")])
+
+    def test_accepted_range_change_is_visible_but_never_carried(self):
+        right = copy.deepcopy(self.left)
+        right[".tenant-pi/choices.json"]["manifest"]["runtime"]["piAcceptedRange"] = ">=0.0.0 <99"
+        output = self.run_carry(report=report_for(self.left, right), right=right)
+        self.assertEqual([], output["patches"])
+        self.assertEqual([{"file": ".tenant-pi/choices.json", "field": "/manifest/runtime/piAcceptedRange",
+                          "reason": "not_owner_owned"}], output["notCarried"])
+        self.assertNotIn(">=0.0.0 <99", json.dumps(output))
 
     def test_unknown_field_segments_print_as_redacted(self):
         report = report_for(self.left, self.right)

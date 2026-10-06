@@ -107,6 +107,41 @@ class Harness:
         return json.loads((self.state / "run.json").read_text())
 
 
+class ConfigTests(unittest.TestCase):
+    def test_default_store_path_uses_docs_directory_not_okf(self):
+        for docs, okf, expected in (
+                (False, False, "tracker-brief.md"),
+                (False, True, "tracker-brief.md"),
+                (True, False, "docs/tracker-brief.md"),
+                (True, True, "docs/tracker-brief.md")):
+            with self.subTest(docs=docs, okf=okf), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                repo = S.make_repo(root / "repo", 1)
+                if docs:
+                    (repo / "docs").mkdir()
+                else:
+                    (repo / "docs").write_text("Not a directory\n")
+                if okf:
+                    (repo / ".okf").mkdir()
+                config = load_config(repo_path=repo, state_dir=root / "state", env={})
+                self.assertEqual({"backend": "local", "path": expected}, config.store)
+                self.assertFalse((repo / expected).exists())
+
+    def test_explicit_store_path_wins_over_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = S.make_repo(root / "repo", 1)
+            (repo / "docs").mkdir()
+            config_file = root / "config.json"
+            config_file.write_text(json.dumps({"store": {"path": ".okf/tracker-brief.md"}}))
+            config = load_config(repo_path=repo, state_dir=root / "state",
+                                 config_file=config_file, env={})
+            self.assertEqual(".okf/tracker-brief.md", config.store["path"])
+            config = load_config(repo_path=repo, state_dir=root / "state",
+                                 config_file=config_file, env={"TRACKER_STORE_PATH": "custom/brief.md"})
+            self.assertEqual("custom/brief.md", config.store["path"])
+
+
 class PacketTests(unittest.TestCase):
     def test_long_session_packet_stays_bounded(self):
         issues = [S.issue(n, updated=S.EPOCH + timedelta(days=4, minutes=n)) for n in range(10, 410)]
@@ -222,9 +257,9 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(model["meta"]["synthesis"], "model")
         self.assertLessEqual(len(model["changes"]), 3)
         self.assertEqual([p["role"] for p in model["paths"]].count("recommended"), 1)
-        self.assertEqual(model["paths"][0]["next_action"], "Draft two options for the owner.")
+        self.assertEqual(model["paths"][0]["next_action"], "Draft two options for the requester.")
         self.assertEqual([d for d in self.brief.validate(model) if d.level == "error"], [])
-        self.assertIn("Owner note: keep this brief short. Long history belongs in the issue tracker.", stored)
+        self.assertIn("Requester note: keep this brief short. Long history belongs in the issue tracker.", stored)
         three = next(i for i in model["issues"] if i["url"].endswith("/issues/3"))
         self.assertEqual(three["progress"], "merged")
         self.assertNotEqual(three["checked"], "2026-01-01T00:00:00Z", "exact fields come from the tracker")
@@ -256,7 +291,7 @@ class PipelineTests(unittest.TestCase):
             self.assertIn("text: |\n  You coordinate the next work session", text)
         html = (h.state / "last-good.html").read_text()
         self.assertIn('data-copy-target="tb-handoff-text"', html)
-        self.assertIn("Next action: Draft two options for the owner.", html)
+        self.assertIn("Next action: Draft two options for the requester.", html)
 
     def test_minimal_brief_prompt_is_carried_forward(self):
         from tracker import handoff
@@ -274,7 +309,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(h.main("run"), EXIT_WAITING)
         output = h.root / "model-output.md"
         output.write_text(S.synthesis("pipeline-synthesis-long.md", h.head) + (
-            "\n```handoff\nid: handoff-model\npath: path-publish\nsource: owner\n"
+            "\n```handoff\nid: handoff-model\npath: path-publish\nsource: requester\n"
             "generated: 2026-01-01T00:00:00Z\nbasis: current\ntext: |\n  MODEL-WRITTEN PROMPT\n\n  Deploy now.\n```\n"))
         self.assertEqual(h.main("run", "--synthesis", str(output)), EXIT_OK, h.text())
         self.assertIn("Ignored 1 handoff record(s) in the model output", h.text())
@@ -284,21 +319,21 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual((record["id"], record["source"]), ("handoff-path-publish", "generated"))
         self.assertEqual(h.run_json()["stages"]["synthesize"]["kind"], "model", "the rest of the output applied")
 
-    def test_owner_handoff_survives_while_its_path_is_recommended(self):
-        owner_text = "Owner prompt for the storage work.\n\nAsk before any push."
+    def test_requester_handoff_survives_while_its_path_is_recommended(self):
+        requester_text = "Requester prompt for the storage work.\n\nAsk before any push."
         harnesses = []
         for name in ("minimal", "model"):
             root = Path(self.tmp.name) / name
             h = Harness(root)
             model = self.model(h.canonical.read_text())
-            model["handoffs"][0].update(source="owner", text=owner_text)
+            model["handoffs"][0].update(source="requester", text=requester_text)
             h.canonical.write_text(self.brief.dump(model))
             harnesses.append(h)
         minimal, model_run = harnesses
         self.assertEqual(minimal.main("run", "--minimal"), EXIT_OK, minimal.text())
         [record] = self.model(minimal.canonical.read_text())["handoffs"]
-        self.assertEqual((record["source"], record["path"], record["text"]), ("owner", "path-storage", owner_text))
-        # A model synthesis that recommends another path replaces the owner prompt.
+        self.assertEqual((record["source"], record["path"], record["text"]), ("requester", "path-storage", requester_text))
+        # A model synthesis that recommends another path replaces the requester prompt.
         self.assertEqual(model_run.main("run"), EXIT_WAITING)
         output = model_run.root / "model-output.md"
         output.write_text(S.synthesis("pipeline-synthesis-long.md", model_run.head))
@@ -433,14 +468,14 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(data["complete"])
         self.assertEqual(data["stages"]["store"]["result"], "unchanged")
 
-    def test_owner_edit_after_checkpoint_is_never_overwritten(self):
+    def test_requester_edit_after_checkpoint_is_never_overwritten(self):
         h = Harness(self.tmp.name)
         for command in (("checkpoint",), ("collect",), ("minimal",), ("validate",)):
             self.assertEqual(h.main(*command), EXIT_OK, h.text())
-        owner = h.canonical.read_text() + "\nOwner note added while the refresh ran.\n"
-        h.canonical.write_text(owner)
+        requester = h.canonical.read_text() + "\nRequester note added while the refresh ran.\n"
+        h.canonical.write_text(requester)
         self.assertEqual(h.main("store"), EXIT_FAILED)
-        self.assertEqual(h.canonical.read_text(), owner, "owner edit kept")
+        self.assertEqual(h.canonical.read_text(), requester, "requester edit kept")
         pending = PendingQueue(h.state)
         self.assertTrue(pending.load()["conflict"])
         self.assertIn("synthesis: minimal", pending.text(), "the tool's brief is kept too")
@@ -449,12 +484,12 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("CONFLICT", h.text())
         self.assertIn("Next: python3 -m tracker.refresh checkpoint", h.text())
         self.assertEqual(h.main("sync"), EXIT_FAILED, "sync refuses too")
-        self.assertEqual(h.canonical.read_text(), owner)
+        self.assertEqual(h.canonical.read_text(), requester)
         h.out.clear()
         self.assertEqual(h.main("checkpoint"), EXIT_OK)
         self.assertEqual(h.main("run", "--minimal"), EXIT_OK, h.text())
         final = h.canonical.read_text()
-        self.assertIn("Owner note added while the refresh ran.", final)
+        self.assertIn("Requester note added while the refresh ran.", final)
         self.assertIn("synthesis: minimal", final)
 
     def test_rerunning_a_done_stage_writes_nothing(self):

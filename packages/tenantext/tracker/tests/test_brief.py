@@ -367,9 +367,11 @@ class ValidateTests(unittest.TestCase):
 
     def test_date_format(self):
         text = swap(example_text(), "\nsnapshot: 2030-01-23T06:30:00Z\n", "\nsnapshot: 2030-01-23 06:30\n")
-        self.assertDiag(text, "date-format", 6)
+        matches = self.assertDiag(text, "date-format", 6)
+        self.assertEqual(matches[0].message, "'snapshot' must be UTC like 2030-01-23T06:00:00Z")
         text = swap(example_text(), "checked: 2030-01-23T06:25:00Z\nworkstream: storage", "checked: 2030-13-01T00:00:00Z\nworkstream: storage")
-        self.assertDiag(text, "date-format")
+        matches = self.assertDiag(text, "date-format")
+        self.assertEqual(matches[0].message, "'checked' in issue '3' must be UTC like 2030-01-23T06:00:00Z")
 
     def test_list_and_scalar_types(self):
         text = swap(example_text(), "evidence:\n  - ev-issue-4\n```\n\n## Issues", "evidence: ev-issue-4\n```\n\n## Issues")
@@ -386,7 +388,7 @@ class ValidateTests(unittest.TestCase):
         self.assertTrue(all(d.level == "warning" for d in stale))
         future = validate(model, now="2030-01-01T00:00:00Z")
         self.assertIn("time-order", {d.code for d in future})
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(ValueError, r"^now must look like 2030-01-23T06:00:00Z$"):
             validate(model, now="yesterday")
 
     def test_consistency_warnings(self):
@@ -603,9 +605,16 @@ class CliValidateTests(unittest.TestCase):
             self.assertEqual(code, 1)
 
     def test_bad_now_is_a_usage_error(self):
-        with self.assertRaises(SystemExit) as ctx, contextlib.redirect_stderr(io.StringIO()):
+        with self.assertRaises(SystemExit) as ctx, contextlib.redirect_stderr(io.StringIO()) as err:
             main(["validate", str(EXAMPLE), "--now", "tomorrow"])
         self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("use UTC like 2030-01-23T06:00:00Z", err.getvalue())
+
+    def test_help_uses_the_neutral_date_example(self):
+        with self.assertRaises(SystemExit) as ctx, contextlib.redirect_stdout(io.StringIO()) as out:
+            main(["validate", "--help"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertIn("2030-01-23T06:00:00Z", out.getvalue())
 
 
 if __name__ == "__main__":

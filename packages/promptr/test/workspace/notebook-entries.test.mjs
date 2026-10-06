@@ -8,9 +8,9 @@ import {
 
 const NOTE = [
   'free paragraph line one', 'free paragraph line two', '',
-  '-- Queued 2026-09-08 10:00Z --', 'first prompt', 'second line', '-- end --', '',
+  '-- Queued 2030-09-08 10:00Z --', 'first prompt', 'second line', '-- end --', '',
   'lonely line', '',
-  '-- Note 2026-09-08 10:05Z --', 'note body', '',
+  '-- Note 2030-09-08 10:05Z --', 'note body', '',
 ].join('\n');
 
 test('entries: paragraphs and closed marked blocks, with bodies excluding the markers', () => {
@@ -21,7 +21,7 @@ test('entries: paragraphs and closed marked blocks, with bodies excluding the ma
     ['paragraph', 9, 9, 9, 9],
     ['marked', 11, 12, 12, 12],
   ]);
-  assert.equal(entries[1].label, 'Queued 2026-09-08 10:00Z');
+  assert.equal(entries[1].label, 'Queued 2030-09-08 10:00Z');
   assert.equal(entries[0].label, 'free paragraph line one');
   assert.ok(Object.isFrozen(entries) && Object.isFrozen(entries[0]));
 });
@@ -63,7 +63,7 @@ test('removeLines drops exactly the inclusive range and keeps the trailing newli
 });
 
 test('the blocks the view inserts are closed entries', () => {
-  assert.equal(newNoteBlock('2026-09-08 12:00Z'), '-- Note 2026-09-08 12:00Z --\n\n-- end --\n');
+  assert.equal(newNoteBlock('2030-09-08 12:00Z'), '-- Note 2030-09-08 12:00Z --\n\n-- end --\n');
   assert.equal(archivedPromptBlock('s', 'hello'), '-- Queued s --\nhello\n-- end --\n');
   assert.equal(archivedPromptBlock('s', 'hello\n'), '-- Queued s --\nhello\n-- end --\n');
   const entries = notebookEntries(`${newNoteBlock('s')}${archivedPromptBlock('t', 'x')}`);

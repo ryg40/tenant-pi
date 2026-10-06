@@ -12,7 +12,14 @@ from examples import render
 
 # Exact paths, not extensions or a recursive glob. Update only after source review.
 PUBLISH = (
-    ".gitignore", ".env.example", "README.md", "INSTALL.md", "EXPLAINER.md", "config/manifest.json",
+    ".gitea/workflows/pi-update.yml",
+    ".gitea/workflows/checks.yml",
+    ".github/workflows/checks.yml",
+    "scripts/ci_update.py",
+    "tests/test_ci_workflows.py",
+    "docs/ci.md",
+    ".gitignore", ".env.example", "README.md", "LICENSE", "packages/promptr/LICENSE",
+    "INSTALL.md", "EXPLAINER.md", "config/manifest.json",
     "config/config.example.json", "scripts/validate.py", "scripts/examples.py",
     "scripts/publish_check.py", "scripts/capture.py", "scripts/install.py",
     "tests/test_contract.py", "tests/test_profile_plan.py",
@@ -43,6 +50,9 @@ PUBLISH = (
     "config/private/gitignore",
     "scripts/launcher.py", "tests/test_launcher.py", "docs/launcher.md",
     "scripts/candidate_list.py", "tests/test_candidate_list.py", "docs/candidate-list.md",
+    "scripts/pi_update.py",
+    "tests/test_pi_update.py",
+    "docs/pi-update.md",
     "scripts/kit_commit.py", "tests/test_kit_commit.py",
     "scripts/baseline.py", "tests/test_baseline.py", "docs/directory-baseline.md",
     "scripts/doc_check.py", "tests/test_doc_check.py", "docs/guides/setup.md", "docs/guides/modules.md",
@@ -53,7 +63,8 @@ PUBLISH = (
 # Private-copy exclusions belong in the optional list, not in published source text.
 PUBLISH_DIRS = (
     ("packages/tenantext", ("node_modules/",)),
-    ("packages/promptr", ("node_modules/", "dist/")),
+    # The license is explicit in PUBLISH, so the directory rule must not add it again.
+    ("packages/promptr", ("node_modules/", "dist/", "LICENSE")),
 )
 # Optional list of repository-relative files or directory prefixes ending in "/".
 # The list excludes itself. A portable copy has neither the list nor its excluded files.

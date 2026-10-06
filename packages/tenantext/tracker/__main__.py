@@ -96,7 +96,7 @@ def cmd_handoff(args):
 
 def _now_arg(value):
     if parse_utc(value) is None:
-        raise argparse.ArgumentTypeError("use UTC like 2026-09-23T06:00:00Z")
+        raise argparse.ArgumentTypeError("use UTC like 2030-01-23T06:00:00Z")
     return value
 
 
@@ -106,7 +106,7 @@ def build_parser():
 
     p = sub.add_parser("validate", help="check a brief and print diagnostics")
     p.add_argument("file")
-    p.add_argument("--now", type=_now_arg, help="UTC time for the staleness check, like 2026-09-23T06:00:00Z")
+    p.add_argument("--now", type=_now_arg, help="UTC time for the staleness check, like 2030-01-23T06:00:00Z")
     p.set_defaults(func=cmd_validate)
 
     p = sub.add_parser("render", help="write the HTML view of a brief")

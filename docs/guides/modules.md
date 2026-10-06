@@ -75,7 +75,7 @@ Requirements:
 
 | Item | Requirement | Source |
 | --- | --- | --- |
-| Pi | `1.0.3`, the kit pin. No test in this repository loads the package with the kit pin, so each component has the gap `pi_line_unqualified`. | `config/manifest.json`, `packages/tenantext/README.md` |
+| Pi | `1.0.3`, the kit pin. No test starts a Pi session with the component on the kit pin. Each component keeps the gap `pi_line_unqualified`. | `config/manifest.json`, `packages/tenantext/README.md` |
 | Node | `>=22.22.0 <23` | `packages/tenantext/package.json` `engines` |
 | Source | `packages/tenantext` in the kit clone | [in-tree packages](../packages.md) |
 | Dependencies | `npm ci --ignore-scripts` in `packages/tenantext`, by hand (setup Stage 6) | [setup guide](setup.md#in-tree-packages) |

@@ -166,6 +166,31 @@ class RenderTests(unittest.TestCase):
         self.assertTrue(all(e["details"] >= 1 for e in rows))
         self.assertTrue(all(e["details"] >= 1 for e in o.find("tb-packet")))
 
+    def test_example_keeps_pull_request_and_issue_numbers_apart(self):
+        self.assertEqual(self.model["active"][1]["blocker"], "Pull requests 7 and 8 closed without merge.")
+        issues = {row["id"]: row for row in self.model["issues"]}
+        self.assertEqual(issues["5"]["note"], "Pull request 7 closed without merge.")
+        self.assertEqual(issues["6"]["note"], "Commits are on demo, but pull request 8 closed without merge.")
+        self.assertIn("cite pull requests 7 and 8", self.model["unknowns"][0]["text"])
+        evidence = {row["id"]: row for row in self.model["evidence"]}
+        for number in (1, 2, 7, 8):
+            row = evidence[f"ev-pr-{number}"]
+            self.assertEqual(row["kind"], "pr")
+            self.assertEqual(row["ref"], f"https://git.example.com/owner/demo/pulls/{number}")
+            self.assertTrue(row["label"].startswith(f"Pull request {number}, "))
+        closed_prs = {"ev-pr-7", "ev-pr-8"}
+        for record in (self.model["active"][1], self.model["unknowns"][0]):
+            self.assertEqual(closed_prs & set(record["evidence"]), closed_prs)
+            self.assertFalse({"ev-pr-1", "ev-pr-2"} & set(record["evidence"]))
+        self.assertEqual(closed_prs & set(self.model["paths"][1]["read_first"]), closed_prs)
+        changes = {row["id"]: row for row in self.model["changes"]}
+        for change_id, pr_id in (("chg-parser", "ev-pr-1"), ("chg-export", "ev-pr-2")):
+            self.assertIn(pr_id, changes[change_id]["evidence"])
+            self.assertFalse(closed_prs & set(changes[change_id]["evidence"]))
+        for pr_id in closed_prs:
+            self.assertEqual(evidence[pr_id]["note"], "Closed without merge.")
+            self.assertIn(f'href="{evidence[pr_id]["ref"]}"', self.html)
+
     def test_register_keeps_state_and_progress_apart(self):
         o = self.outline
         rows = o.find("tb-issue")
@@ -418,7 +443,10 @@ class PrototypeFixtureTests(unittest.TestCase):
         for path in self.model["paths"]:
             for reference in path["issues"]:
                 self.assertIn(reference.lstrip("#"), ids)
-        self.assertNotRegex(self.text.lower(), r"fleet|prototype")
+        self.assertEqual({path["repo"] for path in self.model["paths"]}, {"owner/demo"})
+        years = re.findall(r"\b(\d{4})-\d{2}-\d{2}(?!\d)", self.text)
+        self.assertTrue(years)
+        self.assertTrue(all(int(year) >= 2030 for year in years), years)
         self.assertEqual(self.model["evidence"][0]["id"], "ev-register-snapshot")
         for evidence in self.model["evidence"]:
             if evidence["kind"] == "file":

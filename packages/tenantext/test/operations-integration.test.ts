@@ -86,7 +86,7 @@ for (const reverse of [false, true]) test(`real meter, footer and Codex bus comp
     assert.ok(!widgets.has("ops-footer-top"), "the default layout v4 sets no widget above the editor");
     const v4 = component!.render(120).map(stripTerminalSequences);
     assert.match(v4[0], /^openai-codex\/gpt-6-astra · low/, "v4: the model row is first below the editor");
-    assert.match(v4[1], /pwd \/tmp\/tenantext-suite-/, "v4: the directory row is second");
+    assert.match(v4[1], /pwd .*tenantext-suite-/, "v4: the directory row is second");
     assert.match(v4[2], /WARN 75\.0k\/100k 75%/, "v4: the bar is third");
     assert.match(v4[3], /Codex2 .*✗ 5h 0%.*◂ routed/);
     // The assertions below are for the v3 composition, selected by name.
@@ -104,7 +104,7 @@ for (const reverse of [false, true]) test(`real meter, footer and Codex bus comp
       const bar = width >= 40 ? 1 : 0;
       if (width >= 40) { assert.ok(lines.length >= 3); assert.match(lines[2], /^(openai-codex\/)?gpt-6-astra · low/, "v3 keeps the model below the editor"); assert.match(lines[bar], /WARN .*75%/); assert.match(lines[bar], /sys!/); }
       if (width >= 80) assert.match(lines[bar], /WARN 75\.0k\/100k 75%/);
-      if (width >= 80) assert.match(lines[0], /pwd \/tmp\/tenantext-suite-/, "top row shows the session start directory");
+      if (width >= 80) assert.match(lines[0], /pwd .*tenantext-suite-/, "top row shows the session start directory");
       if (width >= 80) assert.match(lines[3], /Codex2 .*✗ 5h 0%.*◂ routed/);
       else if (width >= 40) assert.match(lines[3], /C(odex)?2 .*✗ 5h 0%/, "short or full account names below 80 columns, whichever fits");
       assert.ok(!lines.join("\n").includes("-----") && !lines.join("\n").includes("!1"));

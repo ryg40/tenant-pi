@@ -32,11 +32,11 @@ test('registry rows become exact pi-route capabilities; thinking follows reasoni
 
 test('the probe file round-trips and carries no credential fields; bare arrays still parse', () => {
  const caps = capabilitiesFromRegistry(REGISTRY);
- const text = serializeCapabilityProbe(caps, '2026-09-08T10:00:00.000Z', 'pi modelRegistry.getAvailable()');
+ const text = serializeCapabilityProbe(caps, '2030-09-08T10:00:00.000Z', 'pi modelRegistry.getAvailable()');
  assert.doesNotMatch(text, /apiKey|token|baseUrl/);
  const parsed = parseCapabilityProbe(text);
  assert.equal(parsed.ok, true);
- assert.equal(parsed.writtenAt, '2026-09-08T10:00:00.000Z');
+ assert.equal(parsed.writtenAt, '2030-09-08T10:00:00.000Z');
  assert.equal(parsed.source, 'pi modelRegistry.getAvailable()');
  assert.deepEqual(parsed.capabilities, caps.map((c) => ({ ...c, thinking: [...c.thinking] })));
  const bare = parseCapabilityProbe(JSON.stringify([{ provider: 'p', model: 'm', thinking: ['low'], route: 'pi' }]));
@@ -83,7 +83,7 @@ test('the companion reads the hosted probe from the default path when no env ove
  const path = defaultCapabilityProbePath(env);
  assert.equal(path, '/agent/promptr/capabilities.json');
  assert.equal(loadCapabilityProbe(env, () => undefined), undefined, 'absent default probe keeps existing behaviour');
- const text = serializeCapabilityProbe(capabilitiesFromRegistry(REGISTRY), '2026-09-08T10:00:00.000Z', 'pi');
+ const text = serializeCapabilityProbe(capabilitiesFromRegistry(REGISTRY), '2030-09-08T10:00:00.000Z', 'pi');
  const loaded = loadCapabilityProbe(env, (file) => (file === path ? text : undefined));
  assert.equal(loaded.ok, true);
  assert.equal(loaded.path, path);

@@ -164,7 +164,7 @@ by `PROMPTR_WORKFLOW_CAPABILITIES`):
 ```json
 {
   "version": 1,
-  "writtenAt": "2026-09-08T10:00:00.000Z",
+  "writtenAt": "2030-09-08T10:00:00.000Z",
   "source": "pi modelRegistry.getAvailable()",
   "capabilities": [
     { "provider": "github-copilot", "model": "gpt-5.6-sol", "thinking": ["low", "medium", "high", "xhigh"], "route": "pi" }

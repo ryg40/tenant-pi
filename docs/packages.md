@@ -99,9 +99,9 @@ Promptr is a Pi extension: a prompt queue, progress checkpoints, staged handoffs
 | Item | Value |
 | --- | --- |
 | Source | `packages/promptr` |
-| License | MIT, declared in `packages/promptr/package.json`. This release has no `packages/promptr/LICENSE` file. |
+| License | MIT, `packages/promptr/LICENSE`; declared in `packages/promptr/package.json`. |
 | Skills | `packages/promptr/skills/`: `promptr-generate-task-prompt`, `promptr-handoff`, `openknowledge-project-pages` and `watch-herdr-agents` |
-| Publish rule | `("packages/promptr", ("node_modules/", "dist/"))` |
+| Publish rule | `("packages/promptr", ("node_modules/", "dist/", "LICENSE"))`; `packages/promptr/LICENSE` is explicit in `PUBLISH`. |
 | Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.0.2`. The build, the tests, the two smoke scripts and a start without a model are verified on that line. A session with a model is not verified. The kit pins Pi `1.0.3`. Not verified: the package on Pi `1.0.3`. |
 
 ### Build and test

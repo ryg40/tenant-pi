@@ -31,6 +31,18 @@ def git(root, *args):
     return subprocess.run(["git", *args], cwd=root, text=True, capture_output=True, check=True).stdout.strip()
 
 
+def repository_files(root):
+    """Use tracked paths when available, otherwise the same inventory as check()."""
+    tracked = publish_check.tracked_files(root)
+    if tracked is not None:
+        return tracked
+    excluded = {".local", ".git", "__pycache__", "node_modules"}
+    return {path.relative_to(root).as_posix() for path in root.rglob("*")
+            if path.is_file() and not excluded.intersection(path.relative_to(root).parts)
+            and not any(path.relative_to(root).as_posix().startswith(name + "/")
+                        for name in publish_check.BUILD_DIRS)}
+
+
 class RuleTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="tenant-pi-rules-empty-")
@@ -267,12 +279,20 @@ class PublicReaderTests(unittest.TestCase):
 
     def test_publish_set_of_this_repository_has_no_finding(self):
         # The files under a `PUBLIC_PENDING` prefix are not checked yet; an empty tuple checks each file.
-        tracked = publish_check.tracked_files(ROOT)
-        names = [name for name in publish_check.publish_files(tracked or set())
+        names = [name for name in publish_check.publish_files(repository_files(ROOT))
                  if (ROOT / name).is_file() and not name.startswith(publish_check.PUBLIC_PENDING)]
         self.assertGreater(len(names), 50)
         findings = [f"{rule}: {name}:{line}" for name, line, rule in publish_check.public_findings(names, ROOT)]
         self.assertEqual([], findings, "run `python3 scripts/publish_check.py --public` for the same list")
+
+
+    def test_public_reader_uses_inventory_without_git_metadata(self):
+        with unittest.mock.patch.object(publish_check, "tracked_files", return_value=None):
+            self.test_publish_set_of_this_repository_has_no_finding()
+
+    def test_inventory_fallback_does_not_replace_an_empty_git_index(self):
+        with unittest.mock.patch.object(publish_check, "tracked_files", return_value=set()):
+            self.assertEqual(set(), repository_files(ROOT))
 
 
 class CheckTests(unittest.TestCase):
@@ -345,19 +365,17 @@ class CheckTests(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
 
-    @unittest.skipUnless((ROOT / ".git").exists(), "requires Git metadata")
     def test_untracked_node_modules_directory_is_ignored(self):
         self.add("packages/tenantext/node_modules/yaml/package.json", "{}\n")
         self.add("node_modules/.package-lock.json", "{}\n")
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(f"{len(publish_check.publish_files(publish_check.tracked_files(ROOT) or set()))} files", result.stdout)
+        self.assertIn(f"{len(publish_check.publish_files(repository_files(ROOT)))} files", result.stdout)
 
-    @unittest.skipUnless((ROOT / ".git").exists(), "requires Git metadata")
     def test_rule_accepts_the_directory_and_counts_its_files(self):
         self.add("packages/demo/index.mjs")
         self.add("packages/demo/src/a.mjs")
-        tracked = publish_check.tracked_files(ROOT) or set()
+        tracked = repository_files(ROOT)
         self.add("packages/demo/notes/plan.md")
         result = self.run_check(RULES)
         self.assertEqual(0, result.returncode, result.stderr)

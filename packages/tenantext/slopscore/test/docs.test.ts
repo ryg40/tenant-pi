@@ -16,18 +16,24 @@ test("the GitHub PR template mirrors the Gitea one byte for byte and both carry 
 	assert.match(gitea, /skills\/slopscore-pr\/SKILL\.md/);
 });
 
+test("the README has no fixed ~/.pi/agent/ settings paths", () => {
+	const readme = read("README.md");
+	assert.ok(!readme.includes("~/.pi/agent/tenantext/"));
+	assert.doesNotMatch(readme, /~\/\.pi\/agent\/(?:[^/\s`]+\/)*settings\.json\b/);
+});
+
 test("the README block format is exactly what the renderer prints for the documented example", () => {
 	const example: PrData = {
 		scope: { branch: "feature/x", base: "origin/main", commits: 3, days: 2 },
 		localTraces: true,
 		trace: { sessions: 4, calls: 61, spend: 7.2, effortShare: 0.88, modelPoints: 18, roles: [
-			{ role: "main", mainModel: "claude-fable-5-1", topThinking: "high", share: 0.74 },
-			{ role: "subagent:reviewer", mainModel: "gpt-5.6-luna", topThinking: "xhigh", share: 0.26 },
+			{ role: "main", mainModel: "example-model", topThinking: "high", share: 0.74 },
+			{ role: "subagent:reviewer", mainModel: "example-review-model", topThinking: "xhigh", share: 0.26 },
 		] },
 		provenance: { codeCommits: 3, modelTrailerCommits: 3, ticketReferences: ["#12"], fixOrReviewCommits: 2 },
 		bundle: { concepts: 12, keptCurrentShare: 1 },
 		flags: [],
-		generatedOn: "2026-09-19",
+		generatedOn: "2030-01-19",
 	};
 	const readme = read("README.md");
 	assert.ok(readme.includes("```markdown\n" + renderPrMarkdown(example) + "\n```"), "README carries the rendered example block");

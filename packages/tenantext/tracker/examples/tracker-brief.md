@@ -76,11 +76,13 @@ id: act-reconcile
 title: Reconcile validation tasks #5 and #6
 readiness: needs-decision
 next: Compare demo history with the closed pull requests, then update both tasks.
-blocker: Changes #3 and #4 closed without merge.
+blocker: Pull requests 7 and 8 closed without merge.
 owner: owner
 priority: 2
 evidence:
   - ev-issue-6
+  - ev-pr-7
+  - ev-pr-8
   - ev-commit-d4e5f6a
 ```
 
@@ -139,7 +141,7 @@ progress: implemented
 url: https://git.example.com/owner/demo/issues/6
 checked: 2030-01-23T06:25:00Z
 workstream: validation
-note: Commits are on demo, but change #4 closed without merge.
+note: Commits are on demo, but pull request 8 closed without merge.
 ```
 
 ```issue
@@ -150,7 +152,7 @@ progress: implemented
 url: https://git.example.com/owner/demo/issues/5
 checked: 2030-01-23T06:25:00Z
 workstream: validation
-note: Change #3 closed without merge.
+note: Pull request 7 closed without merge.
 ```
 
 ```issue
@@ -197,9 +199,11 @@ text: Do not start follow-up paths from this brief without a new owner request.
 id: unk-validation-merge
 kind: conflict
 severity: critical
-text: Validation tasks #5 and #6 cite changes that closed without merge, but demo has validation commits. Tracker state and delivery disagree.
+text: Validation tasks #5 and #6 cite pull requests 7 and 8 that closed without merge. Demo has validation commits. Tracker state and delivery disagree.
 evidence:
   - ev-issue-6
+  - ev-pr-7
+  - ev-pr-8
   - ev-commit-d4e5f6a
 ```
 
@@ -255,6 +259,8 @@ repo: owner/demo
 objective: Decide whether validation landed by another route, then update the tasks.
 read_first:
   - ev-issue-6
+  - ev-pr-7
+  - ev-pr-8
   - ev-commit-d4e5f6a
 scope: Read-only audit of history, pull requests and issue claims.
 authority: Issue comments need owner approval. No code changes.
@@ -369,7 +375,7 @@ checked: 2030-01-23T06:25:00Z
 
 ```evidence
 id: ev-pr-1
-label: Change 1, parser
+label: Pull request 1, parser
 kind: pr
 ref: https://git.example.com/owner/demo/pulls/1
 confidence: verified
@@ -407,12 +413,32 @@ checked: 2030-01-23T06:25:00Z
 
 ```evidence
 id: ev-pr-2
-label: Change 2, export destination
+label: Pull request 2, export destination
 kind: pr
 ref: https://git.example.com/owner/demo/pulls/2
 confidence: verified
 revision: f6a7b8c
 checked: 2030-01-23T06:25:00Z
+```
+
+```evidence
+id: ev-pr-7
+label: Pull request 7, required field validation
+kind: pr
+ref: https://git.example.com/owner/demo/pulls/7
+confidence: verified
+checked: 2030-01-23T06:25:00Z
+note: Closed without merge.
+```
+
+```evidence
+id: ev-pr-8
+label: Pull request 8, record link validation
+kind: pr
+ref: https://git.example.com/owner/demo/pulls/8
+confidence: verified
+checked: 2030-01-23T06:25:00Z
+note: Closed without merge.
 ```
 
 ```evidence

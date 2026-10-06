@@ -16,7 +16,7 @@
 
 export interface NotebookEntry {
   readonly kind: "marked" | "paragraph";
-  /** Marker label (`Queued 2026-09-08 12:00Z`), or the first line of a paragraph. */
+  /** Marker label (`Queued 2030-09-08 12:00Z`), or the first line of a paragraph. */
   readonly label: string;
   readonly startLine: number;
   readonly endLine: number;

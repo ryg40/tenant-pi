@@ -25,7 +25,7 @@ export type BrowseRow = {
   ref: string;
   head: string;
   lastActivity: string;
-  /** "active now" | "3h ago" | "5d ago" | "on 2026-08-01" | "unknown". */
+  /** "active now" | "3h ago" | "5d ago" | "on 2030-08-01" | "unknown". */
   staleness: string;
   pinned: boolean;
   /** Another session is actively writing here: duplicate-writer block. */

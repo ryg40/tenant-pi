@@ -129,6 +129,11 @@ The dump writes fields in the order of this table. It writes the `handoff` recor
 
 Issue `state` is the tracker state. Issue `progress` is the delivery state.
 Keep them separate. A closed issue does not prove a merge or a deployment.
+Issue numbers and pull request numbers are separate. Name each pull request and cite its own evidence record.
+The example cites merged pull requests 1 and 2 with evidence ids `ev-pr-1` and `ev-pr-2`.
+Pull requests 7 and 8 closed without merge and have separate evidence ids `ev-pr-7` and `ev-pr-8`.
+Validation tasks #5 and #6 refer to pull requests 7 and 8, respectively.
+Storage and export use issue records #3 and #4.
 
 ### References
 

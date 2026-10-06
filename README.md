@@ -26,6 +26,8 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | [Explainer](EXPLAINER.md) | The install as a usual README procedure. Each step names the scripts, the functions and the files that it touches, and one table has the footprint. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
 | [Candidate update](docs/guides/candidate-update.md) | Regenerate, compare, carry choices, switch profiles. |
+| [Pi update checks](docs/pi-update.md) | Detect npm releases, qualify an isolated candidate, and read breaking changes. |
+| [Continuous integration](docs/ci.md) | Offline checks, scheduled Pi qualification, and update pull requests. |
 | [Privacy](docs/guides/privacy.md) | What the kit separates, what it never does, what the scanner checks. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [Release checklist](docs/guides/release-checklist.md) | The gates and steps of a portable release. |
@@ -58,6 +60,8 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 - [Memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md), [model routes](docs/model-routes.md) and [in-tree packages](docs/packages.md).
 - [Owner package paths](docs/owner-packages.md), [owner skill and prompt directories](docs/owner-resources.md) and [accepted drift](docs/accepted-drift.md).
 - [Host peer overrides](docs/host-peer-overrides.md), [secret handling](docs/secret-handling.md) and [publishing](docs/publishing.md).
+
+The kit uses the MIT license in [LICENSE](LICENSE).
 
 ## Facts about this release
 

@@ -103,7 +103,8 @@ Keep the full package directory: entry points can import shared files.
 Do not also register a second copy of the package in the same profile.
 
 To stop loading a component, remove it from `selection.enable`, add it to `selection.disable`, and generate a new profile.
-Saved Tenantext state remains in the previous profile's `tenantext/settings.json`.
+Saved Tenantext state remains in the previous profile.
+Tenantext uses `tenantext/settings.json` relative to the profile's Pi agent directory.
 
 ## Commands
 
@@ -217,7 +218,8 @@ Each request sends complete active history. The gateway prefers Codex 2 and perm
 Fallback cannot succeed when both accounts are exhausted.
 See [Codex routing](docs/codex-routing.md) for configuration, explicit account routes, and verification limits.
 
-To change the account list, for example to add a fourth account, create `~/.pi/agent/codex-accounts/settings.json`:
+To change the account list, create `codex-accounts/settings.json` in the profile's Pi agent directory.
+This example adds a fourth account:
 
 ```json
 {
@@ -317,10 +319,12 @@ Disabling the dashboard restores Pi's default footer and the enabled standalone 
 
 Warning: Only one extension can own `ctx.ui.setFooter()`. Disable `pi-powerline-footer` before using `ops-footer`.
 
+Settings paths below are relative to the profile's Pi agent directory.
+
 | Resource | Commands | Settings |
 | --- | --- | --- |
-| Context meter | `/context-meter`, `on`, `off`, `save`, `help` | `~/.pi/agent/context-meter/settings.json` |
-| Operations footer | `/ops-footer`, `on`, `off`, `refresh`, `settings`, `save`, `help` | `~/.pi/agent/ops-footer/settings.json` |
+| Context meter | `/context-meter`, `on`, `off`, `save`, `help` | `context-meter/settings.json` |
+| Operations footer | `/ops-footer`, `on`, `off`, `refresh`, `settings`, `save`, `help` | `ops-footer/settings.json` |
 
 The suite fills missing or blank main and footer settings files with valid JSON. Each folder also receives `settings.example.jsonc` with commented option names, allowed values, and examples. Existing nonempty files stay unchanged. `/tenantext settings` edits both sets of options in the TUI. The menu validates row limits, poll times, and health URLs before saving. Environment health URLs remain overrides and never enter the saved file.
 
@@ -369,7 +373,11 @@ Unavailable sources remain unknown; tool presence does not prove service health.
 
 The context meter can also show a suggested next move, such as `next: compact 0.99`, from a local decision server. It is off by default; see "Next-move chip" in the context meter guide.
 
-`/tenantext-ifs-enable off` blocks every Tenantext decision-server call and clears the chip. `on` restores them. The switch is the `decisions` key in `~/.pi/agent/tenantext/settings.json`; the `/tenantext settings` menu lists it as "Decision-server calls". A failing endpoint is called at most once per cooldown: 30 s after the first failure, doubling to 10 minutes, cleared by one good answer.
+`/tenantext-ifs-enable off` blocks every Tenantext decision-server call and clears the chip. `on` restores them.
+The profile's `tenantext/settings.json` stores this switch.
+The switch is the `decisions` key; the `/tenantext settings` menu lists it as "Decision-server calls".
+A failing endpoint is called at most once per cooldown: 30 s after the first failure, doubling to 10 minutes.
+One good answer clears the cooldown.
 
 See the [context meter guide](docs/context-meter.md), [operations footer guide](docs/ops-footer.md), and [Codex routing guide](docs/codex-routing.md).
 
@@ -415,7 +423,7 @@ Not verified: writing through the OpenKnowledge project API. The adapter only de
 | `/tenantext on`, `off`, `save` | `/ste on`, `/ste off` set the default. Rules already in the current context stay until `/clear` |
 | `/tenantext context` | Built-in `/context` and `/cost` |
 | Startup guard | None. Claude Code exposes no hook before a provider request. It sends nothing before the first prompt on its own |
-| `~/.pi/agent/tenantext/settings.json` | `~/.claude/tenantext/settings.json` plus `last-injection.json` |
+| `tenantext/settings.json` in the profile's Pi agent directory | `~/.claude/tenantext/settings.json` plus `last-injection.json` |
 
 The marketplace manifest is `packages/tenantext/.claude-plugin/marketplace.json` from the kit root.
 Its plugin source is the sibling `claude-code/` directory inside this package.
@@ -509,14 +517,14 @@ Provenance (`--repo`): reads `git log` and scores three Effort Score criteria, 5
 
 | Role | Main model | Top thinking | Share |
 | --- | --- | --- | ---: |
-| main | claude-fable-5-1 | high | 74% |
-| subagent:reviewer | gpt-5.6-luna | xhigh | 26% |
+| main | example-model | high | 74% |
+| subagent:reviewer | example-review-model | xhigh | 26% |
 
 **Provenance:** 3 code commits; 3 commits with model Co-Authored-By provenance; tickets #12; 2 fix or review commits.
 **Flags:** none
 **Bundle:** 12 concepts, 100% kept current on this branch
 
-_Generated by slopscore-pr on 2026-09-19. Traces stay on the contributor's machine._
+_Generated by slopscore-pr on 2030-01-19. Traces stay on the contributor's machine._
 ```
 
 Sessions count when their first model call is at or after the merge-base commit time and their cwd is the repository or a subdirectory. Up to six role rows, sorted by share; the rest fold into `other`. `--no-spend` prints `n/a` for spend and keeps effort share and model points. Flags are `no local traces`, `N commits without a model trailer` and `tiers.json differs from defaults`. Without traces the block keeps the provenance half and one line, `No local traces for this branch.`. The block carries totals and names only: no path, session id or token count.
@@ -550,7 +558,7 @@ Layout:
 | `src/rules.ts` | Rule block and version |
 | `src/guard.ts` | Guard state machine, pure |
 | `src/report.ts` | Context report builder, pure |
-| `src/settings.ts` | Defaults file under `~/.pi/agent/tenantext/` |
+| `src/settings.ts` | Settings defaults, load and save for `tenantext/settings.json` |
 | `test/` | Unit tests for tenantext, codex-accounts, and Claude Code hooks |
 | `slopscore/` | Spend, model effort, Git provenance, PR reports, and OKF checks |
 | `skills/` | Pi skill resources included with the suite |

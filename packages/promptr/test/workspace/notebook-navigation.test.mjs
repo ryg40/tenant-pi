@@ -6,9 +6,9 @@ import { CompanionSpikeView, KEY_REFERENCE, keyReferenceLines, keyReferenceText 
 
 const NOTE = [
   'free paragraph line one', 'free paragraph line two', '',
-  '-- Queued 2026-09-08 10:00Z --', 'first prompt', 'second line', '-- end --', '',
+  '-- Queued 2030-09-08 10:00Z --', 'first prompt', 'second line', '-- end --', '',
   'lonely line', '',
-  '-- Note 2026-09-08 10:05Z --', 'note body', '',
+  '-- Note 2030-09-08 10:05Z --', 'note body', '',
 ].join('\n');
 const INVERSE = '\x1b[7m';
 const plain = (rows) => rows.map((row) => row.replace(/\x1b\[[0-9;]*m/g, ''));
@@ -32,8 +32,8 @@ test('[ and ] walk whole entries, the notebook paints exactly those lines, and t
   assert.deepEqual(highlighted(v), ['free paragraph line one', 'free paragraph line two']);
   v.handleInput(']');
   assert.deepEqual(v.getSelection(), { startLine: 4, endLine: 7 });
-  assert.match(v.getNotice(), /^entry 2\/4 · lines 4-7 · Queued 2026-09-08 10:00Z · Enter queues, S sends, E copies, D deletes$/);
-  assert.deepEqual(highlighted(v), ['-- Queued 2026-09-08 10:00Z --', 'first prompt', 'second line', '-- end --']);
+  assert.match(v.getNotice(), /^entry 2\/4 · lines 4-7 · Queued 2030-09-08 10:00Z · Enter queues, S sends, E copies, D deletes$/);
+  assert.deepEqual(highlighted(v), ['-- Queued 2030-09-08 10:00Z --', 'first prompt', 'second line', '-- end --']);
   v.handleInput(']'); v.handleInput(']'); v.handleInput(']');
   assert.deepEqual(v.getSelection(), { startLine: 11, endLine: 12 }, 'stops at the last entry');
   v.handleInput('['); v.handleInput('[');
@@ -111,7 +111,7 @@ test('D asks y/n, then removes exactly the highlighted lines and bumps the note 
   v.handleInput('n');
   assert.equal(v.getNoteText(), NOTE);
   v.handleInput('D'); v.handleInput('y');
-  assert.equal(v.getNoteText(), ['free paragraph line one', 'free paragraph line two', '', '', 'lonely line', '', '-- Note 2026-09-08 10:05Z --', 'note body', ''].join('\n'));
+  assert.equal(v.getNoteText(), ['free paragraph line one', 'free paragraph line two', '', '', 'lonely line', '', '-- Note 2030-09-08 10:05Z --', 'note body', ''].join('\n'));
   assert.equal(v.snapshot().documentRevision, 1);
   assert.match(v.getNotice(), /deleted notebook lines 4-7/);
   assert.deepEqual(highlighted(v), [''], 'the selection collapses to the line where the entry was');

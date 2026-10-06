@@ -18,6 +18,8 @@ Record each gate as passed, failed, blocked or not run. Never write "passed" for
 
 Gates 1 to 4 are the four offline checks that `scripts/publish_portable.py` runs itself. Gate 1 includes [the documentation check](#documentation-check). The test `DocCheckRepoTests` of `tests/test_doc_check.py` runs it on the publish set. A finding fails the unit tests. Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
 
+When the kit pin changes, run `grep -rn '<old version>' . --exclude-dir=.git --exclude=package-lock.json` and review each match.
+
 ### Gate 6: the clean Linux core trial
 
 - Use a Linux user with no Pi profile of its own, no kit credentials and no optional services.
@@ -73,6 +75,7 @@ These steps come from [publishing](../publishing.md).
    The command pushes two refs by name: the branch `portable` to the destination named by `--remote` and `--remote-branch`, and the tag `portable/<yyyymmdd>-<source sha>` of this snapshot. It pushes no other tag and no other branch. When the snapshot did not change, for example after a build with `--no-push`, it pushes the snapshot tag that already points at the snapshot commit. The commit and the tag carry the neutral identity `tenant-pi portable`.
 
 6. Record the tag, the gate results and the open gaps in the release notes.
+7. Update the documentation site of the kit, if you maintain one: set the new tag in its version file, run its capture script, and update the pages that changed. (The maintainers' site is tenant-docs; its `README.md` section `New release of a project` has the steps.)
 
 Never publish with `--skip-checks`.
 

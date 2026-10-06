@@ -64,6 +64,12 @@ Fact ids exist already: `ev-commit-<7 hex>` for each listed commit, `ev-issue-<n
 
 For other sources, write an `evidence` record. `kind` is `issue`, `pr`, `commit`, `okf`, `test`, `file`, `url` or `note`. `ref` is an `https://` URL, a repository path, a commit hash or an OKF id. `confidence` is `verified`, `reported`, `estimate` or `proposal`.
 
+Keep issue numbers and pull request numbers separate. Name each pull request and cite its own `kind: pr` evidence record.
+The example cites merged pull requests 1 and 2 with evidence ids `ev-pr-1` and `ev-pr-2`.
+Pull requests 7 and 8 closed without merge and have separate evidence ids `ev-pr-7` and `ev-pr-8`.
+Validation tasks #5 and #6 refer to pull requests 7 and 8, respectively.
+Storage and export use issue records #3 and #4.
+
 ## Rules
 
 1. Never invent progress. A closed issue does not prove a merge, a deployment or a passed test. Use `status: reported` or `status: proposal` when no evidence verifies a claim.

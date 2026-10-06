@@ -9,7 +9,7 @@ import {
  refreshBrowseModel, resumeCard, rowLabel, stalenessLabel,
 } from '../../dist/src/project/browse.mjs';
 
-const NOW = Date.parse('2026-09-07T12:00:00.000Z');
+const NOW = Date.parse('2030-09-07T12:00:00.000Z');
 const H = 3_600_000, D = 86_400_000;
 const iso = (ms) => new Date(ms).toISOString();
 
@@ -74,7 +74,7 @@ test('staleness labels never invent recency', () => {
  assert.equal(stalenessLabel(iso(NOW - 5 * 60_000), NOW), '5m ago');
  assert.equal(stalenessLabel(iso(NOW - 3 * H), NOW), '3h ago');
  assert.equal(stalenessLabel(iso(NOW - 9 * D), NOW), '9d ago');
- assert.equal(stalenessLabel(iso(NOW - 60 * D), NOW), 'on 2026-07-09');
+ assert.equal(stalenessLabel(iso(NOW - 60 * D), NOW), 'on 2030-07-09');
  assert.equal(stalenessLabel(iso(NOW + H), NOW), 'just now');
 });
 

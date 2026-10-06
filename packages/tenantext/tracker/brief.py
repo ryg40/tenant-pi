@@ -637,7 +637,7 @@ def validate(model, *, now=None):
     if now is not None:
         now_dt = parse_utc(now)
         if now_dt is None:
-            raise ValueError("now must look like 2026-09-23T06:00:00Z")
+            raise ValueError("now must look like 2030-01-23T06:00:00Z")
     return _sorted(_Validator(model, now_dt).run())
 
 
@@ -738,7 +738,7 @@ class _Validator:
             self.err("url-unsafe", "'repo_url' must be a credential-free https:// URL", _line(meta, "repo_url"))
         for key in ("snapshot", "evidence_checked", "previous_snapshot"):
             if isinstance(meta.get(key), str) and parse_utc(meta[key]) is None:
-                self.err("date-format", f"'{key}' must be UTC like 2026-09-23T06:00:00Z", _line(meta, key))
+                self.err("date-format", f"'{key}' must be UTC like 2030-01-23T06:00:00Z", _line(meta, key))
         if isinstance(meta.get("synthesis"), str) and meta["synthesis"] not in SYNTHESIS:
             self.err("enum", f"'synthesis' must be one of: {', '.join(SYNTHESIS)}", _line(meta, "synthesis"))
         days = meta.get("stale_after_days", DEFAULT_STALE_AFTER_DAYS)
@@ -800,7 +800,7 @@ class _Validator:
                 if allowed and value not in allowed:
                     self.err("enum", f"'{key}' in {where} must be one of: {', '.join(allowed)}; found '{value}'", line)
                 if (rtype, key) in DATE_FIELDS and parse_utc(value) is None:
-                    self.err("date-format", f"'{key}' in {where} must be UTC like 2026-09-23T06:00:00Z", line)
+                    self.err("date-format", f"'{key}' in {where} must be UTC like 2030-01-23T06:00:00Z", line)
                 limit = WORD_LIMITS.get((rtype, key))
                 if limit and words(value) > limit:
                     self.err("words", f"'{key}' in {where} has {words(value)} words; the limit is {limit}", line)

@@ -125,8 +125,9 @@ A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of t
 | `untested_in_range` for `pi` | Keep the installed version and record `core_runtime_untested_in_range`. The kit tests ran on the tested version only. |
 | `missing` for `pi` | Install the pin by hand (setup Stage 6), or add its directory to `PATH` in the launching shell. |
 | `mismatch` for `pi` | Keep the other Pi and record the gap, or install the manifest pin (`runtime.piVersion`) under a prefix. Do not run the global install line as a default step: it replaces the other Pi for every profile. Example: an installed Pi `0.99.2` is a `mismatch`. |
-| `mismatch` for `node` | Select Node 22 with your version manager in the launching shell. |
+| `mismatch` for `node` | Select Node 24 with your version manager in the launching shell. |
 | `unparsed` | Run the tool with `--version` by hand and read the output. |
+| `Cannot connect to Podman` | The Podman machine may be stopped. Run `podman machine list`, then `podman machine start` if stopped; check `podman info` and the [macOS scan path](macos.md#scanner-recommended-podman-container-path). Not verified: this diagnostic with the kit on macOS. |
 
 ### The key or the `PATH` line is missing in another shell
 

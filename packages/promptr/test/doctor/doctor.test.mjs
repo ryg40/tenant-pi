@@ -19,7 +19,7 @@ function probe(overrides = {}) {
  return {
   env: { PI_CODING_AGENT_DIR: '/agent', OPENKNOWLEDGE_USERNAME: 'u', OPENKNOWLEDGE_PASSWORD: 'p-secret', GITEA_TOKEN: 'tok-secret', ...(overrides.env ?? {}) },
   cwd: '/proj', nowMs: Date.parse('2026-09-08T10:00:00Z'),
-  nodeVersion: '22.22.2', nodeEngines: '>=22.22.0 <23', packageVersion: '0.1.0', packageRoot: '/pkg',
+  nodeVersion: '24.21.0', nodeEngines: '>=24.0.0 <25', packageVersion: '0.1.0', packageRoot: '/pkg',
   agentDir: '/agent', stateRoot: '/agent/promptr', projectDir: '/agent/promptr/projects/demo-1', uid: 1000,
   exists: (f) => f in files || f in dirs,
   readFile: (f) => files[f],
@@ -33,10 +33,10 @@ function probe(overrides = {}) {
 const byId = (report, id) => report.checks.find((c) => c.id === id);
 
 test('nodeSatisfies handles the engines range', () => {
- assert.equal(nodeSatisfies('v22.22.2', '>=22.22.0 <23'), true);
- assert.equal(nodeSatisfies('22.21.9', '>=22.22.0 <23'), false);
- assert.equal(nodeSatisfies('23.0.0', '>=22.22.0 <23'), false);
- assert.equal(nodeSatisfies('nope', '>=22.22.0 <23'), false);
+ assert.equal(nodeSatisfies('v24.21.0', '>=24.0.0 <25'), true);
+ assert.equal(nodeSatisfies('22.22.3', '>=24.0.0 <25'), false);
+ assert.equal(nodeSatisfies('25.0.0', '>=24.0.0 <25'), false);
+ assert.equal(nodeSatisfies('nope', '>=24.0.0 <25'), false);
 });
 
 test('a healthy machine reports ok/info only and the render never contains a credential', () => {

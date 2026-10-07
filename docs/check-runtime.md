@@ -48,14 +48,14 @@ The requirement of each tool comes from `manifest.runtime`:
 
 The range grammar is the minimal grammar that the manifest uses, and nothing more:
 
-- `>=a.b.c <d`: lower bound included, upper bound excluded. Example: `>=22.22.0 <23`.
+- `>=a.b.c <d`: lower bound included, upper bound excluded. Example: `>=24.0.0 <25`.
 - `>=a.b`: lower bound only. Example: `>=3.11`.
 
 The lower bound has two or three numbers. The upper bound has one to three numbers. An omitted number is 0. The upper bound must exceed the lower bound. Another form fails with `runtime_range` before a process starts. Node and Python still require the exact reviewed range texts. Pi accepts this grammar. `runtime.piAcceptedRange` requires both the lower bound (`>=`) and the upper bound (`<`). A Pi range without an upper bound fails with `range_without_upper_bound: manifest.runtime.piAcceptedRange`. The tested version must be inside the range. Otherwise the validator gives `tested_outside_range: manifest.runtime.piAcceptedRange`.
 
 The kit uses stable numeric bounds, not the full npm range rules. A prerelease has version text before the stable release, such as `1.0.4-rc.1`. A prerelease of the lower bound is outside the range. A prerelease above the lower bound and below the upper bound is inside. A prerelease of the upper bound is outside too. For `>=1.0.3 <1.1`, `1.0.3-rc.1` and `1.1.0-rc.1` are `mismatch`; `1.0.4-rc.1` is `untested_in_range`. This rule keeps the existing Node and Python comparison and prevents entry into the next minor line. A build suffix (`+...`) does not change range acceptance. Different text still prevents Pi `match`.
 
-The version is the first line of standard output, or of standard error when standard output is empty. Only the first 256 bytes count. Accepted forms: `1.0.0`, `v22.22.0`, `Python 3.11.2`: an optional name of one word, an optional `v`, then the version token. The token is two or three numbers, then an optional prerelease (`-` and characters from `0-9A-Za-z.-`, or lower-case letters and digits such as `rc1`), then an optional build (`+` and characters from `0-9A-Za-z.-`). The token has 40 characters maximum. Other text after the numbers, or a longer token, is `unparsed`.
+The version is the first line of standard output, or of standard error when standard output is empty. Only the first 256 bytes count. Accepted forms: `1.0.0`, `v24.21.0`, `Python 3.11.2`: an optional name of one word, an optional `v`, then the version token. The token is two or three numbers, then an optional prerelease (`-` and characters from `0-9A-Za-z.-`, or lower-case letters and digits such as `rc1`), then an optional build (`+` and characters from `0-9A-Za-z.-`). The token has 40 characters maximum. Other text after the numbers, or a longer token, is `unparsed`.
 
 ## Pin record
 
@@ -108,7 +108,7 @@ Not verified: how Pi `<reviewed release>` treats a `settings.json` that still na
 One JSON object on standard output, with sorted keys and fixed separators. The same installed tools give the same bytes.
 
 ```json
-{"node":{"installed":"22.22.0","required":">=22.22.0 <23","status":"match"},"pi":{"acceptedRange":"<accepted range>","installed":"<newer accepted version>","required":"<pin>","status":"untested_in_range","tested":"<pin>"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
+{"node":{"installed":"24.21.0","required":">=24.0.0 <25","status":"match"},"pi":{"acceptedRange":"<accepted range>","installed":"<newer accepted version>","required":"<pin>","status":"untested_in_range","tested":"<pin>"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
 ```
 
 | Status | Meaning | `installed` |

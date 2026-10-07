@@ -28,7 +28,7 @@ The tenantext extension has three functions:
 
 | Piece | Version |
 | --- | --- |
-| Node | `>=22.22.0 <23` |
+| Node | `>=24.0.0 <25` |
 | Pi (`@earendil-works/pi-coding-agent`) | `runtime.piVersion` in `../../config/manifest.json`; runtime qualification remains incomplete |
 
 No build step. Pi loads the TypeScript resource entry points directly.

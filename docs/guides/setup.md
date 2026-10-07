@@ -58,11 +58,12 @@ Requirements of this release (`config/manifest.json`, `runtime`):
 | --- | --- | --- |
 | Linux | the first target | Not verified: a complete live run on Linux. |
 | Python | `>=3.11` | Standard library only. The kit has no Python dependency. |
-| Node | `>=22.22.0 <23` | The same Node installs Pi and builds native addons later. |
+| Node | `>=24.0.0 <25` | The same Node installs Pi and builds native addons later. |
 | Pi | `runtime.piAcceptedRange` | Stage 6 installs the tested `<pin>` when needed. |
 | Git | any current version | Only to clone the kit. |
 
 macOS, Windows, browser-hosted Pi and Pi inside Herdr are not qualified. See [the release checklist](release-checklist.md#platforms-that-are-not-qualified).
+For Apple silicon, use [the macOS adaptation](macos.md) with these stages; it does not qualify the platform.
 
 Warning: a bare `pi` command opens the live profile `~/.pi/agent`. To read the Pi version without that, use `check-runtime` (Stage 1) or set `PI_CODING_AGENT_DIR` to an empty temporary directory.
 
@@ -244,13 +245,13 @@ Warning: each command below changes the machine. Read it before you run it.
 
 Use the package source of your distribution or a version manager. Examples:
 
-| Distribution | Node 22 | Python 3.11 or later |
+| Distribution | Node 24 | Python 3.11 or later |
 | --- | --- | --- |
-| Fedora | `dnf install nodejs22` | `dnf install python3` |
-| Debian or Ubuntu | NodeSource 22 repository, or nvm | `apt install python3` |
-| Any, per user | `nvm install 22 && nvm use 22` | distribution package |
+| Fedora | `dnf install nodejs24` | `dnf install python3` |
+| Debian or Ubuntu | NodeSource 24 repository, or nvm | `apt install python3` |
+| Any, per user | `nvm install 24 && nvm use 24` | distribution package |
 
-Not verified: the exact package name `nodejs22` on every Fedora release.
+Not verified: the exact package name `nodejs24` on every Fedora release.
 
 ### Pi
 

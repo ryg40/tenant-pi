@@ -51,7 +51,7 @@ Tenantext is a Pi extension suite with a Claude Code plugin under `claude-code/`
 | Source | `packages/tenantext` |
 | Claude Code plugin | `claude-code/`, including the `herdr` and `slopscore-pr` skills |
 | License | MIT, `packages/tenantext/LICENSE`; third-party notices in `packages/tenantext/THIRD_PARTY_NOTICES.md` and `packages/tenantext/licenses/` |
-| Node | `>=22.22.0 <23` (`engines` in `packages/tenantext/package.json`) |
+| Node | `>=24.0.0 <25` (`engines` in `packages/tenantext/package.json`) |
 
 ### Publish set
 
@@ -111,7 +111,7 @@ Promptr is a Pi extension: a prompt queue, progress checkpoints, staged handoffs
 
 ### Build and test
 
-Node `>=22.22.0 <23` is necessary.
+Node `>=24.0.0 <25` is necessary.
 
 ```sh
 cd packages/promptr

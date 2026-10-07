@@ -82,7 +82,7 @@ These platforms are not qualified in this release. A guide may give an adaptatio
 
 | Platform | Status | Evidence that would change the status |
 | --- | --- | --- |
-| macOS | Not qualified | Gate 6 on a clean macOS user with Homebrew or nvm Node, plus the tests and the publish check on that host. |
+| [macOS on Apple silicon](macos.md) | Not qualified | Gate 6 on a clean macOS user with Homebrew or nvm Node, plus the tests and the publish check on that host. |
 | Windows, also WSL | Not qualified | Gate 6 under WSL or native Windows; the kit uses POSIX paths and modes, so a native Windows run also needs a code review. |
 | Browser-hosted Pi | Not qualified | Gate 6 with Pi started from a browser terminal, with the launch environment checks of [the setup guide](setup.md#shells-that-do-not-inherit-your-variables). |
 | Pi inside Herdr | Not qualified | Gate 6 with Pi started in a Herdr pane, plus the `herdr` component loaded and used once. |

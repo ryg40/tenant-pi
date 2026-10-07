@@ -33,7 +33,7 @@ The live Pi pilot, its measurements and the Claude path are not proved.
 
 | Piece | Required | Checked by |
 | --- | --- | --- |
-| Node | `>=22.22.0 <23` (`engines`) | `promptr-doctor` |
+| Node | `>=24.0.0 <25` (`engines`) | `promptr-doctor` |
 | Pi (`@earendil-works/pi-coding-agent`) | 1.0.x. The build, 756 tests, typecheck and offline smoke pass with the 1.0.4 pins. A start without a model is historical evidence from 1.0.2. The sidebar uses private Pi renderer adapters. A package load or a session with a model on 1.0.4 is not verified | `promptr-doctor`, `/promptr-doctor` |
 | Herdr | 0.9.x; needed for `/coordinatr-herdr`, Start fresh and the standalone generator. The sidebar works without it | `promptr-doctor` |
 | OpenKnowledge | an HTTPS origin plus `OPENKNOWLEDGE_USERNAME` / `OPENKNOWLEDGE_PASSWORD` exported in the shell that launches Pi and the companion. Optional: everything works locally without it | `promptr-doctor` (presence only), `--online` reads the bound brief |

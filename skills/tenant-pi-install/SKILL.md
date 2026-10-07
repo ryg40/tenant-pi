@@ -41,7 +41,7 @@ test "${HERDR_ENV:-}" = 1 && echo "inside Herdr"
 
 The `for` loop prints one line for `~/.pi/agent`, and one more line for the directory in `PI_CODING_AGENT_DIR` when the variable is set. Each line says `present` or `absent`. No line is not `absent`: when a line is missing from the output, run the loop again.
 
-Requirements the kit pins: Linux first, Node `>=22.22.0 <23`, Python `>=3.11`, Pi inside `runtime.piAcceptedRange`. The install command uses the tested `<pin>`. macOS, Windows, browser-hosted Pi, and Herdr-hosted Pi are unqualified; say so if you see them, then continue only with the user's agreement.
+Requirements the kit pins: Linux first, Node `>=24.0.0 <25`, Python `>=3.11`, Pi inside `runtime.piAcceptedRange`. The install command uses the tested `<pin>`. macOS, Windows, browser-hosted Pi, and Herdr-hosted Pi are unqualified; say so if you see them, then continue only with the user's agreement.
 
 Ask when unclear:
 

@@ -20,7 +20,7 @@ STATUSES = ("match", "untested_in_range", "mismatch", "missing", "unparsed")
 MAX_OUTPUT = 256
 # The longest version token that the output echoes.
 MAX_TOKEN = 40
-# `1.0.0`, `v22.22.0`, `Python 3.11.2`: an optional name, an optional `v`, then the token.
+# `1.0.0`, `v24.21.0`, `Python 3.11.2`: an optional name, an optional `v`, then the token.
 # The token is two or three numbers, an optional prerelease (`-rc.1`, `a1`) and an optional
 # build (`+abc`). Free text after the numbers is not a version.
 VERSION = re.compile(r"(?:[A-Za-z][A-Za-z0-9._-]{0,31} )?v?((\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?"

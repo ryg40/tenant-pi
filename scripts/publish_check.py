@@ -69,7 +69,7 @@ PUBLISH = (
     "scripts/baseline.py", "tests/test_baseline.py", "docs/directory-baseline.md",
     "scripts/doc_check.py", "tests/test_doc_check.py", "docs/guides/setup.md", "docs/guides/modules.md",
     "docs/guides/troubleshooting.md", "docs/guides/privacy.md", "docs/guides/candidate-update.md",
-    "docs/guides/release-checklist.md", "docs/guides/pin-move-release.md",
+    "docs/guides/release-checklist.md", "docs/guides/pin-move-release.md", "docs/guides/macos.md",
     "AGENTS.md", "GLOSSARY.md", "docs/agents/issue-tracker.md",
     "tests/test_skill_invariants.py", "tests/test_knowledge_skills.py",
 )

@@ -79,7 +79,7 @@ class UpdateTests(unittest.TestCase):
         (self.bin / "npm").write_text(npm_script)
         (self.bin / "npm").chmod(0o700)
         # check-runtime tests the real Python, but does not need the caller's Node version.
-        (self.bin / "node").write_text("#!/bin/sh\nprintf '22.22.3\\n'\n")
+        (self.bin / "node").write_text("#!/bin/sh\nprintf '24.21.0\\n'\n")
         (self.bin / "node").chmod(0o700)
         self.env = patch.dict(os.environ, {"HOME": str(self.home), "PATH": str(self.bin) + ":/usr/bin:/bin",
                              "OPENAI_API_KEY": "synthetic-canary", "NODE_OPTIONS": "synthetic-canary",

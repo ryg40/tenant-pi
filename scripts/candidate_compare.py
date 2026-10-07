@@ -32,7 +32,7 @@ BUILTIN_ENTRY = re.compile(r"[+!-]?builtin:[a-z][a-z0-9.-]*\Z")
 SAFE_NAME = re.compile(r"[A-Za-z0-9_.:@-]{1,64}\Z")
 # Closed public sets. They repeat reviewed kit data on purpose: a recorded manifest or
 # provenance value is echoed only when it names something the kit itself declares.
-RANGES = (">=22.22.0 <23", ">=3.11")
+RANGES = (">=24.0.0 <25", ">=3.11")
 PLAIN_VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")  # no free-text prerelease tag
 DECLARED_ENV = frozenset(("TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY", "GITEA_TOKEN"))
 REVIEWED_NPM = frozenset(npm_name(s["spec"]) for s in REVIEWED_SOURCES.values() if s and s["kind"] == "npm")

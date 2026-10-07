@@ -56,7 +56,7 @@ Use an isolated, disposable Linux job container. Do not mount a live Pi profile,
 | --- | --- | --- |
 | Runner label | `ubuntu-latest` | `ubuntu-latest` |
 | Python | Python 3.11, set by `setup-python` | Python 3.11, set by `setup-python` |
-| Node | Node 20 or later for JavaScript actions | Node 22.22.0 and its npm, set by `setup-node` |
+| Node | Node 20 or later for JavaScript actions | Node 24.21.0 and its npm, set by `setup-node` |
 | Other tools | Git and Bash | Git, Bash and the package test prerequisites |
 | Network | Checkout and language/action setup only | Also the npm registry, package archives and the Gitea API |
 | Credentials | Checkout token only | Checkout token; preflight and request steps also need `PI_UPDATE_TOKEN` |

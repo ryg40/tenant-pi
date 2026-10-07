@@ -11,7 +11,7 @@
     "pi"
   ],
   "engines": {
-    "node": ">=22.22.0 <23"
+    "node": ">=24.0.0 <25"
   },
   "scripts": {
     "test": "node --experimental-strip-types --no-warnings --test test/*.test.ts slopscore/test/*.test.ts",

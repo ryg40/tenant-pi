@@ -22,7 +22,7 @@ NEWER = ".".join(map(str, parse_range(RUNTIME["piAcceptedRange"], "f")[1]))
 OLDER = "0.99.2"
 
 
-def report(pi=PIN, node="22.22.0", python="3.11.2", **status):
+def report(pi=PIN, node="24.21.0", python="3.11.2", **status):
     """The `check-runtime` report for these installed versions.
 
     A keyword such as `pi_status="mismatch"` gives a status other than `match`.
@@ -310,9 +310,9 @@ class ReadinessTests(unittest.TestCase):
             result = readiness(self.plan, report=report(pi=NEWER, pi_status="mismatch"), generated=generated)
             self.assertEqual(([] if generated else self.fixed[:1]) + [pi], result["readinessGaps"])
             self.assertFalse(result["runtimeReady"])
-        both = self.gaps(report=report(pi=OLDER, node="23.0.0", pi_status="mismatch", node_status="mismatch"),
+        both = self.gaps(report=report(pi=OLDER, node="22.22.3", pi_status="mismatch", node_status="mismatch"),
                          generated=True)
-        self.assertEqual([{"code": "node_runtime_mismatch", "subject": RUNTIME["nodeRange"], "installed": "23.0.0",
+        self.assertEqual([{"code": "node_runtime_mismatch", "subject": RUNTIME["nodeRange"], "installed": "22.22.3",
                            "required": RUNTIME["nodeRange"]},
                           {"code": "core_runtime_mismatch", "subject": self.core, "installed": OLDER, "required": PIN}],
                          both)
@@ -362,7 +362,7 @@ class ReadinessTests(unittest.TestCase):
         for good in (report(), report(pi=NEWER, pi_status="mismatch"), report(pi=PIN + "-beta.1", pi_status="mismatch"),
                      report(pi=IN_RANGE, pi_status="untested_in_range"),
                      report(pi=IN_RANGE + "-rc.1", pi_status="untested_in_range"),
-                     report(node="22.22.0-rc.1", node_status="mismatch"), report(python="3.14.0rc1"),
+                     report(node="24.0.0-rc.1", node_status="mismatch"), report(python="3.14.0rc1"),
                      report(pi=None, node=None, python=None, pi_status="missing", node_status="unparsed",
                             python_status="missing")):
             self.assertIs(good, runtime_report(good, RUNTIME))
@@ -394,7 +394,7 @@ class ReadinessTests(unittest.TestCase):
                  # The status must agree with the two versions of its entry.
                  (changed("pi", "installed", NEWER), "runtime_report_status: runtime_report.pi.status"),
                  (changed("pi", "status", "mismatch"), "runtime_report_status: runtime_report.pi.status"),
-                 (changed("node", "installed", "23.0.0"), "runtime_report_status: runtime_report.node.status"),
+                 (changed("node", "installed", "22.22.3"), "runtime_report_status: runtime_report.node.status"),
                  (changed("node", "status", "mismatch"), "runtime_report_status: runtime_report.node.status"),
                  (changed("python", "installed", "3.10.14"), "runtime_report_status: runtime_report.python.status"),
                  (changed("pi", "installed", None), "runtime_report_installed: runtime_report.pi.installed"),
@@ -492,7 +492,7 @@ class PiInstallTests(unittest.TestCase):
         self.assertEqual([other], setup_commands(self.plan, report(pi=NEWER, pi_status="mismatch"))["setup"])
         # Node and Python do not change the mark of the Pi line.
         self.assertEqual(setup_commands(self.plan, report()),
-                         setup_commands(self.plan, report(node="24.1.0", python=None, node_status="mismatch",
+                         setup_commands(self.plan, report(node="22.22.3", python=None, node_status="mismatch",
                                                           python_status="missing")))
 
     def test_mark_is_pure(self):

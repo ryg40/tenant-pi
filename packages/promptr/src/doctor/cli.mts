@@ -52,7 +52,7 @@ export function packageRootOf(moduleUrl: string = import.meta.url): string {
 export function buildProbe(cwd: string, env: NodeJS.ProcessEnv = process.env): DoctorProbe {
   const root = packageRootOf();
   let packageVersion = "unknown";
-  let nodeEngines = ">=22.22.0 <23";
+  let nodeEngines = ">=24.0.0 <25";
   try {
     const pkg = JSON.parse(readFile(path.join(root, "package.json")) ?? "{}") as { version?: unknown; engines?: { node?: unknown } };
     if (typeof pkg.version === "string") packageVersion = pkg.version;

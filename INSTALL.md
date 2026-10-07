@@ -62,7 +62,7 @@ Requirements:
 
 | Item | Required |
 | --- | --- |
-| Node | `>=22.22.0 <23` |
+| Node | `>=24.0.0 <25` |
 | Python | `>=3.11` |
 | Git | any current version |
 | Pi | `runtime.piAcceptedRange`; Stage 3 installs the tested `<pin>` when needed |
@@ -75,14 +75,14 @@ Done when you can state the OS, Node, Python, Git and Pi, and for each live agen
 
 Goal: Node, Python and Git at the required versions. Show the command for the machine, then run it on yes.
 
-| Machine | Node 22 | Python 3.11+ | Git |
+| Machine | Node 24 | Python 3.11+ | Git |
 | --- | --- | --- | --- |
-| macOS, Homebrew | `brew install node@22`, then `brew link --overwrite node@22` | `brew install python@3.12` | `xcode-select --install` |
-| macOS or Linux, nvm | `nvm install 22 && nvm use 22` | distribution package or Homebrew | distribution package |
-| Debian or Ubuntu | NodeSource 22 repository, or nvm | `apt install python3` | `apt install git` |
-| Fedora | `dnf install nodejs22` | `dnf install python3` | `dnf install git` |
+| macOS, Homebrew | `brew install node@24`, then `brew link --overwrite node@24` | `brew install python@3.12` | `xcode-select --install` |
+| macOS or Linux, nvm | `nvm install 24 && nvm use 24` | distribution package or Homebrew | distribution package |
+| Debian or Ubuntu | NodeSource 24 repository, or nvm | `apt install python3` | `apt install git` |
+| Fedora | `dnf install nodejs24` | `dnf install python3` | `dnf install git` |
 
-Warning: `brew link --overwrite node@22` and `nvm use` change the default `node` of the user. A Pi that another Node installed can stop working. Ask first.
+Warning: `brew link --overwrite node@24` and `nvm use` change the default `node` of the user. A Pi that another Node installed can stop working. Ask first.
 
 The same Node must install Pi and build native addons later. If several Node installs exist, ask which one, and use it for every later command.
 

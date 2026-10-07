@@ -3,7 +3,7 @@
   "runtime": {
     "piVersion": "1.0.4",
     "piAcceptedRange": ">=1.0.4 <1.1",
-    "nodeRange": ">=22.22.0 <23",
+    "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
   "components": {

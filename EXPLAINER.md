@@ -54,7 +54,7 @@ Status: Linux is the first target. The kit steps are tested offline. Not verifie
 | --- | --- | --- |
 | Linux | the first target | macOS and Windows are not qualified; see [the release checklist](docs/guides/release-checklist.md#platforms-that-are-not-qualified). |
 | Python | `>=3.11` | Standard library only. The kit has no Python dependency. |
-| Node | `>=22.22.0 <23` | With npm. The same Node installs Pi. |
+| Node | `>=24.0.0 <25` | With npm. The same Node installs Pi. |
 | Pi | `<pin>` | The npm package `@earendil-works/pi-coding-agent`. Step 10 installs it when it is missing. |
 | Git | any current version | Only to clone the kit. |
 
@@ -149,8 +149,8 @@ Expected output, on a machine that has Pi and a live profile:
 
 ```text
 Linux x86_64
-v22.22.3
-10.9.8
+v24.21.0
+11.19.0
 Python 3.11.2
 git version 2.39.5
 /usr/local/bin/pi
@@ -193,7 +193,7 @@ Two Pi variables change where a profile keeps its data. Record each one that the
 
 The temporary directory stays after the command. Observed with Pi 1.0.2: `pi --version` leaves an empty agent directory unchanged.
 
-`node-compile-cache/` is the compile cache of Node. It stays after the command too. Observed with Pi 1.0.2 and Node 22.22.3. Not verified: other versions.
+`node-compile-cache/` is the compile cache of Node. It stays after the command too. Observed with Pi 1.0.2. Not verified: the cache behavior with Node 24.
 
 </details>
 
@@ -303,7 +303,7 @@ python3 scripts/tenant_pi.py check-runtime
 Expected output:
 
 ```json
-{"node":{"installed":"22.22.3","required":">=22.22.0 <23","status":"match"},"pi":{"installed":"<pin>","required":"<pin>","status":"match"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
+{"node":{"installed":"24.21.0","required":">=24.0.0 <25","status":"match"},"pi":{"installed":"<pin>","required":"<pin>","status":"match"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
 ```
 
 The exit code is 0 when each status is `match`, and 1 when a status is not `match`. It is 2 for a refusal: bad input, or a temporary directory that the kit cannot remove.
@@ -357,7 +357,7 @@ The object has one entry for `pi`, `node` and `python`. Each entry has three key
 This is the report of a machine where another Pi version is installed. The run used a stand-in `pi` command, and `<installed>` is the version that it printed:
 
 ```json
-{"node":{"installed":"22.22.3","required":">=22.22.0 <23","status":"match"},"pi":{"installed":"<installed>","required":"<pin>","status":"mismatch"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
+{"node":{"installed":"24.21.0","required":">=24.0.0 <25","status":"match"},"pi":{"installed":"<installed>","required":"<pin>","status":"mismatch"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
 ```
 
 With `mismatch` for Pi you have three choices: stop, keep the installed Pi and record the difference, or install `<pin>` under a separate directory. Step 10 has the commands. The kit never changes the installed Pi.
@@ -747,7 +747,7 @@ Without `--runtime-report`, the kit does not know the installed versions. The pl
   },
   "readinessGaps": [
     {"code": "target_absence_unverified", "subject": "/home/you/.pi/profiles/main"},
-    {"code": "node_runtime_unverified", "subject": ">=22.22.0 <23"},
+    {"code": "node_runtime_unverified", "subject": ">=24.0.0 <25"},
     {"code": "core_runtime_unverified", "subject": "@earendil-works/pi-coding-agent@<pin>"}
   ]
 }
@@ -846,7 +846,7 @@ The three fixed keys are the claims of the `core` component in the manifest. `pa
 The whole `state.json`:
 
 ```json
-{"provenance":{"enabled":["core"],"generatedAt":"2030-01-01T12:00:00Z","kitCommit":"<commit>","kitSchemaVersion":1,"nodeRange":">=22.22.0 <23","outputs":["settings.json",".tenant-pi/choices.json",".tenant-pi/state.json"],"piVersion":"<pin>","pins":{"core":"npm:@earendil-works/pi-coding-agent@<pin>"}},"schemaVersion":1,"status":"complete"}
+{"provenance":{"enabled":["core"],"generatedAt":"2030-01-01T12:00:00Z","kitCommit":"<commit>","kitSchemaVersion":1,"nodeRange":">=24.0.0 <25","outputs":["settings.json",".tenant-pi/choices.json",".tenant-pi/state.json"],"piVersion":"<pin>","pins":{"core":"npm:@earendil-works/pi-coding-agent@<pin>"}},"schemaVersion":1,"status":"complete"}
 ```
 
 `<commit>` is the 40-character commit of the clone, or `unknown` when the clone has no Git files.
@@ -1559,7 +1559,7 @@ No optional module passed an accepted live trial in this release. Read [the modu
 
 ## Where the outputs come from
 
-The output examples use Linux `x86_64`, Node `22.22.3`, npm `10.9.8`, Python `3.11.2` and Git `2.39.5`.
+The output examples use Linux `x86_64`, Node `24.21.0`, npm `11.19.0`, Python `3.11.2` and Git `2.39.5`.
 The runtime observations use Pi 1.0.2. `<pin>` represents the current manifest pin, not a new runtime observation.
 The examples use disposable home directories and synthetic live profiles. `/home/you` replaces each home path.
 A stand-in `pi` command supplies the `mismatch` examples; those examples show the report shape, not a real Pi version.

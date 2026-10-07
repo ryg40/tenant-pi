@@ -80,7 +80,7 @@ Requirements:
 | Item | Requirement | Source |
 | --- | --- | --- |
 | Pi | `<pin>`. No test starts a Pi session with the component on the kit pin. Each component keeps the gap `pi_line_unqualified`. | `config/manifest.json`, `packages/tenantext/README.md` |
-| Node | `>=22.22.0 <23` | `packages/tenantext/package.json` `engines` |
+| Node | `>=24.0.0 <25` | `packages/tenantext/package.json` `engines` |
 | Source | `packages/tenantext` in the kit clone | [in-tree packages](../packages.md) |
 | Dependencies | `npm ci --ignore-scripts` in `packages/tenantext`, by hand (setup Stage 6) | [setup guide](setup.md#in-tree-packages) |
 | Gateway | `codex-accounts` enabled, `modelRoutes.gateway` `{"auth": "env"}`, the `/v1` URL and the `${TENANTEXT_LITELLM_API_KEY}` reference | [model routes](../model-routes.md) |

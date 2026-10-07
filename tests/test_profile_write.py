@@ -73,7 +73,7 @@ class WriterTests(unittest.TestCase):
                              (self.target / name).read_bytes())
         state = json.loads((self.target / STATE).read_text())
         self.assertEqual({"schemaVersion": 1, "status": "complete", "provenance": {
-            "kitSchemaVersion": 1, "piVersion": PIN, "nodeRange": ">=22.22.0 <23", "enabled": ["core"],
+            "kitSchemaVersion": 1, "piVersion": PIN, "nodeRange": ">=24.0.0 <25", "enabled": ["core"],
             "pins": {"core": "npm:@earendil-works/pi-coding-agent@" + PIN},
             "outputs": ["settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json"],
             "generatedAt": "2026-09-30T12:34:56Z", "kitCommit": COMMIT}}, state)

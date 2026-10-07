@@ -24,7 +24,8 @@ test("the Claude Code plugin ships the Herdr runtime and command without drift",
 		"resources.local.example.json", "models.example.json", "commands/spawn_agent.md",
 		"roles/contract.md", "roles/coordinator.md", "roles/researcher.md", "roles/reviewer.md",
 		"roles/scout.md", "roles/worker.md", "scripts/_common.py", "scripts/ask.py", "scripts/close.py",
-		"scripts/init.py", "scripts/last-reply.py", "scripts/panes.py", "scripts/resources.py", "scripts/spawn.py",
+		"scripts/init.py", "scripts/last-reply.py", "scripts/mcp-bearer-helper.sh",
+		"scripts/panes.py", "scripts/resources.py", "scripts/spawn.py",
 	];
 	// Private model notes are absent from portable snapshots in both directories.
 	if (existsSync(join(source, "MODEL-NOTES.md"))) expected.push("MODEL-NOTES.md");

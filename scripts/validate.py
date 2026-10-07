@@ -346,7 +346,7 @@ def manifest(data):
     fields(runtime, ("piVersion", "piAcceptedRange", "nodeRange", "pythonRange"), (), "manifest.runtime")
     if not isinstance(runtime["piVersion"], str) or not VERSION.fullmatch(runtime["piVersion"]):
         fail("exact_version", "manifest.runtime.piVersion")
-    if runtime["nodeRange"] != ">=22.22.0 <23" or runtime["pythonRange"] != ">=3.11":
+    if runtime["nodeRange"] != ">=24.0.0 <25" or runtime["pythonRange"] != ">=3.11":
         fail("runtime_range", "manifest.runtime")
     components = data["components"]
     if not isinstance(components, dict) or "core" not in components:

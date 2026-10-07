@@ -11,7 +11,7 @@ Status: portable release candidate. Linux is the first target. The offline stage
 3. Validate: `python3 scripts/tenant_pi.py validate`.
 4. Plan: `python3 scripts/tenant_pi.py plan`.
 5. Generate: `python3 scripts/tenant_pi.py generate` into a new, absent target.
-6. Install the dependencies by hand: Node, Pi and the packages of the enabled modules.
+6. Install the dependencies by hand: Node 24 (`>=24.0.0 <25`), Pi and the packages of the enabled modules.
 7. Authenticate: Pi `/login`, or a key in the launching shell.
 8. Launch: run the launcher file or the plan launch line.
 9. Test: record each check as passed, failed, blocked or not run.
@@ -23,6 +23,7 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | Guide | For |
 | --- | --- |
 | [Setup](docs/guides/setup.md) | The nine stages with exact commands. Start here. |
+| [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Podman adaptations; macOS stays not qualified. |
 | [Explainer](EXPLAINER.md) | The install as a usual README procedure. Each step names the scripts, the functions and the files that it touches, and one table has the footprint. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
 | [Candidate update](docs/guides/candidate-update.md) | Regenerate, compare, carry choices, switch profiles. |

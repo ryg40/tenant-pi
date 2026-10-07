@@ -269,7 +269,7 @@ class CliTests(unittest.TestCase):
         """A `check-runtime` report file for the kit manifest, with one installed version for each status."""
         runtime = load(self.manifest)["runtime"]
         installed = {"pi": {"match": runtime["piVersion"], "mismatch": OUTSIDE, "untested_in_range": IN_RANGE, "missing": None},
-                     "node": {"match": "22.22.2", "mismatch": "24.1.0", "missing": None}}
+                     "node": {"match": "24.21.0", "mismatch": "22.22.3", "missing": None}}
         path = self.base / name
         path.write_text(json.dumps({
             "pi": {"installed": installed["pi"][pi], "required": runtime["piVersion"], "status": pi,
@@ -282,7 +282,7 @@ class CliTests(unittest.TestCase):
         core = load(self.manifest)["components"]["core"]["source"]["spec"]
         pin = load(self.manifest)["runtime"]["piVersion"]
         absent = {"code": "target_absence_unverified", "subject": str(self.target)}
-        unverified = [{"code": "node_runtime_unverified", "subject": ">=22.22.0 <23"},
+        unverified = [{"code": "node_runtime_unverified", "subject": ">=24.0.0 <25"},
                       {"code": "core_runtime_unverified", "subject": core}]
         mismatch = {"code": "core_runtime_mismatch", "subject": core, "installed": OUTSIDE, "required": pin}
         before_source, before_fixture = inventory(ROOT), None
@@ -337,8 +337,8 @@ class CliTests(unittest.TestCase):
                               str(self.runtime_report(pi="missing", node="mismatch")))
         self.assertEqual(0, result.returncode, result.stderr)
         output = json.loads(result.stdout)
-        self.assertEqual([{"code": "node_runtime_mismatch", "subject": ">=22.22.0 <23", "installed": "24.1.0",
-                           "required": ">=22.22.0 <23"},
+        self.assertEqual([{"code": "node_runtime_mismatch", "subject": ">=24.0.0 <25", "installed": "22.22.3",
+                           "required": ">=24.0.0 <25"},
                           {"code": "core_runtime_missing", "subject": core, "installed": None, "required": pin}],
                          output["readinessGaps"][:2])
         self.assertIn({"code": "package_runtime_unverified", "subject": "doctor"}, output["readinessGaps"])

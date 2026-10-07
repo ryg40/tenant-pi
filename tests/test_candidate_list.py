@@ -39,7 +39,7 @@ def dump(value):
 
 
 def state(**provenance):
-    record = {"kitSchemaVersion": 1, "piVersion": PIN, "nodeRange": ">=22.22.0 <23", "enabled": ["core"],
+    record = {"kitSchemaVersion": 1, "piVersion": PIN, "nodeRange": ">=24.0.0 <25", "enabled": ["core"],
               "pins": {}, "outputs": [], **provenance}
     return {"schemaVersion": 1, "status": "complete", "provenance": record}
 

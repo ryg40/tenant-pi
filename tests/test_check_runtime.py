@@ -28,7 +28,7 @@ LOWER, UPPER = parse_range(PI_RANGE, "f")
 IN_RANGE = ".".join(map(str, (*LOWER[:2], LOWER[2] + 1)))
 OUTSIDE = ".".join(map(str, UPPER))
 CANARY = "CANARY_SECRET"
-GOOD = {"pi": PIN, "node": "v22.22.0", "python3": "Python 3.11.2"}
+GOOD = {"pi": PIN, "node": "v24.21.0", "python3": "Python 3.11.2"}
 # Every process-creation audit event of CPython; the hook of the fixture records each one.
 SPAWN_EVENTS = ("subprocess.Popen", "os.system", "os.exec", "os.spawn", "os.posix_spawn", "os.fork", "os.forkpty",
                 "pty.spawn")
@@ -41,11 +41,11 @@ class Done:
 
 class GrammarTests(unittest.TestCase):
     def test_range_grammar_is_a_lower_bound_with_an_optional_upper_bound(self):
-        self.assertEqual(((22, 22, 0), (23, 0, 0)), parse_range(">=22.22.0 <23", "f"))
+        self.assertEqual(((24, 0, 0), (25, 0, 0)), parse_range(">=24.0.0 <25", "f"))
         self.assertEqual(((3, 11, 0), None), parse_range(">=3.11", "f"))
         self.assertEqual(((1, 2, 3), (1, 4, 0)), parse_range(">=1.2.3 <1.4", "f"))
-        for bad in ("", "22", ">=22", "^22.22.0", ">22.22.0", ">=22.22.0  <23", ">=22.22.0 <23 ", ">=22.22.0 <=23",
-                    ">=22.22.0 || >=24", ">=a.b", ">=3.11\n", ">=1.2.3.4", ">=1.2.3 <1.2.3", ">=2.0 <1", None, 3, [">=3.11"], CANARY):
+        for bad in ("", "22", ">=22", "^24.21.0", ">24.21.0", ">=24.21.0  <25", ">=24.0.0 <25 ", ">=24.21.0 <=25",
+                    ">=24.21.0 || >=24", ">=a.b", ">=3.11\n", ">=1.2.3.4", ">=1.2.3 <1.2.3", ">=2.0 <1", None, 3, [">=3.11"], CANARY):
             with self.assertRaises(Invalid) as caught:
                 parse_range(bad, "manifest.runtime.nodeRange")
             self.assertEqual("runtime_range: manifest.runtime.nodeRange", str(caught.exception))
@@ -64,17 +64,17 @@ class GrammarTests(unittest.TestCase):
         node = parse_range(RUNTIME["nodeRange"], "f")
         python = parse_range(RUNTIME["pythonRange"], "f")
         self.assertEqual([False, True, True, True, False, False],
-                         [in_range(v, node) for v in ((22, 21, 9), (22, 22, 0), (22, 22, 3), (22, 99, 0), (23, 0, 0), (24, 1, 0))])
+                         [in_range(v, node) for v in ((22, 22, 3), (24, 0, 0), (24, 21, 0), (24, 99, 0), (25, 0, 0), (26, 1, 0))])
         self.assertEqual([False, False, True, True, True],
                          [in_range(v, python) for v in ((2, 7, 18), (3, 10, 14), (3, 11, 0), (3, 13, 1), (4, 0, 0))])
 
     def test_version_output_forms(self):
         self.assertEqual(("1.0.0", (1, 0, 0), False), parse_version(b"1.0.0\n"))
-        self.assertEqual(("22.22.0", (22, 22, 0), False), parse_version(b"v22.22.0\n"))
+        self.assertEqual(("24.21.0", (24, 21, 0), False), parse_version(b"v24.21.0\n"))
         self.assertEqual(("3.11.2", (3, 11, 2), False), parse_version(b"Python 3.11.2\n"))
         self.assertEqual(("3.14.0rc1", (3, 14, 0), True), parse_version(b"Python 3.14.0rc1\n"))
         self.assertEqual(("3.11.0a1", (3, 11, 0), True), parse_version(b"Python 3.11.0a1\n"))
-        self.assertEqual(("22.22.0-rc.1", (22, 22, 0), True), parse_version(b"v22.22.0-rc.1\n"))
+        self.assertEqual(("24.0.0-rc.1", (24, 0, 0), True), parse_version(b"v24.0.0-rc.1\n"))
         self.assertEqual(("1.0.0-beta.1+build.5", (1, 0, 0), True), parse_version(b"1.0.0-beta.1+build.5\n"))
         self.assertEqual(("3.12.3+", (3, 12, 3), False), parse_version(b"Python 3.12.3+\n"))
         self.assertEqual(("3.12", (3, 12, 0), False), parse_version(b"Python 3.12\nsecond line\n"))
@@ -95,13 +95,13 @@ class GrammarTests(unittest.TestCase):
     def test_prerelease_of_the_lower_bound_is_outside_the_range(self):
         node = parse_range(RUNTIME["nodeRange"], "f")
         python = parse_range(RUNTIME["pythonRange"], "f")
-        self.assertFalse(in_range((22, 22, 0), node, True))
+        self.assertFalse(in_range((24, 0, 0), node, True))
         self.assertFalse(in_range((3, 11, 0), python, True))
-        self.assertTrue(in_range((22, 22, 0), node, False))
+        self.assertTrue(in_range((24, 0, 0), node, False))
         # A prerelease above the lower bound is inside; one of the upper bound stays outside.
-        self.assertTrue(in_range((22, 22, 1), node, True))
+        self.assertTrue(in_range((24, 0, 1), node, True))
         self.assertTrue(in_range((3, 14, 0), python, True))
-        self.assertFalse(in_range((23, 0, 0), node, True))
+        self.assertFalse(in_range((25, 0, 0), node, True))
 
 
 class CheckTests(unittest.TestCase):
@@ -109,7 +109,7 @@ class CheckTests(unittest.TestCase):
 
     def setUp(self):
         self.calls = []
-        self.output = {"/bin/pi": Done((PIN + "\n").encode()), "/bin/node": Done(b"v22.22.0\n"), "/bin/python3": Done(b"Python 3.11.2\n")}
+        self.output = {"/bin/pi": Done((PIN + "\n").encode()), "/bin/node": Done(b"v24.21.0\n"), "/bin/python3": Done(b"Python 3.11.2\n")}
 
     def run_fake(self, argv, **options):
         self.calls.append((argv, options))
@@ -124,7 +124,7 @@ class CheckTests(unittest.TestCase):
     def test_match_runs_three_fixed_commands_without_a_shell(self):
         report = self.check()
         self.assertEqual({"pi": {"installed": PIN, "required": PIN, "status": "match", **PI_FIELDS},
-                          "node": {"installed": "22.22.0", "required": ">=22.22.0 <23", "status": "match"},
+                          "node": {"installed": "24.21.0", "required": ">=24.0.0 <25", "status": "match"},
                           "python": {"installed": "3.11.2", "required": ">=3.11", "status": "match"}}, report)
         self.assertTrue(matches(report))
         self.assertEqual([["/bin/pi", "--version"], ["/bin/node", "--version"], ["/bin/python3", "--version"]],
@@ -142,12 +142,12 @@ class CheckTests(unittest.TestCase):
         self.assertEqual("/bin", self.calls[0][1]["env"]["PATH"])
 
     def test_each_status(self):
-        self.output = {"/bin/pi": Done(b"0.99.2\n"), "/bin/node": Done(b"v23.0.0\n"), "/bin/python3": Done(b"Python 3.10.14\n")}
+        self.output = {"/bin/pi": Done(b"0.99.2\n"), "/bin/node": Done(b"v22.22.3\n"), "/bin/python3": Done(b"Python 3.10.14\n")}
         report = self.check()
         self.assertEqual({"mismatch"}, {r["status"] for r in report.values()})
-        self.assertEqual(["0.99.2", "23.0.0", "3.10.14"], [report[k]["installed"] for k in ("pi", "node", "python")])
+        self.assertEqual(["0.99.2", "22.22.3", "3.10.14"], [report[k]["installed"] for k in ("pi", "node", "python")])
         self.assertFalse(matches(report))
-        self.output = {"/bin/pi": Done((CANARY + "\n").encode()), "/bin/node": Done(b"v22.22.0\n", returncode=3),
+        self.output = {"/bin/pi": Done((CANARY + "\n").encode()), "/bin/node": Done(b"v24.21.0\n", returncode=3),
                        "/bin/python3": subprocess.TimeoutExpired(["x"], TIMEOUT)}
         report = self.check()
         self.assertEqual({"unparsed"}, {r["status"] for r in report.values()})
@@ -163,9 +163,9 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(set(STATUSES), {"match", "untested_in_range", "mismatch", "missing", "unparsed"})
 
     def test_each_report_is_a_valid_runtime_report_for_plan_and_generate(self):
-        outputs = ({}, {"/bin/pi": Done(b"0.99.2\n"), "/bin/node": Done(b"v23.0.0\n"), "/bin/python3": Done(b"Python 3.10.14\n")},
-                   {"/bin/pi": Done((PIN + "-beta.1\n").encode()), "/bin/node": Done(b"v22.22.0-rc.1\n"), "/bin/python3": Done(b"Python 3.14.0rc1\n")},
-                   {"/bin/pi": Done((CANARY + "\n").encode()), "/bin/node": Done(b"v22.22.0\n", returncode=3),
+        outputs = ({}, {"/bin/pi": Done(b"0.99.2\n"), "/bin/node": Done(b"v22.22.3\n"), "/bin/python3": Done(b"Python 3.10.14\n")},
+                   {"/bin/pi": Done((PIN + "-beta.1\n").encode()), "/bin/node": Done(b"v24.0.0-rc.1\n"), "/bin/python3": Done(b"Python 3.14.0rc1\n")},
+                   {"/bin/pi": Done((CANARY + "\n").encode()), "/bin/node": Done(b"v24.21.0\n", returncode=3),
                     "/bin/python3": subprocess.TimeoutExpired(["x"], TIMEOUT)},
                    {"/bin/pi": FileNotFoundError(), "/bin/node": PermissionError(), "/bin/python3": OSError(8, "format")})
         for output in outputs:
@@ -205,19 +205,19 @@ class CheckTests(unittest.TestCase):
                 self.assertIs(report, runtime_report(report, RUNTIME))
 
     def test_lower_bound_prerelease_is_a_mismatch(self):
-        self.output["/bin/node"] = Done(b"v22.22.0-rc.1\n")
+        self.output["/bin/node"] = Done(b"v24.0.0-rc.1\n")
         self.output["/bin/python3"] = Done(b"Python 3.11.0a1\n")
         report = self.check()
-        self.assertEqual(("22.22.0-rc.1", "mismatch"), (report["node"]["installed"], report["node"]["status"]))
+        self.assertEqual(("24.0.0-rc.1", "mismatch"), (report["node"]["installed"], report["node"]["status"]))
         self.assertEqual(("3.11.0a1", "mismatch"), (report["python"]["installed"], report["python"]["status"]))
-        self.output["/bin/node"] = Done(b"v22.22.1-rc.1\n")
+        self.output["/bin/node"] = Done(b"v24.0.1-rc.1\n")
         self.output["/bin/python3"] = Done(b"Python 3.14.0rc1\n")
         report = self.check()
         self.assertEqual(["match", "match"], [report[k]["status"] for k in ("node", "python")])
 
     def test_free_text_suffix_is_unparsed_and_not_echoed(self):
         self.output["/bin/pi"] = Done(b"1.0.0sk-ABCDEF0123456789ABCDEF012345\n")
-        self.output["/bin/node"] = Done(b"v22.22.0sk-ABCDEF0123456789ABCDEF012345\n")
+        self.output["/bin/node"] = Done(b"v24.21.0sk-ABCDEF0123456789ABCDEF012345\n")
         report = self.check()
         for key in ("pi", "node"):
             self.assertEqual((None, "unparsed"), (report[key]["installed"], report[key]["status"]))
@@ -375,7 +375,7 @@ class CliTests(unittest.TestCase):
         manifest_before = hashlib.sha256((ROOT / "config/manifest.json").read_bytes()).hexdigest()
         result = self.run_cli()
         self.assertEqual((0, ""), (result.returncode, result.stderr))
-        self.assertEqual('{"node":{"installed":"22.22.0","required":">=22.22.0 <23","status":"match"},'
+        self.assertEqual('{"node":{"installed":"24.21.0","required":">=24.0.0 <25","status":"match"},'
                          f'"pi":{{"acceptedRange":"{PI_RANGE}","installed":"{PIN}","required":"{PIN}","status":"match","tested":"{PIN}"}},'
                          '"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}\n', result.stdout)
         self.check_no_other_process([self.bin / "pi", self.bin / "node", self.bin / "python3"])
@@ -408,22 +408,22 @@ class CliTests(unittest.TestCase):
                 self.assertEqual({"installed": installed, "required": PIN, "status": status, **PI_FIELDS},
                                  json.loads(result.stdout)["pi"])
                 self.assertEqual([], os.listdir(self.tmp))
-        self.tools(pi=IN_RANGE, node="v23.0.0")
+        self.tools(pi=IN_RANGE, node="v22.22.3")
         self.assertEqual(1, self.run_cli().returncode)
 
     def test_mismatch_exits_1(self):
-        self.tools(pi="0.99.2", node="v23.1.0", python3="Python 3.10.14")
+        self.tools(pi="0.99.2", node="v22.22.3", python3="Python 3.10.14")
         result = self.run_cli()
         self.assertEqual((1, ""), (result.returncode, result.stderr))
         report = json.loads(result.stdout)
         self.assertEqual({"pi": "mismatch", "node": "mismatch", "python": "mismatch"}, self.statuses(result))
-        self.assertEqual(["0.99.2", "23.1.0", "3.10.14"], [report[k]["installed"] for k in ("pi", "node", "python")])
-        self.assertEqual([PIN, ">=22.22.0 <23", ">=3.11"], [report[k]["required"] for k in ("pi", "node", "python")])
+        self.assertEqual(["0.99.2", "22.22.3", "3.10.14"], [report[k]["installed"] for k in ("pi", "node", "python")])
+        self.assertEqual([PIN, ">=24.0.0 <25", ">=3.11"], [report[k]["required"] for k in ("pi", "node", "python")])
         self.check_no_other_process([self.bin / "pi", self.bin / "node", self.bin / "python3"])
         self.assertEqual([], os.listdir(self.tmp))
 
     def test_one_mismatch_is_enough_for_exit_1(self):
-        self.tools(node="v20.11.1")
+        self.tools(node="v22.22.3")
         result = self.run_cli()
         self.assertEqual(1, result.returncode)
         self.assertEqual({"pi": "match", "node": "mismatch", "python": "match"}, self.statuses(result))
@@ -444,7 +444,7 @@ class CliTests(unittest.TestCase):
 
     def test_unparsed_exits_1_and_echoes_no_output(self):
         self.tools(pi=CANARY, python3="Python three")
-        self.fake("node", "echo v22.22.0\nexit 4")
+        self.fake("node", "echo v24.21.0\nexit 4")
         result = self.run_cli()
         self.assertEqual((1, ""), (result.returncode, result.stderr))
         self.assertEqual({"pi": "unparsed", "node": "unparsed", "python": "unparsed"}, self.statuses(result))

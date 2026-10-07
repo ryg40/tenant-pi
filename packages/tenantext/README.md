@@ -72,6 +72,7 @@ The suite loads these stable resources:
 | slopscore-pr skill | `skills/slopscore-pr/SKILL.md` |
 | herdr skill | `skills/herdr/SKILL.md` |
 | coordinator skills (the table in [skills/coordinator-skills/README.md](skills/coordinator-skills/README.md)) | `skills/coordinator-skills/<skill>/SKILL.md` |
+| knowledge skills (the table in [skills/knowledge-skills/README.md](skills/knowledge-skills/README.md)) | `skills/knowledge-skills/<skill>/SKILL.md` |
 
 When the enabled extension loads, its status shows `STE on · guard armed` until the first prompt.
 
@@ -310,6 +311,21 @@ The token never leaves the request header. Reports name the source, not the valu
 ## Doctor
 
 `/tenantext-doctor` (or `npm run doctor` from `packages/tenantext`) reports checks with `✓`, `·`, `⚠`, or `✗`. The shell doctor also checks package wiring, duplicate local Tenantext copies, and peer packages. `fix` writes only what it detected: the Pi package entry, peer package links, the Codex account list, and the Copilot source order. It copies an existing file to `<file>.bak` first and never prints a credential.
+
+The wiki checks read global `settings.json` and project `.pi/settings.json`. Nonempty project embedding settings win.
+They read only endpoint fields from `OPENVIKING_URL`, `OPENVIKING_BASE_URL`, `OPENVIKING_MCP_URL`, and OV configuration files.
+The file paths come from `OPENVIKING_CLI_CONFIG_FILE`, `OPENVIKING_CONFIG_FILE`, and `~/.openviking/{ovcli.conf,ov.conf}`.
+They compare host and effective port, not URL paths. Missing or unreadable OV files contribute no endpoint.
+The module check uses the profile's OpenViking package declarations and extension filters, including project overrides.
+These checks make no network request, access no credential field, and supply no automatic fix.
+
+| Diagnostic | Level | Meaning |
+| --- | --- | --- |
+| `wiki_embeddings_on` | info | `embeddingProvider` is set. Reports model and host only, not authentication or endpoint health. |
+| `wiki_embeddings_shared_endpoint` | warn | Wiki embeddings share a host and port with a readable OV endpoint, or the `openviking` module is enabled. |
+
+See [Switch wiki embeddings off](../../docs/memory-modules.md#switch-wiki-embeddings-off) for the keys to remove and the restart check.
+Neither diagnostic appears when `embeddingProvider` is absent. An independent endpoint without the module gives only the info line.
 
 ## Operations dashboard and context meter
 

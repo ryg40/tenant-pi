@@ -463,7 +463,10 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(skills, {skill for c in data["components"].values()
                                       if c["source"] == {"kind": "tree", "path": package_dir}
                                       for skill in c["resources"]["skills"]})
-        self.assertEqual(19, len(TREE_COMPONENTS))
+        self.assertEqual(20, len(TREE_COMPONENTS))
+        knowledge = data["components"]["knowledge-skills"]["resources"]["skills"]
+        self.assertEqual(4, len(knowledge))
+        self.assertIn("skills/knowledge-skills/open-knowledge", knowledge)
         for cid in TREE_COMPONENTS:
             component = data["components"][cid]
             path, kind, item = TREE_COMPONENTS[cid]
@@ -476,7 +479,7 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(len(items), sum(len(v) for v in component["resources"].values()))
             self.assertEqual(items, component["resources"][kind])
             # Only a skill component of several skills names more than one resource.
-            self.assertTrue(len(items) == 1 or (kind == "skills" and cid == "coordinator-skills"), cid)
+            self.assertTrue(len(items) == 1 or (kind == "skills" and cid in ("coordinator-skills", "knowledge-skills")), cid)
             self.assertIn(cid, self.base["selection"]["disable"])
         self.assertEqual(["core"], self.base["selection"]["enable"])
         self.assertEqual(["TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY"], data["components"]["codex-accounts"]["env"])
@@ -499,7 +502,7 @@ class ContractTests(unittest.TestCase):
         components = manifest(load(ROOT / "config/manifest.json"))
         facts = {name: gap["fact"] for name, component in components.items() for gap in component.get("gaps", [])
                  if gap["code"] == "pi_line_unqualified"}
-        self.assertEqual(13, len(facts))
+        self.assertEqual(14, len(facts))
         self.assertEqual("The component uses the resource settings syntax of the reviewed Pi release "
                          "(see docs/resources.md). No test in this repository loads it with the kit pin.",
                          facts.pop("resources"))

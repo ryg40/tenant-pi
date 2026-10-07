@@ -141,23 +141,28 @@ class WriterTests(unittest.TestCase):
         self.check_outside()
 
     def test_a_skill_component_of_several_skills_writes_each_skill(self):
-        target = self.parent / "profile coordinator-skills"
-        overlay = load("config/config.example.json")
-        overlay["target"]["agentDir"] = str(target)
-        overlay["selection"]["disable"].remove("coordinator-skills")
-        overlay["selection"]["enable"].append("coordinator-skills")
-        plan = prepare(load("config/manifest.json"), overlay)
-        self.assertTrue(write(plan, str(target)).complete)
-        settings = json.loads((target / "settings.json").read_text())
-        # The manifest is the one source of the skill list of the component.
-        skills = load("config/manifest.json")["components"]["coordinator-skills"]["resources"]["skills"]
-        self.assertGreater(len(skills), 1)
-        self.assertEqual([{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": skills,
-                           "prompts": [], "themes": []}], settings["packages"])
-        for skill in skills:
-            self.assertTrue(Path(settings["packages"][0]["source"], skill, "SKILL.md").is_file())
-        self.assertEqual({"core": "npm:@earendil-works/pi-coding-agent@" + PIN, "coordinator-skills": "tree:packages/tenantext"},
-                         json.loads((target / STATE).read_text())["provenance"]["pins"])
+        for cid in ("coordinator-skills", "knowledge-skills"):
+            with self.subTest(component=cid):
+                target = self.parent / ("profile " + cid)
+                overlay = load("config/config.example.json")
+                overlay["target"]["agentDir"] = str(target)
+                overlay["selection"]["disable"].remove(cid)
+                overlay["selection"]["enable"].append(cid)
+                plan = prepare(load("config/manifest.json"), overlay)
+                self.assertTrue(write(plan, str(target)).complete)
+                settings = json.loads((target / "settings.json").read_text())
+                # The manifest is the one source of the skill list of the component.
+                skills = load("config/manifest.json")["components"][cid]["resources"]["skills"]
+                self.assertGreater(len(skills), 1)
+                if cid == "knowledge-skills":
+                    self.assertEqual(4, len(skills))
+                    self.assertIn("skills/knowledge-skills/open-knowledge", skills)
+                self.assertEqual([{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": skills,
+                                   "prompts": [], "themes": []}], settings["packages"])
+                for skill in skills:
+                    self.assertTrue(Path(settings["packages"][0]["source"], skill, "SKILL.md").is_file())
+                self.assertEqual({"core": "npm:@earendil-works/pi-coding-agent@" + PIN, cid: "tree:packages/tenantext"},
+                                 json.loads((target / STATE).read_text())["provenance"]["pins"])
 
     def test_one_tree_component_is_written_once_with_its_own_filter(self):
         for cid, key, item in (("slopscore", "extensions", "extensions/slopscore/index.ts"),

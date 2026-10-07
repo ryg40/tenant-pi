@@ -18,6 +18,16 @@ A refused action prints one JSON object on standard error and exits with code 2:
 
 The tables list diagnostic rules. A row marked "documented" has no runtime observation.
 
+## Wiki embedding diagnostics
+
+The Tenantext `/tenantext-doctor` command reports these configuration checks without sending embedding requests.
+See [Switch wiki embeddings off](../memory-modules.md#switch-wiki-embeddings-off) for the settings keys, kit overlay path, and restart check.
+
+| Diagnostic | Level | Meaning |
+| --- | --- | --- |
+| `wiki_embeddings_shared_endpoint` | warn | Wiki embeddings share an endpoint host and port with OpenViking, or the `openviking` module is also enabled. |
+| `wiki_embeddings_on` | info | Wiki embeddings are configured. The line reports model and host only; it does not verify credentials or service health. |
+
 ## Overlay and input
 
 | Diagnostic | Cause | Fix |

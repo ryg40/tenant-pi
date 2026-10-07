@@ -10,6 +10,7 @@ import { SOURCE_LABELS as ANTHROPIC_SOURCE_LABELS } from "../anthropic-usage/det
 import { anthropicSettingsPath, loadAnthropicSettings } from "../anthropic-usage/settings.ts";
 import { probeAnthropic } from "../anthropic-usage/status.ts";
 import { fetchAnthropicUsage } from "../anthropic-usage/usage.ts";
+import { wikiEmbeddingChecks } from "./wiki.ts";
 
 /**
  * Environment checks for the tenantext suite. No Pi import: the same checks run inside Pi (`/tenantext-doctor`) and
@@ -20,6 +21,8 @@ export interface Fix { description: string; apply: () => void }
 export interface Check { id: string; status: CheckStatus; message: string; fix?: Fix }
 export interface DoctorOptions {
 	dir?: string;
+	/** Working directory for the project's wiki settings. Defaults to process.cwd(). */
+	cwd?: string;
 	env?: NodeJS.ProcessEnv;
 	/** Pi's stored credential for a provider. Defaults to reading `auth.json`. */
 	readCredential?: (provider: string) => unknown;
@@ -83,6 +86,8 @@ export async function runChecks(options: DoctorOptions = {}): Promise<Check[]> {
 		const powerline = packages.some(p => /pi-powerline-footer/.test(source(p)));
 		if (powerline) add("footer-conflict", "warn", "pi-powerline-footer is installed. Only one extension can own the footer; disable one of them.");
 	}
+
+	checks.push(...wikiEmbeddingChecks({ dir, cwd: options.cwd ?? process.cwd(), env, home: options.home }));
 
 	add("git", await which("git") ? "ok" : "warn", await which("git") ? "git is on PATH." : "git is not on PATH. The footer repository row stays empty.");
 

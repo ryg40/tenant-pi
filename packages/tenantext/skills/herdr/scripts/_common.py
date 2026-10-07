@@ -336,14 +336,17 @@ def load_launch(cfg, machine_file=None):
 
 
 def mcp_servers(resources, group="web"):
-    """Return {server name: url} for the mcp entries of a group that have a url location, in catalog order."""
+    """Return MCP server settings for entries with a URL, in catalog order."""
     servers = {}
     for _, rid, e in sorted((e.get("order", 100), rid, e) for rid, e in resources.items()
                             if e.get("group") == group and e.get("kind") == "mcp"):
         name = e.get("mcp_server") or rid
         url = next((loc["url"] for loc in e.get("locations") or [] if loc.get("url")), None)
         if url and re.fullmatch(r"[A-Za-z0-9_-]+", name):
-            servers.setdefault(name, url)
+            settings = {"url": url}
+            if "headers_helper" in e:
+                settings["headers_helper"] = os.path.expanduser(e["headers_helper"])
+            servers.setdefault(name, settings)
     return servers
 
 

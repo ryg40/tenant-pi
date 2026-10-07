@@ -75,11 +75,20 @@ Unknown key names are shown when they use safe characters, so that an unsupporte
 | `/overlay/memory/hermes/reviewTransport` | `direct` or `subprocess`, by value |
 | `/overlay/memory/hermes/childExtensionPaths/<index>` | Marker per entry, never a value, also for a `builtin:<name>` entry |
 | `/overlay/memory/wiki/wikiHome` | Marker, never a value |
+| `/overlay/memory/wiki/embedding` when explicitly `null` | The fixed word `disabled`; omission has no entry |
+| `/overlay/memory/wiki/embedding/baseUrl`, `/model`, `/auth/envVar` | Each full embedding field path is a marker, never a value |
+| `/overlay/memory/wiki/embedding/provider` | `openai-compatible`, by value |
+| `/overlay/memory/wiki/embedding/auth/mode` | `none`, by value |
+| `/overlay/memory/wiki/embedding/expectedDimensions` | Positive integer, by value |
 
 - A value outside its public form is `unsupported_value` without the value.
 - An unknown module or field name is `unsupported_field` when it uses safe characters, and `<redacted>` with `unsupported_field_name` otherwise. Its value is never shown.
 - A block, a module or a `childExtensionPaths` value of the wrong type is one `unsupported_shape` entry. `openviking` has no field for an endpoint or a key: such a name is `unsupported_field`.
 - The derived activation record stays in the report as the one marker `/memory`.
+- A missing `activation.wiki.embeddings` record equals the exact disabled record emitted by the current generator. This also applies to drift metadata.
+- Other activation shapes still differ. Unknown fields and malformed shapes are not normalized away.
+- Generated `llm-wiki.embeddingProvider` compares by value. `embeddingBaseUrl`, `embeddingModel`, `embeddingApiKeyEnv`, and `embeddingApiKey` remain markers.
+- `consent.embeddingTextTransfer` compares as a boolean. Neither comparison nor its offline diagnostics checks credential values.
 - `carry` maps each field entry to one overlay patch; see `docs/carry.md`.
 
 ### Drift: owner edits inside a candidate
@@ -150,6 +159,15 @@ The overlay and `choices.json` retain schema version 1. The comparison report de
 - A `choices.json` without an overlay `memory` block, or without the `/memory` record, and a `state.json` without a `provenance` record still compare. Against a side with the block, each memory field is an `added` or `removed` change.
 - A report for a candidate with a valid `memory` block includes `/overlay/memory/...` entries under `changes` or `unchanged`. It has no `unsupported_field` entry at `/overlay/memory`. The counts in `summary` include the field entries.
 - A report without `/overlay/memory/...` entries gives no memory field patch. Run `compare` again before `carry`.
+
+### Migration note: Wiki embeddings
+
+The overlay schema stays at version 1. An old overlay without embeddings stays valid.
+The exact disabled activation record introduces no comparison change against an older candidate without that record.
+An explicitly null overlay `embedding` still differs from an omitted field, so carry can reproduce either form.
+Run `compare` again to get nested embedding fields before carry.
+An old whole-object embedding marker cannot replace an existing target embedding object; it gives `overlay_matches` instead.
+No offline action resolves the credential reference or probes the endpoint.
 
 ### Migration note: `ownerResources`
 

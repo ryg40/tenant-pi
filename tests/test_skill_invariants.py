@@ -1,4 +1,4 @@
-"""Text invariants of the shipped coordinator skills and of the tracker document.
+"""Text invariants of the shipped skill components and of the tracker document.
 
 The check reads each `.md` file recursively in component and KIT_SKILLS directories,
 excluding tests/ and node_modules/. It also reads the component README and plugin command.
@@ -13,6 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = ROOT / "packages/tenantext/skills/coordinator-skills"
+KNOWLEDGE_COMPONENT = ROOT / "packages/tenantext/skills/knowledge-skills"
 TRACKER = ROOT / "docs/agents/issue-tracker.md"
 # Kit skills outside the component that a skill text can load.
 KIT_SKILLS = ("herdr", "herdr-relay", "slopscore-pr", "tracker-site")
@@ -253,7 +254,11 @@ class SkillInvariantTests(unittest.TestCase):
         self.assertIn(COMPONENT / "grill-me", directories)
         for name in ("wayfinder", "research", "prototype", "domain-modeling"):
             self.assertIn(COMPONENT / name, directories)
-        self.assertEqual([], skill_findings(directories, TRACKER, [COMPONENT / "README.md"]))
+        knowledge = shipped_skill_dirs(KNOWLEDGE_COMPONENT)
+        self.assertEqual({"okf-knowledge-base", "open-knowledge-write-skill", "open-knowledge-discovery", "open-knowledge"},
+                         {directory.name for directory in knowledge})
+        self.assertEqual([], skill_findings(directories + knowledge, TRACKER,
+                                           [COMPONENT / "README.md", KNOWLEDGE_COMPONENT / "README.md"]))
         self.assertLessEqual({"wayfinder:map", "wayfinder:parent", "ready-for-agent", "needs-approval"},
                              tracker_labels(TRACKER.read_text(encoding="utf-8")))
 
@@ -265,7 +270,9 @@ class SkillInvariantTests(unittest.TestCase):
     def test_kit_skills_and_plugin_copies_have_no_finding(self):
         skills = COMPONENT.parent
         plugin = skills.parent / "claude-code"
-        directories = [skills / name for name in KIT_SKILLS]
+        # The development-only relay is absent from portable snapshots.
+        directories = [skills / name for name in KIT_SKILLS
+                       if name != "herdr-relay" or (skills / name).is_dir()]
         directories.append(plugin / "skills/herdr")
         self.assertEqual([], skill_findings(directories, TRACKER,
                                            [plugin / "commands/spawn_agent.md"], require_credits=False))

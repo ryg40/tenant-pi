@@ -676,9 +676,17 @@ def overlay(data, components):
         fail("unselected_input", "overlay.inputs.mcpFile")
     if inputs["mcpFile"] is None and "mcp" in enable:
         fail("mcp_input_required", "overlay.inputs.mcpFile")
-    fields(data["consent"], ("memoryCapture", "remoteMemoryWrites", "telemetry"), (), "overlay.consent")
+    fields(data["consent"], ("memoryCapture", "remoteMemoryWrites", "telemetry"), ("embeddingTextTransfer",), "overlay.consent")
     if any(type(v) is not bool for v in data["consent"].values()):
         fail("boolean", "overlay.consent")
+    memory = data.get("memory")
+    wiki = memory.get("wiki") if type(memory) is dict else None
+    embedding = wiki.get("embedding") if type(wiki) is dict else None
+    embedding_consent = data["consent"].get("embeddingTextTransfer", False)
+    if embedding_consent and ("wiki" not in enable or embedding is None):
+        fail("embedding_consent_unused", "overlay.consent.embeddingTextTransfer")
+    if embedding is not None and not embedding_consent:
+        fail("embedding_consent_missing", "overlay.consent.embeddingTextTransfer")
     if (data["consent"]["memoryCapture"] or data["consent"]["remoteMemoryWrites"]) and not (set(enable) & MEMORY):
         fail("memory_disabled", "overlay.consent")
     if data["consent"]["remoteMemoryWrites"] and "openviking" not in enable:

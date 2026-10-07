@@ -26,6 +26,7 @@ ENUMS = {
     "transport": ("direct", "subprocess"), "overflow": ("auto-consolidate", "reject", "fifo-evict"),
     "lifecycle": LIFECYCLES, "discovery": ("off", "prompt", "on"), "projectServers": ("ask", "allow"),
     "const_transport": ("stdio", "http"),
+    "embedding_provider": ("openai-compatible",), "embedding_auth": ("none",),
 }
 BUILTIN_ENTRY = re.compile(r"[+!-]?builtin:[a-z][a-z0-9.-]*\Z")
 SAFE_NAME = re.compile(r"[A-Za-z0-9_.:@-]{1,64}\Z")
@@ -40,8 +41,11 @@ REVIEWED_TREE = frozenset(s["path"] for s in REVIEWED_SOURCES.values() if s and 
 # The overlay `memory` fields: a switch and a closed name by value, a path as a marker.
 # `paths` is a positional list of private entries: one marker per index.
 MEMORY_POLICIES = {"backgroundReview": "bool", "reviewTransport": "transport", "childExtensionPaths": "paths",
-                   "ambientPersonalVault": "bool", "backgroundTasks": "bool", "wikiHome": "marker",
+                   "ambientPersonalVault": "bool", "backgroundTasks": "bool", "wikiHome": "marker", "embedding": "embedding",
                    "captureToolResults": "bool", "recallContextTimeoutMs": "int"}
+EMBEDDING_POLICIES = {"provider": "embedding_provider", "baseUrl": "marker", "model": "marker",
+                      "expectedDimensions": "dimensions"}
+EMBEDDING_AUTH_POLICIES = {"envVar": "marker", "mode": "embedding_auth"}
 MISSING = object()
 # Provenance fields that differ between any two generations: listed under `markers`, never under `changes`.
 MARKERS = frozenset((".tenant-pi/state.json", "/provenance/" + key) for key in ("generatedAt", "kitCommit"))
@@ -73,6 +77,8 @@ def _public(value, policy):
         return type(value) is bool
     if policy == "int":
         return type(value) is int and 0 <= value < 10 ** 6
+    if policy == "dimensions":
+        return type(value) is int and value > 0
     if policy in ENUMS:
         return type(value) is str and value in ENUMS[policy]
     if policy == "version":
@@ -135,6 +141,22 @@ class _Side:
                 self.put(file, pointer + "/" + key, item[key], policy)
         self.known(file, pointer, item, ("provider", "model", "thinking", "route"))
 
+    def embedding(self, file, pointer, value):
+        if value is None:
+            self.put(file, pointer, "disabled", "const")
+            return
+        if (item := self.object(file, pointer, value)) is None:
+            return
+        for key, policy in EMBEDDING_POLICIES.items():
+            if key in item:
+                self.put(file, pointer + "/" + key, item[key], policy)
+        if "auth" in item and (auth := self.object(file, pointer + "/auth", item["auth"])) is not None:
+            for key, policy in EMBEDDING_AUTH_POLICIES.items():
+                if key in auth:
+                    self.put(file, pointer + "/auth/" + key, auth[key], policy)
+            self.known(file, pointer + "/auth", auth, EMBEDDING_AUTH_POLICIES)
+        self.known(file, pointer, item, (*EMBEDDING_POLICIES, "auth"))
+
     def id_map(self, file, pointer, value, policy):
         """Object keyed by component or role identifiers."""
         if (item := self.object(file, pointer, value)) is None:
@@ -196,7 +218,11 @@ def _settings(side, data):
                 side.put(file, "/llm-wiki/" + key, wiki[key], policy)
         if "taskModel" in wiki:
             side.put(file, "/llm-wiki/taskModel", wiki["taskModel"], "marker")
-        side.known(file, "/llm-wiki", wiki, ("ambientPersonalVault", "trajectories", "taskThinkingLevel", "taskModel"))
+        embedding_keys = ("embeddingProvider", "embeddingBaseUrl", "embeddingModel", "embeddingApiKeyEnv", "embeddingApiKey")
+        for key in embedding_keys:
+            if key in wiki:
+                side.put(file, "/llm-wiki/" + key, wiki[key], "embedding_provider" if key == "embeddingProvider" else "marker")
+        side.known(file, "/llm-wiki", wiki, ("ambientPersonalVault", "trajectories", "taskThinkingLevel", "taskModel", *embedding_keys))
     side.known(file, "", data, (*policies, "packages", *OWNER_RESOURCES, "llm-wiki"))
 
 
@@ -268,7 +294,9 @@ def _overlay(side, file, data):
     if (consent := side.object(file, pointer + "/consent", overlay.get("consent", MISSING))) is not None:
         for key in ("memoryCapture", "remoteMemoryWrites", "telemetry"):
             side.put(file, pointer + "/consent/" + key, consent.get(key, MISSING), "bool")
-        side.known(file, pointer + "/consent", consent, ("memoryCapture", "remoteMemoryWrites", "telemetry"))
+        if "embeddingTextTransfer" in consent:
+            side.put(file, pointer + "/consent/embeddingTextTransfer", consent["embeddingTextTransfer"], "bool")
+        side.known(file, pointer + "/consent", consent, ("memoryCapture", "remoteMemoryWrites", "telemetry", "embeddingTextTransfer"))
     if "ownerPackages" in overlay:
         owner = overlay["ownerPackages"]
         if type(owner) is not list or not all(type(p) in (dict, str) for p in owner):
@@ -307,7 +335,9 @@ def _overlay(side, file, data):
                 for key in names:
                     if key not in choice:
                         continue
-                    if MEMORY_POLICIES[key] == "paths":
+                    if MEMORY_POLICIES[key] == "embedding":
+                        side.embedding(file, at + "/" + key, choice[key])
+                    elif MEMORY_POLICIES[key] == "paths":
                         side.path_list(file, at + "/" + key, choice[key])
                     else:
                         side.put(file, at + "/" + key, choice[key], MEMORY_POLICIES[key])
@@ -361,6 +391,23 @@ def _manifest(side, file, data):
     side.known(file, pointer, manifest, ("schemaVersion", "runtime", "components"))
 
 
+def _memory_record(value):
+    """Ignore only the exact inert record added by newer generators."""
+    if type(value) is not dict or type(value.get("activation")) is not dict:
+        return value
+    activation = value["activation"]
+    wiki = activation.get("wiki")
+    disabled = {"enabled": False, "writeTimeRequests": False, "queryTimeRequests": False,
+                "backfill": "separate action"}
+    if type(wiki) is not dict or _dump(wiki.get("embeddings", MISSING)) != _dump(disabled):
+        return value
+    return {**value, "activation": {**activation, "wiki": {k: v for k, v in wiki.items() if k != "embeddings"}}}
+
+
+def _compatible_choices(value):
+    return {**value, "memory": _memory_record(value["memory"])} if "memory" in value else value
+
+
 def _choices(side, data):
     file = ".tenant-pi/choices.json"
     if (choices := side.object(file, "", data)) is None:
@@ -372,7 +419,7 @@ def _choices(side, data):
     side.put(file, "/requiredRoles", choices.get("requiredRoles", MISSING), "roles")
     side.put(file, "/credentialNames", choices.get("credentialNames", MISSING), "envNames")
     side.put(file, "/routes", choices.get("routes", MISSING), "marker")
-    side.put(file, "/memory", choices.get("memory", MISSING), "marker")
+    side.put(file, "/memory", _memory_record(choices.get("memory", MISSING)), "marker")
     side.put(file, "/workflow", choices.get("workflow", MISSING), "marker")
     side.put(file, "/mcpDefinitions", choices.get("mcpDefinitions", MISSING), "marker")
     side.id_map(file, "/roleStatus", choices.get("roleStatus", MISSING), "roleStatus")
@@ -455,7 +502,7 @@ def _drift(files):
                                  if type(key) is str and SAFE_NAME.fullmatch(key) and _dump(actual.get(key, MISSING)) != _dump(rendered_file.get(key, MISSING)))
             unsafe = unsafe or any(type(key) is not str or not SAFE_NAME.fullmatch(key) for key in actual)
     edited = edited_fields
-    metadata = "changed" if _dump(expected["files"][".tenant-pi/choices.json"]["content"]) != _dump(choices) else "unchanged"
+    metadata = "changed" if _dump(_compatible_choices(expected["files"][".tenant-pi/choices.json"]["content"])) != _dump(_compatible_choices(choices)) else "unchanged"
     status = "owner_edits" if edited or unsafe else "none"
     return {"status": status, "fields": edited + (["/<redacted>"] if unsafe else []),
             "metadata": metadata}

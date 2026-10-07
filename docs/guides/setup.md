@@ -139,7 +139,7 @@ Goal: a private directory with an overlay that names a new target.
      "selection": {
        "enable": ["core"],
        "disable": ["anthropic-usage", "codex-accounts", "context-meter", "coordinator-skills", "copilot-usage", "doctor", "herdr",
-                   "hermes", "mcp",
+                   "hermes", "knowledge-skills", "mcp",
                    "model-routing", "openviking", "ops-footer", "promptr", "promptr-generate-task-prompt",
                    "promptr-handoff", "promptr-openknowledge-project-pages", "promptr-watch-herdr-agents",
                    "resources", "slopscore", "slopscore-pr", "tenantext", "tracker-site", "wiki"]
@@ -306,7 +306,7 @@ Do not use `npm config set prefix`. It changes the npm configuration for every l
 
 ### In-tree packages
 
-Only when you enabled a Tenantext component (`tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `coordinator-skills`, `slopscore-pr`):
+Only when you enabled a Tenantext component (`tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `coordinator-skills`, `knowledge-skills`, `slopscore-pr`):
 
 ```sh
 cd "$HOME/tenant-pi/packages/tenantext" && npm ci --ignore-scripts
@@ -495,4 +495,5 @@ Run the same comparison for each other baseline of Stage 8, with its own `--dir`
 - [Privacy guide](privacy.md): what the kit separates and what it does not.
 - [Troubleshooting](troubleshooting.md): each diagnostic and its fix.
 - [Release checklist](release-checklist.md): the gates of a release.
+- [Pi pin move and fast-track portable release](pin-move-release.md): qualify a pin and publish a reviewed snapshot.
 - The agent-facing guide is `skills/tenant-pi-install/SKILL.md`. [INSTALL.md](../../INSTALL.md) is the agent walk-through of the same stages.

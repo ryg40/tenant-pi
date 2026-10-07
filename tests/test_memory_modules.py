@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from scripts.candidate_compare import FILES, compare
-from scripts.memory_modules import HERMES_CONFIG, render_memory, validate_memory
+from scripts.memory_modules import HERMES_CONFIG, WIKI_NO_AUTH_KEY, render_memory, validate_memory
 from scripts.profile_plan import prepare
 from scripts.profile_write import STATE, WriteError, write
 from scripts.validate import Invalid, load, manifest, overlay
@@ -26,6 +26,8 @@ GATEWAY_ROLE = {"provider": "litellm-codex", "model": "codex-auto/sol", "thinkin
 HERMES_ON = {"backgroundReview": True, "reviewTransport": "direct"}
 HERMES_OFF = {"backgroundReview": False}
 WIKI_OFF = {"ambientPersonalVault": False, "backgroundTasks": False}
+EMBEDDING = {"provider": "openai-compatible", "baseUrl": "https://embeddings.example.invalid/v1",
+             "model": "text-embedding-ada-002", "auth": {"envVar": "EXAMPLE_EMBEDDING_KEY"}, "expectedDimensions": 1536}
 OPENVIKING = {"captureToolResults": True, "recallContextTimeoutMs": 5000}
 OPENVIKING_DIR = "packages/openviking-pi"
 
@@ -227,7 +229,9 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual({"enabled": True, "localCapture": True, "backgroundModelCalls": False, "remoteWrites": False},
                          memory["activation"]["hermes"])
         self.assertEqual({"enabled": True, "localCapture": True, "ambientPersonalVault": False, "backgroundModelCalls": False,
-                          "remoteWrites": False, "personalVault": "home"}, memory["activation"]["wiki"])
+                          "remoteWrites": False, "personalVault": "home",
+                          "embeddings": {"enabled": False, "writeTimeRequests": False, "queryTimeRequests": False,
+                                         "backfill": "separate action"}}, memory["activation"]["wiki"])
         self.assertEqual({"enabled": False}, memory["activation"]["openviking"])
         codes = {(g["code"], g["subject"]) for g in plan["readinessGaps"]}
         for expected in (("package_runtime_unverified", "hermes"), ("package_runtime_unverified", "wiki"),
@@ -325,6 +329,121 @@ class MemoryContractTests(unittest.TestCase):
                 data = self.base("wiki", memory={"wiki": copy.deepcopy(WIKI_OFF)})
                 change(data["memory"]["wiki"])
                 self.error(data, rule)
+
+    def embedding(self):
+        data = self.base("wiki", memory={"wiki": {**WIKI_OFF, "embedding": copy.deepcopy(EMBEDDING)}})
+        data["consent"]["embeddingTextTransfer"] = True
+        return data
+
+    def test_embedding_consent_is_separate_and_optional(self):
+        for consent in (None, False):
+            data = self.embedding()
+            if consent is None:
+                del data["consent"]["embeddingTextTransfer"]
+            else:
+                data["consent"]["embeddingTextTransfer"] = consent
+            self.error(data, "embedding_consent_missing")
+        data = self.embedding()
+        data["consent"]["memoryCapture"] = False
+        self.error(data, "memory_consent_required")
+        for data in (self.base(), self.base("wiki", memory={"wiki": WIKI_OFF}),
+                     self.base("wiki", memory={"wiki": {**WIKI_OFF, "embedding": None}})):
+            data["consent"]["embeddingTextTransfer"] = True
+            self.error(data, "embedding_consent_unused")
+        data = self.embedding()
+        data["selection"]["enable"].remove("wiki")
+        data["selection"]["disable"].append("wiki")
+        self.error(data, "embedding_consent_unused")
+        data["consent"]["memoryCapture"] = False
+        data["consent"]["embeddingTextTransfer"] = False
+        self.error(data, "embedding_consent_missing")
+        for value in (1, "true", None, [], {}):
+            data = self.embedding()
+            data["consent"]["embeddingTextTransfer"] = value
+            self.error(data, "boolean")
+
+    def test_embedding_mapping_and_readiness_preserve_other_choices(self):
+        for auth, key, value in (({"envVar": "EXAMPLE_EMBEDDING_KEY"}, "embeddingApiKeyEnv", "EXAMPLE_EMBEDDING_KEY"),
+                                 ({"mode": "none"}, "embeddingApiKey", WIKI_NO_AUTH_KEY)):
+            for base in ("https://embeddings.example.invalid", "https://embeddings.example.invalid/v1",
+                         "http://localhost:8080/prefix", "https://embeddings.example.invalid/prefix/v1/",
+                         "http://[::1]:8080/v1", "https://embeddings.example.invalid/v1?version=1"):
+                with self.subTest(auth=key, base=base):
+                    data = self.embedding()
+                    data["memory"]["wiki"].update(ambientPersonalVault=True, backgroundTasks=True, wikiHome="/home/example/vault")
+                    data["memory"]["wiki"]["embedding"].update(auth=auth, baseUrl=base)
+                    data["roles"]["memory"] = copy.deepcopy(MEMORY_ROLE)
+                    before = copy.deepcopy(data)
+                    plan = prepare(self.manifest_data, data)
+                    self.assertEqual(before, data)
+                    settings = plan["files"]["settings.json"]["content"]
+                    self.assertEqual({"ambientPersonalVault": True, "trajectories": False,
+                                      "taskModel": {"provider": MEMORY_ROLE["provider"], "id": MEMORY_ROLE["model"]},
+                                      "taskThinkingLevel": "high", "embeddingProvider": "openai-compatible",
+                                      "embeddingBaseUrl": base, "embeddingModel": EMBEDDING["model"], key: value}, settings["llm-wiki"])
+                    choices = plan["files"][".tenant-pi/choices.json"]["content"]
+                    self.assertEqual({"enabled": True, "writeTimeRequests": True, "queryTimeRequests": True,
+                                      "backfill": "separate action", "expectedDimensions": 1536},
+                                     choices["memory"]["activation"]["wiki"]["embeddings"])
+                    self.assertEqual("wikiHome", choices["memory"]["activation"]["wiki"]["personalVault"])
+                    for code in ("embedding_endpoint_unverified", "embedding_dimensions_unverified"):
+                        self.assertIn({"code": code, "subject": "wiki"}, plan["readinessGaps"])
+                    plain = copy.deepcopy(data)
+                    del plain["memory"]["wiki"]["embedding"]
+                    plain["consent"]["embeddingTextTransfer"] = False
+                    plain_plan = prepare(self.manifest_data, plain)
+                    self.assertEqual(plain_plan["commands"], plan["commands"])
+                    self.assertEqual(plain_plan["files"]["settings.json"]["content"],
+                                     {**settings, "llm-wiki": {k: v for k, v in settings["llm-wiki"].items() if not k.startswith("embedding")}})
+        data = self.embedding()
+        del data["memory"]["wiki"]["embedding"]["expectedDimensions"]
+        plan = prepare(self.manifest_data, data)
+        self.assertNotIn({"code": "embedding_dimensions_unverified", "subject": "wiki"}, plan["readinessGaps"])
+        self.assertNotIn("expectedDimensions", plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["activation"]["wiki"]["embeddings"])
+
+    def test_embedding_rejects_incomplete_and_malformed_choices(self):
+        for key in ("provider", "baseUrl", "model", "auth"):
+            data = self.embedding()
+            del data["memory"]["wiki"]["embedding"][key]
+            self.error(data, "required_fields")
+        for value in (False, True, [], "", CANARY, 1):
+            data = self.embedding()
+            data["memory"]["wiki"]["embedding"] = value
+            self.error(data, "object")
+        for key, value, rule in (("provider", "openai", "embedding_provider"), ("provider", CANARY, "embedding_provider"),
+                                 ("provider", [], "embedding_provider"), ("model", "", "text"),
+                                 ("model", " " + CANARY, "embedding_model"), ("model", CANARY + "\n", "text"),
+                                 ("model", [], "text"), ("auth", {}, "embedding_auth"),
+                                 ("auth", {"mode": "none", "envVar": "EXAMPLE_EMBEDDING_KEY"}, "embedding_auth"),
+                                 ("auth", {"mode": CANARY}, "embedding_auth"), ("auth", {"apiKey": CANARY}, "unknown_fields"),
+                                 ("auth", {"envVar": "${" + CANARY + "}"}, "env_name"),
+                                 ("auth", {"envVar": ""}, "env_name"), ("auth", {"envVar": []}, "env_name"),
+                                 ("auth", None, "object"), ("expectedDimensions", 0, "embedding_dimensions"),
+                                 ("expectedDimensions", -1, "embedding_dimensions"), ("expectedDimensions", True, "embedding_dimensions"),
+                                 ("expectedDimensions", 1.5, "embedding_dimensions"), ("expectedDimensions", CANARY, "embedding_dimensions"),
+                                 ("embeddingStorePath", CANARY, "unknown_fields"), ("dimensions", 1536, "unknown_fields")):
+            with self.subTest(key=key, rule=rule):
+                data = self.embedding()
+                data["memory"]["wiki"]["embedding"][key] = value
+                self.error(data, rule)
+        for value in (None, 3, [], "", "relative/v1", "ftp://embeddings.example.invalid", "https:///v1",
+                      "https://user:" + CANARY + "@embeddings.example.invalid", "https://user@embeddings.example.invalid",
+                      "https://embeddings.example.invalid/#" + CANARY, "https://embeddings.example.invalid/#",
+                      "https://embeddings.example.invalid:bad", "https://embeddings.example.invalid:65536",
+                      "https://embeddings.example.invalid:0", "https://embeddings.example.invalid:",
+                      "https://embeddings.example.invalid/\n" + CANARY, " https://embeddings.example.invalid",
+                      "https://embeddings.example.invalid/%0a" + CANARY, "https://embeddings.example.invalid/%zz",
+                      "https://embeddings.example.invalid/%23" + CANARY, "https://%75ser@embeddings.example.invalid",
+                      "https://.", "https://-bad.example.invalid", "https://bad..example.invalid",
+                      "https://embeddings.example.invalid/" + chr(133), "https://embeddings.example.invalid/<bad>"):
+            with self.subTest(value=value):
+                data = self.embedding()
+                data["memory"]["wiki"]["embedding"]["baseUrl"] = value
+                self.error(data, "embedding_url")
+        for key in ("key", "token", "api_key", "apikey", "secret", "password", "authorization", "ToKeN", "%74oken", "%2574oken"):
+            data = self.embedding()
+            data["memory"]["wiki"]["embedding"]["baseUrl"] += "?version=1&" + key + "=" + CANARY
+            self.error(data, "embedding_url")
 
     def test_wiki_home_is_a_process_local_launch_fact(self):
         data = self.base("wiki", memory={"wiki": {**WIKI_OFF, "ambientPersonalVault": True, "wikiHome": "/home/Test User/wiki home"}})
@@ -505,6 +624,115 @@ class MemoryPublicationTests(unittest.TestCase):
         self.assertNotIn(CANARY.lower(), compared.stdout)
         self.assertEqual("removed", next(c["change"] for c in report["changes"] if c["file"] == HERMES_CONFIG and c["field"] == "/reviewEnabled"))
         self.assertEqual({"status": "none", "fields": [], "metadata": "unchanged"}, report["right"]["drift"])
+
+    def test_cli_embedding_choices_stay_offline_and_preserve_existing_data(self):
+        overlay_file = self.base_dir / "overlay.json"
+        ambient = self.home / ".pi/agent"
+        vault = self.home / ".llm-wiki"
+        ambient.mkdir(parents=True)
+        vault.mkdir()
+        (ambient / "settings.json").write_text(json.dumps({"theme": CANARY}))
+        (vault / "page.md").write_text(CANARY)
+        (vault / "embeddings.json").write_text(CANARY)
+        before = {p: p.read_bytes() for root in (ambient, vault) for p in root.rglob("*") if p.is_file()}
+        hook = self.base_dir / "sitecustomize.py"
+        hook.write_text(
+            "import os, sys, socket, subprocess, urllib.request\n"
+            "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
+            "socket.socket.connect = blocked\nsocket.socket.connect_ex = blocked\n"
+            "socket.create_connection = blocked\nsocket.getaddrinfo = blocked\n"
+            "subprocess.Popen = blocked\nos.system = blocked\nurllib.request.urlopen = blocked\n"
+            "original = os._Environ.__getitem__\n"
+            "def guarded(self, key):\n"
+            "    if key in ('EXAMPLE_EMBEDDING_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL'):\n"
+            "        raise AssertionError('credential value read')\n"
+            "    return original(self, key)\n"
+            "os._Environ.__getitem__ = guarded\n"
+            "os._Environ.__contains__ = lambda self, key: self.encodekey(key) in self._data\n"
+            "def audit(event, args):\n"
+            "    if event == 'open' and isinstance(args[0], str):\n"
+            "        if any(args[0].startswith(p) for p in " + repr([str(ambient), str(vault)]) + "):\n"
+            "            raise AssertionError('ambient data read')\n"
+            "sys.addaudithook(audit)\n")
+        env = dict(os.environ, HOME=str(self.home), PYTHONPATH=str(self.base_dir), PYTHONDONTWRITEBYTECODE="1",
+                   EXAMPLE_EMBEDDING_KEY=CANARY, OPENAI_API_KEY=CANARY,
+                   OPENAI_BASE_URL="https://" + CANARY + ".example.invalid/v1")
+
+        def run(*args, success=True):
+            result = subprocess.run([sys.executable, str(CLI), *args], cwd=self.base_dir, env=env, text=True, capture_output=True)
+            self.assertEqual(0 if success else 2, result.returncode, result.stdout + result.stderr)
+            self.assertNotIn(CANARY, result.stdout + result.stderr)
+            return json.loads(result.stdout) if success else result
+
+        # The old overlay and explicit null both stay off in an ambient credential environment.
+        variants = (("old", None), ("off", None), ("env", EMBEDDING),
+                    ("none", {**EMBEDDING, "auth": {"mode": "none"}}))
+        targets = []
+        for label, embedding in variants:
+            with self.subTest(label=label):
+                data = copy.deepcopy(self.data)
+                target = self.parent / label
+                targets.append(target)
+                data["target"]["agentDir"] = str(target)
+                if label != "old":
+                    data["memory"]["wiki"]["embedding"] = copy.deepcopy(embedding)
+                    data["consent"]["embeddingTextTransfer"] = embedding is not None
+                overlay_file.write_text(json.dumps(data))
+                run("validate", "--overlay", str(overlay_file))
+                preview = run("plan", "--overlay", str(overlay_file))
+                self.assertFalse(target.exists())
+                activation = preview["memory"]["activation"]["wiki"]["embeddings"]
+                self.assertEqual(embedding is not None, activation["enabled"])
+                self.assertEqual(embedding is not None, activation["writeTimeRequests"])
+                self.assertEqual(embedding is not None, activation["queryTimeRequests"])
+                self.assertEqual("separate action", activation["backfill"])
+                self.assertFalse(preview["runtimeReady"])
+                self.assertNotIn("reindex", json.dumps(preview["commands"]))
+                generated = run("generate", "--overlay", str(overlay_file), "--target", str(target))
+                self.assertTrue(generated["filesComplete"])
+                self.assertFalse(generated["runtimeReady"])
+                settings = json.loads((target / "settings.json").read_text())
+                wiki = settings["llm-wiki"]
+                expected_auth = "embeddingApiKey" if label == "none" else "embeddingApiKeyEnv"
+                self.assertEqual({expected_auth} if embedding else set(),
+                                 set(wiki) & {"embeddingApiKey", "embeddingApiKeyEnv"})
+                if embedding:
+                    self.assertEqual(embedding["baseUrl"], wiki["embeddingBaseUrl"])
+                    self.assertEqual(embedding["model"], wiki["embeddingModel"])
+                    self.assertEqual("openai-compatible", wiki["embeddingProvider"])
+                    self.assertEqual(WIKI_NO_AUTH_KEY if label == "none" else "EXAMPLE_EMBEDDING_KEY", wiki[expected_auth])
+                    self.assertNotIn("expectedDimensions", wiki)
+                else:
+                    self.assertFalse(any(k.startswith("embedding") for k in wiki))
+                self.assertFalse(wiki["trajectories"])
+                self.assertEqual({"settings.json", HERMES_CONFIG, ".tenant-pi", ".tenant-pi/choices.json", STATE},
+                                 {str(p.relative_to(target)) for p in target.rglob("*")})
+                self.assertNotIn(CANARY, "".join(p.read_text() for p in target.rglob("*") if p.is_file()))
+                self.assertEqual(0o600, stat.S_IMODE((target / "settings.json").stat().st_mode))
+        compared = run("compare", "--left", str(targets[0]), "--right", str(targets[2]))
+        self.assertEqual([], compared["unsupported"])
+        self.assertEqual({"status": "none", "fields": [], "metadata": "unchanged"}, compared["right"]["drift"])
+        self.assertNotIn(EMBEDDING["baseUrl"], json.dumps(compared))
+        self.assertNotIn("EXAMPLE_EMBEDDING_KEY", json.dumps(compared))
+        preserved = {p: p.read_bytes() for target in targets for p in target.rglob("*") if p.is_file()}
+        # Bad choices fail validation, planning and generation before target publication.
+        invalid = (("provider", None), ("baseUrl", "https://u:" + CANARY + "@embeddings.example.invalid"),
+                   ("baseUrl", "https://embeddings.example.invalid/#" + CANARY),
+                   ("baseUrl", "file:///" + CANARY),
+                   ("baseUrl", "https://embeddings.example.invalid?token=" + CANARY),
+                   ("model", ""), ("auth", {"apiKey": CANARY}))
+        for key, value in invalid:
+            data = copy.deepcopy(self.data)
+            data["consent"]["embeddingTextTransfer"] = True
+            data["memory"]["wiki"]["embedding"] = copy.deepcopy(EMBEDDING)
+            data["memory"]["wiki"]["embedding"][key] = value
+            overlay_file.write_text(json.dumps(data))
+            for command in ("validate", "plan", "generate"):
+                args = ("--target", str(self.target)) if command == "generate" else ()
+                run(command, "--overlay", str(overlay_file), *args, success=False)
+                self.assertFalse(self.target.exists())
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+        self.assertEqual(preserved, {p: p.read_bytes() for p in preserved})
 
     def test_cli_generates_an_openviking_profile_without_a_server_call_or_a_credential(self):
         for cid in ("hermes", "wiki"):

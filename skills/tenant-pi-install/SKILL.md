@@ -166,7 +166,7 @@ Ask, one at a time, and write the other answers into the overlay:
 
 5. "MCP servers through the adapter?" See Stage 6a. Default is none.
 6. "Which in-tree extensions and skills?" Default is none. Each one is a component of its own; `docs/packages.md` has the table.
-   - Extensions of `packages/tenantext`: `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`. Skills: `herdr`, `coordinator-skills` (more than one skill; `packages/tenantext/skills/coordinator-skills/README.md` lists them), `slopscore-pr`.
+   - Extensions of `packages/tenantext`: `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`. Skills: `herdr`, `coordinator-skills` (more than one skill; `packages/tenantext/skills/coordinator-skills/README.md` lists them), `knowledge-skills` (four skills; `packages/tenantext/skills/knowledge-skills/README.md` lists them), `slopscore-pr`.
    - Move each chosen ID from `selection.disable` to `selection.enable`. Enable each ID in `requires` too: `ops-footer` needs `context-meter`.
    - These components are `unverified`. Tell the user: no test in the kit loads these components with the kit pin. The plan shows each gap under `readinessGaps`.
    - The profile points at the package directory of this clone by its absolute path. Tell the user not to move or delete the clone.

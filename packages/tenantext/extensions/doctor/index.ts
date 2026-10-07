@@ -16,9 +16,9 @@ export default function doctor(pi: ExtensionAPI) {
 			const items = ["check", "fix"].filter(c => c.startsWith(prefix)).map(c => ({ value: c, label: c }));
 			return items.length ? items : null;
 		},
-		handler: async args => {
+		handler: async (args, ctx) => {
 			const fix = args.trim() === "fix";
-			const checks = await runChecks({ readCredential: provider => readStoredCredential(provider) });
+			const checks = await runChecks({ cwd: ctx.cwd, readCredential: provider => readStoredCredential(provider) });
 			const { applied, failed } = fix ? applyFixes(checks) : { applied: [], failed: [] };
 			const body = `## tenantext doctor\n\n${formatChecks(checks, applied)}${failed.length ? `\n\nFailed: ${failed.join(", ")}.` : ""}`;
 			if (active) pi.appendEntry(ENTRY_TYPE, { body });

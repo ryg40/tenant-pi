@@ -257,6 +257,84 @@ class CompareTests(unittest.TestCase):
                           at + "wiki/wikiHome": "removed"},
                          {c["field"]: c["change"] for c in report["changes"] if c["field"].startswith(at)})
 
+    def test_embedding_comparison_uses_markers_without_private_values(self):
+        _, memory = self.memory_pair()
+        data = copy.deepcopy(memory[".tenant-pi/choices.json"]["overlay"])
+        data["consent"]["embeddingTextTransfer"] = True
+        data["memory"]["wiki"]["embedding"] = {
+            "provider": "openai-compatible", "baseUrl": "https://embeddings.example.invalid/" + CANARY + "/v1",
+            "model": CANARY, "auth": {"envVar": "EXAMPLE_" + CANARY}, "expectedDimensions": 1536}
+        embedded = candidate(data)
+        for left, right, change in ((memory, embedded, "added"), (embedded, memory, "removed")):
+            report = compare(left, right)
+            self.assertNotIn(CANARY, json.dumps(report))
+            self.assertEqual([], report["unsupported"])
+            self.assertEqual("none", report["right"]["drift"]["status"])
+            for file, field in (*((".tenant-pi/choices.json", "/overlay/memory/wiki/embedding/" + key) for key in
+                                   ("baseUrl", "model", "auth/envVar")),
+                                *(("settings.json", "/llm-wiki/" + key) for key in
+                                  ("embeddingBaseUrl", "embeddingModel", "embeddingApiKeyEnv"))):
+                self.assertIn({"file": file, "field": field, "change": change}, report["changes"])
+        for value in (CANARY, {"bad key": CANARY}, [], True, None):
+            hostile = copy.deepcopy(embedded)
+            hostile[".tenant-pi/choices.json"]["overlay"]["memory"]["wiki"]["embedding"] = value
+            hostile["settings.json"]["llm-wiki"]["embeddingApiKey"] = value
+            report = compare(embedded, hostile)
+            self.assertNotIn(CANARY, json.dumps(report))
+            self.assertNotIn("bad key", json.dumps(report))
+        data["memory"]["wiki"]["embedding"]["auth"] = {"mode": "none"}
+        report = compare(embedded, candidate(data))
+        self.assertEqual([], report["unsupported"])
+        self.assertIn({"file": "settings.json", "field": "/llm-wiki/embeddingApiKey", "change": "added"}, report["changes"])
+
+    def test_embedding_public_leaves_and_hostile_shapes(self):
+        _, memory = self.memory_pair()
+        data = copy.deepcopy(memory[".tenant-pi/choices.json"]["overlay"])
+        data["consent"]["embeddingTextTransfer"] = True
+        data["memory"]["wiki"]["embedding"] = {
+            "provider": "openai-compatible", "baseUrl": "http://127.0.0.1:8080/v1",
+            "model": CANARY, "auth": {"mode": "none"}, "expectedDimensions": 10 ** 6}
+        embedded = candidate(data)
+        report = compare(memory, embedded)
+        changes = {(c["file"], c["field"]): c for c in report["changes"]}
+        at = "/overlay/memory/wiki/embedding"
+        for field, value in ((at + "/provider", "openai-compatible"), (at + "/auth/mode", "none"),
+                             (at + "/expectedDimensions", 10 ** 6)):
+            self.assertEqual({"value": value}, changes[(".tenant-pi/choices.json", field)]["right"])
+        self.assertEqual({"value": "openai-compatible"}, changes[("settings.json", "/llm-wiki/embeddingProvider")]["right"])
+        for value in (CANARY, [], True, {"mode": CANARY, "envVar": {"nested": CANARY}, "bad key": CANARY}):
+            hostile = copy.deepcopy(embedded)
+            embedding = hostile[".tenant-pi/choices.json"]["overlay"]["memory"]["wiki"]["embedding"]
+            embedding.update(provider=[CANARY], expectedDimensions=CANARY, auth=value)
+            hostile["settings.json"]["llm-wiki"]["embeddingProvider"] = {"nested": CANARY}
+            result = compare(embedded, hostile)
+            self.assertNotIn(CANARY, json.dumps(result))
+            self.assertNotIn("bad key", json.dumps(result))
+            self.assertTrue(result["unsupported"])
+        null = copy.deepcopy(memory)
+        null[".tenant-pi/choices.json"]["overlay"]["memory"]["wiki"]["embedding"] = None
+        self.assertIn({"file": ".tenant-pi/choices.json", "field": at, "change": "added",
+                       "right": {"value": "disabled"}}, compare(memory, null)["changes"])
+
+    def test_old_disabled_embedding_record_compares_unchanged_without_mutation(self):
+        _, current = self.memory_pair()
+        old = copy.deepcopy(current)
+        del old[".tenant-pi/choices.json"]["memory"]["activation"]["wiki"]["embeddings"]
+        before = copy.deepcopy((old, current))
+        for left, right in ((old, current), (current, old)):
+            result = compare(left, right)
+            self.assertEqual([], result["changes"])
+            self.assertEqual([], result["unsupported"])
+            for side in ("left", "right"):
+                self.assertEqual("unchanged", result[side]["drift"]["metadata"])
+        self.assertEqual(before, (old, current))
+        for value in (False, {}, {"enabled": False}, {"enabled": False, "private": CANARY}):
+            hostile = copy.deepcopy(current)
+            hostile[".tenant-pi/choices.json"]["memory"]["activation"]["wiki"]["embeddings"] = value
+            result = compare(old, hostile)
+            self.assertIn((".tenant-pi/choices.json", "/memory"), fields(result))
+            self.assertNotIn(CANARY, json.dumps(result))
+
     def test_memory_field_policies_cover_every_module_field(self):
         from scripts.candidate_compare import ENUMS, MEMORY_POLICIES
         from scripts.memory_modules import MEMORY, MODULE_FIELDS, REVIEW_TRANSPORTS

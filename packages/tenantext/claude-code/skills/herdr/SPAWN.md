@@ -57,15 +57,17 @@ optional. Add them to the machine file when the machine has them:
 
 | Optional entry | What to set | Effect |
 | --- | --- | --- |
-| A search MCP server, for example `hound` in the example file | `kind` with the value `mcp`, a `url` location, and `mcp_server` when the server name is not the id of the entry. An `order` below 30 puts it before `harness-web`. | The role prompt lists it. For Claude Code, `spawn.py` writes an MCP configuration with each such server for a role with web access, and allows its tools as `mcp__<server>`. |
+| A search MCP server, for example `donsetch` in the example file | `kind` with the value `mcp`, a `url` location, and `mcp_server` when the server name is not the id of the entry. An optional `headers_helper` shell command supplies dynamic HTTP headers; use a helper that reads credentials from the environment. An `order` below 30 puts it before `harness-web`. | The role prompt lists it. For Claude Code, `spawn.py` writes an MCP configuration with each such server for a role with web access, includes `headersHelper` when `headers_helper` is set, and allows its tools as `mcp__<server>`. |
 | A desktop browser skill, for example `desktop-browser` in the example file | `kind` with the value `skill` and a `file` location of the skill on the machine | The role prompt lists it with its location. |
 | `launch.pi_mcp_config_strict` | The path of an MCP configuration file of pi, for example `~/.pi/agent/mcp-researcher.json` | With `--strict`, a pi session with web access starts with `--mcp-config <path>`. Not set: `spawn.py` adds no MCP option. |
 
 With no MCP entry, `spawn.py` gives Claude Code no MCP configuration and allows
 no MCP tool. The session keeps the MCP servers of the user.
 
-A setup that used the old shipped Hound entry, `desktop-browser` entry or
-`mcp-researcher.json` path adds them to the machine file, as in
+The DonSeTch example uses `headers_helper` to read `DONSETCH_HTTP_TOKEN` when
+Claude Code connects or reconnects. The generated MCP configuration stores only
+the helper command, not the token. The desktop browser and
+`mcp-researcher.json` path are also optional machine settings, as in
 `resources.local.example.json`.
 
 The source of truth is `roles.json`, `roles/<role>.md` and `resources.json` in this directory. A role sets no model.

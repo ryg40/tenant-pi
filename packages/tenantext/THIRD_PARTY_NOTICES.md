@@ -26,6 +26,20 @@ The full upstream license text is in [`licenses/mattpocock-skills-MIT.txt`](lice
 
 This repository does not depend on the upstream package. It ships only the adapted skills that `skills/coordinator-skills/README.md` lists.
 
+## `inkeep/open-knowledge-skills`
+
+The four skill texts in `skills/knowledge-skills/` are adapted from Inkeep's skills.
+Each skill directory has a `CREDITS.md` with its upstream path and changes.
+
+- Project: https://github.com/inkeep/open-knowledge-skills
+- Upstream commit: `776760f49d5b3b5c24921165b6c1ea17e8990fd5`
+- License: MIT
+- Copyright: 2026 Inkeep
+
+The full upstream license text is in [`licenses/open-knowledge-skills-MIT.txt`](licenses/open-knowledge-skills-MIT.txt).
+The kit ships the four skills listed in `skills/knowledge-skills/README.md`, including the MIT `skills/core/open-knowledge` source.
+It excludes the GPL copy from `inkeep/open-knowledge`.
+
 ## `humanlayer/skills`
 
 The skill text in `skills/coordinator-skills/show-me/` is adapted from the `show-me` skill of `humanlayer/skills`. The visual menu in `skills/coordinator-skills/pr/` comes from the same skill. The visual menu is the work of Dex Horthy.

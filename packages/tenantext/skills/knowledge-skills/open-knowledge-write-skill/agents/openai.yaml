@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write OpenKnowledge Skills"
+  short_description: "Author and evaluate reusable Agent Skills."
+  default_prompt: "Use $open-knowledge-write-skill for this task."

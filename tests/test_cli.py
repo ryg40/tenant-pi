@@ -1132,6 +1132,107 @@ class CliTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), "compare", "--left", str(left), "--right", str(right)],
                               cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
 
+    def test_embedding_compare_carry_regenerate_without_credential_reads(self):
+        from tests.test_carry import apply_patches
+
+        secret = "SYNTHETIC_CREDENTIAL_CANARY"
+        private = {"provider": "openai-compatible", "baseUrl": "http://127.0.0.1:8080/PRIVATE_ENDPOINT/v1",
+                   "model": "PRIVATE_MODEL", "auth": {"envVar": "EXAMPLE_EMBEDDING_KEY"}, "expectedDimensions": 1024}
+        vault = self.home / ".llm-wiki"
+        (vault / "meta").mkdir(parents=True)
+        (vault / "page.md").write_text("KEEP PAGE")
+        (vault / "meta/embeddings.json").write_text("KEEP VECTORS")
+        preserved = {p: p.read_bytes() for p in (self.old / "settings.json", vault / "page.md", vault / "meta/embeddings.json")}
+        log = self.base / "embedding-reads.log"
+        hook = self.base / "sitecustomize.py"
+        hook.write_text(hook.read_text() +
+                        "import os\noriginal = os._Environ.__getitem__\n"
+                        "def guarded(self, key):\n"
+                        "    if key in ('EXAMPLE_EMBEDDING_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL'):\n"
+                        "        raise AssertionError('credential value read')\n"
+                        "    return original(self, key)\n"
+                        "os._Environ.__getitem__ = guarded\n"
+                        "os._Environ.__contains__ = lambda self, key: self.encodekey(key) in self._data\n"
+                        "_log = os.open(" + repr(str(log)) + ", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n"
+                        "def audit(event, args):\n"
+                        "    if event == 'open':\n"
+                        "        os.write(_log, (str(args[0]) + '\\n').encode('utf-8', 'replace'))\n"
+                        "        if isinstance(args[0], str) and (args[0].startswith(" + repr(str(vault)) + ") or args[0] in ('auth.json', 'embeddings.json', 'page.md')):\n"
+                        "            raise AssertionError('private data read')\n"
+                        "sys.addaudithook(audit)\n")
+        self.env.update(EXAMPLE_EMBEDDING_KEY=secret, OPENAI_API_KEY=secret, OPENAI_BASE_URL=secret)
+        self.data["selection"] = {"enable": ["core", "wiki"], "disable": []}
+        self.data["consent"]["memoryCapture"] = True
+        self.data["memory"] = {"schemaVersion": 1, "hermes": None, "openviking": None,
+                               "wiki": {"ambientPersonalVault": False, "backgroundTasks": False}}
+        overlays, targets = {}, {}
+        for name in ("old", "env", "none", "off"):
+            data = copy.deepcopy(self.data)
+            target = self.parent / name
+            data["target"]["agentDir"] = str(target)
+            if name != "old":
+                data["consent"]["embeddingTextTransfer"] = name != "off"
+                data["memory"]["wiki"]["embedding"] = None if name == "off" else copy.deepcopy(private)
+                if name == "none":
+                    data["memory"]["wiki"]["embedding"]["auth"] = {"mode": "none"}
+            self.overlay.write_text(json.dumps(data))
+            for action, extra in (("validate", ()), ("plan", ()), ("generate", ("--target", str(target)))):
+                result = self.run_cli(action, *extra)
+                self.assertEqual((0, ""), (result.returncode, result.stderr))
+                self.assertNotIn(secret, result.stdout)
+            overlays[name], targets[name] = data, target
+            (target / "auth.json").write_text(secret)
+        # A previous generator lacks only the inert activation record.
+        record = targets["old"] / ".tenant-pi/choices.json"
+        old_choices = json.loads(record.read_text())
+        del old_choices["memory"]["activation"]["wiki"]["embeddings"]
+        record.write_text(json.dumps(old_choices))
+        for index, (left_name, right_name, rule) in enumerate((
+                ("old", "env", "embedding_consent_missing"), ("env", "none", None),
+                ("none", "env", None), ("env", "off", "embedding_consent_unused"),
+                ("off", "old", None))):
+            with self.subTest(left=left_name, right=right_name):
+                left, right = targets[left_name], targets[right_name]
+                result = self.run_compare(left, right)
+                self.assertEqual((0, ""), (result.returncode, result.stderr))
+                for value in (private["baseUrl"], private["model"], private["auth"]["envVar"], secret):
+                    self.assertNotIn(value, result.stdout)
+                report_file = self.base / "embedding-report.json"
+                report_file.write_text(result.stdout)
+                self.overlay.write_text(json.dumps(overlays[left_name]))
+                before = {p: p.read_bytes() for t in targets.values() for p in t.rglob("*") if p.is_file()}
+                result = self.run_cli("carry", "--report", str(report_file), "--right", str(right))
+                self.assertEqual((0, ""), (result.returncode, result.stderr))
+                self.assertNotIn(secret, result.stdout)
+                output = json.loads(result.stdout)
+                self.assertEqual([], [p for p in output["patches"] if p["path"].startswith("/consent")])
+                expected = {"status": "invalid", "rule": rule + ": overlay.consent.embeddingTextTransfer"} if rule else {"status": "valid"}
+                self.assertEqual(expected, output["patchedOverlay"])
+                patched = apply_patches(overlays[left_name], output["patches"])
+                self.assertEqual(overlays[left_name]["consent"], patched["consent"])
+                if rule:
+                    self.overlay.write_text(json.dumps(patched))
+                    invalid = self.run_cli("validate")
+                    self.assertEqual(2, invalid.returncode)
+                    self.assertIn(rule, invalid.stderr)
+                    self.assertNotIn(secret, invalid.stderr)
+                # The test makes the separate consent decision; carry never does.
+                patched["consent"] = copy.deepcopy(overlays[right_name]["consent"])
+                target = self.parent / ("regenerated-" + str(index))
+                patched["target"]["agentDir"] = str(target)
+                self.overlay.write_text(json.dumps(patched))
+                result = self.run_cli("generate", "--target", str(target))
+                self.assertEqual((0, ""), (result.returncode, result.stderr))
+                self.assertNotIn(secret, result.stdout)
+                self.assertEqual((right / "settings.json").read_bytes(), (target / "settings.json").read_bytes())
+                regenerated = json.loads(self.run_compare(right, target).stdout)
+                self.assertEqual(["/overlay/target/agentDir"], [c["field"] for c in regenerated["changes"]])
+                self.assertEqual("unchanged", regenerated["right"]["drift"]["metadata"])
+                self.assertEqual(before, {p: p.read_bytes() for p in before})
+        self.assertEqual(preserved, {p: p.read_bytes() for p in preserved})
+        self.assertTrue({"settings.json", "choices.json", "state.json"} <= set(log.read_text().splitlines()))
+        self.assertFalse((self.base / "called").exists())
+
     def test_compare_opens_only_declared_files_and_redacts(self):
         left, right = self.generate_pair()
         # Private runtime state beside the declared files must stay unread.

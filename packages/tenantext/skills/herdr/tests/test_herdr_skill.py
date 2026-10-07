@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -261,7 +262,7 @@ class Launch(IsolatedConfig):
             args = spawn.native_args(r, CFG, False, f"t-{role}-1", write=False)
             self.assertNotIn("--mcp-config", args)
             self.assertNotIn("mcp__", args[args.index("--allowedTools") + 1])
-            self.assertNotIn("Hound", spawn.system_prompt(r, CFG))
+            self.assertNotIn("DonSeTch", spawn.system_prompt(r, CFG))
             r = spawn.resolve(opts(harness="pi", role=role, strict=True), CFG)
             self.assertNotIn("--mcp-config", spawn.native_args(r, CFG, False, f"t-{role}-1", write=False))
 
@@ -278,8 +279,11 @@ class Launch(IsolatedConfig):
             r = spawn.resolve(opts(harness="claude", role="researcher"), CFG)
             args = spawn.native_args(r, CFG, False, "t-researcher-1", write=True)
             config = json.load(open(args[args.index("--mcp-config") + 1]))
-            self.assertEqual(config, {"mcpServers": {"hound": {"type": "http", "url": "http://127.0.0.1:8765/mcp"}}})
-            self.assertIn("mcp__hound", args[args.index("--allowedTools") + 1].split())
+            helper = os.path.expanduser("~/.agents/skills/herdr/scripts/mcp-bearer-helper.sh DONSETCH_HTTP_TOKEN")
+            self.assertEqual(config, {"mcpServers": {"donsetch": {
+                "type": "http", "url": "http://127.0.0.1:8766/mcp", "headersHelper": helper}}})
+            self.assertNotIn("test-token-value", json.dumps(config))
+            self.assertIn("mcp__donsetch", args[args.index("--allowedTools") + 1].split())
             self.assertNotIn("--strict-mcp-config", args)
             r = spawn.resolve(opts(harness="claude", role="worker"), CFG)
             self.assertNotIn("--mcp-config", spawn.native_args(r, CFG, False, "t-worker-1", write=False))
@@ -288,6 +292,33 @@ class Launch(IsolatedConfig):
             self.assertEqual(args[args.index("--mcp-config") + 1], os.path.expanduser("~/.pi/agent/mcp-researcher.json"))
             r = spawn.resolve(opts(harness="pi", role="researcher"), CFG)
             self.assertNotIn("--mcp-config", spawn.native_args(r, CFG, False, "t-researcher-1", write=False))
+
+    def test_headers_helper_is_optional_and_expands_home(self):
+        resources = {
+            "plain": {"group": "web", "kind": "mcp", "locations": [{"url": "http://localhost/plain"}]},
+            "auth": {"group": "web", "kind": "mcp", "headers_helper": "~/helper.sh TOKEN",
+                     "locations": [{"url": "http://localhost/auth"}]}}
+        with mock.patch.dict(os.environ, {"HOME": "/tmp/herdr-home"}), \
+                mock.patch.object(spawn, "load_catalog", return_value=resources):
+            args = spawn.native_args(spawn.resolve(opts(harness="claude", role="researcher"), CFG), CFG,
+                                     False, "t-researcher-1", write=True)
+        config_path = args[args.index("--mcp-config") + 1]
+        config = json.load(open(config_path, encoding="utf-8"))
+        self.assertNotIn("headersHelper", config["mcpServers"]["plain"])
+        self.assertEqual(config["mcpServers"]["auth"]["headersHelper"], "/tmp/herdr-home/helper.sh TOKEN")
+
+    def test_bearer_helper_fails_closed_and_emits_json_header(self):
+        helper = os.path.join(SKILL, "scripts", "mcp-bearer-helper.sh")
+        env = os.environ.copy()
+        env.pop("DONSETCH_HTTP_TOKEN", None)
+        missing = subprocess.run([helper, "DONSETCH_HTTP_TOKEN"], capture_output=True, text=True, env=env)
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertEqual(missing.stdout, "")
+        self.assertEqual(len(missing.stderr.strip().splitlines()), 1)
+        env["DONSETCH_HTTP_TOKEN"] = "test-token-value"
+        present = subprocess.run([helper, "DONSETCH_HTTP_TOKEN"], capture_output=True, text=True, env=env)
+        self.assertEqual(present.returncode, 0, present.stderr)
+        self.assertEqual(json.loads(present.stdout), {"Authorization": "Bearer test-token-value"})
 
     def test_the_server_name_of_an_mcp_entry(self):
         resources = {
@@ -298,7 +329,8 @@ class Launch(IsolatedConfig):
             "skill": {"group": "web", "kind": "skill", "locations": [{"url": "http://localhost:4/"}]},
             "local": {"group": "local", "kind": "mcp", "locations": [{"url": "http://localhost:5/mcp"}]}}
         self.assertEqual(list(_common.mcp_servers(resources).items()),
-                         [("a", "http://localhost:1/mcp"), ("search_two", "http://localhost:2/mcp")])
+                         [("a", {"url": "http://localhost:1/mcp"}),
+                          ("search_two", {"url": "http://localhost:2/mcp"})])
 
     def test_pi_researcher_keeps_the_mcp_servers_of_the_user(self):
         r = spawn.resolve(opts(harness="pi", role="researcher"), CFG)
@@ -312,7 +344,7 @@ class Launch(IsolatedConfig):
         self.assertIn("go to the next one", text)
         self.assertIn("**Report.**", text)
         self.assertIn("resources.py", text)
-        for banned in ("Hound MCP only", "do not change to another search tool", "Do not change to another"):
+        for banned in ("DonSeTch MCP only", "do not change to another search tool", "Do not change to another"):
             self.assertNotIn(banned, text)
 
     def test_scout_and_researcher_are_both_context_gatherers(self):
@@ -368,7 +400,7 @@ class Launch(IsolatedConfig):
             self.assertNotEqual(entry.get("kind"), "mcp")
             self.assertFalse(entry.get("locations"))
         example = json.load(open(os.path.join(SKILL, "resources.local.example.json"), encoding="utf-8"))
-        self.assertEqual(sorted(example["resources"]), ["desktop-browser", "hound"])
+        self.assertEqual(sorted(example["resources"]), ["desktop-browser", "donsetch"])
 
     def test_the_catalog_names_no_host(self):
         text = open(os.path.join(SKILL, "resources.json"), encoding="utf-8").read()

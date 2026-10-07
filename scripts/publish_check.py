@@ -20,6 +20,8 @@ PUBLISH = (
     "docs/ci.md",
     ".gitignore", ".env.example", "README.md", "LICENSE", "packages/promptr/LICENSE",
     "packages/openviking-pi/LICENSE",
+    "packages/tenantext/extensions/doctor/wiki.ts",
+    "packages/tenantext/test/doctor-wiki.test.ts",
     "packages/promptr/src/herdr/adapter.mts",
     "packages/promptr/src/herdr/role-handoff.mts",
     "packages/promptr/src/state/run-receipts.mts",
@@ -67,14 +69,14 @@ PUBLISH = (
     "scripts/baseline.py", "tests/test_baseline.py", "docs/directory-baseline.md",
     "scripts/doc_check.py", "tests/test_doc_check.py", "docs/guides/setup.md", "docs/guides/modules.md",
     "docs/guides/troubleshooting.md", "docs/guides/privacy.md", "docs/guides/candidate-update.md",
-    "docs/guides/release-checklist.md",
+    "docs/guides/release-checklist.md", "docs/guides/pin-move-release.md",
     "AGENTS.md", "GLOSSARY.md", "docs/agents/issue-tracker.md",
-    "tests/test_skill_invariants.py",
+    "tests/test_skill_invariants.py", "tests/test_knowledge_skills.py",
 )
 # Package directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.
 PUBLISH_DIRS = (
-    ("packages/tenantext", ("node_modules/",)),
+    ("packages/tenantext", ("node_modules/", "extensions/doctor/wiki.ts", "test/doctor-wiki.test.ts")),
     # The license is explicit in PUBLISH, so the directory rule must not add it again.
     ("packages/promptr", ("node_modules/", "dist/", "LICENSE",
         "src/herdr/adapter.mts", "src/herdr/role-handoff.mts", "src/state/run-receipts.mts",

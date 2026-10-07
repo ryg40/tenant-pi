@@ -3,6 +3,8 @@
 A portable release is a snapshot of the reviewed publish set on the branch `portable`. This checklist lists the gates before a snapshot and the steps that publish it. A passed gate is a fact for this release only. It is not a claim about a later release.
 
 Record each gate as passed, failed, blocked or not run. Never write "passed" for a gate that did not run.
+For a pin change followed by a snapshot, use the [pin move and release guide](pin-move-release.md).
+It records a maintainer-approved fast track with gate 6 not run, not full release qualification.
 
 ## Gates
 
@@ -18,7 +20,9 @@ Record each gate as passed, failed, blocked or not run. Never write "passed" for
 
 Gates 1 to 4 are the four offline checks that `scripts/publish_portable.py` runs itself. Gate 1 includes [the documentation check](#documentation-check). The test `DocCheckRepoTests` of `tests/test_doc_check.py` runs it on the publish set. A finding fails the unit tests. Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
 
-Gate 1 also includes the skill text check of the component `coordinator-skills`. The test `tests/test_skill_invariants.py` reads each shipped skill of `packages/tenantext/skills/coordinator-skills/` and the label table of [the issue tracker document](../agents/issue-tracker.md). A finding fails the unit tests.
+Gate 1 also checks the text of `coordinator-skills` and `knowledge-skills` under `packages/tenantext/skills/`.
+The test `tests/test_skill_invariants.py` reads their Markdown and the label table of [the issue tracker document](../agents/issue-tracker.md).
+A finding fails the unit tests.
 
 A pin move changes two tracked files: `config/manifest.json` and the reviewed core anchor in `scripts/validate.py`.
 Use `scripts/pi_update.py` function `pin_contents` for both edits; the CI request calls the same function.

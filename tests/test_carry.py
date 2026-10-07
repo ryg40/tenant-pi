@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from scripts.candidate_compare import compare
-from scripts.carry import OWNED, carry
+from scripts.carry import CHOICES, OWNED, carry
 from scripts.profile_plan import prepare
 from scripts.validate import ROOT, Invalid, load
 from tests.test_candidate_compare import candidate, overlay_for
@@ -545,6 +545,126 @@ class CarryMemoryAndResourceTests(unittest.TestCase):
             {"file": ".tenant-pi/choices.json", "field": "/overlay/ownerResources/<redacted>/0", "reason": "field_unmapped"},
             {"file": ".tenant-pi/choices.json", "field": "/overlay/ownerResources/<redacted>/0", "reason": "field_unmapped"}],
             output["notCarried"])
+
+
+class CarryEmbeddingTests(unittest.TestCase):
+    setUp = CarryMemoryAndResourceTests.setUp
+    run_pair = CarryMemoryAndResourceTests.run_pair
+    renders = CarryMemoryAndResourceTests.renders
+
+    def base(self, embedding=None):
+        data = with_memory("wiki", memory={"wiki": {"ambientPersonalVault": False, "backgroundTasks": False}})
+        if embedding is not None:
+            data["memory"]["wiki"]["embedding"] = copy.deepcopy(embedding)
+            data["consent"]["embeddingTextTransfer"] = True
+        return data
+
+    def choice(self):
+        return {"provider": "openai-compatible", "baseUrl": "http://127.0.0.1:8080/v1",
+                "model": "example-embedding", "auth": {"envVar": "EXAMPLE_EMBEDDING_KEY"}, "expectedDimensions": 1024}
+
+    def test_embedding_leaf_changes_round_trip_and_preserve_unreported_values(self):
+        a = self.base(self.choice())
+        for key, value in (("baseUrl", "https://embeddings.example.invalid/v1"), ("model", "another-model"),
+                           ("expectedDimensions", 1536), ("auth", {"mode": "none"})):
+            with self.subTest(key=key):
+                b = copy.deepcopy(a)
+                b["memory"]["wiki"]["embedding"][key] = value
+                files_b, output = self.run_pair(a, b)
+                patched = apply_patches(a, output["patches"])
+                self.assertEqual(b, patched)
+                self.assertEqual({"status": "valid"}, output["patchedOverlay"])
+                self.renders(patched, files_b)
+                reverse_files, reverse = self.run_pair(b, a)
+                self.assertEqual(a, apply_patches(b, reverse["patches"]))
+                self.renders(apply_patches(b, reverse["patches"]), reverse_files)
+        b = copy.deepcopy(a)
+        b["memory"]["wiki"]["embedding"]["model"] = "another-model"
+        files_b = candidate(b)
+        target = copy.deepcopy(a)
+        target["memory"]["wiki"]["embedding"].update(baseUrl="https://target.example.invalid/v1", expectedDimensions=2048)
+        output = carry(report_for(candidate(a), files_b), target, self.manifest, files_b, RIGHT)
+        self.assertEqual([{"op": "replace", "path": "/memory/wiki/embedding/model", "value": "another-model"}], output["patches"])
+        patched = apply_patches(target, output["patches"])
+        self.assertEqual(target["memory"]["wiki"]["embedding"]["baseUrl"], patched["memory"]["wiki"]["embedding"]["baseUrl"])
+        self.assertEqual(2048, patched["memory"]["wiki"]["embedding"]["expectedDimensions"])
+        target["memory"]["wiki"]["embedding"]["auth"] = {"mode": "none"}
+        output = carry(report_for(candidate(a), files_b), target, self.manifest, files_b, RIGHT)
+        self.assertEqual({"mode": "none"}, apply_patches(target, output["patches"])["memory"]["wiki"]["embedding"]["auth"])
+        self.assertEqual({"status": "valid"}, output["patchedOverlay"])
+        # Optional dimension omission is a leaf removal, not a whole embedding replacement.
+        b = copy.deepcopy(a)
+        del b["memory"]["wiki"]["embedding"]["expectedDimensions"]
+        files_b, output = self.run_pair(a, b)
+        self.assertEqual([{"op": "remove", "path": "/memory/wiki/embedding/expectedDimensions"}], output["patches"])
+        self.renders(apply_patches(a, output["patches"]), files_b)
+
+    def test_enable_disable_omission_and_consent_invalid_patches(self):
+        on, omitted = self.base(self.choice()), self.base()
+        null = copy.deepcopy(omitted)
+        null["memory"]["wiki"]["embedding"] = None
+        for off in (omitted, null):
+            for a, b, rule in ((off, on, "embedding_consent_missing"), (on, off, "embedding_consent_unused")):
+                with self.subTest(rule=rule, null=off is null):
+                    files_b, output = self.run_pair(a, b)
+                    self.assertEqual(1, len(output["patches"]))
+                    self.assertEqual("/memory/wiki/embedding", output["patches"][0]["path"])
+                    self.assertEqual({"status": "invalid", "rule": rule + ": overlay.consent.embeddingTextTransfer"}, output["patchedOverlay"])
+                    patched = apply_patches(a, output["patches"])
+                    self.assertEqual(a["consent"], patched["consent"])
+                    patched["consent"] = copy.deepcopy(b["consent"])
+                    self.assertEqual(b, patched)
+                    self.renders(patched, files_b)
+        for a, b in ((omitted, null), (null, omitted)):
+            files_b, output = self.run_pair(a, b)
+            self.assertEqual(b, apply_patches(a, output["patches"]))
+            # A disabled marker alone must not discard a target's unreported embedding fields.
+            output = carry(report_for(candidate(a), files_b), on, self.manifest, files_b, RIGHT)
+            self.assertEqual([], output["patches"])
+        files_b = candidate(on)
+        target = copy.deepcopy(on)
+        target["memory"]["wiki"]["embedding"]["expectedDimensions"] = 2048
+        no_dimension = copy.deepcopy(on)
+        del no_dimension["memory"]["wiki"]["embedding"]["expectedDimensions"]
+        files_b = candidate(no_dimension)
+        output = carry(report_for(candidate(null), files_b), target, self.manifest, files_b, RIGHT)
+        self.assertEqual([], output["patches"])
+        # Old records with an inert activation record missing compare without carry noise.
+        old = candidate(omitted)
+        del old[CHOICES]["memory"]["activation"]["wiki"]["embeddings"]
+        files_b = candidate(omitted)
+        output = carry(report_for(old, files_b), omitted, self.manifest, files_b, RIGHT)
+        self.assertEqual([], output["patches"])
+        self.assertEqual([], output["notCarried"])
+
+    def test_values_come_only_from_validated_right_overlay(self):
+        a, b = self.base(self.choice()), self.base(self.choice())
+        b["memory"]["wiki"]["embedding"]["model"] = "right-overlay-model"
+        right = candidate(b)
+        report = report_for(candidate(a), right)
+        right["settings.json"]["llm-wiki"]["embeddingModel"] = CANARY
+        for entry in report["changes"]:
+            entry["right"] = {"value": CANARY}
+        output = carry(report, a, self.manifest, right, RIGHT)
+        self.assertEqual([{"op": "replace", "path": "/memory/wiki/embedding/model", "value": "right-overlay-model"}], output["patches"])
+        self.assertNotIn(CANARY, json.dumps(output))
+        for value in ([], CANARY, {"auth": {"apiKey": CANARY}}):
+            broken = copy.deepcopy(right)
+            broken[CHOICES]["overlay"]["memory"]["wiki"]["embedding"] = value
+            output = carry(report, a, self.manifest, broken, RIGHT)
+            self.assertEqual([], output["patches"])
+            self.assertNotIn(CANARY, json.dumps(output))
+            self.assertIn("right_overlay_invalid", [c["reason"] for c in output["notCarried"]])
+        # Legacy whole-object markers cannot replace unreported leaves of an existing object.
+        report["changes"] = [{"file": CHOICES, "field": "/overlay/memory/wiki/embedding", "change": "changed"}]
+        output = carry(report, a, self.manifest, right, RIGHT)
+        self.assertEqual([], output["patches"])
+        self.assertEqual("overlay_matches", output["notCarried"][0]["reason"])
+        report["changes"] = [{"file": CHOICES, "field": "/overlay/memory/wiki/embedding/" + CANARY, "change": "added"}]
+        output = carry(report, a, self.manifest, right, RIGHT)
+        self.assertEqual([], output["patches"])
+        self.assertNotIn(CANARY, json.dumps(output))
+        self.assertEqual("field_unmapped", output["notCarried"][0]["reason"])
 
 
 class CarryRuleTests(unittest.TestCase):

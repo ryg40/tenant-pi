@@ -126,7 +126,16 @@ The Herdr skill is the selectable component `herdr` (`packages/tenantext`, `skil
 
 ## Coordinator skills: an optional component
 
-The component `coordinator-skills` (`packages/tenantext`, `unverified`) ships more than one skill: one directory for each below `skills/coordinator-skills/`. `config/manifest.json` names them, and [the component README](../packages/tenantext/skills/coordinator-skills/README.md) lists them. It is the only component with more than one filter entry. It claims one filter entry for each skill. A generated profile loads the skills only when the overlay enables the component. The user-level install with `packages/tenantext/skills/coordinator-skills/install.sh` links each skill into the Claude Code and the Pi skill directory of the user. The offline test `tests/test_skill_invariants.py` reads each shipped skill text.
+The component `coordinator-skills` (`packages/tenantext`, `unverified`) ships more than one skill: one directory for each below `skills/coordinator-skills/`. `config/manifest.json` names them, and [the component README](../packages/tenantext/skills/coordinator-skills/README.md) lists them. It claims one filter entry for each skill. A generated profile loads the skills only when the overlay enables the component. The user-level install with `packages/tenantext/skills/coordinator-skills/install.sh` links each skill into the Claude Code and the Pi skill directory of the user. The offline test `tests/test_skill_invariants.py` reads each shipped skill text.
+
+## Knowledge skills: an optional component
+
+The component `knowledge-skills` (`packages/tenantext`, `unverified`) ships four MIT skills with one filter entry for each.
+[The component README](../packages/tenantext/skills/knowledge-skills/README.md) lists the skills, installation and external tool requirements.
+A generated profile declares them only when the overlay enables the component.
+The install script links them into existing Claude Code and Pi user directories.
+Offline tests cover the skill text, temporary-home installation and profile declarations, but not a Pi load.
+The kit ships the MIT `open-knowledge` skill. `ok init` also writes a project-local copy, which takes precedence in a project.
 
 ## Generated outputs
 

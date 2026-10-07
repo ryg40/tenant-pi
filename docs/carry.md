@@ -16,7 +16,7 @@ python3 scripts/tenant_pi.py carry --report /private/report.json --overlay /priv
 - `--right` is the right side of the report. It must be the exact `right.path` string of the report, or the action stops with `report_right_mismatch: report.right.path`.
 - `--manifest` is optional and defaults to the kit manifest. The action validates `--overlay` and the right overlay copy against it.
 
-The report, the overlay and the manifest load through the bounded no-follow loader of the other actions (regular file, 1 MiB, 64 nesting levels, unique keys). From `--right`, the action opens only the declared files that `compare` opens, through the same loader. It never opens `auth.json`, `models.json`, sessions, memory stores, or any other file. It starts no process and makes no network request; the CLI test blocks sockets and subprocesses. The `carry` code path has no environment read. Not verified: no test probes `os.environ`, so the claim "reads no environment value" rests on reading the code.
+The report, the overlay and the manifest load through the bounded no-follow loader of the other actions (regular file, 1 MiB, 64 nesting levels, unique keys). From `--right`, the action opens only the declared files that `compare` opens, through the same loader. It never opens `auth.json`, `models.json`, sessions, memory stores, or any other file. It starts no process and makes no network request; the CLI test blocks sockets and subprocesses. The `carry` code path has no environment read. Disposable embedding fixtures guard credential environment reads during compare, carry, validate, plan, and regeneration. Offline diagnostics never check credential values.
 
 ## Output
 
@@ -46,6 +46,9 @@ Only changes in `.tenant-pi/choices.json` under `/overlay/<key>` give a patch. O
 | `/overlay/memory/schemaVersion` | `/memory/schemaVersion` |
 | `/overlay/memory/<module>/<field>`, for example `/overlay/memory/wiki/wikiHome` | `/memory/<module>/<field>` |
 | `/overlay/memory/hermes/childExtensionPaths/<index>` | `/memory/hermes/childExtensionPaths`: the whole list |
+| `/overlay/memory/wiki/embedding/<field>` | `/memory/wiki/embedding/<field>` for `provider`, `baseUrl`, `model`, or `expectedDimensions` |
+| `/overlay/memory/wiki/embedding/auth/envVar`, `/overlay/memory/wiki/embedding/auth/mode` | The same leaf under `/memory/wiki/embedding/auth` |
+| `/overlay/memory/wiki/embedding` | The object or `null` when the target has no object; removal requires a reported embedding leaf |
 | `/overlay/memory/<module>` (the module is `null` on one side of the report) | `/memory/<module>`: the module object when the module is `null` in `--overlay`; `null` only when the report also names a field of the module |
 | `/overlay/ownerResources/skills/<index>`, `/overlay/ownerResources/prompts/<index>` | `/ownerResources/skills`, `/ownerResources/prompts`: the whole list |
 
@@ -74,15 +77,32 @@ Rules:
 - A newly selected or deselected memory module comes with a consent change. The validator requires `consent.memoryCapture` true when a memory module is selected, and false when none is. The patches still print, and `patchedOverlay` names the rule, for example `memory_consent_required: overlay.consent.memoryCapture` or `memory_disabled: overlay.consent`. Set `consent` in the overlay by hand after your own decision; then the overlay validates.
 - Field patches can leave a combination that the memory rules reject, because a field of `--overlay` that the report does not name stays. Example: the patch sets `wiki.ambientPersonalVault` to `false`, and `--overlay` has its own `wiki.wikiHome`. `patchedOverlay` then names the rule, here `wiki_home_is_ambient: overlay.memory.wiki.wikiHome`; the user decides about the remaining field by hand.
 
+### Wiki embedding fields
+
+Comparison shows `baseUrl`, `model`, and `auth.envVar` only as markers, like `wikiHome`.
+It shows `provider`, `auth.mode`, and `expectedDimensions` by value.
+The carry `notCarried` list also contains no values. Patches are different: they contain the selected private overlay values.
+
+- Existing embedding objects carry only named leaves. Unreported endpoint, model, authentication, and dimension choices stay unchanged.
+- When the target embedding is absent or null, a leaf patch moves up to the embedding object.
+- When the right embedding is absent or null, a reported leaf removes or disables the whole embedding object.
+- A disabled marker alone does not replace an existing target embedding object. An old whole-object marker also cannot replace its unreported leaves.
+- Authentication form changes remove the old leaf and add the new leaf. A retained conflicting target choice fails patched-overlay validation.
+- Enabling embeddings without target transfer consent reports `embedding_consent_missing: overlay.consent.embeddingTextTransfer` in `patchedOverlay`.
+- Disabling embeddings with transfer consent still true reports `embedding_consent_unused: overlay.consent.embeddingTextTransfer`.
+- Carry never changes consent. Review that separate decision before validation and regeneration.
+
 ## Where a value comes from
 
 A patch value comes only from the overlay copy that the right side records at `/overlay` of `.tenant-pi/choices.json`. It never comes from `settings.json` or another rendered file, and never from the report. The report holds no private value: a marker field has no value.
 
 - `env` values are the literal `${NAME}` references of the overlay copy. `carry` resolves nothing.
-- Before it uses the copy, `carry` validates the whole copy with the overlay rules of the kit manifest. An env value must be a `${NAME}` reference, an endpoint a credential-free HTTPS URL, an `unmanaged` reason bounded text. A copy that fails gives no patch at all.
+- Before it uses the copy, `carry` validates the whole copy with the overlay rules of the kit manifest. An env value must be a `${NAME}` reference, a component endpoint a credential-free HTTPS URL, an `unmanaged` reason bounded text. Wiki embedding URLs accept HTTP(S); `auth.envVar` is a variable name, not its value. A copy that fails gives no patch at all.
 - The `--overlay` file must pass the same rules, or the action stops with the static rule of the validator.
 
-Warning: a patch prints the overlay value of an owner-owned key: an endpoint URL, a provider and model name, an owner package path, an `unmanaged` reason, a `memory.wiki.wikiHome` path, a `memory.hermes.childExtensionPaths` entry, an `ownerResources` directory path. Treat the output like the overlay itself. It never holds a secret value when the overlay holds none.
+Warning: carry output remains private because patches contain local overlay values, including embedding endpoints, models, and credential references.
+
+A patch prints the overlay value of an owner-owned key: an endpoint URL, a provider and model name, an owner package path, an `unmanaged` reason, a `memory.wiki.wikiHome` path, a `memory.hermes.childExtensionPaths` entry, an `ownerResources` directory path. Treat the output like the overlay itself. It never holds a secret value when the overlay holds none.
 
 ## `notCarried` reasons
 
@@ -128,7 +148,13 @@ Each refusal happens before any output on stdout. The process prints one static 
 
 ## Tests
 
+`tests/test_cli.py` also covers embedding compare/carry/regenerate round trips in a disposable HOME.
+It guards credential reads, blocks sockets and processes, checks redaction, and preserves consent, pages, vectors, and existing candidates.
+
 `tests/test_carry.py` covers:
+
+- Embedding enablement, disablement, omission, null, old activation records, nested leaf round trips, and unchanged unreported fields.
+- Consent-invalid embedding patches, hostile shapes, and values sourced only from the validated right overlay, never rendered settings or report values.
 
 - Round trips: overlay A and candidates A and B, for one change of each owner-owned key, and for an `add`, `replace` and `remove` of whole sections. A small RFC 6902 applier inside the test applies the printed patches to overlay A. `prepare` on the result renders the files of candidate B byte for byte, and the patched overlay equals overlay B.
 - The exact patch for one added owner package, and the `${NAME}` form of an env patch.

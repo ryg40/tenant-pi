@@ -246,7 +246,13 @@ def native_args(r, cfg, unattended, name, write=True):
             if write:
                 os.makedirs(os.path.dirname(mcp_file), mode=0o700, exist_ok=True)
                 with open(mcp_file, "w", encoding="utf-8") as f:
-                    json.dump({"mcpServers": {n: {"type": "http", "url": u} for n, u in servers.items()}}, f)
+                    mcp_servers_config = {}
+                    for server, settings in servers.items():
+                        entry = {"type": "http", "url": settings["url"]}
+                        if "headers_helper" in settings:
+                            entry["headersHelper"] = settings["headers_helper"]
+                        mcp_servers_config[server] = entry
+                    json.dump({"mcpServers": mcp_servers_config}, f)
             a += ["--mcp-config", mcp_file]
             if strict:
                 a += ["--strict-mcp-config"]

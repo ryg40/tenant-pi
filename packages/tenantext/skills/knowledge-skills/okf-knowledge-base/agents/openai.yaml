@@ -1,0 +1,4 @@
+interface:
+  display_name: "OKF Knowledge Base"
+  short_description: "Read and maintain OKF v0.2 bundles."
+  default_prompt: "Use $okf-knowledge-base for this task."

@@ -31,6 +31,7 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | [Privacy](docs/guides/privacy.md) | What the kit separates, what it never does, what the scanner checks. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [Release checklist](docs/guides/release-checklist.md) | The gates and steps of a portable release. |
+| [Pin move and release](docs/guides/pin-move-release.md) | Qualify a Pi pin, review the change, and publish a fast-track snapshot. |
 
 An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `skills/tenant-pi-install/SKILL.md`. Both follow the same stages and ask before each change.
 

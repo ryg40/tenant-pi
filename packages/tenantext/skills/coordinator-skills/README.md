@@ -17,6 +17,8 @@
 | `retro` | The user command for a retrospective: findings from the last OpenViking sessions of both harnesses, each mapped to the file that enforces it. |
 | `writing-for-agents` | The style reference for a document that an agent reads: a skill, a steering file, a doc behind a pointer. |
 
+The separate [knowledge-skills component](../knowledge-skills/README.md) ships OpenKnowledge discovery, skill authoring and OKF guidance.
+
 ## Install
 
 For one generated profile, enable the component `coordinator-skills` in the overlay. The profile then loads each skill of the component.

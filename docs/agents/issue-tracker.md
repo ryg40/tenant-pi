@@ -196,12 +196,13 @@ The frontier is the set of tickets that a worker can take now. A ticket is in th
 - It has no assignee. The `assignees` field of an unassigned issue is `null` or an empty list.
 - Each of its blockers is closed.
 - It does not carry `needs-approval` (section [Labels](#labels)).
+- Its title does not begin with `Spec:`. A spec issue is the written form of the map, not a ticket.
 
 Compute it from the tracker on each use:
 
 1. Read `GET /repos/{owner}/{repo}/labels` and confirm that `wayfinder:parent:<map>` exists. If it does not exist, stop and report it.
 2. List the open children of the map, all pages. Drop each result whose `labels` field does not hold `wayfinder:parent:<map>`.
-3. Keep a child only when its `assignees` field is empty or `null`. Drop each child that carries `needs-approval`.
+3. Keep a child only when its `assignees` field is empty or `null`. Drop each child that carries `needs-approval`. Drop each child whose title begins with `Spec:`.
 4. Read the blockers of each remaining child with `GET /repos/{owner}/{repo}/issues/{index}/dependencies`.
 5. Keep the child when each blocker has the `state` value `closed`.
 

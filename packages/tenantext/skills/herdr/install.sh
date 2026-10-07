@@ -18,7 +18,7 @@ if [ "$src" != "$(cd "$dest" 2>/dev/null && pwd -P || true)" ]; then
     rm -rf "${dest:?}"/* && cp -R "$src/." "$dest/"
   fi
 fi
-chmod +x "$dest"/scripts/*.py "$dest/install.sh"
+chmod +x "$dest"/scripts/*.py "$dest"/scripts/*.sh "$dest/install.sh"
 echo "skill:   $dest"
 
 link() { # <skills directory of a harness>

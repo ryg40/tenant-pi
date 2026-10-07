@@ -1,19 +1,20 @@
 {
-  "comment": "Example of a machine file. Copy it to ~/.config/herdr-skill/resources.json and change it. An entry with the same id replaces the entry of the catalog. \"remove\": true takes an entry out. Both entries below are optional examples; the catalog does not ship them. For Claude Code, spawn.py gives each entry of the kind mcp that has a url location to the new session as an MCP server and allows its tools. The server name is the mcp_server value, or the id of the entry. The launch object is optional; it sets the files that spawn.py gives to a harness.",
+  "comment": "Example of a machine file. Copy it to ~/.config/herdr-skill/resources.json and change it. An entry with the same id replaces the entry of the catalog. \"remove\": true takes an entry out. Both entries below are optional examples; the catalog does not ship them. For Claude Code, spawn.py gives each entry of the kind mcp that has a url location to the new session as an MCP server and allows its tools. The server name is the mcp_server value, or the id of the entry. An optional headers_helper command supplies dynamic HTTP headers without storing credentials in this file. The launch object is optional; it sets the files that spawn.py gives to a harness.",
   "resources": {
-    "hound": {
+    "donsetch": {
       "group": "web",
       "order": 10,
       "kind": "mcp",
-      "mcp_server": "hound",
-      "title": "Hound MCP",
-      "use_when": "First choice when it is available. Good for search and for pages that load without a real browser.",
-      "load": "Tools `hound_mcp_smart_search` and `hound_mcp_smart_fetch`, direct or through the `mcp` tool.",
+      "title": "DonSeTch MCP (web_search, web_fetch, web_crawl, web_screenshot)",
+      "use_when": "First choice for web search and for pages that load without a real browser.",
+      "load": "Tools mcp__donsetch__web_search, mcp__donsetch__web_fetch, mcp__donsetch__web_crawl, mcp__donsetch__web_screenshot in Claude Code; donsetch_web_search etc. in Pi. If DonSeTch fails, say so in the result and stop; do not use another search provider.",
       "locations": [
         {
-          "url": "http://127.0.0.1:8765/mcp"
+          "url": "http://127.0.0.1:8766/mcp"
         }
-      ]
+      ],
+      "mcp_server": "donsetch",
+      "headers_helper": "~/.agents/skills/herdr/scripts/mcp-bearer-helper.sh DONSETCH_HTTP_TOKEN"
     },
     "desktop-browser": {
       "group": "web",

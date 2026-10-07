@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenKnowledge"
+  short_description: "Read and edit an OpenKnowledge project through MCP."
+  default_prompt: "Use $open-knowledge for this task."

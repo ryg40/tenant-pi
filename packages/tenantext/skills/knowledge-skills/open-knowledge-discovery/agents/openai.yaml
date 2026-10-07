@@ -1,0 +1,4 @@
+interface:
+  display_name: "OpenKnowledge Discovery"
+  short_description: "Discover OpenKnowledge and set up a project."
+  default_prompt: "Use $open-knowledge-discovery for this task."

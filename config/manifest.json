@@ -637,6 +637,67 @@
         "boundary": "One filter entry for each skill of the component in the packages/tenantext package declaration only; native settings of the skills stay owned by them"
       }
     },
+    "knowledge-skills": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/knowledge-skills/okf-knowledge-base",
+          "skills/knowledge-skills/open-knowledge-write-skill",
+          "skills/knowledge-skills/open-knowledge-discovery",
+          "skills/knowledge-skills/open-knowledge"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The OpenKnowledge MCP server and the ok CLI are external tools that the kit does not install or check. The kit ships the MIT open-knowledge skill; ok init also writes a project-local copy."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/knowledge-skills/okf-knowledge-base"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/knowledge-skills/open-knowledge-write-skill"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/knowledge-skills/open-knowledge-discovery"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/knowledge-skills/open-knowledge"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry for each skill of the component in the packages/tenantext package declaration only; native settings of the skills stay owned by them"
+      }
+    },
     "slopscore-pr": {
       "source": {
         "kind": "tree",

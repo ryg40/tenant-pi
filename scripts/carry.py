@@ -10,7 +10,7 @@ import copy
 import json
 import re
 
-from scripts.candidate_compare import CHOICES_KEYS, FILES
+from scripts.candidate_compare import CHOICES_KEYS, EMBEDDING_AUTH_POLICIES, EMBEDDING_POLICIES, FILES
 from scripts.memory_modules import MEMORY, MODULE_FIELDS
 from scripts.validate import ID, OWNER_RESOURCES, REVIEWED_SOURCES, ROLE_NAMES, Invalid, fail, manifest, overlay
 
@@ -32,7 +32,8 @@ KNOWN_SEGMENTS = frozenset((
     "defaultProjectTrust", "enableInstallTelemetry", "enableAnalytics", "defaultProvider", "defaultModel",
     "defaultThinkingLevel", "enabledModels", "modelThinkingLevels", "extensions", "packages", "source",
     "resources", "skills", "prompts", "llm-wiki", "ambientPersonalVault", "trajectories", "taskThinkingLevel",
-    "taskModel",
+    "taskModel", "embeddingProvider", "embeddingBaseUrl", "embeddingModel", "embeddingApiKeyEnv", "embeddingApiKey",
+    "embeddingTextTransfer", *EMBEDDING_POLICIES, *EMBEDDING_AUTH_POLICIES,
     # hermes-memory-config.json and mcp-adapter.json
     "reviewEnabled", "correctionDetection", "flushOnCompact", "flushOnShutdown", "autoConsolidate",
     "memoryOverflowStrategy", "reviewTransport", "llmThinkingOverride", "llmModelOverride", "childExtensionPaths",
@@ -100,6 +101,14 @@ def _unit(field):
             return None
         if len(rest) == 1:
             return (key, rest[0])  # The module itself: `null` on one side.
+        if rest[:2] == ["wiki", "embedding"]:
+            if len(rest) == 2:
+                return (key, *rest)
+            if len(rest) == 3 and rest[2] in EMBEDDING_POLICIES:
+                return (key, *rest)
+            if len(rest) == 4 and rest[2] == "auth" and rest[3] in EMBEDDING_AUTH_POLICIES:
+                return (key, *rest)
+            return None
         return (key, rest[0], rest[1]) if rest[1] in (*MODULE_FIELDS[rest[0]][0], *MODULE_FIELDS[rest[0]][1]) else None
     if key == "ownerResources":
         return (key, rest[0]) if rest[0] in OWNER_RESOURCES else None  # A positional list per kind.
@@ -160,7 +169,10 @@ def carry(report, overlay_data, manifest_data, right_files, right_path):
     right, missing_reason = _right_overlay(right_files, components)
     # A memory module with a field entry in the report: the report shows a real change of that module.
     named = {unit[1] for file, field in entries
-             if file == CHOICES and (unit := _unit(field)) is not None and len(unit) == 3 and unit[0] == "memory"}
+             if file == CHOICES and (unit := _unit(field)) is not None and len(unit) >= 3 and unit[0] == "memory"}
+    embedding_named = any(file == CHOICES and (unit := _unit(field)) is not None
+                          and unit[:3] == ("memory", "wiki", "embedding") and len(unit) > 3
+                          for file, field in entries)
     block = overlay_data.get("memory")
     if (right is not None and "memory" not in right and type(block) is dict
             and any(type(block[cid]) is dict and cid not in named for cid in MEMORY)):
@@ -185,6 +197,11 @@ def carry(report, overlay_data, manifest_data, right_files, right_path):
             # Lift the unit while its parent is absent on either side: the patch must apply as one step.
             while len(unit) > 1 and not (type(_get(overlay_data, unit[:-1])) is dict and type(_get(right, unit[:-1])) is dict):
                 unit = unit[:-1]
+            if (unit == ("memory", "wiki", "embedding") and type(_get(overlay_data, unit)) is dict
+                    and (type(_get(right, unit)) is dict or not embedding_named)):
+                # A null marker or an old whole-object marker must not replace unreported leaves.
+                not_carried.append({"file": file, "field": _shown(field), "reason": "overlay_matches"})
+                continue
             if not (unit[0] == "memory" and len(unit) == 2 and type(_get(overlay_data, unit)) is dict
                     and (type(_get(right, unit)) is dict or unit[1] not in named)):
                 sources.setdefault(unit, []).append((file, field))

@@ -4,21 +4,25 @@ No file, environment, subprocess, or network access. Every diagnostic is a stati
 `rule: field` string; overlay values never enter it.
 """
 import copy
+import ipaddress
 import re
 import shlex
+from urllib.parse import parse_qsl, unquote, urlsplit
 
-from scripts.validate import MEMORY as _MEMORY, ROOT, absolute, fail, fields
+from scripts.validate import ENV, MEMORY as _MEMORY, ROOT, absolute, fail, fields, text
 
 MEMORY = tuple(sorted(_MEMORY))  # One reviewed set; the validator anchors own it.
 # The overlay fields of each module: the required names, then the optional names. The validator,
 # `compare` and `carry` use this one table.
 MODULE_FIELDS = {"hermes": (("backgroundReview",), ("reviewTransport", "childExtensionPaths")),
-                 "wiki": (("ambientPersonalVault", "backgroundTasks"), ("wikiHome",)),
+                 "wiki": (("ambientPersonalVault", "backgroundTasks"), ("wikiHome", "embedding")),
                  "openviking": (("captureToolResults",), ("recallContextTimeoutMs",))}
 HERMES_CONFIG = "hermes-memory-config.json"
 HERMES_PACKAGE = "pi-hermes-memory"
 WIKI_PACKAGE = "@zosmaai/pi-llm-wiki"
-# pi-llm-wiki `task-config.ts` (reviewed at 0.12.4; the kit declares no version) accepts only these four task thinking levels.
+# Upstream requires a nonempty bearer key even for a server that ignores authentication.
+WIKI_NO_AUTH_KEY = "no-auth-required"
+# Existing kit restriction; the 0.12.5 TaskConfig reader ignores taskThinkingLevel.
 WIKI_THINKING = ("low", "medium", "high", "xhigh")
 REVIEW_TRANSPORTS = ("direct", "subprocess")
 # Pi 0.99.1 `-e builtin:<name>`; the resource loader reports unknown names at runtime.
@@ -85,6 +89,54 @@ def _hermes(overlay, choice):
         fail("missing_child_provider", at + ".childExtensionPaths")
 
 
+def _embedding_url(value, at):
+    if type(value) is not str:
+        fail("embedding_url", at)
+    try:
+        # Reject parser-stripped controls and encoded credentials before publishing the URL.
+        for candidate in (value, unquote(value), unquote(unquote(value))):
+            parsed = urlsplit(candidate)
+            if (any(c.isspace() or not c.isprintable() for c in candidate)
+                    or any(c in candidate for c in '\\#<>"{}|^`')
+                    or parsed.scheme not in ("http", "https") or not parsed.hostname
+                    or parsed.username is not None or parsed.password is not None
+                    or parsed.port == 0 or parsed.netloc.endswith(":")
+                    or re.search(r"%(?![0-9a-fA-F]{2})", candidate)):
+                fail("embedding_url", at)
+            host = parsed.hostname
+            if ":" in host:
+                ipaddress.IPv6Address(host)
+            elif (len(host) > 253 or not all(re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label)
+                                            for label in host.rstrip(".").split("."))):
+                fail("embedding_url", at)
+            if any(key.casefold() in {"key", "token", "api_key", "apikey", "secret", "password", "authorization"}
+                   for key, _ in parse_qsl(parsed.query, keep_blank_values=True)):
+                fail("embedding_url", at)
+    except ValueError:
+        fail("embedding_url", at)
+
+
+def _embedding(choice, at):
+    fields(choice, ("provider", "baseUrl", "model", "auth"), ("expectedDimensions",), at)
+    if choice["provider"] != "openai-compatible" or type(choice["provider"]) is not str:
+        fail("embedding_provider", at + ".provider")
+    _embedding_url(choice["baseUrl"], at + ".baseUrl")
+    model = text(choice["model"], at + ".model")
+    if any(c.isspace() or not c.isprintable() for c in model):
+        fail("embedding_model", at + ".model")
+    auth = choice["auth"]
+    fields(auth, (), ("envVar", "mode"), at + ".auth")
+    if set(auth) == {"envVar"}:
+        if type(auth["envVar"]) is not str or not ENV.fullmatch(auth["envVar"]):
+            fail("env_name", at + ".auth.envVar")
+    elif set(auth) != {"mode"} or auth["mode"] != "none":
+        fail("embedding_auth", at + ".auth")
+    if "expectedDimensions" in choice:
+        value = choice["expectedDimensions"]
+        if type(value) is not int or value <= 0:
+            fail("embedding_dimensions", at + ".expectedDimensions")
+
+
 def _wiki(overlay, choice):
     at = "overlay.memory.wiki"
     fields(choice, *MODULE_FIELDS["wiki"], at)
@@ -97,6 +149,8 @@ def _wiki(overlay, choice):
         # so every ambient surface fires. A quiet wiki cannot have a relocated personal vault.
         if not choice["ambientPersonalVault"]:
             fail("wiki_home_is_ambient", at + ".wikiHome")
+    if choice.get("embedding") is not None:
+        _embedding(choice["embedding"], at + ".embedding")
     if choice["backgroundTasks"]:
         role = _memory_role(overlay, at + ".backgroundTasks")
         if role["thinking"] not in WIKI_THINKING:
@@ -219,6 +273,21 @@ def render_memory(overlay, components):
             if choice["backgroundTasks"]:
                 settings["taskModel"] = {"provider": role["provider"], "id": role["model"]}
                 settings["taskThinkingLevel"] = role["thinking"]
+            embedding = choice.get("embedding")
+            record["embeddings"] = {"enabled": embedding is not None, "writeTimeRequests": embedding is not None,
+                                    "queryTimeRequests": embedding is not None, "backfill": "separate action"}
+            if embedding is not None:
+                settings.update(embeddingProvider=embedding["provider"], embeddingBaseUrl=embedding["baseUrl"],
+                                embeddingModel=embedding["model"])
+                auth = embedding["auth"]
+                if "envVar" in auth:
+                    settings["embeddingApiKeyEnv"] = auth["envVar"]
+                else:
+                    settings["embeddingApiKey"] = WIKI_NO_AUTH_KEY
+                result["gaps"].append({"code": "embedding_endpoint_unverified", "subject": cid})
+                if "expectedDimensions" in embedding:
+                    record["embeddings"]["expectedDimensions"] = embedding["expectedDimensions"]
+                    result["gaps"].append({"code": "embedding_dimensions_unverified", "subject": cid})
             result["settings"]["llm-wiki"] = settings
             # A trusted project `.pi/settings.json` section wins over these switches at launch.
             result["gaps"].append({"code": "project_settings_override", "subject": cid})

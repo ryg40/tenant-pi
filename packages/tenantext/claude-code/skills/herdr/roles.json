@@ -33,7 +33,7 @@
     }
   },
   "launch": {
-    "comment": "Files that spawn.py gives to a harness. {skill} is the directory of this skill. ~ is the home directory. An empty value means not set. The launch object of the machine file ~/.config/herdr-skill/resources.json replaces a value for one machine. pi_mcp_config_strict: an MCP configuration file that a pi session with web access gets with --strict. Claude Code needs no file here: spawn.py writes its MCP configuration from the mcp entries of the catalog.",
+    "comment": "Files that spawn.py gives to a harness. {skill} is the directory of this skill. ~ is the home directory. An empty value means not set. The launch object of the machine file ~/.config/herdr-skill/resources.json replaces a value for one machine. pi_mcp_config_strict: an MCP configuration file that a pi session with web access gets with --strict. Claude Code needs no file here: spawn.py writes its MCP configuration from the mcp entries of the catalog, including an optional headersHelper command from headers_helper.",
     "pi_mcp_config_strict": ""
   }
 }

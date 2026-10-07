@@ -16,7 +16,7 @@ The stages stay separate and keep this order:
 
 Stages 1 to 5 are offline and the kit runs them. Stages 6 to 9 are the user's. The kit runs none of their commands.
 
-The plan prints some commands as display text. `commands.setupDisplayOnly` holds the Pi install line, `pi update --extensions` when `mcp`, `hermes` or `wiki` is enabled, and the peer-override line when `hermes` or `wiki` is enabled. With a `--runtime-report` that has `match`, `untested_in_range` or `mismatch` for Pi, the Pi install line is not there; `commands.piInstall` always holds it, with a mark. `commands.launchDisplayOnly` holds the launch line. The plan does not print the Node and Python installs or the `npm ci` of the in-tree packages. Those commands are in Stage 6 of this guide only.
+The plan prints some commands as display text. `commands.setupDisplayOnly` holds the Pi install line, `pi update --extensions` when `mcp`, `hermes`, `wiki` or `questions` is enabled, and the peer-override line when `hermes`, `wiki` or `questions` is enabled. With a `--runtime-report` that has `match`, `untested_in_range` or `mismatch` for Pi, the Pi install line is not there; `commands.piInstall` always holds it, with a mark. `commands.launchDisplayOnly` holds the launch line. The plan does not print the Node and Python installs or the `npm ci` of the in-tree packages. Those commands are in Stage 6 of this guide only.
 
 Status: Linux is the first target. Not verified: a complete run of stages 6 to 9 on a clean client.
 
@@ -249,7 +249,7 @@ Use the package source of your distribution or a version manager. Examples:
 | --- | --- | --- |
 | Fedora | `dnf install nodejs24` | `dnf install python3` |
 | Debian or Ubuntu | NodeSource 24 repository, or nvm | `apt install python3` |
-| Any, per user | `nvm install 24 && nvm use 24` | distribution package |
+| Any, per user | nvm, with the nvm block of [Stage 1 of INSTALL.md](../../INSTALL.md#stage-1-requirements) | distribution package |
 
 Not verified: the exact package name `nodejs24` on every Fedora release.
 
@@ -325,22 +325,22 @@ Without the build Pi cannot load the extension, because `packages/promptr/dist/`
 
 ### Declared npm packages
 
-Only when you enabled `mcp`, `hermes` or `wiki`. Record the baseline of the live profile first: see [Stage 8](#stage-8-launch). `pi update --extensions` is the first Pi command that names the target.
+Only when you enabled `mcp`, `hermes`, `wiki` or `questions`. Record the baseline of the live profile first: see [Stage 8](#stage-8-launch). `pi update --extensions` is the first Pi command that names the target.
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi update --extensions
 ```
 
-Only when you enabled `hermes` or `wiki`, also:
+Only when you enabled `hermes`, `wiki` or `questions`, also:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
 ```
 
-The plan prints the second line only with a memory module. `pi-mcp-adapter` lists no host module under `dependencies`, so `mcp` alone needs no peer override.
+The plan prints the second line only with a memory module or with `questions`. `pi-mcp-adapter` lists no host module under `dependencies`, so `mcp` alone needs no peer override.
 
-- The first command installs the current registry version of each declared package. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. A newer version is not verified.
-- The second command corrects the host-provided peers in the installed manifests of the memory packages. See [host peer overrides](../host-peer-overrides.md).
+- The first command installs the current registry version of each declared package. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. A newer version is not verified. `questions` has the exact version 2.11.0; the command installs that version.
+- The second command corrects the host-provided peers in the installed manifests of the memory packages and of the question extension. See [host peer overrides](../host-peer-overrides.md).
 - Hermes builds `better-sqlite3`. That needs a compiler toolchain for the Node that runs Pi.
 
 ### Native Pi operations rewrite the profile
@@ -361,6 +361,8 @@ The kit writes no credential and requires no credential store.
 | Native provider | Launch Pi (Stage 8) and run `/login` inside Pi. Pi stores the result in `<target>/auth.json`. |
 | Tenantext gateway (`auth: "env"`) | Export `TENANTEXT_LITELLM_API_KEY` in the shell that launches Pi. The launch line carries `TENANTEXT_LITELLM_BASE_URL`. |
 | Tenantext gateway (`auth: "login"`) | `blocked` at this pin. `generate` refuses it with `pi_login_blocked`. |
+| Codex, direct | A provider that Pi includes: `/login` inside Pi, then `/model`. See [the provider guide](providers.md#codex). |
+| llama-swap or vLLM, direct | Register the server in `<target>/models.json` after generation. The kit does not write that file. See [the provider guide](providers.md#local-providers-llama-swap-and-vllm). |
 | MCP server tokens | Export each `${NAME}` that `inputs/mcp-adapter.json` references. |
 
 How the key reaches the process is your choice. Examples:
@@ -492,6 +494,7 @@ Run the same comparison for each other baseline of Stage 8, with its own `--dir`
 ## Related guides
 
 - [Module guide](modules.md): each component, its inputs, credentials, state and status.
+- [Provider guide](providers.md): Codex, llama-swap and vLLM as direct providers of the profile.
 - [Candidate update guide](candidate-update.md): regenerate, compare and switch.
 - [Privacy guide](privacy.md): what the kit separates and what it does not.
 - [Troubleshooting](troubleshooting.md): each diagnostic and its fix.

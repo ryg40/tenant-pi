@@ -242,6 +242,36 @@ class PlanTests(unittest.TestCase):
                 self.assertIn({"code": "pi_line_unqualified", "subject": cid}, result["readinessGaps"])
                 self.assertIn({"code": "kit_test_missing", "subject": cid}, result["readinessGaps"])
 
+    def test_question_extension_is_declared_as_an_npm_package_with_its_setup_lines(self):
+        self.enable("questions")
+        result = prepare(self.manifest, self.overlay)
+        package = {"source": "npm:@juicesharp/rpiv-ask-user-question@2.11.0",
+                   "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}
+        self.assertEqual([package], result["files"]["settings.json"]["content"]["packages"])
+        choices = result["files"][".tenant-pi/choices.json"]["content"]
+        self.assertEqual([], choices["pendingPackages"])
+        agent = "PI_CODING_AGENT_DIR=" + shlex.quote(self.overlay["target"]["agentDir"])
+        # Pi installs the declared package; the peer override then corrects its `typebox` entry.
+        self.assertEqual([agent + " pi update --extensions", agent + " node scripts/patch_extension_peers.mjs"],
+                         result["commands"]["setup"][1:])
+        codes = {gap["code"] for gap in result["readinessGaps"] if gap["subject"] == "questions"}
+        self.assertEqual({"package_runtime_unverified", "pi_line_unqualified", "package_source_unreviewed",
+                          "peer_package_unverified", "question_ui_unverified", "shared_config_outside_profile",
+                          "kit_test_missing"}, codes)
+        self.assertNotIn("optional_activation_unavailable", {gap["code"] for gap in result["readinessGaps"]})
+        # No file of the profile holds a guidance file of the extension, and the launch line is unchanged.
+        self.assertEqual({"settings.json", ".tenant-pi/choices.json"}, set(result["files"]))
+        self.assertNotIn("rpiv", result["commands"]["launch"])
+
+    def test_question_extension_follows_the_tree_package_and_precedes_owner_packages(self):
+        self.enable("questions")
+        self.enable("herdr")
+        self.overlay["ownerPackages"] = ["/home/Test User/owner package"]
+        packages = prepare(self.manifest, self.overlay)["files"]["settings.json"]["content"]["packages"]
+        self.assertEqual([TENANTEXT_PACKAGE, "npm:@juicesharp/rpiv-ask-user-question@2.11.0", "/home/Test User/owner package"],
+                         [entry if type(entry) is str else entry["source"] for entry in packages])
+        self.assertEqual(["skills/herdr"], packages[0]["skills"])
+
     def test_tree_components_of_one_package_merge_into_one_declaration(self):
         for cid in ("ops-footer", "context-meter", "herdr", "codex-accounts"):
             self.enable(cid)

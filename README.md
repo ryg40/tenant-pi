@@ -25,6 +25,7 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | [Setup](docs/guides/setup.md) | The nine stages with exact commands. Start here. |
 | [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Podman adaptations; macOS stays not qualified. |
 | [Explainer](EXPLAINER.md) | The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
+| [Providers](docs/guides/providers.md) | Codex login, and llama-swap and vLLM as direct providers in `models.json` of the profile. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
 | [Candidate update](docs/guides/candidate-update.md) | Regenerate, compare, carry choices, switch profiles. |
 | [Pi update checks](docs/pi-update.md) | Detect npm releases, qualify an isolated candidate, and read breaking changes. |
@@ -51,6 +52,8 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 | `inventory` | Names-only list of the resources of one profile. Read-only. | [profile inventory](docs/profile-inventory.md) |
 | `list` | Lists the candidates under one parent directory. Read-only. | [the candidate list](docs/candidate-list.md) |
 | `check-runtime` | Compares the installed Pi, Node and Python with the pins. | [the runtime version check](docs/check-runtime.md) |
+| `check-herdr` | Reports the `herdr` command of the host: present with its version, or missing. Installs nothing. | [Herdr and the question tool](docs/herdr-setup.md) |
+| `remote-plan` | Prints the SSH command lines of the remote stages as data. Runs none of them. | [Herdr and the question tool](docs/herdr-setup.md#the-remote-plan) |
 | `baseline` | Records the entry names, sizes and modification times of one directory in a new file. Opens no file of the directory. | [the directory baseline](docs/directory-baseline.md) |
 | `check-baseline` | Compares one directory with its baseline: `unchanged`, `changed` or `no_baseline`. Writes nothing. | [the directory baseline](docs/directory-baseline.md) |
 
@@ -71,7 +74,8 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 - Core Pi is the only enabled example component. Model routes need an explicit offline registry file. The kit imports no host defaults.
 - Optional memory is off by default. Hermes and LLM Wiki need selection, `consent.memoryCapture` and a `memory` block together. OpenViking needs `consent.remoteMemoryWrites` too, because it writes to a server.
 - The MCP module uses `pi-mcp-adapter` with definitions from a private input file and disables the native Pi MCP. Promptr is `unverified` with a readiness matrix: it needs a build step, and no session with a model is verified.
-- No pi-subagents module exists. Agent fan-out uses the Herdr skill, outside this kit.
+- No pi-subagents module exists. Agent fan-out uses the Herdr skill of the `herdr` component. The Herdr application is a host tool that the kit does not install.
+- The `questions` component declares the Pi question extension at an exact version. It is `unverified` and off by default. See [Herdr and the question tool](docs/herdr-setup.md).
 - The two in-tree packages under `packages/` are optional. Each extension and each skill is one component of `config/manifest.json` with the source kind `tree`. `packages/tenantext` has eight extensions and three skills. `packages/promptr` has one extension and four skills.
 - A source pin does not prove that a clean client can use a module.
 - `scripts/publish_portable.py` publishes the reviewed publish set as a portable snapshot branch.

@@ -37,7 +37,7 @@ packages/tenantext/skills/coordinator-skills/install.sh
 
 Start a new session, or run `/reload` in Pi, to load the skills.
 
-`grilling`, `to-spec` and `to-tickets` on Pi use the tool `ask_user_question` of the extension `@juicesharp/rpiv-ask-user-question`. Its guidance file is `~/.config/rpiv-ask-user-question/config.json`. The kit does not install the extension and does not write that file. Without the tool, the skill asks in plain text.
+`grilling`, `to-spec` and `to-tickets` on Pi use the tool `ask_user_question` of the extension `@juicesharp/rpiv-ask-user-question`. Its guidance file is `~/.config/rpiv-ask-user-question/config.json`. The kit component `questions` declares the extension as a package of a generated profile. The kit does not write that file. Without the tool, the skill asks in plain text.
 
 `to-spec` and `to-tickets` publish through the tracker contract `docs/agents/issue-tracker.md` of the repository. They need the token that the contract names.
 

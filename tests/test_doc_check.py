@@ -4,6 +4,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -59,7 +60,7 @@ class UnitTests(unittest.TestCase):
     def test_cli_tree_is_the_real_parser(self):
         top, actions = cli_tree()
         self.assertIn("--help", top)
-        self.assertEqual({"compare", "carry", "inventory", "list", "check-runtime", "init-private",
+        self.assertEqual({"compare", "carry", "inventory", "list", "check-runtime", "check-herdr", "remote-plan", "init-private",
                           "baseline", "check-baseline", "validate", "plan", "generate"}, set(actions))
         self.assertIn("--launcher", actions["generate"])
         self.assertIn("--launcher", actions["plan"])
@@ -405,7 +406,7 @@ class TreeTests(unittest.TestCase):
     def test_clean_tree(self):
         findings, counts = self.run_check()
         self.assertEqual([], findings)
-        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": 11}, counts)
+        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": 13}, counts)
 
     def test_each_rule(self):
         cases = {
@@ -507,6 +508,76 @@ class DocCheckRepoTests(unittest.TestCase):
         with contextlib.redirect_stdout(second):
             doc_check.main()
         self.assertEqual(out.getvalue(), second.getvalue())
+
+
+class HerdrStageTests(unittest.TestCase):
+    """The Herdr and question tool stage of the two agent guides: the same rules, no invented source."""
+
+    DOCS = {"INSTALL.md": "## Stage 4a: Herdr and the question tool",
+            "skills/tenant-pi-install/SKILL.md": "## Stage 8: Herdr and the question tool (optional)"}
+    ASSET = "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64"
+    DIGEST = "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7"
+
+    def stage(self, name):
+        text = (ROOT / name).read_text(encoding="utf-8")
+        start = text.index(self.DOCS[name] + "\n")
+        return text[start:text.index("\n## Stage ", start + 1)]
+
+    def test_each_guide_asks_the_same_decisions(self):
+        for name in self.DOCS:
+            stage = self.stage(name)
+            for expected in ("on this machine, or on a remote Linux host over SSH", "existing", "privileged actions",
+                             "approves or refuses each item", "id -un", "command -v herdr && herdr --version",
+                             "tenant_pi.py check-herdr", "packages/tenantext/skills/herdr/install.sh",
+                             "separate approval", "`questions`", "plain text", "no Pi extension into Claude Code",
+                             "complete and the actions that are not"):
+                with self.subTest(name=name, expected=expected):
+                    self.assertIn(expected, stage)
+
+    def test_the_herdr_source_is_the_pinned_release_and_no_command_pipes_a_script_or_upgrades_it(self):
+        for name in self.DOCS:
+            stage = self.stage(name)
+            with self.subTest(name=name):
+                self.assertNotIn("<reviewed Herdr source>", stage)
+                for expected in ("`herdrdev/herdr`", "Apache-2.0", "reads it before it runs", "`herdr-macos-aarch64`",
+                                 "`herdr-macos-x86_64`", "a non-login shell or in an SSH command",
+                                 "never edits a shell startup file"):
+                    self.assertIn(expected, stage)
+                # The addresses are the pinned release asset, the home page and the official install script.
+                self.assertLessEqual(set(re.findall(r"https?://[^\s`)]+", stage)),
+                                     {self.ASSET, "https://herdr.dev", "https://herdr.dev/install.sh"})
+                blocks = re.findall(r"```(?:sh|text)\n(.*?)```", stage, re.S)
+                commands = "\n".join(blocks)
+                # The preferred form: the pinned asset, the digest check, then the install without root.
+                for expected in ("curl -fsSLO " + self.ASSET + " &&",
+                                 "echo '" + self.DIGEST + "  herdr-linux-x86_64' | sha256sum -c - &&",
+                                 "install -m 755 herdr-linux-x86_64 ~/.local/bin/herdr"):
+                    self.assertIn(expected, commands)
+                self.assertIsNone(re.search(r"\|\s*(?:ba|z|da)?sh\b", commands))
+                for forbidden in ("herdr update", "herdr channel set", "herdr server", "wget",
+                                  "StrictHostKeyChecking", "UserKnownHostsFile", "install.sh"):
+                    self.assertNotIn(forbidden, commands)
+                # Host key verification is named only as a rule that forbids its removal.
+                self.assertIn("host key verification", stage)
+
+    def test_the_fact_document_names_each_part_and_the_unverified_claims(self):
+        text = (ROOT / "docs/herdr-setup.md").read_text(encoding="utf-8")
+        for expected in ("The kit does not install, update or start it.", "@juicesharp/rpiv-ask-user-question@2.11.0",
+                         "installs no Pi extension into Claude Code", "the agent asks in plain text"):
+            self.assertIn(expected, text)
+        # Each value of the code is in the document, so a new value needs a new line there.
+        from scripts.check_runtime import HERDR_STATUSES
+        from scripts.profile_inventory import NOT_MEASURED
+        from scripts.profile_plan import HERDR_CLI_GAP, HERDR_CLI_GAPS, HERDR_SESSION_GAP
+        for value in (*HERDR_STATUSES, *NOT_MEASURED, *NOT_MEASURED.values(), HERDR_CLI_GAP, *HERDR_CLI_GAPS.values(),
+                      HERDR_SESSION_GAP, "readable", "not_readable", "not_declared", "declared", "installed",
+                      "question_ui_unverified"):
+            with self.subTest(value=value):
+                self.assertIn("`" + value + "`", text)
+        live = text[text.index("### Live checks that the owner approves"):text.index("## The remote plan")]
+        # No live check is recorded as done.
+        self.assertEqual(4, live.count("| Not run |"))
+        self.assertNotIn("| Passed |", live)
 
 
 if __name__ == "__main__":

@@ -122,7 +122,7 @@ The `promptr` component uses the `tree` source at `packages/promptr`; its four s
 
 ## Herdr skill: an optional component
 
-The Herdr skill is the selectable component `herdr` (`packages/tenantext`, `skills/herdr`, `unverified`). It loads from a generated profile only when the overlay enables it. The user-level install with `packages/tenantext/skills/herdr/install.sh` stays possible (install skill, Stage 8). Herdr-hosted and browser-hosted launch stay optional and unqualified in this release. A wider filter is a manifest and validator change with its own review.
+The Herdr skill is the selectable component `herdr` (`packages/tenantext`, `skills/herdr`, `unverified`). It loads from a generated profile only when the overlay enables it. The user-level install with `packages/tenantext/skills/herdr/install.sh` stays possible as a separate, approved option (install skill, Stage 8). The Herdr application is a host tool that the kit does not install; see [Herdr and the question tool](herdr-setup.md). Herdr-hosted and browser-hosted launch stay optional and unqualified in this release. A wider filter is a manifest and validator change with its own review.
 
 ## Coordinator skills: an optional component
 

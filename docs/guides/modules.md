@@ -45,8 +45,9 @@ Columns:
 | `anthropic-usage` | none | tree `packages/tenantext` | Reads the Claude Code login file `~/.claude/.credentials.json` (or under `CLAUDE_CONFIG_DIR`) and the Pi `anthropic` OAuth login. Read-only: no refresh, no write (source reading). Sends one GET request to `api.anthropic.com` per poll, only with an active login. Not verified live | HOME, shared | none | `unverified`, `unverified` |
 | `doctor` | none | tree `packages/tenantext` | Reads `TENANTEXT_LITELLM_BASE_URL` for one line. Sends one read-only GET request to the Copilot usage endpoint and one to the Anthropic usage endpoint, each only when a login for it exists (source reading). Not verified live | Profile; reads `~/.copilot` through the `copilot-usage` files and `~/.claude/.credentials.json` through the `anthropic-usage` files (source reading) | none | `unverified`, `unverified` |
 | `resources` | none | tree `packages/tenantext` | none | Profile: `settings.json` toggles | none | `unverified`, `unverified` |
-| `herdr` | the `herdr` tool on `PATH` | tree `packages/tenantext`, `skills/herdr` | none | Herdr state, outside the profile | none | `unverified`, `unverified` |
-| `coordinator-skills` | On Pi: the `ask_user_question` tool of an extension that the kit does not install; without it the skill asks in plain text. For a search, a research ticket and a prototype ticket: the `herdr` skill. `wayfinder` needs `docs/agents/issue-tracker.md` and a Gitea tracker. The knowledge sources and the review tools that the skills name are host tools that the kit does not install | tree `packages/tenantext`, each skill directory below `skills/coordinator-skills/`; [the component README](../../packages/tenantext/skills/coordinator-skills/README.md) lists them | `GITEA_TOKEN` in the shell that starts the harness, for `to-spec`, `to-tickets` and `wayfinder`; the skills read it for the Gitea API and do not write it | The Gitea issue tracker, outside the profile | none | `unverified`, `unverified` |
+| `herdr` | the `herdr` tool on `PATH`; the kit does not install it, and `check-herdr` reports it | tree `packages/tenantext`, `skills/herdr` | none | Herdr state, outside the profile | none | `unverified`, `unverified` |
+| `herdr-relay` | `herdr` enabled, the `herdr` tool on `PATH`, Python 3 and the installed `herdr` skill | tree `packages/tenantext`, `skills/herdr-relay` | none | Herdr state and relay job files, outside the profile | none | `unverified`, `unverified` |
+| `coordinator-skills` | On Pi: the `ask_user_question` tool of the `questions` component; without it the skill asks in plain text. For a search, a research ticket and a prototype ticket: the `herdr` skill. `wayfinder` needs `docs/agents/issue-tracker.md` and a Gitea tracker. The knowledge sources and the review tools that the skills name are host tools that the kit does not install | tree `packages/tenantext`, each skill directory below `skills/coordinator-skills/`; [the component README](../../packages/tenantext/skills/coordinator-skills/README.md) lists them | `GITEA_TOKEN` in the shell that starts the harness, for `to-spec`, `to-tickets` and `wayfinder`; the skills read it for the Gitea API and do not write it | The Gitea issue tracker, outside the profile | none | `unverified`, `unverified` |
 | `knowledge-skills` | OpenKnowledge MCP server and `ok` CLI for tool-backed workflows; the kit installs neither | tree `packages/tenantext`, each skill directory below `skills/knowledge-skills/`; [the component README](../../packages/tenantext/skills/knowledge-skills/README.md) lists them | Configure external tools separately; no credential in the component | OpenKnowledge project and editor skill directories, outside the profile | none | `unverified`, `unverified` |
 | `slopscore-pr` | host tools of the skill | tree `packages/tenantext`, `skills/slopscore-pr` | Not verified | Not verified | none | `unverified`, `unverified` |
 | `tracker-site` | Python 3.11 or later and Git on `PATH`; `PYTHONPATH` set to `packages/tenantext`; no third-party Python package. `check-runtime` checks Python, not Git | tree `packages/tenantext` | Optional issue and publication credentials; see [configuration](../../packages/tenantext/skills/tracker-site/references/configuration.md) | Repository brief and separate tracker state directory | none | `unverified` |
@@ -56,6 +57,7 @@ Columns:
 | `promptr-openknowledge-project-pages` | `promptr`, an OpenKnowledge service | tree `packages/promptr` | Not verified | as `promptr` | none | `unverified`, `unverified` |
 | `promptr-watch-herdr-agents` | `promptr`, the `herdr` tool | tree `packages/promptr` | none | as `promptr` | none | `unverified`, `unverified` |
 | `mcp` | `inputs.mcpFile` `"inputs/mcp-adapter.json"` and that file under `--local-dir` | npm `pi-mcp-adapter`, no version; reviewed at 3.2.0 | `${NAME}` references in headers and env, exported by the user. OAuth and bearer stores use the OS keyring. | Profile: `mcp-adapter.json`, caches. HOME: OS keyring. `$TMPDIR`: spilled output. | none | `tested`, `unverified` |
+| `questions` | none | npm `@juicesharp/rpiv-ask-user-question@2.11.0` | none | HOME: the guidance file of the extension, shared. Profile: `npm/` | none | `unverified`, `unverified` |
 | `hermes` | `memory.hermes` block; `roles.memory` when `backgroundReview` is `true` | npm `pi-hermes-memory`, no version; reviewed at 0.9.9 | The parent session auth, or a child `pi -p` process | Profile: `pi-hermes-memory/`, memory files | `consent.memoryCapture: true` | `tested`, `unverified` |
 | `wiki` | `memory.wiki` block | npm `@zosmaai/pi-llm-wiki`, no version; reviewed at 0.12.4 | none; the kit writes no key field | HOME: `~/.llm-wiki/`, or `<wikiHome>/.llm-wiki/` | `consent.memoryCapture: true` | `tested`, `unverified` |
 | `openviking` | `memory.openviking` block; `npm ci --ignore-scripts` in `packages/openviking-pi`; an OpenViking server | tree `packages/openviking-pi`, a vendored copy | `OPENVIKING_*` variables, `~/.openviking/ovcli.conf` or `~/.openviking/ov.conf`, set up by the user; the kit writes no endpoint and no key | HOME: `~/.openviking/`. Server: the sessions and the memories | `consent.memoryCapture: true` and `consent.remoteMemoryWrites: true` | `unverified`, `unverified` |
@@ -67,6 +69,8 @@ Facts that hold for every row:
 - `validate` and `plan` show each gap of an enabled module under `readinessGaps`. Read them before `generate`.
 - An in-tree (`tree`) module points at the package directory of the clone by its absolute path. Keep the clone in place.
 - `requires` IDs must be enabled too. `ops-footer` needs `context-meter`. Each Promptr skill needs `promptr`.
+- `herdr-relay` is optional and disabled by default. No component requires it. Selecting it requires `herdr`; otherwise validation reports `missing_dependency`.
+- The relay directory can be absent while the relay stays disabled. Enabling an absent relay reports `tree_resource_missing`.
 - A module that the user leaves disabled contributes no file, no key and no launch-line assignment.
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [workflow modules](../workflow-modules.md), [model routes](../model-routes.md).
@@ -116,7 +120,32 @@ Give the file with `--registry` to `validate`, `plan` and `generate`. Without th
 - **Memory** (`hermes`, `wiki`): three parts together enable a module: the ID in `selection.enable`, `consent.memoryCapture: true`, and a `memory` block. Consent alone enables nothing. Read [memory modules](../memory-modules.md) first. Hermes with `backgroundReview: true` makes model calls on its own.
 - **MCP** (`mcp`): the server list goes into `inputs/mcp-adapter.json` of the private directory. Every `validate`, `plan` and `generate` then needs `--local-dir "$HOME/.config/tenant-pi"`. The kit disables the native Pi MCP with `-builtin:mcp`. Read [workflow modules](../workflow-modules.md) first.
 - **Owner packages and directories**: `ownerPackages` adds a Pi package that you maintain. `ownerResources` adds a skills or prompts directory. See [owner packages](../owner-packages.md) and [owner resources](../owner-resources.md). Each entry adds a permanent `owner_package_unqualified` or `owner_resource_unqualified` gap.
-- **Agent fan-out**: no subagents module exists. Use the `herdr` component or the Herdr skill installer. Pi inside Herdr is not qualified.
+- **Agent fan-out**: no subagents module exists. Use the `herdr` component or the Herdr skill installer. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.
+- **Questions** (`questions`): the Pi extension with the `ask_user_question` tool. It needs an interactive session. Without it, a skill asks in plain text. It is not an extension for Claude Code.
+
+## Herdr and the question tool
+
+The `herdr` component holds the Herdr skill. The Herdr application is a separate host tool. Check the command before you enable the component:
+
+```sh
+python3 scripts/tenant_pi.py check-herdr
+```
+
+The output names `present` with the version, `missing` or `unparsed`. The action installs nothing and starts no Herdr session. With `missing`, install Herdr from the source that you reviewed, then run the action again. Do not upgrade a present Herdr as a part of this setup.
+
+The `questions` component adds the Pi question extension to one profile. The plan then prints two more setup lines: `pi update --extensions` and the peer override. Run them in Stage 6 of [the setup guide](setup.md).
+
+For an install on a remote Linux host, print the SSH command lines first. The action runs none of them:
+
+```sh
+python3 scripts/tenant_pi.py remote-plan --ssh-target build-host --remote-user deploy --remote-home /home/deploy
+```
+
+Read each line, then run the lines that you approve in your own terminal. The lines add no SSH option, so your SSH configuration and your known hosts stay in force. A remote install is not qualified.
+
+After `generate`, `inventory --dir` shows two more results under `coordination`: whether the Herdr skill file is readable, and whether the question extension is declared or installed. A working session and a working question dialog are separate live checks.
+
+Both components are `unverified`. [Herdr and the question tool](../herdr-setup.md) lists what no test proves.
 
 ## Change a selection
 

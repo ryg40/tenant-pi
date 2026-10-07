@@ -17,3 +17,11 @@ _Avoid_: Portable baseline, exported agent home
 **Hybrid recall**:
 Keyword search combined with embedding similarity to find relevant wiki pages.
 An embedding is a numeric representation of text meaning.
+
+**Hands-on trial**:
+A clean-client trial in which a person performs the interactive checks that an agent cannot prove: a terminal workspace, a Pi session, a structured question, a model reply.
+_Avoid_: Manual test, smoke test
+
+**Trial account**:
+A temporary Linux user created for one trial and removed after it; it holds no credential beyond the scoped key of that trial.
+_Avoid_: Test user, service account

@@ -1,6 +1,6 @@
 """Text invariants of the shipped skill components and of the tracker document.
 
-The check reads each `.md` file recursively in component and KIT_SKILLS directories,
+The check reads each `.md` file recursively in component and kit skill directories,
 excluding tests/ and node_modules/. It also reads the component README and plugin command.
 It is offline: it reads files only. Scripts and JSON retain their protocol identifiers.
 A second test plants one violation of each class in a fixture and expects each finding.
@@ -16,7 +16,8 @@ COMPONENT = ROOT / "packages/tenantext/skills/coordinator-skills"
 KNOWLEDGE_COMPONENT = ROOT / "packages/tenantext/skills/knowledge-skills"
 TRACKER = ROOT / "docs/agents/issue-tracker.md"
 # Kit skills outside the component that a skill text can load.
-KIT_SKILLS = ("herdr", "herdr-relay", "slopscore-pr", "tracker-site")
+REQUIRED_KIT_SKILLS = ("herdr", "slopscore-pr", "tracker-site")
+OPTIONAL_KIT_SKILLS = ("herdr-relay",)
 # The completion marker is a protocol identifier, not prose. Only this exact line in
 # the Herdr result contract is exempt from the wording rule, in the kit and plugin.
 PROTOCOL_LINES = {("herdr", "roles/contract.md"): {"Marker: SUBAGENT_COMPLETE"}}
@@ -142,7 +143,7 @@ def skill_findings(skill_dirs, tracker, documents=(), require_credits=True):
         for number, line in enumerate(text.splitlines(), 1):
             findings.extend((rule, str(tracker), number) for rule, pattern in TEXT_RULES if pattern.search(line))
     skill_dirs = [Path(directory) for directory in skill_dirs]
-    shipped = {directory.name for directory in skill_dirs} | set(KIT_SKILLS)
+    shipped = {directory.name for directory in skill_dirs} | set(REQUIRED_KIT_SKILLS + OPTIONAL_KIT_SKILLS)
     files = [(Path(document), None, set()) for document in documents]
     for directory in skill_dirs:
         if require_credits and not (directory / "CREDITS.md").is_file():
@@ -164,6 +165,12 @@ def skill_findings(skill_dirs, tracker, documents=(), require_credits=True):
 def shipped_skill_dirs(component=COMPONENT):
     """Each directory of the component; a directory without `SKILL.md` is a finding, not skipped."""
     return sorted(path for path in Path(component).iterdir() if path.is_dir())
+
+
+def kit_skill_dirs(skills=COMPONENT.parent):
+    """Required skills are always checked; optional skills are checked only when present."""
+    return ([skills / name for name in REQUIRED_KIT_SKILLS] +
+            [skills / name for name in OPTIONAL_KIT_SKILLS if (skills / name).is_dir()])
 
 
 TRACKER_FIXTURE = """# Tracker
@@ -270,12 +277,39 @@ class SkillInvariantTests(unittest.TestCase):
     def test_kit_skills_and_plugin_copies_have_no_finding(self):
         skills = COMPONENT.parent
         plugin = skills.parent / "claude-code"
-        # The development-only relay is absent from portable snapshots.
-        directories = [skills / name for name in KIT_SKILLS
-                       if name != "herdr-relay" or (skills / name).is_dir()]
+        directories = kit_skill_dirs(skills)
         directories.append(plugin / "skills/herdr")
         self.assertEqual([], skill_findings(directories, TRACKER,
                                            [plugin / "commands/spawn_agent.md"], require_credits=False))
+
+    def test_present_optional_skills_are_checked(self):
+        with tempfile.TemporaryDirectory() as temp:
+            skills = Path(temp)
+            for name in REQUIRED_KIT_SKILLS + OPTIONAL_KIT_SKILLS:
+                (skills / name).mkdir()
+                (skills / name / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+            self.assertEqual([], skill_findings(kit_skill_dirs(skills), TRACKER, require_credits=False))
+            for name in OPTIONAL_KIT_SKILLS:
+                with self.subTest(skill=name):
+                    text = skills / name / "SKILL.md"
+                    text.write_text("Start a subagent.\n", encoding="utf-8")
+                    self.assertEqual([("subagent_wording", str(text), 1)],
+                                     skill_findings(kit_skill_dirs(skills), TRACKER, require_credits=False))
+                    text.write_text("# Skill\n", encoding="utf-8")
+
+    def test_absent_optional_skills_are_skipped_but_required_skills_are_not(self):
+        with tempfile.TemporaryDirectory() as temp:
+            skills = Path(temp)
+            for name in REQUIRED_KIT_SKILLS:
+                (skills / name).mkdir()
+                (skills / name / "SKILL.md").write_text("# Skill\n", encoding="utf-8")
+            self.assertEqual([skills / name for name in REQUIRED_KIT_SKILLS], kit_skill_dirs(skills))
+            self.assertEqual([], skill_findings(kit_skill_dirs(skills), TRACKER, require_credits=False))
+            missing = skills / REQUIRED_KIT_SKILLS[0]
+            (missing / "SKILL.md").unlink()
+            missing.rmdir()
+            self.assertEqual([("skill_missing", str(missing), 0)],
+                             skill_findings(kit_skill_dirs(skills), TRACKER, require_credits=False))
 
     def test_recursive_markdown_and_exact_protocol_exception(self):
         with tempfile.TemporaryDirectory() as temp:

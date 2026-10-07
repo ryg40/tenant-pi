@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from validate import ROOT, Invalid, load, manifest, overlay, fail
+from validate import ROOT, OPTIONAL_TREE_COMPONENTS, TREE_COMPONENTS, Invalid, load, manifest, overlay, fail, tree_items
 from examples import render
 
 # Exact paths, not extensions or a recursive glob. Update only after source review.
@@ -22,6 +22,11 @@ PUBLISH = (
     "packages/openviking-pi/LICENSE",
     "packages/tenantext/extensions/doctor/wiki.ts",
     "packages/tenantext/test/doctor-wiki.test.ts",
+    "packages/tenantext/skills/herdr-relay/SKILL.md",
+    "packages/tenantext/skills/herdr-relay/install.sh",
+    "packages/tenantext/skills/herdr-relay/relay.example.json",
+    "packages/tenantext/skills/herdr-relay/scripts/relay.py",
+    "packages/tenantext/skills/herdr-relay/tests/test_relay.py",
     "packages/promptr/src/herdr/adapter.mts",
     "packages/promptr/src/herdr/role-handoff.mts",
     "packages/promptr/src/state/run-receipts.mts",
@@ -52,7 +57,8 @@ PUBLISH = (
     "docs/secret-handling.md", "docs/packages.md", "docs/resources.md",
     "docs/profile-lifecycle.md",
     "scripts/profile_inventory.py", "tests/test_profile_inventory.py", "docs/profile-inventory.md",
-    "scripts/check_runtime.py", "tests/test_check_runtime.py", "docs/check-runtime.md",
+    "scripts/check_runtime.py", "tests/test_check_runtime.py", "docs/check-runtime.md", "docs/herdr-setup.md",
+    "scripts/remote_plan.py", "tests/test_remote_plan.py",
     "tests/test_owner_packages.py", "docs/owner-packages.md",
     "tests/test_unmanaged.py", "docs/accepted-drift.md",
     "tests/test_owner_resources.py", "docs/owner-resources.md",
@@ -70,13 +76,17 @@ PUBLISH = (
     "scripts/doc_check.py", "tests/test_doc_check.py", "docs/guides/setup.md", "docs/guides/modules.md",
     "docs/guides/troubleshooting.md", "docs/guides/privacy.md", "docs/guides/candidate-update.md",
     "docs/guides/release-checklist.md", "docs/guides/pin-move-release.md", "docs/guides/macos.md",
+    "docs/guides/providers.md",
     "AGENTS.md", "GLOSSARY.md", "docs/agents/issue-tracker.md",
     "tests/test_skill_invariants.py", "tests/test_knowledge_skills.py",
 )
 # Package directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.
 PUBLISH_DIRS = (
-    ("packages/tenantext", ("node_modules/", "extensions/doctor/wiki.ts", "test/doctor-wiki.test.ts")),
+    ("packages/tenantext", ("node_modules/", "extensions/doctor/wiki.ts", "test/doctor-wiki.test.ts",
+                            "skills/herdr-relay/SKILL.md", "skills/herdr-relay/install.sh",
+                            "skills/herdr-relay/relay.example.json", "skills/herdr-relay/scripts/relay.py",
+                            "skills/herdr-relay/tests/test_relay.py")),
     # The license is explicit in PUBLISH, so the directory rule must not add it again.
     ("packages/promptr", ("node_modules/", "dist/", "LICENSE",
         "src/herdr/adapter.mts", "src/herdr/role-handoff.mts", "src/state/run-receipts.mts",
@@ -323,6 +333,14 @@ def build_output_guard(tracked):
             fail("tracked_build_output", name)
 
 
+def explicit_files(root=ROOT, files=PUBLISH):
+    """Keep all explicit files unless their optional skill directory is entirely absent."""
+    absent = tuple(path + "/" + item + "/" for cid in OPTIONAL_TREE_COMPONENTS
+                   for path, _, items in (TREE_COMPONENTS[cid],) for item in tree_items(items)
+                   if not (root / path / item).exists() and not (root / path / item).is_symlink())
+    return tuple(name for name in files if not name.startswith(absent))
+
+
 def check():
     # Installed dependencies (`node_modules`) are skipped at any depth, like `__pycache__`.
     # A build output directory of BUILD_DIRS is skipped too: a profile with that package needs it in the clone.
@@ -340,7 +358,8 @@ def check():
     validate_private_excludes(entries, actual if tracked is None else tracked)
     private = excluded_files(actual if tracked is None else tracked, (*entries, DEV_ONLY_REL))
     published -= private
-    files = [ROOT / name for name in PUBLISH + tuple(sorted(published))]
+    explicit = explicit_files(ROOT)
+    files = [ROOT / name for name in explicit + tuple(sorted(published))]
     if len(set(files)) != len(files):
         fail("publish_duplicates", "publish set")
     for file in files:
@@ -364,7 +383,7 @@ def check():
     # A candidate release must account for every non-private tracked file.
     # Without Git metadata, compare against a reviewed explicit repository inventory.
     # Accept reviewed private-copy files when present; no exclusion list is needed in a snapshot.
-    reviewed = set(PUBLISH) | published | excluded | private
+    reviewed = set(explicit) | published | excluded | private
     if actual != reviewed:
         # One path for each line after the finding line: a file that no list names, then a
         # reviewed file that the checkout does not hold (with the prefix `missing: `).
@@ -417,4 +436,4 @@ if __name__ == "__main__":
         names = check()
     except (Invalid, UnicodeError) as exc:
         raise SystemExit(str(exc) if isinstance(exc, Invalid) else "publish_text: publish set") from None
-    print(f"publish set valid: {len(names)} files, {len(PUBLISH)} explicit (not a release approval)")
+    print(f"publish set valid: {len(names)} files, {len(explicit_files())} explicit (not a release approval)")

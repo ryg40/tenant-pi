@@ -56,6 +56,11 @@ Tests read the current pin from the manifest. Guides point to `runtime.piVersion
 Historical observations and package-specific dependency pins stay fixed; review them before qualifying a new release.
 Run the offline gates on the candidate copy before accepting the move.
 
+The `questions` component has its own pin: the exact version 2.11.0 of `@juicesharp/rpiv-ask-user-question`. It is not a version range.
+The source of that version was not reviewed.
+`scripts/pi_update.py detect` exits 10 while the registry has a newer version.
+This continues until the owner reviews the newer version and moves the pin.
+
 ### Gate 6: the clean Linux core trial
 
 - Use a Linux user with no Pi profile of its own, no kit credentials and no optional services.
@@ -86,6 +91,9 @@ These platforms are not qualified in this release. A guide may give an adaptatio
 | Windows, also WSL | Not qualified | Gate 6 under WSL or native Windows; the kit uses POSIX paths and modes, so a native Windows run also needs a code review. |
 | Browser-hosted Pi | Not qualified | Gate 6 with Pi started from a browser terminal, with the launch environment checks of [the setup guide](setup.md#shells-that-do-not-inherit-your-variables). |
 | Pi inside Herdr | Not qualified | Gate 6 with Pi started in a Herdr pane, plus the `herdr` component loaded and used once. |
+| The `questions` component | Not qualified | An interactive session of a generated profile that loads the extension and shows one question dialog, plus the plain-text fallback in a session without it. |
+| A temporary Herdr session | Not qualified | A named test session that starts, shows its state, stops and is deleted, with no model request, on a host that the owner approves. |
+| Install on a remote Linux host over SSH | Not qualified | The lines of `remote-plan` run on a disposable Linux host that the owner approves, with the identity and ownership checks recorded. |
 
 Each run needs a record with the exact commands, the versions, and each check as passed, failed, blocked or not run. The maintainer of the release accepts the record before the status changes.
 

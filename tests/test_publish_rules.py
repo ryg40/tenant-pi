@@ -337,6 +337,23 @@ class CheckTests(unittest.TestCase):
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_optional_relay_is_published_when_present_and_may_be_omitted(self):
+        directory = "packages/tenantext/skills/herdr-relay"
+        expected = {directory + "/" + name for name in
+                    ("SKILL.md", "install.sh", "relay.example.json", "scripts/relay.py", "tests/test_relay.py")}
+        self.assertTrue(expected <= set(publish_check.PUBLISH))
+        relay = self.root / directory
+        if relay.is_dir():
+            result = self.run_check()
+            self.assertEqual(0, result.returncode, result.stderr)
+            shutil.rmtree(relay)
+        result = self.run_check()
+        self.assertEqual(0, result.returncode, result.stderr)
+        # A partial directory is not an omitted component: missing explicit files still fail.
+        self.add(directory + "/SKILL.md", "# Relay\n")
+        result = self.run_check()
+        self.assertIn("publish_path: " + directory + "/install.sh", result.stderr)
+
     def test_private_list_excludes_package_file_and_private_prefix(self):
         path = self.root / publish_check.DEV_ONLY_REL
         existing = path.read_text() if path.exists() else ""
@@ -412,7 +429,7 @@ class CheckTests(unittest.TestCase):
         self.add("node_modules/.package-lock.json", "{}\n")
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(f"{len(publish_check.publish_files(repository_files(ROOT)))} files", result.stdout)
+        self.assertIn(f"{len([name for name in publish_check.publish_files(repository_files(ROOT)) if (ROOT / name).is_file()])} files", result.stdout)
 
     def test_rule_accepts_the_directory_and_counts_its_files(self):
         self.add("packages/demo/index.mjs")
@@ -421,7 +438,7 @@ class CheckTests(unittest.TestCase):
         self.add("packages/demo/notes/plan.md")
         result = self.run_check(RULES)
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(f"{len(publish_check.publish_files(tracked)) + 2} files", result.stdout)
+        self.assertIn(f"{len([name for name in publish_check.publish_files(tracked) if (ROOT / name).is_file()]) + 2} files", result.stdout)
 
     def test_file_outside_the_rule_directory_is_rejected(self):
         self.add("packages/demo/index.mjs")

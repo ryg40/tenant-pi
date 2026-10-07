@@ -1,6 +1,6 @@
 ---
 name: tenant-pi-install
-description: Guide an agent through installing a separate Pi profile with the tenant-pi kit on a user's machine. The stages are core Pi, a private overlay, optional Tenantext model routes, consent-gated memory modules, the MCP adapter module, the Herdr skill, and first launch. Use when a user asks to set up, install, migrate, or rebuild a Pi profile from this kit. Use also when a user asks to add one of its optional modules. Adapts each stage to the user's environment through questions; runs only the kit's deterministic commands.
+description: Guide an agent through installing a separate Pi profile with the tenant-pi kit on a user's machine. The stages are core Pi, a private overlay, optional Tenantext model routes, consent-gated memory modules, the MCP adapter module, Herdr with the question tool, and first launch. Use when a user asks to set up, install, migrate, or rebuild a Pi profile from this kit. Use also when a user asks to add one of its optional modules, or to add Codex, llama-swap or vLLM as a provider of the profile. Adapts each stage to the user's environment through questions; runs only the kit's deterministic commands.
 ---
 
 # Install a Pi profile with the tenant-pi kit
@@ -173,6 +173,8 @@ Ask, one at a time, and write the other answers into the overlay:
 
 `promptr` and its four skills (`promptr-generate-task-prompt`, `promptr-handoff`, `promptr-openknowledge-project-pages`, `promptr-watch-herdr-agents`) are `unverified`. `promptr` needs `npm ci --ignore-scripts` and `npm run build` in `packages/promptr` before the first start; each skill needs `promptr`. Tell the user: no session with a model is verified, and Pi prints one warning about `pi-tui` at each start.
 
+`questions` is the Pi question extension from npm, at an exact version. It is `unverified` and off by default; Stage 8 asks for it.
+
 `tracker-site` is `unverified` and selectable. It needs Python 3.11 or later and Git on `PATH`. `check-runtime` checks `python3` but does not check Git. `openviking` is a memory module; see the memory step.
 
 Validate after each edit:
@@ -236,6 +238,42 @@ Ask: "How will the key reach the Pi process?" Options: exported in the shell tha
 
 Done when the user has launched Pi (Stage 9) and the fixed prompt of Stage 9 check 3 gets the expected reply. Record which provider was tried and the result; never record the key.
 
+## Stage 5a: direct providers (Codex, llama-swap, vLLM; live, optional)
+
+Goal: each provider that the user wants is in the profile and answers. No gateway is needed.
+
+`docs/guides/providers.md` is the one source for the commands, the `models.json` examples, the metadata fields and the verification. Read it before this stage. Ask the questions below, then follow the guide. Do not write a command or a field from memory.
+
+Ask: "Which providers do you want in this profile?" Options, more than one allowed: Codex; llama-swap; vLLM; none now. Assume none.
+
+Codex:
+
+- Ask: "Which Codex provider?" Options: `openai-codex` (recommended when a Tenantext component of the profile names it); `openai` with "Sign in with ChatGPT". The guide has the difference.
+- The user runs `/login` inside Pi after the launch. You never log in for the user, and you copy no `auth.json`.
+- Ask: "Which Codex model?" Read the choices from `pi --list-models` or `/model` after the login. Do not promise a model before the list shows it.
+- The Codex login and the gateway key of Stage 5 are separate credentials. Say so when the profile has both.
+- Offer a second Codex account only when `codex-accounts` is enabled. That component needs the gateway settings and the key `TENANTEXT_LITELLM_API_KEY`.
+
+llama-swap and vLLM, the same questions for each:
+
+1. Ask: "What is the base address of the server?" A free answer. Offer no address and no port.
+2. Ask: "Which model do you want in Pi?" The answer is the exact `id` of `GET /v1/models`. With vLLM, it is the served model name, not the repository name or the path of the download.
+3. Ask: "Does the server need a key?" Options: no key (a placeholder goes into the file); a key in an environment variable. With a key, ask for the variable name. Never ask for the value.
+4. Ask: "Which model metadata do you have from the server?" Set `contextWindow`, `maxTokens`, `reasoning` or `input` only from the server or its configuration. Leave each other field out, and tell the user the Pi default that then applies. Never guess a value.
+
+Rules for the registration:
+
+- The file is `<target>/models.json`. The kit does not write it, and `inputs.modelsFile` stays `null`. Write it after Stage 4, with the user's yes.
+- If `<target>/models.json` exists, add the provider and keep each other provider. Show the change before you write it.
+- Keep the master copy in the private directory. Tell the user that each new candidate of Stage 10 needs the copy step and the Codex login again.
+- Do not use `/login llama.cpp` or `/llama` for llama-swap.
+- A direct provider accepts local HTTP, a LAN address and each port. This does not change the gateway rule of Stage 5: HTTPS, port 443, an address that ends in `/v1`. Warn that plain HTTP has no encryption.
+- The real address, model and variable name stay in the private directory and in the profile. Never write them into the clone.
+
+Verification, each step with the user's yes: the model is in `pi --list-models` for the target; the model replies to the fixed prompt of Stage 9 check 3 with `--model '<provider>/<model>'`; the earlier providers are still in the list. The guide has the exact lines.
+
+Done when both steps passed for each chosen provider. If a step did not run, record "not run" and say that the provider is unverified. Never record the key.
+
 ## Stage 6: memory modules (consent first)
 
 Goal: Hermes, LLM Wiki or OpenViking enabled only with informed consent, or left disabled.
@@ -278,14 +316,14 @@ Done when the plan shows the adapter package, `extensions: ["-builtin:mcp"]`, an
 
 Goal: Pi has the packages the profile declares, without startup warnings.
 
-Only when the profile declares packages (in-tree components, Hermes, wiki, MCP adapter). Record the baseline of the live agent directory first (Stage 9): `pi update --extensions` is the first Pi command that names the target. Show, then ask before running:
+Only when the profile declares packages (in-tree components, Hermes, wiki, MCP adapter, the question extension). Record the baseline of the live agent directory first (Stage 9): `pi update --extensions` is the first Pi command that names the target. Show, then ask before running:
 
 ```sh
 PI_CODING_AGENT_DIR='<target>' pi update --extensions
 PI_CODING_AGENT_DIR='<target>' node scripts/patch_extension_peers.mjs
 ```
 
-The first reconciles declared packages (`packages.md`); it needs network access for the npm packages. The MCP adapter, Hermes and the wiki are declared without a version, so this step installs the current registry version of each; tell the user which versions it installed, and that the kit reviewed 3.2.0, 0.9.9 and 0.12.4. An in-tree package is a local path and needs no download; not verified: whether `pi update --extensions` installs its Node dependencies. If a load fails on a missing module, show `npm ci --ignore-scripts` in the package directory and ask before running it. The second corrects host-provided `dependencies` in the installed manifests; see `docs/host-peer-overrides.md`.
+The first reconciles declared packages (`packages.md`); it needs network access for the npm packages. The MCP adapter, Hermes and the wiki are declared without a version, so this step installs the current registry version of each; tell the user which versions it installed, and that the kit reviewed 3.2.0, 0.9.9 and 0.12.4. The question extension is declared at the exact version 2.11.0. An in-tree package is a local path and needs no download; not verified: whether `pi update --extensions` installs its Node dependencies. If a load fails on a missing module, show `npm ci --ignore-scripts` in the package directory and ask before running it. The second corrects host-provided `dependencies` in the installed manifests; see `docs/host-peer-overrides.md`.
 
 Ask: "Reapply the override automatically after updates?" Options: the `npmCommand` wrapper (recommended, no root; follow the doc, but replace `~/.pi/agent` with `<target>` in every path, and ask before each write); the systemd path unit (needs root, the user installs it); manual reruns.
 
@@ -293,19 +331,57 @@ Hermes needs `better-sqlite3` built for the Node that runs Pi. If the build fail
 
 Done when `PI_CODING_AGENT_DIR='<target>' pi list` shows the declared sources and a launch prints no peer warning.
 
-## Stage 8: the Herdr skill (optional)
+## Stage 8: Herdr and the question tool (optional)
 
-Goal: agent fan-out through the Herdr skill.
+Goal: agent fan-out through Herdr and structured questions in Pi, each approved by the user.
 
-The kit declares no separate agent orchestration module at this pin. If the user works inside Herdr:
+The kit declares no separate agent orchestration module at this pin. Three parts have separate results: the Herdr application (a host tool that the kit does not install), the Herdr skill, and the Pi question extension. `docs/herdr-setup.md` has the facts. `INSTALL.md`, Stage 4a, has the same steps with the full tables.
 
-- The kit holds the skill at `packages/tenantext/skills/herdr`. For one profile, enable the `herdr` component (Stage 3, question 6); the profile then loads the skill. For every harness of the user, use the installer of the skill, `packages/tenantext/skills/herdr/install.sh`, which links it under `~/.agents/skills/herdr` and into `~/.pi/agent/skills` and `~/.claude/skills`. Those are user-level locations shared by every profile.
+Order: ask questions 1 to 3 before Stage 3 when the user names Herdr, a remote host or the question tool. Questions 6 and 7 are overlay choices; write them in Stage 3, and Stage 4 generates them.
+
+Use your question tool. In Claude Code that is `AskUserQuestion`; install no Pi extension into Claude Code. With no question tool, and in a headless session, ask in plain text with numbered options. No step waits for the Pi question extension.
+
+1. Ask: "Install on this machine, or on a remote Linux host over SSH?" For remote, the user gives the SSH target. Use the SSH configuration and the agent of the user. Never ask for a password or a private key, never copy a credential, never turn off host key verification. A remote install is unqualified; say so.
+2. Ask: "An existing Linux account, or a new one?" A new account and each missing system prerequisite go into one list of privileged actions, one command for each item. The user approves or refuses each item. Do not give the account administrator rights. Every ordinary step then runs as the target account.
+3. Confirm the identity and the paths before any write:
+
+   ```sh
+   id -un; printf '%s\n' "$HOME"; uname -sm
+   ssh '<ssh target>' 'id -un; printf "%s\n" "$HOME"; uname -sm'
+   ```
+
+   For a remote host, `python3 scripts/tenant_pi.py remote-plan --ssh-target '<ssh target>' --remote-user '<account>' --remote-home '<remote home>'` prints the SSH command lines of the remote stages and runs none. Show each line; a line with `"changes": true` needs a yes.
+
+   Show the account, the home, the clone, the private directory, the profile and `~/.config/herdr/`. Stop when the account or the home is not the one that the user named.
+4. Detect Herdr, read-only:
+
+   ```sh
+   command -v herdr && herdr --version
+   python3 scripts/tenant_pi.py check-herdr
+   ```
+
+   With `present`, record the version and install nothing. Do not run `herdr update`, do not change the channel, and do not stop a server or a session. An upgrade needs its own approval.
+5. With `missing`: the kit has no install code for Herdr. The reviewed source is the open-source project `herdrdev/herdr` on GitHub (Apache-2.0), stable release 0.9.3. Use no other URL or command. The preferred form is the pinned asset for Linux x86_64:
+
+   ```sh
+   cd "$(mktemp -d)" &&
+   curl -fsSLO https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64 &&
+   echo '18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7  herdr-linux-x86_64' | sha256sum -c - &&
+   mkdir -p ~/.local/bin &&
+   install -m 755 herdr-linux-x86_64 ~/.local/bin/herdr
+   ```
+
+   It writes a new temporary directory and `~/.local/bin/herdr`, and it stops when the digest does not match. Another release needs its own reviewed digest. The alternative form is the official script `https://herdr.dev/install.sh`: it installs the latest release into `~/.local/bin` and verifies the checksum. The user saves the script to a file and reads it before it runs; do not send the download directly into a shell. The macOS assets are `herdr-macos-aarch64` and `herdr-macos-x86_64`; this guide gives no digest for them. Not verified: an install with these commands on a clean account.
+
+   Show the command and its paths, ask, run it as the target account without `sudo`, then run the check again. `~/.local/bin` can be missing from `PATH` in a non-login shell or in an SSH command. The check then reports `missing` after a correct install. The user adds the directory to `PATH` for that shell (`export PATH="$HOME/.local/bin:$PATH"`); the kit never edits a shell startup file. A missing terminal or session prerequisite is a blocker, not a success.
+6. Ask: "Where do you want the Herdr skill?" Options: the profile (recommended): enable the `herdr` component (Stage 3, question 6), and the generated profile loads `packages/tenantext/skills/herdr`. The shared install: `packages/tenantext/skills/herdr/install.sh` copies the skill to `~/.agents/skills/herdr` and links it into `~/.pi/agent/skills` and `~/.claude/skills`. Those are user-level locations shared by every profile. It is a separate approval: show what exists at each path first. The approval text says that `install.sh` replaces the installed skill copy with `rsync --delete`. It also says that `install.sh` overwrites an existing `spawn_agent.md` in `~/.claude/commands` and `~/.pi/agent/prompts`.
+7. Ask: "Structured questions in Pi?" A yes enables the `questions` component (Stage 3). Stage 7 installs the package into the profile. It is `unverified`; a loaded extension does not prove a working question dialog. The kit does not write the guidance file of the extension; do not replace an existing one.
+
 - Do not install the third-party `@ogulcancelik/pi-herdr` package.
 - Herdr-hosted Pi is unqualified for this kit; say so.
+- When a part fails, name the actions that are complete and the actions that are not.
 
-Ask: "Install the Herdr skill at user level now?" Only if `HERDR_ENV` is set or the user names Herdr.
-
-Done when `herdr --skill` or the linked `SKILL.md` is readable from the user's harness.
+Done when `check-herdr` shows `present` or the user accepted `missing` as an open item, and the answers to questions 6 and 7 are in the overlay.
 
 ## Stage 9: first launch and checks (live)
 
@@ -342,6 +418,7 @@ Checks, in order:
    - Run the same comparison for each other baseline that you recorded, with its own `--dir` and `--baseline`.
 5. With Hermes: `'<target>'/pi-hermes-memory/` exists after the first session; with the wiki and ambient off, `~/.llm-wiki` was not created.
 6. With the MCP module: `/mcp-adapter status` inside Pi lists only the servers from the input file. A `lazy` server shows as not connected until first use.
+7. With `herdr` or `questions`: five separate results, each recorded on its own line. `python3 scripts/tenant_pi.py check-herdr` gives the Herdr command. `python3 scripts/tenant_pi.py inventory --dir '<target>'` gives `coordination.herdrSkill` and `coordination.questionExtension`. The question dialog and a temporary Herdr session are live checks that the user approves first; without them, record "not run". A present command and a readable skill file do not prove a session or a question dialog. `docs/herdr-setup.md` has the steps and the values.
 
 Record each check as passed, failed, or not run. Check 4 has one more value, not verified. Do not describe a failed or skipped live check as working.
 

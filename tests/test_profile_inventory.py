@@ -8,11 +8,15 @@ import unittest
 from unittest.mock import patch
 
 from scripts import tenant_pi
-from scripts.profile_inventory import MAX_SOURCE, RESOURCE_DIRS, inventory
+from scripts.profile_inventory import MAX_SOURCE, RESOURCE_DIRS, coordination_files, inventory
 from scripts.validate import Invalid
 
 CANARY = "CANARY_SECRET"
 EMPTY = {name: [] for name in RESOURCE_DIRS}
+# The coordination block of a profile that declares neither the Herdr skill nor the question extension.
+NO_COORDINATION = {"herdrCli": "not_checked", "herdrSession": "not_run", "herdrSkill": "not_declared",
+                   "questionExtension": "not_declared", "questionUi": "unverified"}
+QUESTIONS = "npm:@juicesharp/rpiv-ask-user-question@2.11.0"
 EVENTS = []
 RECORDING = []
 PROCESS_EVENTS = ("subprocess.Popen", "os.exec", "os.posix_spawn", "os.system", "os.fork")
@@ -43,9 +47,48 @@ class PureInventoryTests(unittest.TestCase):
                           {"source": "git:https://h.invalid/r.git@" + "a" * 40, "filters": ["extensions", "skills", "themes"]},
                           {"source": "git:git@h.invalid:owner/repo"}, {"source": "ssh://git@h.invalid/owner/repo.git"}],
                          report["packages"])
-        self.assertEqual(["dir", "extensions", "managed", "packages", "prompts", "skills", "summary"], sorted(report))
+        self.assertEqual(["coordination", "dir", "extensions", "managed", "packages", "prompts", "skills", "summary"],
+                         sorted(report))
+        # A local package with another skill filter does not declare the Herdr skill.
+        self.assertEqual(NO_COORDINATION, report["coordination"])
         self.assertEqual({"packages": 5, "extensions": 0, "skills": 0, "prompts": 0}, report["summary"])
         self.assertNotIn(CANARY, dump(report))
+
+    def test_coordination_results_are_separate_and_a_declared_part_is_not_a_working_part(self):
+        package = {"source": "/home/example/kit/packages/tenantext", "extensions": [], "skills": ["skills/herdr"]}
+        settings = {"packages": [package, {"source": QUESTIONS, "extensions": ["index.ts"]}]}
+        files = coordination_files("/home/example/profile", settings)
+        self.assertEqual({"herdrSkill": "/home/example/kit/packages/tenantext/skills/herdr/SKILL.md",
+                          "questionExtension": "/home/example/profile/npm/node_modules/@juicesharp/"
+                                               "rpiv-ask-user-question/package.json"}, files)
+        for present, skill, extension in (((False, False), "not_readable", "declared"), ((True, False), "readable", "declared"),
+                                          ((False, True), "not_readable", "installed"), ((True, True), "readable", "installed")):
+            with self.subTest(present=present):
+                report = inventory("/home/example/profile", settings, EMPTY, True,
+                                   dict(zip(("herdrSkill", "questionExtension"), present)))
+                # No file of a profile proves the command, a session or the question dialog.
+                self.assertEqual({"herdrSkill": skill, "questionExtension": extension, "herdrCli": "not_checked",
+                                  "herdrSession": "not_run", "questionUi": "unverified"}, report["coordination"])
+        # Without the facts of the caller, nothing counts as found.
+        self.assertEqual(("not_readable", "declared"),
+                         tuple(inventory("/p", settings, EMPTY, True)["coordination"][key]
+                               for key in ("herdrSkill", "questionExtension")))
+        # Each part alone, an unversioned source, and sources that declare neither part.
+        self.assertEqual({"herdrSkill": None, "questionExtension": "/p/npm/node_modules/@juicesharp/rpiv-ask-user-question/package.json"},
+                         coordination_files("/p", {"packages": ["npm:@juicesharp/rpiv-ask-user-question"]}))
+        for other in ({}, {"packages": CANARY}, {"packages": ["npm:rpiv-ask-user-question@2.11.0", "/home/example/herdr",
+                                                              {"source": "/home/x", "skills": "skills/herdr"},
+                                                              {"source": "npm:pkg@1.0.0", "skills": ["skills/herdr"]},
+                                                              {"source": "/home/x", "extensions": ["skills/herdr"]},
+                                                              {"source": "/home/x;" + CANARY, "skills": ["skills/herdr"]}]}):
+            self.assertEqual({"herdrSkill": None, "questionExtension": None}, coordination_files("/p", other))
+        for bad in ({"herdrSkill": True}, {"herdrSkill": 1, "questionExtension": False}, [],
+                    # A found file of a part that the settings do not declare is a caller error.
+                    {"herdrSkill": True, "questionExtension": False}):
+            with self.assertRaises(Invalid) as caught:
+                inventory("/p", {}, EMPTY, True, bad)
+            self.assertEqual("coordination_facts: inventory.coordination", str(caught.exception))
+        self.assertNotIn(CANARY, dump(inventory("/p", settings, EMPTY, True)))
 
     def test_credential_positions_and_odd_shapes_are_not_echoed(self):
         settings = {"packages": ["git:https://user:" + CANARY + "@h.invalid/r.git", "https://" + CANARY + "@h.invalid/r.git",
@@ -100,7 +143,7 @@ class PureInventoryTests(unittest.TestCase):
         self.assertEqual({"dir": "/p", "managed": True, "packages": [], "extensions": report["extensions"],
                           "skills": [{"name": "one", "kind": "dir"}],
                           "prompts": [{"name": "fifo", "kind": "other"}, {"name": "p.md", "kind": "file"}],
-                          "summary": {"packages": 0, "extensions": 3, "skills": 1, "prompts": 2}}, report)
+                          "coordination": NO_COORDINATION, "summary": {"packages": 0, "extensions": 3, "skills": 1, "prompts": 2}}, report)
         shuffled = {name: list(reversed(items)) for name, items in listings.items()}
         self.assertEqual(dump(report), dump(inventory("/p", {}, shuffled, True)))
 
@@ -141,7 +184,7 @@ class ProfileDirectoryTests(unittest.TestCase):
 
     def test_unmanaged_profile_with_only_settings(self):
         self.assertEqual({"dir": str(self.profile), "managed": False, "packages": [{"source": "npm:a@1.0.0"}],
-                          "extensions": [], "skills": [], "prompts": [],
+                          "extensions": [], "skills": [], "prompts": [], "coordination": NO_COORDINATION,
                           "summary": {"packages": 1, "extensions": 0, "skills": 0, "prompts": 0}}, self.read())
 
     def test_kinds_symlinks_and_private_files_stay_unopened(self):

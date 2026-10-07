@@ -35,7 +35,7 @@ Errors use static codes, such as `exact_version: pi-update.version` or `notes_ra
 
 Detection reads `config/manifest.json`. It queries the `latest` metadata of the core npm package first, then the npm modules in component-name order.
 
-Each pair has `component`, `package`, `spec`, `pinned`, `latest`, and `different`. An unpinned module has `pinned: null` and `different: null`. It cannot trigger exit 10 because there is no stored version to compare.
+Each pair has `component`, `package`, `spec`, `pinned`, `latest`, and `different`. An unpinned module has `pinned: null` and `different: null`. It cannot trigger exit 10 because there is no stored version to compare. The `questions` module has an exact version: another registry version of it sets `different: true` and exit 10, and the core pin does not move for it.
 
 `new` means that a pinned version differs. It is not a semantic version ordering check. A registry rollback can also set it.
 

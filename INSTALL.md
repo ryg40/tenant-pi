@@ -78,9 +78,26 @@ Goal: Node, Python and Git at the required versions. Show the command for the ma
 | Machine | Node 24 | Python 3.11+ | Git |
 | --- | --- | --- | --- |
 | macOS, Homebrew | `brew install node@24`, then `brew link --overwrite node@24` | `brew install python@3.12` | `xcode-select --install` |
-| macOS or Linux, nvm | `nvm install 24 && nvm use 24` | distribution package or Homebrew | distribution package |
+| macOS or Linux, nvm | see the nvm block below | distribution package or Homebrew | distribution package |
 | Debian or Ubuntu | NodeSource 24 repository, or nvm | `apt install python3` | `apt install git` |
 | Fedora | `dnf install nodejs24` | `dnf install python3` | `dnf install git` |
+
+The nvm block, for a user home that has no nvm:
+
+```sh
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null bash
+. "$HOME/.nvm/nvm.sh"
+nvm install 24 && nvm use 24
+```
+
+The first line installs nvm `v0.40.3` into `~/.nvm`. Before you run it, read the release page <https://github.com/nvm-sh/nvm/releases/tag/v0.40.3> and the script at the URL of the first line. The kit gives no checksum for the script. When `nvm` is already a command in the shell, run the third line only.
+
+The kit never edits a shell startup file, so the user makes one of two choices:
+
+- Option one: the user runs the first line without `PROFILE=/dev/null`. The nvm install script then adds the nvm lines to a shell startup file of the user. The script selects the file from `$SHELL` and edits only a file that exists, for example `~/.bashrc` for bash. When no such file exists, the script prints `Profile not found` and edits nothing. Create the file first when it is absent, for example with `touch ~/.bashrc` for bash.
+- Option two: the user keeps `PROFILE=/dev/null`. The script prints `Profile not found` and edits no file. The user runs `. "$HOME/.nvm/nvm.sh"` in each shell that runs a kit command or the launcher.
+
+The launcher runs `pi` from the `PATH` of the shell that starts it. With option two, run the `. "$HOME/.nvm/nvm.sh"` line before the launcher too. Record the choice as an adaptation.
 
 Warning: `brew link --overwrite node@24` and `nvm use` change the default `node` of the user. A Pi that another Node installed can stop working. Ask first.
 
@@ -143,6 +160,8 @@ The user can refuse the global command and use the prefix form below in its plac
 
 The command fixes the version of the Pi package, not all versions of its dependencies. See [what the install command fixes](docs/check-runtime.md#what-the-install-command-fixes).
 
+With npm 11, this command and the prefix form below can print two warning lines. The lines start with `npm warn install-scripts` and `npm warn deprecated`. Both lines are expected output and are not a failure. The user runs no `allowScripts` command for the kit.
+
 If it prints `not writable` (for example a user without root on a Node that root owns), the global command fails. Show the prefix form and run its install command on yes:
 
 ```sh
@@ -185,6 +204,169 @@ The step leaves `packages/tenantext/node_modules/` in the clone. `scripts/publis
 The Promptr package needs a build when you enable `promptr`: run `npm ci --ignore-scripts` and `npm run build` in `packages/promptr`. The build leaves `packages/promptr/node_modules/` and `packages/promptr/dist/` in the clone; `scripts/publish_check.py` ignores both. When no tracker binding exists, set `GITEA_HOST`, `GITEA_OWNER` and `OPENKNOWLEDGE_ORIGIN` in the shell that starts Pi: without them Promptr shows placeholder defaults. Without `promptr` in `enable` the package needs no step.
 
 Done when `packages/tenantext/node_modules/yaml` exists.
+
+## Stage 4a: Herdr and the question tool
+
+Goal: a coordination setup that the user approved item by item. Optional. Run this stage when the user wants Herdr, the Herdr skill, or structured questions in Pi. Skip it otherwise.
+
+This stage has three parts with separate results: the Herdr application (a host tool), the Herdr skill (a component of the profile, or a shared install), and the Pi question extension (a component of the profile). `docs/herdr-setup.md` has the facts of each part.
+
+Ask the questions of this stage with the question tool of your harness. Claude Code has its own question tool: use it, and install no Pi extension into Claude Code. When no question tool is loaded, ask in plain text: one question, its numbered options, the recommended option first. A headless or bootstrap session always uses plain text. Never make a step wait for the Pi question extension.
+
+The Herdr facts below come from the `herdr` command itself, version 0.9.3: `herdr --help`, `herdr update --help`, `herdr channel --help` and `herdr --skill`.
+
+| Fact | Source |
+| --- | --- |
+| `herdr --version` prints `herdr <version>`. | the command |
+| The home page is `https://herdr.dev`. | `herdr --help` |
+| `herdr update` downloads and installs the latest version. | `herdr update --help` |
+| `herdr channel show` prints the update channel. `herdr channel set <stable|preview>` changes it. | `herdr channel --help` |
+| `herdr --skill` prints the agent skill file of the installed version. | `herdr --help` |
+| The configuration file is `~/.config/herdr/config.toml`; `HERDR_CONFIG_PATH` names another file. | `herdr --help` |
+
+The reviewed source of the Herdr application is the open-source project `herdrdev/herdr` on GitHub, with the license Apache-2.0. Its stable release is 0.9.3. The install facts of part 5 come from the release page and the install script of the project. Do not use another URL or command. Not verified: an install with the commands of part 5 on a clean account. Not verified: the version range of Herdr that the bundled skill supports. The skill text names commands that were verified on Herdr 0.9.1.
+
+### 1. Destination
+
+Ask: "Where do you install: on this machine, or on a remote Linux host over SSH?"
+
+- Local: every later command runs here.
+- Remote: the user gives the SSH target, a host alias of their SSH configuration or `<user>@<host>`. Every later command of every stage runs on that host through `ssh`. The remote host is Linux. A remote install is not qualified: no trial on a disposable host is recorded.
+
+Rules for SSH:
+
+- Use the SSH configuration, the keys and the agent of the user. Do not ask for a password, a passphrase or a private key. Do not copy a key or a credential to the remote host.
+- Do not turn off host key verification. Do not add `StrictHostKeyChecking=no` or a null `UserKnownHostsFile`. When the host key is unknown or changed, stop and let the user resolve it in their own terminal.
+- Do not write the SSH target into a tracked file of the clone. It can go into `<private dir>/install-log.md`.
+
+### 2. Account
+
+Ask: "Which Linux account owns the install: an existing account, or a new account?"
+
+- Existing account: the user names it. Local: it is the account that runs this session. Remote: it is the account of the SSH target.
+- New account: account creation needs administrator rights. Write a list of the privileged actions, one command for each item. Add each missing system prerequisite of Stage 1 to the same list. Show the list. The user approves or refuses each item. An item that the user refused does not run. The user or an administrator can run the items in their own terminal.
+
+An example of such a list, for the user to change:
+
+```text
+1. Create the account <name> with a home directory.   sudo useradd --create-home --shell /bin/bash <name>
+2. Install Git from the system packages.              <package command of the distribution>
+3. Allow SSH login for <name>.                        <the user adds their own public key>
+```
+
+The exact commands depend on the distribution. Do not give the new account administrator rights. Do not add it to a `sudo` or `wheel` group. After this list, no step of this guide needs administrator rights.
+
+Every ordinary install step runs as the target account: Node, Pi, the clone, the Herdr application, the skill and the profile.
+
+### 3. Home and paths
+
+Check the identity before any write. Local:
+
+```sh
+id -un; printf '%s\n' "$HOME"; uname -sm
+```
+
+Remote, with the target of the user:
+
+```sh
+ssh '<ssh target>' 'id -un; printf "%s\n" "$HOME"; uname -sm'
+```
+
+Show the account name, the home directory and these paths. Ask the user to confirm them:
+
+| Path | Default |
+| --- | --- |
+| The clone | `~/tenant-pi` |
+| The private directory | `~/.config/tenant-pi` |
+| The profile | `~/.pi/profiles/main` |
+| The Herdr configuration | `~/.config/herdr/` |
+| The shared skill directory, only with the shared install | `~/.agents/skills/herdr` |
+
+With the clone present on this machine, one action prints the SSH command lines of the remote stages. It runs none of them:
+
+```sh
+python3 <clone>/scripts/tenant_pi.py remote-plan --ssh-target '<ssh target>' --remote-user '<account>' --remote-home '<remote home>'
+```
+
+Show each line before you run it. The `identity` line fails for a wrong account, a wrong home or a system that is not Linux. A line with `"changes": true` needs a yes from the user. `docs/herdr-setup.md` lists the stages and the limits.
+
+Stop when the account name or the home directory is not the one that the user named. A wrong identity writes into another account. After each install step, check the owner of the new path: `stat -c '%U' '<path>'` on Linux prints the account name.
+
+### 4. Detect Herdr
+
+Read-only:
+
+```sh
+command -v herdr && herdr --version
+```
+
+With the clone present, the kit action gives the same fact as JSON:
+
+```sh
+python3 <clone>/scripts/tenant_pi.py check-herdr
+```
+
+- `present`: record the version. Do not install a second copy. Do not run `herdr update` and do not change the channel: an upgrade is a separate decision that the user approves by name. A running Herdr server keeps its version until it restarts; do not stop a server or a session of the user.
+- `missing`: continue with part 5.
+- `unparsed`: show the fact to the user and stop this part. Do not replace the file.
+
+### 5. Install the Herdr application
+
+Only with `missing` in part 4, and only after approval. The kit does not run this step: it has no install code for Herdr.
+
+1. Show the install command and the paths that it writes. The preferred form is the pinned release asset for Linux x86_64. It writes a new temporary directory and `~/.local/bin/herdr`:
+
+   ```sh
+   cd "$(mktemp -d)" &&
+   curl -fsSLO https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64 &&
+   echo '18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7  herdr-linux-x86_64' | sha256sum -c - &&
+   mkdir -p ~/.local/bin &&
+   install -m 755 herdr-linux-x86_64 ~/.local/bin/herdr
+   ```
+
+   The command stops when the digest does not match. The digest is the SHA-256 of the asset of release 0.9.3. Another release needs its own reviewed digest.
+
+   The alternative form is the official install script `https://herdr.dev/install.sh`. It installs the latest release into `~/.local/bin` without root, and it verifies the checksum. The user saves the script to a file and reads it before it runs. Do not send the download directly into a shell.
+
+   The release also has the macOS assets `herdr-macos-aarch64` and `herdr-macos-x86_64`; this guide gives no digest for them.
+2. Ask: "Run this command as `<account>`?" Run it only after a yes. It runs as the target account, without `sudo`.
+3. Run the check of part 4 again. The step is done only with `present`.
+4. `~/.local/bin` can be missing from `PATH` in a non-login shell or in an SSH command. The check then reports `missing` after a correct install. The user adds the directory to `PATH` for that shell, then runs the check again:
+
+   ```sh
+   export PATH="$HOME/.local/bin:$PATH"
+   ```
+
+   The kit never edits a shell startup file.
+
+When Herdr needs something that the machine does not have, for example a terminal for the interactive application, report that as a blocker. Do not report the part as done.
+
+### 6. The Herdr skill
+
+The kit holds the skill at `packages/tenantext/skills/herdr`. Ask: "Where do you want the Herdr skill?"
+
+| Option | What it changes | Scope |
+| --- | --- | --- |
+| Profile (recommended) | `herdr` moves to `selection.enable` in the overlay (Stage 5). The generated profile loads the skill from the clone. | The one generated profile |
+| Shared install | `bash <clone>/packages/tenantext/skills/herdr/install.sh` copies the skill to `~/.agents/skills/herdr` and links it into `~/.claude/skills` and `~/.pi/agent/skills` when these directories exist. It also copies the `spawn_agent` command file into `~/.claude/commands` and `~/.pi/agent/prompts`. | Every Pi profile and Claude Code of the account |
+| Both | Both changes. | Both scopes |
+| None | Nothing. | none |
+
+The shared install is a separate approval. Before it, show what exists at each of its paths. `install.sh` replaces the installed skill copy at `~/.agents/skills/herdr` with `rsync --delete`: a file that is only in the earlier copy is deleted. It overwrites an existing `spawn_agent.md` in `~/.claude/commands` and `~/.pi/agent/prompts`. It writes into the live `~/.pi/agent` when that directory exists. It leaves a `herdr` entry that is not a link in place and prints `skipped`. Run it only when the user approves these paths by name. The profile option writes none of them.
+
+### 7. The question extension
+
+Ask: "Do you want structured questions in Pi?" A yes moves `questions` to `selection.enable` in the overlay (Stage 5). Stage 7 then installs the package into the profile. The extension gives Pi the `ask_user_question` tool. It is `unverified`: tell the user the gaps of `docs/herdr-setup.md`.
+
+- The extension reads a guidance file below the configuration directory of the user. The kit does not write it. Do not replace an existing file.
+- A loaded extension is not a working question dialog. The dialog needs an interactive session.
+- This choice is for Pi only. Claude Code keeps its own question tool.
+
+### 8. Record
+
+Write into `<private dir>/install-log.md`: the destination, the account, the confirmed paths, each approved and each refused item, and the result of each part. When a part fails, name the actions that are complete and the actions that are not. The user can then resume without a second run of a completed action.
+
+Done when the user answered parts 1, 2, 6 and 7, part 3 shows the right identity, and part 4 shows `present` or the user accepted `missing` as an open item.
 
 ## Stage 5: the private overlay
 
@@ -239,7 +421,7 @@ The command prints `JSON valid`, or the line and the column of the first syntax 
 Edit `overlay.json` for the other answers of the user. A core-only profile needs none of them:
 
 1. `target.agentDir`: `--target` sets it. Change it by hand only as described above.
-2. `selection.enable` and `selection.disable`: move each chosen ID from `disable` to `enable`. Recommended full set: `core`, `model-routing`, `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `coordinator-skills`, `knowledge-skills`, `slopscore-pr`. `promptr` and its four skills are `unverified` and need the build step of Stage 4. `tracker-site` is selectable but `unverified`; it needs Python 3.11 or later and Git on `PATH`, with no third-party Python package. `check-runtime` checks Python, not Git. `openviking` is a memory module; see item 5.
+2. `selection.enable` and `selection.disable`: move each chosen ID from `disable` to `enable`. Recommended full set: `core`, `model-routing`, `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `coordinator-skills`, `knowledge-skills`, `slopscore-pr`. `herdr` and `herdr-relay` are optional and disabled by default. Enable `herdr` too if you select `herdr-relay`. No install stage requires either component. `questions` is the Pi question extension from npm; it is `unverified`, and Stage 4a asks for it. `promptr` and its four skills are `unverified` and need the build step of Stage 4. `tracker-site` is selectable but `unverified`; it needs Python 3.11 or later and Git on `PATH`, with no third-party Python package. `check-runtime` checks Python, not Git. `openviking` is a memory module; see item 5.
 3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/model-routes.md`.
 4. Gateway, only when the user routes through the Tenantext gateway: `modelRoutes.gateway` is `{"auth": "env"}`; `endpoints.codex-accounts` is the gateway URL that ends in `/v1`; `env.codex-accounts` is `${TENANTEXT_LITELLM_API_KEY}`. The user exports the key themselves.
 5. `hermes`, `wiki` and `openviking`: optional, off by default. Each needs `consent.memoryCapture: true` and a `memory` block. `openviking` also needs `consent.remoteMemoryWrites: true`, an OpenViking server that the user set up, and `npm ci --ignore-scripts` in `packages/openviking-pi`. Read `docs/memory-modules.md` with the user first.
@@ -335,7 +517,7 @@ Done when `generate` prints `"filesComplete":true` and `<target>` holds `setting
 
 ## Stage 7: declared npm packages
 
-Only when `mcp`, `hermes` or `wiki` is enabled.
+Only when `mcp`, `hermes`, `wiki` or `questions` is enabled. The plan prints the second line only with `hermes`, `wiki` or `questions`.
 
 Record the baseline of the live agent directory first: see "Before the first launch" in Stage 9. `pi update --extensions` is the first Pi command that names `<target>`.
 
@@ -344,7 +526,7 @@ PI_CODING_AGENT_DIR='<target>' pi update --extensions
 PI_CODING_AGENT_DIR='<target>' node ~/tenant-pi/scripts/patch_extension_peers.mjs
 ```
 
-These three packages are declared without a version. The first command installs the current registry version of each; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. The second command corrects host-provided peers in the installed manifests.
+`mcp`, `hermes` and `wiki` are declared without a version. The first command installs the current registry version of each; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. `questions` is declared at the exact version 2.11.0. The second command corrects host-provided peers in the installed manifests.
 
 To reapply the correction after each update, `docs/host-peer-overrides.md` describes an `npmCommand` wrapper.
 
@@ -365,6 +547,20 @@ The kit writes no credential. Two paths:
 - Tenantext gateway: the user exports `TENANTEXT_LITELLM_API_KEY` in the shell that launches Pi. The launch line carries `TENANTEXT_LITELLM_BASE_URL`.
 
 For the gateway, ask how the key reaches the process: the launching shell, a launcher script the user writes, or a secret store the user already uses. Never edit a shell startup file yourself.
+
+### Direct providers: Codex, llama-swap and vLLM
+
+Goal: each provider that the user wants is in the profile, with no gateway.
+
+Ask which of the three the user wants. `docs/guides/providers.md` has the complete steps, the examples and the verification. Follow it and do not write the commands from memory.
+
+- Codex: a provider that Pi includes. The user runs `/login` inside Pi and selects the model with `/model`. The login is separate from the gateway key.
+- llama-swap and vLLM: ask for the base address, the exact model alias, and whether the server needs a key. Use no default. Register the provider in `<target>/models.json` after generation. A key is a `$NAME` reference to an environment variable, never a value.
+- A direct provider accepts local HTTP, a LAN address and each port. The gateway route stays HTTPS only: `docs/model-routes.md`.
+- The kit writes no `models.json` and has no input for it: `inputs.modelsFile` stays `null`. Keep the master copy in `<private dir>` and copy it into each new target.
+- Do not replace a `models.json` that exists, and do not copy `auth.json` between profiles.
+
+Done when the user approved and ran the two verification steps of the provider guide, or the install log says "not run" and names the provider as unverified.
 
 ## Stage 9: first launch and checks
 
@@ -402,6 +598,7 @@ Rule: the profile keeps its sessions in `<target>/sessions`. The launch line hol
 4. The profile stayed inside its directory. `ls -la '<target>'` shows the generated files plus what Pi wrote: `auth.json`, `sessions/`, `npm/`, the state directories of the extensions. The comparison of the live agent directory with its baseline gives `unchanged`: see "Check 4: the comparison with the baseline" below.
 5. With Hermes: `<target>/pi-hermes-memory/` exists after the first session. With the wiki and ambient off: `~/.llm-wiki` was not created.
 6. With the MCP module: `/mcp-adapter status` inside Pi lists only the servers from the input file.
+7. With `herdr` or `questions`: five separate results, each recorded on its own line. `python3 scripts/tenant_pi.py check-herdr` gives the Herdr command. `python3 scripts/tenant_pi.py inventory --dir '<target>'` gives `coordination.herdrSkill` and `coordination.questionExtension`. The question dialog and a temporary Herdr session are live checks that the user approves first; without them, record "not run". A present command and a readable skill file do not prove a session or a question dialog. `docs/herdr-setup.md` has the steps and the values.
 
 Record each check as passed, failed, or not run. Check 4 has one more value, not verified.
 

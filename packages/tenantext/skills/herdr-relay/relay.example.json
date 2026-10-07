@@ -1,0 +1,7 @@
+{
+  "comment": "Copy to ~/.config/herdr-skill/relay.json. It gives the relay worker of this machine. Leave a value out, and the harness uses its own default.",
+  "harness": "pi",
+  "role": "worker",
+  "model": "<a model name that `pi --list-models` finds one time>",
+  "thinking": "<off|minimal|low|medium|high|xhigh|max>"
+}

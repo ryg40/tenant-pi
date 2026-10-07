@@ -38,6 +38,8 @@ python3 scripts/tenant_pi.py generate --overlay "$HOME/.config/tenant-pi/overlay
 
 Use the same `--registry`, `--local-dir` and `--require-role` options as before. `generate` refuses an existing target, so the old candidate cannot change.
 
+The selection comes from the overlay. A new candidate keeps each enabled component, for example `herdr` and `questions`: the same package entries are in its `settings.json`. The regeneration writes into the new target only. It does not write into the old candidate, into `~/.pi/agent`, or into a shared directory of the user.
+
 To see every candidate under one parent, with the kit commit and the generation time of each:
 
 ```sh
@@ -130,7 +132,7 @@ To go back, run the launcher of the old candidate. Without launcher files, use t
 
 Limits of a switch:
 
-- Each candidate authenticates and installs its declared packages on its own. Run setup Stages 6 and 7 for the new candidate. The kit copies no auth, sessions, memory or packages.
+- Each candidate authenticates and installs its declared packages on its own. Run setup Stages 6 and 7 for the new candidate. The kit copies no auth, sessions, memory or packages. With `questions`, `inventory` shows `coordination.questionExtension` as `declared` for the new candidate until `pi update --extensions` ran for it.
 - Going back is not a data rollback. Data that a session wrote into a candidate stays there.
 - The live `~/.pi/agent` stays untouched. Replacing it is your manual decision and is out of scope of the kit.
 - Old candidates stay on disk. The kit deletes nothing. Remove an old candidate by hand only after you checked that no launcher points at it.

@@ -516,7 +516,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "The skill needs the herdr CLI and Python 3 on the host; the kit does not install or check them."
+          "fact": "The skill needs the herdr CLI and Python 3 on the host; the kit does not install them. The check-herdr action reports the herdr CLI as present with its version, or as missing."
         },
         {
           "code": "kit_test_missing",
@@ -528,6 +528,53 @@
           {
             "file": "settings.json",
             "key": "package:packages/tenantext:skills/herdr"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
+      }
+    },
+    "herdr-relay": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core",
+        "herdr"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/herdr-relay"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The optional skill needs the herdr CLI, Python 3 and the installed herdr skill (default ~/.agents/skills/herdr). The kit does not install or check them."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/herdr-relay"
           }
         ],
         "status": "reviewed",
@@ -575,7 +622,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "On Pi the grilling skill asks through the ask_user_question tool of an extension that the kit does not install or check; a search, a research ticket and a prototype ticket need the herdr skill and the herdr CLI; the wayfinder, research and prototype skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
+          "fact": "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research ticket and a prototype ticket need the herdr skill and the herdr CLI; the wayfinder, research and prototype skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
         },
         {
           "code": "kit_test_missing",
@@ -1066,6 +1113,64 @@
         ],
         "status": "reviewed",
         "boundary": "Pi package declaration, the extensions list entry that disables builtin:mcp, and the whole adapter config file"
+      }
+    },
+    "questions": {
+      "source": {
+        "kind": "npm",
+        "spec": "@juicesharp/rpiv-ask-user-question@2.11.0"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core"
+      ],
+      "owner": "rpiv-ask-user-question",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "package_source_unreviewed",
+          "fact": "The registry metadata of version 2.11.0 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
+        },
+        {
+          "code": "peer_package_unverified",
+          "fact": "The package lists typebox under dependencies and names the peer package @juicesharp/rpiv-i18n; no install of version 2.11.0 with the kit pin was observed."
+        },
+        {
+          "code": "question_ui_unverified",
+          "fact": "The ask_user_question tool needs an interactive Pi session. A loaded extension does not prove that the question dialog works."
+        },
+        {
+          "code": "shared_config_outside_profile",
+          "fact": "The extension reads its guidance file below the config directory of the user, outside the profile; the kit does not write or check that file."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:@juicesharp/rpiv-ask-user-question"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "Pi package declaration only; the guidance file of the extension stays owned by the user"
       }
     },
     "hermes": {

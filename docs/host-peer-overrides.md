@@ -20,7 +20,7 @@ An installed copy can bypass the extension loader and create a duplicate runtime
 | `@juicesharp/rpiv-ask-user-question` | 2.11.0 | `typebox` |
 | `@zosmaai/pi-llm-wiki` | 0.12.4 | `@earendil-works/pi-tui`, `typebox` |
 
-`pi-hermes-memory` and `@zosmaai/pi-llm-wiki` are the sources of the optional `hermes` and `wiki` modules of this kit. `@juicesharp/rpiv-ask-user-question` is not a kit module; the script skips a package that is not installed.
+`pi-hermes-memory` and `@zosmaai/pi-llm-wiki` are the sources of the optional `hermes` and `wiki` modules of this kit. `@juicesharp/rpiv-ask-user-question` is the source of the optional `questions` component. The script skips a package that is not installed.
 
 ## What the script does
 

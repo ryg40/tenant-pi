@@ -47,6 +47,8 @@ SELECTABLE = ("tested", "unverified")
 PACKAGES = "packages"
 MANIFEST = "config/manifest.json"
 RESOURCE_KINDS = ("extensions", "skills", "prompts", "themes")
+# These skill directories may be omitted from a kit when their components stay disabled.
+OPTIONAL_TREE_COMPONENTS = ("herdr-relay",)
 
 
 def _tree_components():
@@ -103,6 +105,8 @@ REVIEWED_SOURCES = {
     "mcp": {"kind": "npm", "spec": "pi-mcp-adapter"},
     "hermes": {"kind": "npm", "spec": "pi-hermes-memory"},
     "wiki": {"kind": "npm", "spec": "@zosmaai/pi-llm-wiki"},
+    # The question extension keeps an exact version: its registry metadata was read at this version.
+    "questions": {"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.11.0"},
 }
 # File/key claims are only for native Pi settings documented at this version.
 REVIEWED_CLAIMS = {
@@ -120,6 +124,8 @@ REVIEWED_CLAIMS = {
     "wiki": {("settings.json", "package:@zosmaai/pi-llm-wiki"), ("settings.json", "/llm-wiki")},
     # The adapter owns its whole config file and the `extensions` list that disables `builtin:mcp`.
     "mcp": {("settings.json", "package:pi-mcp-adapter"), ("settings.json", "/extensions"), ("mcp-adapter.json", "")},
+    # The guidance file of the extension is outside the profile and stays owned by the user.
+    "questions": {("settings.json", "package:@juicesharp/rpiv-ask-user-question")},
 }
 REVIEWED_RESOURCES = {
     "core": {"extensions": [], "skills": [], "prompts": [], "themes": []},
@@ -129,6 +135,7 @@ REVIEWED_RESOURCES = {
     # The wiki package also declares skills, prompts, and an MCP server; only the extension loads.
     "wiki": {"extensions": ["extensions"], "skills": [], "prompts": [], "themes": []},
     "mcp": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
+    "questions": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
 }
 # The gateway keys of `overlay.endpoints` and `overlay.env` moved with the component split.
 MOVED_KEYS = {"tenantext": "codex-accounts"}
@@ -338,6 +345,15 @@ def id_list(value, at):
         fail("duplicate_id", at)
 
 
+def optional_tree_absent(cid):
+    """Only an entirely absent optional directory can bypass the resource presence check."""
+    if cid not in OPTIONAL_TREE_COMPONENTS:
+        return False
+    path, _, items = TREE_COMPONENTS[cid]
+    return all(not (ROOT / path / item).exists() and not (ROOT / path / item).is_symlink()
+               for item in tree_items(items))
+
+
 def manifest(data):
     fields(data, ("schemaVersion", "runtime", "components"), (), "manifest")
     if type(data["schemaVersion"]) is not int or data["schemaVersion"] != 1:
@@ -449,7 +465,8 @@ def manifest(data):
         if component["source"] is not None and component["source"]["kind"] == "tree":
             # The manifest names the resource paths; the tree of the kit holds each of them.
             paths = [item for items in resources.values() for item in items]
-            if not paths or not all((ROOT / component["source"]["path"] / item).exists() for item in paths):
+            if not paths or (not optional_tree_absent(cid) and
+                             not all((ROOT / component["source"]["path"] / item).exists() for item in paths)):
                 fail("tree_resource_missing", at + ".resources")
     if components["core"]["requires"] or components["core"]["source"] != REVIEWED_SOURCES["core"]:
         fail("core_source", "manifest.components.core")
@@ -606,6 +623,8 @@ def overlay(data, components):
             fail("blocked_component", "overlay.selection.enable")
         if not set(components[cid]["requires"]) <= set(enable):
             fail("missing_dependency", "overlay.selection.enable")
+        if optional_tree_absent(cid):
+            fail("tree_resource_missing", "overlay.selection.enable")
     paths = data["paths"]
     if not isinstance(paths, dict):
         fail("object", "overlay.paths")

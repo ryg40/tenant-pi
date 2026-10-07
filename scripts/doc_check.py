@@ -19,7 +19,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
-from scripts.publish_check import PUBLISH, PUBLISH_DIRS, DEV_ONLY_REL, excluded_files, private_excludes
+from scripts.publish_check import PUBLISH, PUBLISH_DIRS, DEV_ONLY_REL, excluded_files, explicit_files, private_excludes
 from scripts import tenant_pi
 from scripts.validate import load, manifest
 
@@ -213,7 +213,7 @@ def skill_lists(components):
 def check(root=ROOT, files=None):
     """Sorted unique diagnostics and counts for the Markdown files of the publish set."""
     every_list = files is None
-    files = sorted(name for name in PUBLISH if name.endswith(".md")) if files is None else sorted(files)
+    files = sorted(name for name in explicit_files(root, PUBLISH) if name.endswith(".md")) if files is None else sorted(files)
     top, actions = cli_tree()
     every_flag = top.union(*actions.values())
     components = manifest(load(root / "config/manifest.json"))

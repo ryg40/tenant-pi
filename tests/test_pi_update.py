@@ -15,6 +15,7 @@ from scripts import pi_update as update
 
 ROOT = Path(__file__).resolve().parents[1]
 PIN = json.loads((ROOT / "config/manifest.json").read_text())["runtime"]["piVersion"]
+QUESTIONS = "@juicesharp/rpiv-ask-user-question"
 OLDER = "1.0.2"
 
 FAKE_PI = '''import json, os, pathlib, sys, urllib.request
@@ -206,7 +207,8 @@ class UpdateTests(unittest.TestCase):
             calls = []
             def latest(name):
                 calls.append(name)
-                return newest
+                # The question extension has its own pin; without a new version the registry names that pin.
+                return "2.11.0" if name == QUESTIONS and code == 0 else newest
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(update.main(["detect"], latest=latest), code)
@@ -214,8 +216,17 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(calls[0], update.PACKAGE)
             self.assertEqual(report["core"]["pinned"], PIN)
             self.assertEqual(report["new"], code == 10)
-            self.assertEqual(len(report["modules"]), 3)
-            self.assertTrue(all(row["different"] is None for row in report["modules"]))
+            self.assertEqual(len(report["modules"]), 4)
+            pinned = [row for row in report["modules"] if row["pinned"] is not None]
+            self.assertEqual([("questions", QUESTIONS, "2.11.0", code == 10)],
+                             [(row["component"], row["package"], row["pinned"], row["different"]) for row in pinned])
+            self.assertTrue(all(row["different"] is None for row in report["modules"] if row["pinned"] is None))
+        # A new version of the pinned module alone sets `new`; the core row stays equal.
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(update.main(["detect"], latest=lambda name: "2.12.0" if name == QUESTIONS else PIN), 10)
+        report = json.loads(out.getvalue())
+        self.assertEqual((False, True), (report["core"]["different"], report["new"]))
 
     def test_qualify_environment_links_and_baseline(self):
         before = update._dir_state(str(self.live), "test")

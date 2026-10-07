@@ -8,7 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.validate import Invalid, TREE_COMPONENTS, load, manifest, npm_parts, overlay, tree_items
+from scripts.validate import (Invalid, OPTIONAL_TREE_COMPONENTS, TREE_COMPONENTS, load, manifest,
+                              npm_parts, optional_tree_absent, overlay, tree_items)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -138,6 +139,9 @@ class ContractTests(unittest.TestCase):
         data = load(ROOT / "config/manifest.json")
         for cid in ("mcp", "hermes", "wiki"):
             self.assertIsNone(npm_parts(data["components"][cid]["source"]["spec"])[1])
+        # The question extension keeps the exact version whose registry metadata was read.
+        self.assertEqual(("@juicesharp/rpiv-ask-user-question", "2.11.0"),
+                         npm_parts(data["components"]["questions"]["source"]["spec"]))
         self.assertEqual(("@zosmaai/pi-llm-wiki", None), npm_parts("@zosmaai/pi-llm-wiki"))
         self.assertEqual(("@zosmaai/pi-llm-wiki", "0.12.4"), npm_parts("@zosmaai/pi-llm-wiki@0.12.4"))
         self.assertEqual(("pi-mcp-adapter", "3.2.0"), npm_parts("pi-mcp-adapter@3.2.0"))
@@ -460,10 +464,11 @@ class ContractTests(unittest.TestCase):
             from scripts.publish_check import excluded_files, private_excludes
             skills = {skill for skill in skills
                       if not excluded_files({f"{package_dir}/{skill}/SKILL.md"}, private_excludes(ROOT))}
-            self.assertEqual(skills, {skill for c in data["components"].values()
+            self.assertEqual(skills, {skill for cid, c in data["components"].items()
                                       if c["source"] == {"kind": "tree", "path": package_dir}
+                                      and not optional_tree_absent(cid)
                                       for skill in c["resources"]["skills"]})
-        self.assertEqual(20, len(TREE_COMPONENTS))
+        self.assertEqual(21, len(TREE_COMPONENTS))
         knowledge = data["components"]["knowledge-skills"]["resources"]["skills"]
         self.assertEqual(4, len(knowledge))
         self.assertIn("skills/knowledge-skills/open-knowledge", knowledge)
@@ -471,8 +476,9 @@ class ContractTests(unittest.TestCase):
             component = data["components"][cid]
             path, kind, item = TREE_COMPONENTS[cid]
             items = tree_items(item)
-            for one in items:
-                self.assertTrue((ROOT / path / one).exists(), cid)
+            if not optional_tree_absent(cid):
+                for one in items:
+                    self.assertTrue((ROOT / path / one).exists(), cid)
             self.assertIn("core", component["requires"])
             self.assertIn(component["status"], ("unverified", "blocked"))  # No `tested` without a test here.
             self.assertTrue(component["gaps"], cid)
@@ -488,6 +494,31 @@ class ContractTests(unittest.TestCase):
             self.assertIn("env." + name, routing)
         self.assertNotIn("gitea", json.dumps(data))
 
+    def test_relay_is_optional_and_requires_herdr_when_enabled(self):
+        self.assertEqual(("herdr-relay",), OPTIONAL_TREE_COMPONENTS)
+        component = self.components["herdr-relay"]
+        self.assertEqual(["core", "herdr"], component["requires"])
+        self.assertEqual("unverified", component["status"])
+        self.assertEqual({"extensions": [], "skills": ["skills/herdr-relay"], "prompts": [], "themes": []},
+                         component["resources"])
+        self.assertFalse(any("herdr-relay" in c["requires"] for c in self.components.values()))
+        data = copy.deepcopy(self.base)
+        data["selection"]["enable"].append("herdr-relay")
+        data["selection"]["disable"].remove("herdr-relay")
+        self.check_error(data, "missing_dependency")
+        data["selection"]["enable"].append("herdr")
+        data["selection"]["disable"].remove("herdr")
+        if optional_tree_absent("herdr-relay"):
+            self.check_error(data, "tree_resource_missing")
+        else:
+            overlay(data, self.components)
+        from scripts import validate
+        with mock.patch.object(validate, "optional_tree_absent", side_effect=lambda cid: cid == "herdr-relay"):
+            components = manifest(load(ROOT / "config/manifest.json"))
+            overlay(self.base, components)
+            with self.assertRaisesRegex(Invalid, "^tree_resource_missing:"):
+                overlay(data, components)
+
     def test_tracker_skill_is_selectable_with_explicit_runtime_gap(self):
         component = self.components["tracker-site"]
         self.assertEqual("unverified", component["status"])
@@ -498,11 +529,50 @@ class ContractTests(unittest.TestCase):
         self.assertEqual([{"file": "settings.json", "key": "package:packages/tenantext:skills/tracker-site"}],
                          component["configOwnership"]["claims"])
 
+    def test_question_extension_is_a_selectable_pinned_npm_component(self):
+        component = self.components["questions"]
+        self.assertEqual({"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.11.0"}, component["source"])
+        self.assertEqual(("unverified", None, ["core"], "MIT"),
+                         (component["status"], component["reason"], component["requires"], component["license"]))
+        self.assertEqual({"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}, component["resources"])
+        self.assertEqual([], component["env"])
+        self.assertEqual({"pi_line_unqualified", "package_source_unreviewed", "peer_package_unverified",
+                          "question_ui_unverified", "shared_config_outside_profile", "kit_test_missing"},
+                         {gap["code"] for gap in component["gaps"]})
+        self.assertEqual([{"file": "settings.json", "key": "package:@juicesharp/rpiv-ask-user-question"}],
+                         component["configOwnership"]["claims"])
+        self.assertIn("questions", self.base["selection"]["disable"])
+        self.assertNotIn("questions", self.base["selection"]["enable"])
+        # The reviewed anchor holds the version: an altered manifest cannot move or drop the pin.
+        for spec in ("@juicesharp/rpiv-ask-user-question", "@juicesharp/rpiv-ask-user-question@2.12.0",
+                     "rpiv-ask-user-question@2.11.0"):
+            data = load(ROOT / "config/manifest.json")
+            data["components"]["questions"]["source"]["spec"] = spec
+            with self.assertRaisesRegex(Invalid, "^reviewed_source:"):
+                manifest(data)
+        data = load(ROOT / "config/manifest.json")
+        data["components"]["questions"]["resources"]["extensions"] = ["index.ts", "rpc-fallback.ts"]
+        with self.assertRaisesRegex(Invalid, "^reviewed_resources:"):
+            manifest(data)
+        data = load(ROOT / "config/manifest.json")
+        data["components"]["questions"]["status"] = "tested"
+        with self.assertRaisesRegex(Invalid, "^status_gaps:"):
+            manifest(data)
+
+    def test_herdr_is_a_host_tool_and_no_package_of_the_profile(self):
+        gaps = {gap["code"]: gap["fact"] for gap in self.components["herdr"]["gaps"]}
+        self.assertIn("the kit does not install them", gaps["host_tool_required"])
+        self.assertIn("check-herdr", gaps["host_tool_required"])
+        # No component installs the Herdr application: no source names it.
+        sources = json.dumps([component["source"] for component in self.components.values()])
+        self.assertNotIn("herdr", sources.replace("promptr", ""))
+        self.assertNotIn("pi-herdr", json.dumps(load(ROOT / "config/manifest.json")))
+
     def test_pi_line_gap_facts_do_not_claim_a_stale_readme_version(self):
         components = manifest(load(ROOT / "config/manifest.json"))
         facts = {name: gap["fact"] for name, component in components.items() for gap in component.get("gaps", [])
                  if gap["code"] == "pi_line_unqualified"}
-        self.assertEqual(14, len(facts))
+        self.assertEqual(16, len(facts))
         self.assertEqual("The component uses the resource settings syntax of the reviewed Pi release "
                          "(see docs/resources.md). No test in this repository loads it with the kit pin.",
                          facts.pop("resources"))

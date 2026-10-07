@@ -3,6 +3,8 @@
 The only kit module that starts a process. It runs no shell, no network request, no install
 and no other command. It writes one empty temporary directory and removes it. The output
 echoes a version token only; other process output never enters a result or a diagnostic.
+
+`check_herdr` is the separate check of the Herdr application: one `herdr --version` process.
 """
 import os
 import re
@@ -16,6 +18,9 @@ TIMEOUT = 20
 # (result key, command name on PATH, manifest.runtime field)
 TOOLS = (("pi", "pi", "piVersion"), ("node", "node", "nodeRange"), ("python", "python3", "pythonRange"))
 STATUSES = ("match", "untested_in_range", "mismatch", "missing", "unparsed")
+# The Herdr application is a host tool. It is no part of `manifest.runtime`: the kit names no required version.
+HERDR = "herdr"
+HERDR_STATUSES = ("present", "missing", "unparsed")
 # Only the first line of the output counts, and only this many bytes of it.
 MAX_OUTPUT = 256
 # The longest version token that the output echoes.
@@ -108,6 +113,25 @@ def check(runtime, paths=None, *, run=subprocess.run, which=shutil.which, enviro
         result["status"] = (pi_status(found, runtime, bounds[key]) if key == "pi" else
                             "match" if in_range(version, bounds[key], prerelease) else "mismatch")
     return report
+
+
+def check_herdr(path=None, *, run=subprocess.run, which=shutil.which, environ=None):
+    """Report the `herdr` command of the host: present with its version, missing, or unparsed.
+
+    `path` is an explicit absolute executable path; without one the command is looked up on PATH.
+    At most one process starts: `herdr --version`. Nothing is installed, updated, started or stopped,
+    and no Herdr session is read.
+    """
+    environ = dict(os.environ if environ is None else environ)
+    result = {"installed": None, "status": "missing"}
+    path = path or which(HERDR)
+    if path:
+        found = _probe(os.path.abspath(path), environ, run)
+        if isinstance(found, str):
+            result["status"] = found
+        else:
+            result.update(installed=found[0], status="present")
+    return {HERDR: result}
 
 
 def matches(report):

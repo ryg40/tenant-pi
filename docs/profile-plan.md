@@ -46,13 +46,15 @@ The `fact` says: "The installed Pi is accepted by the range rule. The kit tests 
 {"code":"core_runtime_untested_in_range","subject":"@earendil-works/pi-coding-agent@<pin>","installed":"<newer accepted version>","required":"<pin>","tested":"<pin>","acceptedRange":"<accepted range>","fact":"The installed Pi is accepted by the range rule. The kit tests ran on the tested version only."}
 ```
 
+With the `herdr` component, the plan adds `herdr_cli_unverified` and `herdr_session_unverified` with the subject `herdr`. A `check-herdr` report through `--herdr-report` changes the first one only; see [Herdr and the question tool](herdr-setup.md#verification-results).
+
 The `python` entry of the report adds no gap. Python runs the kit, not the profile. No other gap changes: no kit action measures a package, a model catalog, a provider login or a gateway.
 
 `runtimeReady` is always `false`: this kit has no live trial of a generated profile. The measured facts are in `readinessGaps`: an empty list after a complete generation says that the kit knows no open gap before the launch. An empty list is not a launch proof and it is not the label `ready` of [the setup guide](guides/setup.md#labels-for-a-prerequisite): the report compares version numbers only.
 
 ### The report file
 
-`plan` and `generate` start no process and do not run the probe themselves. `check-runtime` stays the only action that starts a process. The caller runs it first and gives its output as a file:
+`plan` and `generate` start no process and do not run the probe themselves. `check-runtime` and `check-herdr` are the only actions that start a process. The caller runs `check-runtime` first and gives its output as a file:
 
 ```sh
 python3 scripts/tenant_pi.py check-runtime > /path/to/runtime.json

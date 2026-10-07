@@ -99,6 +99,7 @@ Linux is the first target. The kit steps have offline tests; see the status in [
 | LLM Wiki | Settings in the profile; a vault under `~/.llm-wiki/` or a selected wiki home. | `@zosmaai/pi-llm-wiki`. |
 | OpenViking | A package entry; dependencies in the clone; user configuration under `~/.openviking/` and server memory. | `packages/openviking-pi` and a separately configured OpenViking server. |
 | Knowledge and coordinator skills | Filtered skill package entries. External tools can write outside the profile. | The in-tree skills and the external tools that each skill names. |
+| Herdr skill and question extension | A filtered skill entry for `herdr`; an npm package entry and an install under the target's `npm/` for `questions`. | The Herdr application, which you install yourself; `@juicesharp/rpiv-ask-user-question` at an exact version. |
 
 The [Components](#components) tables give the full base file inventory and its writers.
 Optional components stay off until you select them. See [Optional components](#optional-components) for status and consent.
@@ -1469,7 +1470,7 @@ Each component other than `core` is optional. You enable one when you move its I
 | More keys in `settings.json` | `mcp` adds `"extensions": ["-builtin:mcp"]`. A model role adds `defaultProvider`, `defaultModel` and `defaultThinkingLevel`. |
 | One more file in the target | `mcp` adds `mcp-adapter.json`. `hermes` adds `hermes-memory-config.json`. |
 | An assignment in front of the launch line | `mcp` puts `PI_MCP_CONFIG_MODE=exclusive` in front. The gateway route puts `TENANTEXT_LITELLM_BASE_URL=<address>` in front. |
-| More dependency steps for you | `mcp` adds a `pi update --extensions` line to `setupDisplayOnly`. An in-tree module of `packages/tenantext` needs `npm ci --ignore-scripts` in that directory, which leaves `node_modules/` in the clone. |
+| More dependency steps for you | `mcp` adds a `pi update --extensions` line to `setupDisplayOnly`. `questions` adds that line and the peer override line. An in-tree module of `packages/tenantext` needs `npm ci --ignore-scripts` in that directory, which leaves `node_modules/` in the clone. |
 | More inputs in the private directory | `mcp` reads `inputs/mcp-adapter.json`, and `validate`, `plan` and `generate` then need `--local-dir`. A model route reads `registry.json` with `--registry`. |
 | State outside the target at run time | The `wiki` module can keep a vault in `~/.llm-wiki/`. The `mcp` adapter keeps tokens in the keyring of the operating system. |
 | More gaps | `context-meter` adds three: `package_runtime_unverified`, `pi_line_unqualified` and `kit_test_missing`. |
@@ -1553,6 +1554,17 @@ The component READMEs list the [knowledge skills](packages/tenantext/skills/know
 and [coordinator skills](packages/tenantext/skills/coordinator-skills/README.md).
 Herdr, `slopscore-pr` and `tracker-site` are separate selectable skills. Their external state can stay outside the profile.
 
+### Herdr and the question tool
+
+Status: `unverified` for both components. Herdr is a terminal workspace manager for coding agents.
+The `herdr` component adds the Herdr skill of `packages/tenantext` to one profile. It does not install the Herdr application.
+`check-herdr` reports the `herdr` command: `present` with the version, `missing` or `unparsed`.
+The `questions` component adds the npm package `@juicesharp/rpiv-ask-user-question` at an exact version. It gives Pi the `ask_user_question` tool.
+The plan then prints `pi update --extensions` and the peer override line. Without the tool, a skill asks in plain text.
+`remote-plan` prints the SSH command lines for an install on a remote Linux host. It runs none of them.
+Not verified: a Pi session that loads either component, the question dialog, a Herdr session, and a remote install.
+See [Herdr and the question tool](docs/herdr-setup.md) for each result and each limit.
+
 ## Mac specifics
 
 Not verified: these steps on a Mac. `docs/guides/macos.md` has the full steps and the sources.
@@ -1567,7 +1579,7 @@ A bottle is a prebuilt Homebrew package.
 | Prerequisites | `gitleaks` and `colima` have arm64 bottles for macOS 14, 15 and 26. Recheck the formula for your macOS version. |
 | 1, 3, 10 | Select Node 24 and Python 3.11 or later. The guide selects `python@3.12`; check both version and `arm64` architecture. |
 | 4 to 9 | Use the expanded macOS home path in JSON. Keep the target outside the clone, private directory and live profile. |
-| 10 | Homebrew `node@24` needs its explicit `PATH`. The nvm alternative and native addon compilation remain unverified. |
+| 10 | Homebrew `node@24` needs its explicit `PATH`. The nvm alternative and native addon compilation remain unverified. For a home that has no nvm, [INSTALL.md](INSTALL.md#stage-1-requirements) gives the nvm install lines and the shell startup choice. |
 | Scan prerequisites | Podman is recommended instead of Docker Desktop. Colima is an untested alternative, not a configured scanner. |
 | Scan command | The script accepts `SCAN_ENGINE=docker`, not `podman`. A private `podman-bin/docker` symlink makes its `docker` calls reach Podman. |
 | Scan paths | Share the repository, Git directory and scan temporary directory into the VM at the same absolute paths. |
@@ -1636,7 +1648,7 @@ The reasons for this structure:
 - **Two inputs.** The manifest is public and reviewed. The overlay is private. A kit update changes the manifest and never your choices. A profile is always "this manifest plus this overlay".
 - **A pure plan.** The plan does not depend on the machine. The writer builds it a second time from the record and refuses a difference. So `choices.json` is enough to explain each byte of `settings.json`.
 - **New directories only.** The kit has no code that edits an existing profile. An update is a new target from the same overlay, a comparison, and a launch with the launcher file of the new target. The old profile stays as the way back. See [the candidate update guide](docs/guides/candidate-update.md).
-- **Display-only commands.** Each command that changes the machine is text in an output key that ends in `DisplayOnly`, or in `piInstall`. You read it and run it. Of the actions, only `check-runtime` starts a process: three `--version` commands.
+- **Display-only commands.** Each command that changes the machine is text in an output key that ends in `DisplayOnly`, or in `piInstall`. You read it and run it. Of the actions, only `check-runtime` and `check-herdr` start a process: three `--version` commands and one.
 - **Gaps, not promises.** The kit cannot prove offline that Pi loads a package or that a model replies. It lists each such fact as a gap. A gap goes away only when a fact proves it.
 - **A profile is a directory, not a sandbox.** `PI_CODING_AGENT_DIR` selects the data of one Pi process. Each process of your user can still read each profile. See [the privacy guide](docs/guides/privacy.md).
 
@@ -1646,11 +1658,12 @@ The reasons for this structure:
 | --- | --- |
 | `scripts/tenant_pi.py` | The command line: the options, the bounded file loader and each action. |
 | `scripts/validate.py` | The rules of the manifest and of the overlay. |
-| `scripts/profile_plan.py` | The plan: `prepare()`, `readiness()`, `setup_commands()` and `runtime_report()`. |
+| `scripts/profile_plan.py` | The plan: `prepare()`, `readiness()`, `setup_commands()`, `runtime_report()` and `herdr_report()`. |
 | `scripts/profile_write.py` | The guarded writer: `write()`, `_ancestors()` and `_create_file()`. |
 | `scripts/private_init.py` | The private directory of `init-private`. |
 | `scripts/launcher.py` | The launcher file. |
-| `scripts/check_runtime.py` | The three version processes of `check-runtime`. |
+| `scripts/check_runtime.py` | The three version processes of `check-runtime`, and the one of `check-herdr`. |
+| `scripts/remote_plan.py` | The SSH command lines of `remote-plan`, as data. |
 | `scripts/baseline.py` | The scan and the comparison of `baseline` and `check-baseline`. |
 | `scripts/kit_commit.py` | Reads the commit of the clone without a Git process. |
 | `scripts/model_routes.py` | Adds model routes to the plan. |
@@ -1891,3 +1904,4 @@ Not verified:
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [The CLI contract](docs/generator.md) | Each action, each input rule. |
 | [The private directory](docs/private-directory.md), [the plan](docs/profile-plan.md), [the launcher file](docs/launcher.md), [the runtime check](docs/check-runtime.md), [the directory baseline](docs/directory-baseline.md) | The reference of one action each. |
+| [Herdr and the question tool](docs/herdr-setup.md) | The Herdr check, the remote plan, the question extension and their separate results. |

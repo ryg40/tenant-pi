@@ -18,6 +18,7 @@ Each extension and each skill of the packages is one component in `config/manife
 | `doctor` | `packages/tenantext` | `extensions/doctor/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `sibling_extension_imports`, `kit_test_missing` |
 | `resources` | `packages/tenantext` | `extensions/resources/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `kit_test_missing` |
 | `herdr` | `packages/tenantext` | `skills/herdr` | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
+| `herdr-relay` | `packages/tenantext` | `skills/herdr-relay` | `core`, `herdr` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
 | `coordinator-skills` | `packages/tenantext` | Each skill directory below `skills/coordinator-skills/`. `config/manifest.json` names them; [the component README](../packages/tenantext/skills/coordinator-skills/README.md) lists them | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
 | `knowledge-skills` | `packages/tenantext` | Each skill directory below `skills/knowledge-skills/`. [The component README](../packages/tenantext/skills/knowledge-skills/README.md) lists them | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
 | `slopscore-pr` | `packages/tenantext` | `skills/slopscore-pr` | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
@@ -31,8 +32,11 @@ Each extension and each skill of the packages is one component in `config/manife
 
 Facts for a selection:
 
+- `herdr-relay` is optional and disabled by default. No component requires it. Enable `herdr` too when you select it. A kit without the relay directory remains valid while the relay stays disabled. Enabling an absent relay fails with `tree_resource_missing`.
 - An `unverified` component can be enabled. The plan lists each of its gaps as a readiness gap with the component ID as the subject.
 - `openviking` is a memory module: it also needs `consent.memoryCapture`, `consent.remoteMemoryWrites` and a `memory.openviking` block. Its package declaration comes after the other in-tree packages. See [the memory modules](memory-modules.md).
+- `herdr` holds the skill only. The Herdr application is a host tool: the kit does not install it, and the `check-herdr` action reports the `herdr` command. See [Herdr and the question tool](herdr-setup.md).
+- `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.11.0` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
 - A `blocked` component cannot be enabled. The validator fails with `blocked_component`.
 - A generated profile declares each package one time in `settings.packages`. The `source` is the absolute path of the package directory in this kit. Each enabled component adds only its own entry to the `extensions` or `skills` filter. An empty filter list loads nothing of that kind.
 - The profile depends on the location of the kit. If you move the kit, generate a new profile.

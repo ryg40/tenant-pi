@@ -1318,6 +1318,137 @@ class CliTests(unittest.TestCase):
         self.assertEqual("KEEP", self.sentinel.read_text())
         self.assertFalse((self.base / "called").exists())
 
+    def enable_coordination(self):
+        """The overlay with the Herdr skill and the question extension enabled."""
+        for cid in ("herdr", "questions"):
+            self.data["selection"]["disable"].remove(cid)
+            self.data["selection"]["enable"].append(cid)
+        self.save()
+
+    def test_herdr_and_question_parts_report_separate_results(self):
+        self.enable_coordination()
+        gaps = json.loads(self.run_cli("plan").stdout)["readinessGaps"]
+        for code, subject in (("herdr_cli_unverified", "herdr"), ("herdr_session_unverified", "herdr"),
+                              ("host_tool_required", "herdr"), ("question_ui_unverified", "questions"),
+                              ("package_runtime_unverified", "questions")):
+            self.assertIn({"code": code, "subject": subject}, gaps)
+        reports = {"present": {"herdr": {"installed": "0.9.3", "status": "present"}},
+                   "missing": {"herdr": {"installed": None, "status": "missing"}},
+                   "unparsed": {"herdr": {"installed": None, "status": "unparsed"}}}
+        for name, report in reports.items():
+            (self.base / (name + ".json")).write_text(json.dumps(report))
+        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        for name in reports:
+            with self.subTest(report=name):
+                result = self.run_cli("plan", "--herdr-report", str(self.base / (name + ".json")))
+                self.assertEqual((0, ""), (result.returncode, result.stderr))
+                output = json.loads(result.stdout)
+                codes = {gap["code"] for gap in output["readinessGaps"] if gap["subject"] == "herdr"}
+                # The command of the host is one result. A session and the skill load stay open with every report.
+                self.assertEqual({"present": set(), "missing": {"herdr_cli_missing"}, "unparsed": {"herdr_cli_unparsed"}}[name],
+                                 codes & {"herdr_cli_unverified", "herdr_cli_missing", "herdr_cli_unparsed"})
+                self.assertLessEqual({"herdr_session_unverified", "host_tool_required", "package_runtime_unverified"}, codes)
+                self.assertIn({"code": "question_ui_unverified", "subject": "questions"}, output["readinessGaps"])
+                self.assertFalse(output["runtimeReady"])
+        for content, rule in ((json.dumps({"herdr": {"installed": "0.9.3", "status": "missing"}}),
+                               "herdr_report_installed: herdr_report.herdr.installed"),
+                              (json.dumps({"herdr": {"installed": None, "status": "present"}}),
+                               "herdr_report_installed: herdr_report.herdr.installed"),
+                              (json.dumps({"herdr": {"installed": "CANARY_SECRET", "status": "present"}}),
+                               "herdr_report_installed: herdr_report.herdr.installed"),
+                              (json.dumps({"herdr": {"installed": None, "status": "CANARY_SECRET"}}),
+                               "herdr_report_status: herdr_report.herdr.status"),
+                              (json.dumps({"herdr": {"installed": None, "status": "missing"}, "pi": {}}),
+                               "unknown_fields: herdr_report"),
+                              (json.dumps({}), "required_fields: herdr_report")):
+            with self.subTest(rule=rule, content=content):
+                bad = self.base / "bad-report.json"
+                bad.write_text(content)
+                result = self.run_cli("generate", "--target", str(self.target), "--herdr-report", str(bad))
+                self.assertEqual((2, ""), (result.returncode, result.stdout))
+                self.assertEqual({"candidate_created": False, "error": rule}, json.loads(result.stderr))
+                self.assertNotIn("CANARY", result.stderr)
+                self.assertFalse(self.target.exists())
+                bad.unlink()
+        self.check_unchanged(before_source, before_fixture)
+        # The generated profile: the skill file is readable, and the extension is declared but not installed.
+        result = self.run_cli("generate", "--target", str(self.target), "--herdr-report", str(self.base / "present.json"))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertNotIn("herdr_cli_unverified", {gap["code"] for gap in json.loads(result.stdout)["readinessGaps"]})
+        declared = {"herdrCli": "not_checked", "herdrSession": "not_run", "herdrSkill": "readable",
+                    "questionExtension": "declared", "questionUi": "unverified"}
+        self.assertEqual(declared, json.loads(self.run_inventory(self.target).stdout)["coordination"])
+        # A manifest below the npm directory of the profile stands for the install by Pi.
+        package = self.target / "npm/node_modules/@juicesharp/rpiv-ask-user-question"
+        package.mkdir(parents=True)
+        (package / "package.json").write_text("{}")
+        self.assertEqual({**declared, "questionExtension": "installed"},
+                         json.loads(self.run_inventory(self.target).stdout)["coordination"])
+        # A package path without the skill file is declared and not readable.
+        settings = json.loads((self.target / "settings.json").read_text())
+        settings["packages"][0]["source"] = str(self.base / "moved kit")
+        (self.target / "settings.json").write_text(json.dumps(settings))
+        self.assertEqual("not_readable", json.loads(self.run_inventory(self.target).stdout)["coordination"]["herdrSkill"])
+        self.assertFalse((self.base / "called").exists())
+
+    def test_regenerated_candidate_keeps_herdr_and_questions_and_leaves_the_active_profile(self):
+        self.enable_coordination()
+        # Shared places of the user that a profile-scoped selection must not touch.
+        guidance = self.home / ".config/rpiv-ask-user-question/config.json"
+        guidance.parent.mkdir(parents=True)
+        guidance.write_text("KEEP-GUIDANCE")
+        first = self.target
+        self.assertEqual(0, self.run_cli("generate", "--target", str(first)).returncode)
+        before_source = inventory(ROOT)
+        before_first = {name: (first / name).read_bytes() for name in ("settings.json", ".tenant-pi/choices.json",
+                                                                       ".tenant-pi/state.json")}
+        before_home = inventory(self.home)
+        # The next candidate is a new absent directory from the same overlay; only the target changes.
+        second = self.parent / "next profile"
+        self.data["target"]["agentDir"] = str(second)
+        self.save()
+        result = self.run_cli("generate", "--target", str(second))
+        self.assertEqual(0, result.returncode, result.stderr)
+        expected = [{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": ["skills/herdr"],
+                     "prompts": [], "themes": []},
+                    {"source": "npm:@juicesharp/rpiv-ask-user-question@2.11.0", "extensions": ["index.ts"], "skills": [],
+                     "prompts": [], "themes": []}]
+        for candidate in (first, second):
+            with self.subTest(candidate=candidate.name):
+                self.assertEqual(expected, json.loads((candidate / "settings.json").read_text())["packages"])
+                choices = json.loads((candidate / ".tenant-pi/choices.json").read_text())
+                self.assertLessEqual({"herdr", "questions"}, set(choices["overlay"]["selection"]["enable"]))
+                self.assertEqual([], choices["pendingPackages"])
+                self.assertEqual({"herdrSkill": "readable", "questionExtension": "declared"},
+                                 {key: value for key, value in
+                                  json.loads(self.run_inventory(candidate).stdout)["coordination"].items()
+                                  if key in ("herdrSkill", "questionExtension")})
+        setup = json.loads(result.stdout)["commands"]["setupDisplayOnly"]
+        agent = "PI_CODING_AGENT_DIR=" + shlex.quote(str(second))
+        self.assertEqual([agent + " pi update --extensions", agent + " node scripts/patch_extension_peers.mjs"], setup[1:])
+        # The first candidate, the active profile and every shared place of the user are unchanged.
+        self.assertEqual(before_first, {name: (first / name).read_bytes() for name in before_first})
+        self.assertEqual(before_home, inventory(self.home))
+        self.assertEqual("OLD", (self.old / "settings.json").read_text())
+        self.assertEqual(["settings.json"], os.listdir(self.old))
+        self.assertEqual("KEEP-GUIDANCE", guidance.read_text())
+        self.assertFalse((self.home / ".agents").exists())
+        self.assertFalse((self.home / ".claude").exists())
+        self.assertEqual(before_source, inventory(ROOT))
+        # The guarded writer refuses the existing candidate and the active profile.
+        before_fixture = inventory(self.base)
+        for target, rule in ((second, "target_exists"), (self.old, "under_pi_agent")):
+            with self.subTest(rule=rule):
+                self.data["target"]["agentDir"] = str(target)
+                self.save()
+                result = self.run_cli("generate", "--target", str(target))
+                self.assertEqual(2, result.returncode)
+                self.assertTrue(json.loads(result.stderr)["error"].startswith(rule), result.stderr)
+        self.data["target"]["agentDir"] = str(second)
+        self.save()
+        self.assertEqual(before_fixture, inventory(self.base))
+        self.assertFalse((self.base / "called").exists())
+
     def run_inventory(self, directory):
         return subprocess.run([sys.executable, str(CLI), "inventory", "--dir", str(directory)],
                               cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
@@ -1361,6 +1492,9 @@ class CliTests(unittest.TestCase):
                 self.assertNotIn("outside", result.stdout)
                 report = json.loads(result.stdout)
                 self.assertEqual({"dir": str(side), "managed": managed, "packages": report["packages"], **entries,
+                                  "coordination": {"herdrCli": "not_checked", "herdrSession": "not_run",
+                                                   "herdrSkill": "not_declared", "questionExtension": "not_declared",
+                                                   "questionUi": "unverified"},
                                   "summary": {"packages": count, "extensions": 2, "skills": 1, "prompts": 1}}, report)
         self.assertEqual([{"source": "npm:example-package@1.0.0"}, {"source": "/home/example/owner-repo", "filters": ["skills"]},
                           {"status": "unsupported_value"}], json.loads(self.run_inventory(live).stdout)["packages"])

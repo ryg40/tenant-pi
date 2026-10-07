@@ -8,7 +8,8 @@ import json
 import shlex
 
 # Only the pure grammar of the runtime check is used here; this module starts no process.
-from scripts.check_runtime import STATUSES, TOOLS, in_range, parse_range, parse_version, pi_status
+from scripts.check_runtime import (HERDR, HERDR_STATUSES, STATUSES, TOOLS, in_range, parse_range, parse_version,
+                                   pi_status)
 from scripts.memory_modules import MEMORY, render_memory
 from scripts.model_routes import BASE_NAME, KEY_NAME, render
 from scripts.validate import ENV, OWNER_RESOURCES, ROLE_NAMES, ROOT, fail, fields, manifest, npm_name, overlay
@@ -25,6 +26,11 @@ RUNTIME_GAPS = {
                                        "unparsed": "core_runtime_unparsed",
                                        "untested_in_range": "core_runtime_untested_in_range"}),
 }
+# Plan gaps of the `herdr` component beside its manifest gaps. A `check-herdr` report replaces the first;
+# no offline fact removes the second.
+HERDR_CLI_GAP = "herdr_cli_unverified"
+HERDR_CLI_GAPS = {"missing": "herdr_cli_missing", "unparsed": "herdr_cli_unparsed"}
+HERDR_SESSION_GAP = "herdr_session_unverified"
 # The mark of the global Pi install line for each Pi status of the report; no report is `None`.
 PI_INSTALL = {None: "installed_version_unknown", "unparsed": "installed_version_unknown", "missing": "needed",
               "match": "not_needed", "untested_in_range": "not_needed", "mismatch": "replaces_installed"}
@@ -41,6 +47,10 @@ PROVIDER_KEY_NAMES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BA
 PROVIDER_KEY_WARNING = "provider_key_in_launching_environment"
 PROVIDER_KEY_FACT = ("Pi reads a provider key from the environment of the launching shell, including in a profile with "
                      "no login. A model reply can come from a provider that you did not choose.")
+# npm components that the plan declares as a Pi package of the profile; `pi update --extensions` installs them.
+DECLARED_NPM = ("questions",)
+# The declared npm components whose installed manifest lists a host-provided module under `dependencies`.
+PEER_OVERRIDE_NPM = ("questions",)
 PROVIDER_KEY_REMEDY = "Name the model on the launch line: --model '<provider>/<model>'"
 
 
@@ -155,6 +165,7 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
     setup = [_pi_install_line(components["core"]["source"]["spec"])]
     identities = set()
     pending_packages = []
+    declared_packages = []
     tree_packages = {}
     for cid in sorted(enabled - {"core", "model-routing"}):
         component = components[cid]
@@ -176,6 +187,10 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
                 entry[key].extend(item for item in items if item not in entry[key])
             gaps.append({"code": "package_runtime_unverified", "subject": cid})
             gaps.extend({"code": gap["code"], "subject": cid} for gap in component.get("gaps", []))
+            if cid == HERDR:
+                # The skill file in the profile proves neither the command of the host nor a working session.
+                gaps.append({"code": HERDR_CLI_GAP, "subject": cid})
+                gaps.append({"code": HERDR_SESSION_GAP, "subject": cid})
             continue
         if identity in identities:
             fail("duplicate_package_identity", "overlay.selection.enable")
@@ -184,6 +199,11 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
             continue  # Declared below in the memory render order, after Tenantext.
         elif mcp is not None and cid == "mcp":
             continue  # Declared below after the memory packages.
+        elif cid in DECLARED_NPM:
+            # Declared below after the MCP package. The manifest gaps name what no test proves.
+            declared_packages.append({"source": package, **resources})
+            gaps.append({"code": "package_runtime_unverified", "subject": cid})
+            gaps.extend({"code": gap["code"], "subject": cid} for gap in component.get("gaps", []))
         else:
             pending_packages.append({"component": cid, "source": package, "resources": resources})
             gaps.append({"code": "optional_activation_unavailable", "subject": cid})
@@ -239,6 +259,7 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
             files[name] = {"mode": "0600", "content": content}
         for item in mcp["setup"]:
             launch = item["instruction"] + " " + launch
+    settings["packages"].extend(declared_packages)
     # Owner packages come last, in overlay order: a plain path stays a string, a filtered entry
     # keeps only the keys the overlay gives. The kit does not open, install or load these paths.
     for item in overlay_data.get("ownerPackages", []):
@@ -253,12 +274,12 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
     # The npm memory modules. The vendored OpenViking package is a path inside the kit: Pi installs
     # nothing for it, and it lists no host module as a dependency.
     npm_memory = any(components[cid]["source"]["kind"] == "npm" for cid in enabled & set(MEMORY))
-    if npm_memory or mcp is not None:
+    if npm_memory or mcp is not None or declared_packages:
         # Pi reconciles declared packages with `pi update --extensions` (packages.md).
         setup.append("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " pi update --extensions")
-    if npm_memory:
-        # The peer override corrects host-provided `dependencies` in the installed memory manifests;
-        # the adapter lists none, so the mcp module alone needs no override.
+    if npm_memory or enabled & set(PEER_OVERRIDE_NPM):
+        # The peer override corrects host-provided `dependencies` in the installed memory manifests and in
+        # the manifest of the question extension; the adapter lists none, so the mcp module alone needs no override.
         setup.append("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " node scripts/patch_extension_peers.mjs")
     if "openviking" in enabled:
         # The one dependency of the vendored package is not in the tree (manifest gap `install_step_required`).
@@ -320,12 +341,32 @@ def runtime_report(data, runtime):
     return data
 
 
-def readiness(plan, *, report=None, generated=False):
+def herdr_report(data):
+    """Validate one `check-herdr` report, and return it.
+
+    The report is evidence that the caller supplies: no process starts here. A `present` status
+    needs a version token; another status has none.
+    """
+    fields(data, [HERDR], [], "herdr_report")
+    entry = data[HERDR]
+    fields(entry, ("installed", "status"), [], "herdr_report." + HERDR)
+    status, installed = entry["status"], entry["installed"]
+    if type(status) is not str or status not in HERDR_STATUSES:
+        fail("herdr_report_status", "herdr_report." + HERDR + ".status")
+    found = parse_version(installed.encode("ascii")) if type(installed) is str and installed.isascii() else None
+    if (status == "present") != (found is not None and found[0] == installed) or (status != "present" and installed is not None):
+        fail("herdr_report_installed", "herdr_report." + HERDR + ".installed")
+    return data
+
+
+def readiness(plan, *, report=None, generated=False, herdr=None):
     """The readiness gaps of a plan after the facts that the caller has. The plan does not change.
 
     `generated` is true only after the writer created the target; that creation proved its absence.
     `report` is a validated `check-runtime` report, or None. A `match` removes the runtime gap.
     Another status replaces it with a gap that names the installed and the required version.
+    `herdr` is a validated `check-herdr` report, or None. `present` removes `herdr_cli_unverified`;
+    another status replaces it. The session gap of Herdr stays: no offline fact proves a session.
     `runtimeReady` is always false: the kit has no live trial of a profile. The gap list holds
     the measured facts.
     """
@@ -342,6 +383,11 @@ def readiness(plan, *, report=None, generated=False):
                    "installed": entry["installed"], "required": entry["required"]}
             if entry["status"] == "untested_in_range":
                 gap.update(tested=entry["tested"], acceptedRange=entry["acceptedRange"], fact=UNTESTED_PI_FACT)
+        if herdr is not None and gap["code"] == HERDR_CLI_GAP:
+            entry = herdr[HERDR]
+            if entry["status"] == "present":
+                continue
+            gap = {"code": HERDR_CLI_GAPS[entry["status"]], "subject": gap["subject"], "installed": None}
         gaps.append(gap)
     return {"readinessGaps": gaps, "runtimeReady": False}
 

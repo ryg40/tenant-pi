@@ -25,6 +25,15 @@ python3 scripts/tenant_pi.py inventory --dir '/owned/parent/candidate a'
 | `<dir>/extensions`, `<dir>/skills`, `<dir>/prompts` | Opened as a directory without following a symlink. The direct entries are listed: name and kind. No entry is opened. | Empty list |
 | `<dir>/.tenant-pi/state.json` | The `.tenant-pi` directory is opened without following a symlink and is not listed. The marker gets one status check without following a symlink. The marker is not opened. | `managed: false` |
 
+Two more paths get one status check each, and only when `settings.json` declares the part. No file is opened for them.
+
+| Path | When | Result |
+| --- | --- | --- |
+| `<local package>/skills/herdr/SKILL.md` | A local package entry has `skills/herdr` in its `skills` filter. The path follows symlinks, as Pi does when it loads the package. | `coordination.herdrSkill`: `readable` or `not_readable` |
+| `<dir>/npm/node_modules/@juicesharp/rpiv-ask-user-question/package.json` | A package entry names the npm package of the question extension. | `coordination.questionExtension`: `installed` or `declared` |
+
+Without such an entry the value is `not_declared` and no path is checked. The three other keys of `coordination` are fixed: `herdrCli` is `not_checked`, `herdrSession` is `not_run`, and `questionUi` is `unverified`. `inventory` cannot measure them. See [Herdr and the question tool](herdr-setup.md#verification-results).
+
 `auth.json`, `mcp.json`, `models.json`, `.tenant-pi/choices.json`, sessions, memory stores, the content of each skill, extension and prompt, and every other file stay unopened. The tests prove this with an audit hook that records each file open and each directory listing of the process, while private canary files sit beside the resources.
 
 Every path component is opened as a real directory. A symlink in any component of `--dir`, a symlinked resource directory, and a symlinked `.tenant-pi` stop the action.
@@ -39,6 +48,7 @@ The output is one JSON object on one line, with sorted keys and fixed separators
 | `managed` | `true` when `<dir>/.tenant-pi/state.json` exists as a regular file. The value does not say that the candidate is complete; `compare` reads the status. |
 | `packages` | One entry for each `settings.packages` item, in the order of the file. |
 | `extensions`, `skills`, `prompts` | One `{ "name", "kind" }` entry for each direct entry, sorted by name. |
+| `coordination` | Separate results for the Herdr skill and the question extension; see below. |
 | `summary` | The counts of the four lists. |
 
 A package entry has these forms:

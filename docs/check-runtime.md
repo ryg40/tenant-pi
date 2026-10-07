@@ -2,7 +2,7 @@
 
 Status: offline implementation, not a qualified runtime. The `check-runtime` action of `scripts/tenant_pi.py` replaces the manual version comparison of Stage 0 and Stage 3 in `INSTALL.md` with one deterministic command. The logic is in `scripts/check_runtime.py`.
 
-This is the first and only action of the kit that starts a process. `validate`, `plan`, `generate` and `compare` start none. `scripts/check_runtime.py` is therefore not a pure module, unlike the other modules under `scripts/`.
+This action and `check-herdr` are the only actions of the kit that start a process. `check-herdr` starts one `herdr --version`; see [Herdr and the question tool](herdr-setup.md). `validate`, `plan`, `generate` and `compare` start none. `scripts/check_runtime.py` is therefore not a pure module, unlike the other modules under `scripts/`.
 
 ## Command
 
@@ -146,6 +146,7 @@ A `match` then removes the gap of that tool. Another status gives a gap that nam
 
 - The action checks the tools that the current shell finds. The shell that launches Pi later can find other tools. Run the action in that shell.
 - The action does not check `npm` or Git.
+- The action does not check the Herdr application. The separate `check-herdr` action reports the `herdr` command; see [Herdr and the question tool](herdr-setup.md).
 - The action does not install or change a version. A `mismatch` is a decision for the user; see Stage 3 of `INSTALL.md`.
 
 ## Test coverage

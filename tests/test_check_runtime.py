@@ -14,7 +14,8 @@ import unittest
 from unittest.mock import patch
 
 from scripts import tenant_pi
-from scripts.check_runtime import MAX_TOKEN, STATUSES, TIMEOUT, check, in_range, matches, parse_range, parse_version
+from scripts.check_runtime import (HERDR_STATUSES, MAX_TOKEN, STATUSES, TIMEOUT, check, check_herdr, in_range, matches,
+                                   parse_range, parse_version)
 from scripts.profile_plan import runtime_report
 from scripts.validate import Invalid, load
 
@@ -290,6 +291,44 @@ class CheckTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(seen[0]))
 
 
+class HerdrCheckTests(unittest.TestCase):
+    """The pure Herdr decision with an injected runner; no process starts here."""
+
+    def check(self, output, path=None, which=lambda name: "/bin/" + name):
+        self.calls = []
+
+        def run(argv, **options):
+            self.calls.append((argv, options))
+            if isinstance(output, BaseException):
+                raise output
+            return output
+        return check_herdr(path, run=run, which=which, environ={"PATH": "/bin"})
+
+    def test_present_runs_one_fixed_command_without_a_shell(self):
+        self.assertEqual({"herdr": {"installed": "0.9.3", "status": "present"}}, self.check(Done(b"herdr 0.9.3\n")))
+        self.assertEqual([["/bin/herdr", "--version"]], [argv for argv, _ in self.calls])
+        options = self.calls[0][1]
+        self.assertEqual((TIMEOUT, False, False, subprocess.DEVNULL, {"PATH": "/bin"}),
+                         (options["timeout"], options["shell"], options["check"], options["stdin"], options["env"]))
+        self.assertEqual(("present", "missing", "unparsed"), HERDR_STATUSES)
+
+    def test_missing_starts_no_process(self):
+        self.assertEqual({"herdr": {"installed": None, "status": "missing"}}, self.check(Done(), which=lambda name: None))
+        self.assertEqual([], self.calls)
+        self.assertEqual("missing", self.check(FileNotFoundError())["herdr"]["status"])
+
+    def test_other_output_is_unparsed_and_not_echoed(self):
+        for output in (Done(CANARY.encode()), Done(b"herdr 0.9.3 " + CANARY.encode()), Done(b"herdr 0.9.3\n", returncode=3),
+                       subprocess.TimeoutExpired("herdr", TIMEOUT), Done(b"")):
+            report = self.check(output)
+            self.assertEqual({"herdr": {"installed": None, "status": "unparsed"}}, report)
+
+    def test_explicit_path_replaces_the_lookup(self):
+        report = self.check(Done(b"herdr 0.9.3\n"), path="/opt/tools/herdr", which=lambda name: self.fail("lookup"))
+        self.assertEqual("present", report["herdr"]["status"])
+        self.assertEqual([["/opt/tools/herdr", "--version"]], [argv for argv, _ in self.calls])
+
+
 class CliTests(unittest.TestCase):
     """The real action with fake executables on PATH, an audit hook, and a disposable HOME."""
 
@@ -523,6 +562,54 @@ class CliTests(unittest.TestCase):
         self.assertEqual({"error": "input_not_regular: manifest.file", "candidate_created": False}, json.loads(result.stderr))
         self.check_no_other_process([])
         self.assertEqual([], os.listdir(self.tmp))
+
+
+class HerdrCliTests(unittest.TestCase):
+    """The real `check-herdr` action with a fake `herdr` on PATH, an audit hook, and a disposable HOME."""
+
+    setUp = CliTests.setUp
+    fake = CliTests.fake
+    spawned = CliTests.spawned
+    check_no_other_process = CliTests.check_no_other_process
+
+    def run_cli(self, *extra):
+        return subprocess.run([sys.executable, str(CLI), "check-herdr", *extra], cwd=self.base, env=self.env,
+                              text=True, capture_output=True, check=False)
+
+    def test_present_exits_zero_and_starts_one_process(self):
+        # The fake records each argument: a call other than `--version` would show here.
+        self.fake("herdr", "printf '%s\\n' \"$@\" >> '" + str(self.base / "herdr-args") + "'\necho 'herdr 0.9.3'")
+        result = self.run_cli()
+        self.assertEqual((0, ""), (result.returncode, result.stderr))
+        self.assertEqual({"herdr": {"installed": "0.9.3", "status": "present"}}, json.loads(result.stdout))
+        self.assertEqual("--version\n", (self.base / "herdr-args").read_text())
+        self.check_no_other_process([self.bin / "herdr"])
+        self.assertEqual([], os.listdir(self.tmp))
+
+    def test_missing_exits_one_and_starts_no_process(self):
+        result = self.run_cli()
+        self.assertEqual((1, ""), (result.returncode, result.stderr))
+        self.assertEqual({"herdr": {"installed": None, "status": "missing"}}, json.loads(result.stdout))
+        self.check_no_other_process([])
+
+    def test_unparsed_exits_one_and_echoes_no_output(self):
+        self.fake("herdr", "echo " + CANARY)
+        result = self.run_cli()
+        self.assertEqual((1, ""), (result.returncode, result.stderr))
+        self.assertEqual({"herdr": {"installed": None, "status": "unparsed"}}, json.loads(result.stdout))
+        self.assertNotIn(CANARY, result.stdout)
+
+    def test_explicit_path_with_a_space_replaces_the_lookup(self):
+        self.fake("herdr", "echo 'herdr 0.1.0'")
+        other = self.base / "other bin"
+        other.mkdir()
+        path = self.fake("herdr", "echo 'herdr 0.9.3'", other)
+        result = self.run_cli("--herdr", str(path))
+        self.assertEqual((0, "0.9.3"), (result.returncode, json.loads(result.stdout)["herdr"]["installed"]))
+        self.check_no_other_process([path])
+        result = self.run_cli("--herdr", "relative/herdr")
+        self.assertEqual(2, result.returncode)
+        self.assertEqual("absolute_path: check-herdr.herdr", json.loads(result.stderr)["error"])
 
 
 if __name__ == "__main__":

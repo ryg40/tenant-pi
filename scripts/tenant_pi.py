@@ -19,13 +19,14 @@ from scripts import baseline
 from scripts.carry import carry, report_entries
 from scripts.candidate_list import child, report as list_report, safe_name, select
 from scripts import kit_commit
-from scripts.profile_inventory import RESOURCE_DIRS, inventory
-from scripts.check_runtime import TOOLS, check, matches
+from scripts.profile_inventory import RESOURCE_DIRS, coordination_files, inventory
+from scripts.check_runtime import HERDR, TOOLS, check, check_herdr, matches
 from scripts import launcher
 from scripts.private_init import TARGET, TEMPLATES, check_location, check_target, init, inside, report as init_report, with_target
-from scripts.profile_plan import (PROVIDER_KEY_NAMES, prepare, provider_key_warning, readiness, runtime_report,
-                                   setup_commands)
+from scripts.profile_plan import (PROVIDER_KEY_NAMES, herdr_report, prepare, provider_key_warning, readiness,
+                                   runtime_report, setup_commands)
 from scripts.profile_write import WriteError, utc_now, write
+from scripts.remote_plan import remote_plan
 from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, parse, place, fail
 
 MAX_INPUT = 1024 * 1024
@@ -126,10 +127,10 @@ def _inventory(plan):
             + [{"path": ".tenant-pi/state.json", "mode": "0600", "kind": "file"}])
 
 
-def _preview(plan, *, generated, launcher_path=None, report=None, key_warning=None):
+def _preview(plan, *, generated, launcher_path=None, report=None, key_warning=None, herdr=None):
     owner_resources = plan["files"][".tenant-pi/choices.json"]["content"]["overlay"].get("ownerResources", {})
     # The measured facts change this report only; the plan and the generated files stay the same.
-    facts = readiness(plan, report=report, generated=generated)
+    facts = readiness(plan, report=report, generated=generated, herdr=herdr)
     setup = setup_commands(plan, report)
     return {
         "targetAgentDir": plan["targetAgentDir"],
@@ -227,9 +228,12 @@ def _profile(directory, field):
     settings = _load_input(directory + "/settings.json", field + ".settings.json", optional=True)
     if settings is None:
         fail("settings_missing", field)
+    # A status call for each declared part only: no file is opened, and an undeclared part reads nothing.
+    present = {key: path is not None and os.path.isfile(path) and os.access(path, os.R_OK)
+               for key, path in coordination_files(directory, settings).items()}
     return inventory(directory, settings,
                      {name: _listing(directory + "/" + name, field + "." + name) for name in RESOURCE_DIRS},
-                     _managed(directory, field + ".state.json"))
+                     _managed(directory, field + ".state.json"), present)
 
 
 def _git_file(path, limit=kit_commit.MAX_METADATA):
@@ -481,6 +485,12 @@ def main(argv=None, *, clock=utc_now):
         rt.add_argument("--" + key, help=f"absolute path of the {command} executable (default: {command} on PATH)")
     rt.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
                     help="reviewed kit manifest (override remains strictly validated)")
+    hrd = subs.add_parser("check-herdr", help="report the herdr command of the host: present with its version, or missing")
+    hrd.add_argument("--" + HERDR, help=f"absolute path of the {HERDR} executable (default: {HERDR} on PATH)")
+    rem = subs.add_parser("remote-plan", help="print the SSH command lines of the remote stages; runs none of them")
+    rem.add_argument("--ssh-target", required=True, help="SSH target of the user: a host alias, or <user>@<host>")
+    rem.add_argument("--remote-user", required=True, help="account on the remote host that owns the install")
+    rem.add_argument("--remote-home", required=True, help="absolute home directory of that account on the remote host")
     priv = subs.add_parser("init-private", help="create a new private directory for the overlay and its records")
     priv.add_argument("--dir", required=True, help="absolute path of the absent private directory; its parent exists")
     priv.add_argument("--overlay", action="append", default=[],
@@ -503,6 +513,8 @@ def main(argv=None, *, clock=utc_now):
                              ("written after a complete generation" if action == "generate" else "display only"))
             cmd.add_argument("--runtime-report", help="explicit JSON output of a previous check-runtime run; "
                              "the readiness gaps then show the measured runtime versions")
+            cmd.add_argument("--herdr-report", help="explicit JSON output of a previous check-herdr run; "
+                             "the readiness gaps then show the measured herdr command")
     args = parser.parse_args(argv)
     code = 0
     try:
@@ -545,10 +557,22 @@ def main(argv=None, *, clock=utc_now):
                 absolute(path, "check-runtime." + key)
             manifest_data = _load_input(args.manifest, "manifest.file")
             manifest(manifest_data)
-            # The only action that starts a process: three fixed `--version` commands, no shell.
+            # With `check-herdr`, the only action that starts a process: three fixed `--version` commands, no shell.
             report = check(manifest_data["runtime"], paths)
             print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0 if matches(report) else 1
+        if args.action == "check-herdr":
+            if args.herdr is not None:
+                absolute(args.herdr, "check-herdr." + HERDR)
+            # One fixed `--version` command, no shell. It installs, updates and starts nothing.
+            report = check_herdr(args.herdr)
+            print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
+            return 0 if report[HERDR]["status"] == "present" else 1
+        if args.action == "remote-plan":
+            # Display only: no process starts, no file is opened, and no SSH option is added.
+            report = remote_plan(args.ssh_target, args.remote_user, args.remote_home)
+            print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
+            return 0
         if args.action == "init-private":
             # Never runs Git: the `git init` line is display text for the user.
             print(json.dumps(_init_private(args), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
@@ -570,6 +594,9 @@ def main(argv=None, *, clock=utc_now):
                        mcp_definitions=mcp_data)
         if report is not None:
             runtime_report(report, manifest_data["runtime"])
+        herdr = getattr(args, "herdr_report", None)
+        if herdr is not None:
+            herdr = herdr_report(_load_input(herdr, "herdr_report.file"))
         # A profile inside the kit clone would enter its publish set; the overlay itself is valid here.
         _outside_kit(plan["targetAgentDir"], "overlay.target.agentDir")
         # The unedited copy of the example names a fake user; no profile can be generated there.
@@ -588,7 +615,7 @@ def main(argv=None, *, clock=utc_now):
             # A membership test: the value of a variable is never read.
             set_names = [name for name in PROVIDER_KEY_NAMES if name in os.environ]
             output = _preview(plan, generated=False, launcher_path=launcher_path, report=report,
-                              key_warning=provider_key_warning(set_names))
+                              key_warning=provider_key_warning(set_names), herdr=herdr)
         else:
             if any(gap["code"] == "pi_login_blocked" for gap in plan["readinessGaps"]):
                 fail("pi_login_blocked", "overlay.modelRoutes.gateway.auth")
@@ -599,7 +626,7 @@ def main(argv=None, *, clock=utc_now):
             if not result.complete:
                 raise WriteError("incomplete_result", "target", candidate_created=True)
             output = {"candidate_created": True, "complete": True, "warnings": list(result.warnings),
-                      **_preview(plan, generated=True, launcher_path=launcher_path, report=report)}
+                      **_preview(plan, generated=True, launcher_path=launcher_path, report=report, herdr=herdr)}
             if launcher_path is not None:
                 # The profile is complete here; a launcher failure is reported, never raised over the report.
                 try:

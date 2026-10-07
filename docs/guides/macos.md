@@ -108,12 +108,23 @@ Stop on `x86_64` or `x64`; correct the terminal and tool paths rather than addin
 `node@24` is keg-only, so its explicit `PATH` line matters.
 The export changes this zsh only. Review adding the export line to `~/.zshrc` yourself.
 
-Alternatively, use an existing per-user nvm installation instead of Homebrew Node:
+Alternatively, use a per-user nvm installation instead of Homebrew Node. For a home that has no nvm:
 
 ```sh
-nvm install 24
-nvm use 24
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null bash
+. "$HOME/.nvm/nvm.sh"
+nvm install 24 && nvm use 24
 ```
+
+The first line installs nvm `v0.40.3` into `~/.nvm`. Before you run it, read the release page <https://github.com/nvm-sh/nvm/releases/tag/v0.40.3> and the script at the URL of the first line. The kit gives no checksum for the script.
+When `nvm` is already a command in your zsh, run the third line only.
+
+The kit never edits a shell startup file. Make one of two choices:
+
+- Option one: run the first line without `PROFILE=/dev/null`. The nvm install script then adds the nvm lines to `~/.zshrc`, never `~/.bashrc`. Run `touch ~/.zshrc` first when the file is absent. Run `exec zsh` after the install to reload the file.
+- Option two: keep `PROFILE=/dev/null`. The script prints `Profile not found` and edits no file. Run `. "$HOME/.nvm/nvm.sh"` in each zsh that runs a kit command or the launcher.
+
+The launcher runs `pi` from the `PATH` of the zsh that starts it. With option two, run the `. "$HOME/.nvm/nvm.sh"` line before the launcher too.
 
 Repeat the Node version and architecture checks after selecting it.
 Not verified: this nvm route on macOS with the kit.
@@ -167,13 +178,13 @@ python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.conf
 Keep the extra baselines for inherited `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` as setup specifies.
 Do not replace an existing baseline or record it after a target Pi command.
 
-Only for `mcp`, `hermes` or `wiki`:
+Only for `mcp`, `hermes`, `wiki` or `questions`:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi update --extensions
 ```
 
-Only for `hermes` or `wiki`, also:
+Only for `hermes`, `wiki` or `questions`, also:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"

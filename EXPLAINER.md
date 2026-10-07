@@ -1,76 +1,164 @@
-# EXPLAINER: what the install does, step by step
+---
+type: Explainer
+title: tenant-pi install explainer
+description: What each install step of the kit does and which scripts, functions and files it touches, from the portable branch.
+tags: [pi, install, explainer, portable]
+status: current
+generated:
+  by: pi/gpt-6-astra
+  at: 2026-10-07T17:35:18Z
+sources:
+  - id: readme
+    resource: README.md
+    title: tenant-pi README
+  - id: setup-guide
+    resource: docs/guides/setup.md
+    title: Setup guide
+  - id: generator
+    resource: docs/generator.md
+    title: The CLI contract
+  - id: macos-guide
+    resource: docs/guides/macos.md
+    title: macOS guide for Apple silicon
+  - id: module-guide
+    resource: docs/guides/modules.md
+    title: Module guide
+---
+# tenant-pi: installation explainer
 
-This document shows the install of one Pi profile as a usual README procedure. Each step has a short explanation, the command and the expected output. Below each step, collapsed blocks name each script, each function and each file that the step touches.
+This file explains the first installation of a Pi profile, one step at a time.
+It is for a developer who wants to know what each command changes.
+[README.md](README.md) has the same steps in short form.
 
-The reader is a developer who wants to know the footprint and the components. For other readers:
+How to read this file:
 
-- An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md).
-- A user who wants the stages with all options reads [the setup guide](docs/guides/setup.md).
-- For a failure, read [troubleshooting](docs/guides/troubleshooting.md). This document has little troubleshooting.
+- Each step gives the command, the result that you see and the reason.
+- Each step has a "Drill-down" block with the scripts, functions and files that it touches.
+- The scripts in `scripts/` are the source of truth. The documents in `docs/` have more detail.
 
-## Contents
+`EXAMPLE_USER`, `$HOME/tenant-pi`, `$HOME/.config/tenant-pi` and `$HOME/.pi/profiles/main` are placeholders. Replace them with your values.
+The base steps ran on Linux x86_64 with a core-only profile.
+Not verified: a complete live run on a clean client with the current Pi pin.
+Not verified: these steps on a Mac. See [Prerequisites](#prerequisites) for the Apple silicon guide.
 
-- [What you get](#what-you-get)
-- [Requirements](#requirements)
-- [Quick start](#quick-start)
-- [How to read this document](#how-to-read-this-document)
-- The steps:
-  1. [Look at the machine](#step-1-look-at-the-machine)
-  2. [Clone the kit and run its checks](#step-2-clone-the-kit-and-run-its-checks)
-  3. [Check the runtime versions](#step-3-check-the-runtime-versions)
-  4. [Create the private directory](#step-4-create-the-private-directory)
-  5. [Create the parent of the target](#step-5-create-the-parent-of-the-target)
-  6. [Read the overlay](#step-6-read-the-overlay)
-  7. [Validate](#step-7-validate)
-  8. [Plan](#step-8-plan)
-  9. [Generate](#step-9-generate)
-  10. [Install the dependencies](#step-10-install-the-dependencies)
-  11. [Decide how Pi gets a credential](#step-11-decide-how-pi-gets-a-credential)
-  12. [Record the baseline of the live profile](#step-12-record-the-baseline-of-the-live-profile)
-  13. [Launch the profile and log in](#step-13-launch-the-profile-and-log-in)
-  14. [Run the checks](#step-14-run-the-checks)
-  15. [Record the install](#step-15-record-the-install)
-- [The footprint after a core-only install](#the-footprint-after-a-core-only-install)
-- [Remove the install](#remove-the-install)
-- [The components](#the-components)
-- [What an optional module adds](#what-an-optional-module-adds)
-- [Where the outputs come from](#where-the-outputs-come-from)
+Sections: [Overview](#overview), [Prerequisites](#prerequisites), [Install](#install), [Optional components](#optional-components),
+[Mac specifics](#mac-specifics), [Components](#components), [How to remove it](#how-to-remove-it), [Keep this file current](#keep-this-file-current).
 
-## What you get
+## Overview
 
-- A new Pi profile directory, the **target**. The example is `~/.pi/profiles/main`. The kit writes its `settings.json` from your choices.
-- A **private directory**, `~/.config/tenant-pi`. It holds your choices (the **overlay**), your records and a launcher file.
-- Your existing Pi profile, the **live profile** `~/.pi/agent`, without a change. The kit refuses a target in it, and two kit actions show a change.
+The kit checks your private choices and generates a separate Pi profile.
+It writes new files, but installs no package, starts no service and stores no credential.
+You install Pi, choose credentials and launch Pi yourself.
 
-The kit is a generator, not an installer. It writes files into new directories only. It installs no package, starts no service, edits no shell startup file and stores no credential. You install Pi, log in and launch Pi yourself. See [the privacy guide](docs/guides/privacy.md#what-the-kit-never-does).
+```text
+private directory                  kit clone
+  overlay.json ------------------> scripts/tenant_pi.py
+                                          |
+                                          +--> generated profile directory
+                                          |      settings.json + .tenant-pi/
+                                          |
+  launch-main.sh <-------------------------+
+       |
+       +--> Pi runtime <-- reads and writes the generated profile
+```
 
-A **core-only** profile is Pi with no optional module. This document installs a core-only profile. [What an optional module adds](#what-an-optional-module-adds) shows the difference.
+A **core-only** profile is Pi with no optional module. This procedure installs a core-only profile.
+The **target** is its new directory, `~/.pi/profiles/main` in the examples.
+The **overlay** holds your choices in the **private directory**, `~/.config/tenant-pi`.
+The **live profile** is the existing `~/.pi/agent` directory. The kit refuses a target in it.
+The baseline actions show a change of that directory.
+The kit edits no shell startup file. See [the privacy guide](docs/guides/privacy.md#what-the-kit-never-does).
+Linux is the first target. The kit steps have offline tests; see the status in [README.md](README.md).
 
-Status: Linux is the first target. The kit steps are tested offline. Not verified: a complete live run on a clean client; see the status line of [README.md](README.md).
+### Footprint of the base install
 
-## Requirements
-
-| Item | Required | Notes |
+| Kind | What the install makes | Step |
 | --- | --- | --- |
-| Linux | the first target | macOS and Windows are not qualified; see [the release checklist](docs/guides/release-checklist.md#platforms-that-are-not-qualified). |
-| Python | `>=3.11` | Standard library only. The kit has no Python dependency. |
-| Node | `>=24.0.0 <25` | With npm. The same Node installs Pi. |
-| Pi | `<pin>` | The npm package `@earendil-works/pi-coding-agent`. Step 10 installs it when it is missing. |
-| Git | any current version | Only to clone the kit. |
+| Clone | `~/tenant-pi/`, with the tracked files and Git metadata. | 2 |
+| Parent directories | `~/.config/`, `~/.pi/` and `~/.pi/profiles/`, only when absent. | 4, 5 |
+| Private directory | `~/.config/tenant-pi/`, mode `0700`, with five files and empty `inputs/`. | 4 |
+| Runtime report | `runtime.json` in the private directory; the shell sets its mode from your umask. | 8 |
+| Profile | The target, mode `0700`, with `settings.json` and `.tenant-pi/` records. Files have mode `0600`. | 9 |
+| Launcher | `launch-main.sh` in the private directory, mode `0700`. | 9 |
+| Pi package | The global npm package and `pi` link, or a user-owned prefix. Only when installation is needed. | 10 |
+| npm state | `~/.npm/` cache and logs. The prefix check also writes a log. | 10 |
+| Baseline | `live-baseline.json` in the private directory, mode `0600`. | 12 |
+| Pi state | Login, sessions, model data and helper tools in the target. Pi can change `settings.json`. | 13, 14 |
+| Install record | Your entry in `install-log.md` of the private directory. | 15 |
+| Temporary files | The empty directory of step 1 stays. The kit removes its version-probe directory. Node can leave its compile cache. | 1, 3 |
+| Services and ports | None from the base kit procedure. | all |
 
-This document writes `<pin>` for the exact Pi version that the kit requires. Read it from `config/manifest.json`, key `runtime.piVersion`.
+### Footprint of the optional components
 
-| Name | Where to read it | Source |
+| Component | Files that it adds | Packages or services that it needs |
 | --- | --- | --- |
-| `<pin>` | Read `runtime.piVersion` | `config/manifest.json`, key `runtime.piVersion` |
+| Tenantext extensions | Filtered package entries in `settings.json`; dependencies under the clone's `packages/tenantext/node_modules/`. | The in-tree package and its npm dependencies; a gateway for `codex-accounts`. |
+| Promptr | A package entry; build output in the clone; profile `promptr/` and project `.promptr/` state. | The in-tree package, npm dependencies and a build. |
+| MCP adapter | `mcp-adapter.json` in the target; input definitions in private `inputs/`; runtime caches and spilled output. | `pi-mcp-adapter`, selected servers and the operating-system keyring for tokens. |
+| Hermes | `hermes-memory-config.json` in the target; runtime `pi-hermes-memory/` and memory files. | `pi-hermes-memory`; a compiler toolchain for `better-sqlite3`. |
+| LLM Wiki | Settings in the profile; a vault under `~/.llm-wiki/` or a selected wiki home. | `@zosmaai/pi-llm-wiki`. |
+| OpenViking | A package entry; dependencies in the clone; user configuration under `~/.openviking/` and server memory. | `packages/openviking-pi` and a separately configured OpenViking server. |
+| Knowledge and coordinator skills | Filtered skill package entries. External tools can write outside the profile. | The in-tree skills and the external tools that each skill names. |
 
-To read the three runtime requirements from your clone:
+The [Components](#components) tables give the full base file inventory and its writers.
+Optional components stay off until you select them. See [Optional components](#optional-components) for status and consent.
+
+## Prerequisites
+
+| Tool | Required version | Source | How to check |
+| --- | --- | --- | --- |
+| Node with npm | `>=24.0.0 <25` | `config/manifest.json`, `runtime.nodeRange` | Step 1 prints both versions. Example: Node `24.21.0`, npm `11.19.0`. |
+| Python | `>=3.11` | `config/manifest.json`, `runtime.pythonRange` | Step 1 prints the version. The kit uses the standard library only. |
+| Pi | Tested pin `1.0.4`; accepted range `>=1.0.4 <1.1` | `config/manifest.json`, `runtime.piVersion` and `runtime.piAcceptedRange` | Step 3 checks the version without using the live profile. Step 10 installs the pin when needed. |
+| Git | Any current version for the clone | [Setup guide](docs/guides/setup.md#before-you-start) | Step 1 prints the version. Scanning has separate requirements in [secret handling](docs/secret-handling.md#scanner). |
+
+`<pin>` means `runtime.piVersion` in `config/manifest.json`, the tested Pi version.
+Read the runtime requirements from your clone:
 
 ```sh
 python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"])'
 ```
 
-## Quick start
+Linux is the first target. macOS and Windows are not qualified; see [the release checklist](docs/guides/release-checklist.md#platforms-that-are-not-qualified).
+For Apple silicon, read [docs/guides/macos.md](docs/guides/macos.md). The [Mac specifics](#mac-specifics) table summarizes its differences.
+
+## Install
+
+Run each command from the clone root after step 2.
+These are the original 15 steps. None is merged; the setup guide groups them into nine stages.
+An installing agent reads [INSTALL.md](INSTALL.md). For all options, read [the setup guide](docs/guides/setup.md).
+For a failure, read [troubleshooting](docs/guides/troubleshooting.md). This file gives little troubleshooting.
+
+<details><summary>Path, output and error conventions</summary>
+
+**The paths.** The examples use these four paths. You can use other paths.
+
+| Name | Example path | What it is |
+| --- | --- | --- |
+| The clone | `~/tenant-pi` | This repository on your machine. |
+| The private directory | `~/.config/tenant-pi` | Your choices and records. Outside the clone. |
+| The target | `~/.pi/profiles/main` | The new profile directory. The kit creates it in step 9. |
+| The live profile | `~/.pi/agent` | The profile that a bare `pi` command opens when `PI_CODING_AGENT_DIR` is not set. The kit does not write into it. |
+
+The kit takes absolute paths only and does not expand `~`. Write `"$HOME/..."` in double quotes in a command. The shell then expands it. A path segment can hold letters, digits, a space and the characters `_`, `.`, `-`, `'` and `"` only. A home directory with another character, for example `@`, stops `init-private` with `absolute_path: init-private.home`.
+
+**The live profile.** `init-private --target`, `validate`, `plan` and `generate` refuse a target that is `~/.pi/agent` or is under it. The rule is `under_pi_agent`. The kit finds the directory from `HOME` and does not read `PI_CODING_AGENT_DIR`. So the refusal does not protect a live directory that only this variable names: choose a target outside that directory. Steps 12 and 14 show a change of the live profile.
+
+**The outputs.** The output examples show the kit commands; see [where the outputs come from](#where-the-outputs-come-from). Three kinds of value are replaced:
+
+- The home directory is `/home/you`.
+- The Pi version of the release is `<pin>`.
+- A count, a duration or a commit hash that changes with each release is a name in angle brackets, for example `<count>`.
+
+**The JSON form.** Each kit action prints one JSON object on one line, with sorted keys. This document shows the object on more than one line. An output that is marked "shortened" leaves out keys; the drill-down names each key. To get a readable form on your machine, add `| python3 -m json.tool` to the command.
+
+**The errors.** A refused action prints one JSON object on standard error and exits with code 2. The text has the form `rule: field`. It never holds a path or a value.
+
+Each Drill-down table names the main effects. Its subsections give the function order, file modes, output fields and exclusions.
+
+</details>
+
+<details><summary>Quick start: the core-only command sequence</summary>
 
 These commands make a core-only profile on Linux. Each command is one step below. Read the step before you run a command that you do not know.
 
@@ -97,41 +185,11 @@ python3 scripts/tenant_pi.py check-baseline --dir "$HOME/.pi/agent" --baseline "
 
 The last three commands are steps 12 to 14. The launcher starts Pi. Run `/login` inside Pi, then exit Pi before the last command.
 
-These commands install no Pi and set no credential. Do step 10 first when `check-runtime` does not print `match` for `pi`. Do step 11 before the launch.
+These commands install no Pi and set no credential. Follow step 10's decision table after the runtime check. Do step 11 before the launch.
 
-## How to read this document
+</details>
 
-**The paths.** The examples use these four paths. You can use other paths.
-
-| Name | Example path | What it is |
-| --- | --- | --- |
-| The clone | `~/tenant-pi` | This repository on your machine. |
-| The private directory | `~/.config/tenant-pi` | Your choices and records. Outside the clone. |
-| The target | `~/.pi/profiles/main` | The new profile directory. The kit creates it in step 9. |
-| The live profile | `~/.pi/agent` | The profile that a bare `pi` command opens when `PI_CODING_AGENT_DIR` is not set. The kit does not write into it. |
-
-The kit takes absolute paths only and does not expand `~`. Write `"$HOME/..."` in double quotes in a command. The shell then expands it. A path segment can hold letters, digits, a space and the characters `_`, `.`, `-`, `'` and `"` only. A home directory with another character, for example `@`, stops `init-private` with `absolute_path: init-private.home`.
-
-**The live profile.** `init-private --target`, `validate`, `plan` and `generate` refuse a target that is `~/.pi/agent` or is under it. The rule is `under_pi_agent`. The kit finds the directory from `HOME` and does not read `PI_CODING_AGENT_DIR`. So the refusal does not protect a live directory that only this variable names: choose a target outside that directory. Steps 12 and 14 show a change of the live profile.
-
-**The outputs.** The output examples show the kit commands; see [where the outputs come from](#where-the-outputs-come-from). Three kinds of value are replaced:
-
-- The home directory is `/home/you`.
-- The Pi version of the release is `<pin>`.
-- A count, a duration or a commit hash that changes with each release is a name in angle brackets, for example `<count>`.
-
-**The JSON form.** Each kit action prints one JSON object on one line, with sorted keys. This document shows the object on more than one line. An output that is marked "shortened" leaves out keys; the drill-down names each key. To get a readable form on your machine, add `| python3 -m json.tool` to the command.
-
-**The errors.** A refused action prints one JSON object on standard error and exits with code 2. The text has the form `rule: field`. It never holds a path or a value.
-
-**The drill-down blocks.** Each step has blocks that you can open:
-
-- "What runs" names the script and the functions, in call order.
-- "Files" names each path that the step reads, creates or changes, with its mode, its content and its writer. The writer is the kit, Pi, npm, Git or you.
-- "Output" gives the meaning of each output field.
-- "Not touched" says what the step does not do.
-
-## Step 1: look at the machine
+### Step 1: Look at the machine
 
 You collect the facts about the machine before a change. You learn the versions of the tools and whether a live profile exists. The clone does not exist at this time, so these are shell commands and not a kit action.
 
@@ -145,7 +203,7 @@ for d in "$HOME/.pi/agent" "${PI_CODING_AGENT_DIR:-}"; do
 done
 ```
 
-Expected output, on a machine that has Pi and a live profile:
+You see this output, on a machine that has Pi and a live profile:
 
 ```text
 Linux x86_64
@@ -159,9 +217,18 @@ no PI_CODING_AGENT_ variable
 live agent directory present: /home/you/.pi/agent
 ```
 
-Compare each version with [the requirements](#requirements). When `command -v pi` prints nothing, Pi is not installed: step 10 installs it.
+Compare each version with [the requirements](#prerequisites). When `command -v pi` prints nothing, Pi is not installed: step 10 installs it.
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what the machine check touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Commands | The shell reads tool versions, exported Pi variable names and live-directory presence. |
+| Files created | An empty temporary directory. Pi can create the Node compile cache. |
+| Not touched | The live profile and shell startup files. |
+| External hosts | No kit request. Not verified: network activity of the Pi version process. |
+
+#### What runs
 
 No kit script runs. Each line is a shell command:
 
@@ -181,9 +248,7 @@ Two Pi variables change where a profile keeps its data. Record each one that the
 - `PI_CODING_AGENT_DIR` names another live profile. The loop then prints a second line for that directory.
 - `PI_CODING_AGENT_SESSION_DIR` moves the sessions of each profile to one directory. The launch line of step 9 removes it for the new profile.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action | Writer |
 | --- | --- | --- |
@@ -195,9 +260,7 @@ The temporary directory stays after the command. Observed with Pi 1.0.2: `pi --v
 
 `node-compile-cache/` is the compile cache of Node. It stays after the command too. Observed with Pi 1.0.2. Not verified: the cache behavior with Node 24.
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - The live profile. That is the reason for the temporary directory.
 - Each shell startup file. If a variable is set there, leave it. The kit works around it.
@@ -205,7 +268,7 @@ The temporary directory stays after the command. Observed with Pi 1.0.2: `pi --v
 
 </details>
 
-## Step 2: clone the kit and run its checks
+### Step 2: Clone the kit and run its checks
 
 You get the kit and prove that the clone is the reviewed kit. The two checks are offline. If one fails, stop: do not generate a profile from that clone.
 
@@ -216,7 +279,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 ```
 
-Expected output, after the lines of `git clone`:
+You see this output, after the lines of `git clone`:
 
 ```text
 ----------------------------------------------------------------------
@@ -230,7 +293,16 @@ Run each later command of this document from the clone directory.
 
 Warning: do not move or delete the clone after step 9. A profile with an in-tree module names a directory of the clone by its absolute path.
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what the clone and checks touch</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files created | The clone and disposable test directories. |
+| Files read | The tracked kit, manifest and example overlay. |
+| External hosts | Your Git server for the clone. The two kit checks run offline. |
+| Not touched | The live profile. No package installation runs. |
+
+#### What runs
 
 | Command | Script | What it does |
 | --- | --- | --- |
@@ -251,9 +323,7 @@ Warning: do not move or delete the clone after step 9. A profile with an in-tree
 
 On a machine with Node and Git, one test is skipped. As root, it is a test that needs a file that the user cannot read. As another user, it is a test that needs root.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action | Writer |
 | --- | --- | --- |
@@ -271,44 +341,52 @@ The parts of the clone that the install uses:
 | `config/config.example.json` | The example overlay. Step 4 copies it. |
 | `config/private/` | Four templates for the private directory. |
 | `scripts/tenant_pi.py` | The command line of the kit. Each action of this document starts here. |
-| `scripts/` | The modules behind the actions; see [the scripts](#the-scripts). |
-| `packages/tenantext`, `packages/promptr` | The in-tree optional modules. A core-only profile does not use them. |
+| `scripts/` | The modules behind the actions; see [the scripts](#scripts). |
+| `packages/tenantext`, `packages/promptr`, `packages/openviking-pi` | The in-tree optional modules. A core-only profile does not use them. |
 | `tests/`, `docs/` | The unit tests and the reference documents. |
 
-</details>
-
-<details><summary>Output</summary>
+#### Output
 
 - `Ran <count> tests` and `OK`: each test passed.
 - `publish set valid: <count> files, <count> explicit`: the first number is the size of the publish set. The second number is the length of the `PUBLISH` list in `scripts/publish_check.py`.
 - `not a release approval`: the check proves the file lists and the patterns. It does not prove that a release is good.
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - Your home directory: the tests use disposable home directories.
 - No package is installed. The kit has no dependency to install.
 
 </details>
 
-## Step 3: check the runtime versions
+### Step 3: Check the runtime versions
 
-One kit action compares the installed Pi, Node and Python with the requirements of the manifest. It is the only kit action that starts a process. A status other than `match` is a finding for you to decide on, not a failure of the kit.
+One kit action compares the installed Pi, Node and Python with the manifest requirements. It is the only profile CLI action that starts processes.
+A status other than `match` needs review; it is not a failure of the kit.
 
 ```sh
 python3 scripts/tenant_pi.py check-runtime
 ```
 
-Expected output:
+You see this output, shortened to the original report fields:
 
 ```json
 {"node":{"installed":"24.21.0","required":">=24.0.0 <25","status":"match"},"pi":{"installed":"<pin>","required":"<pin>","status":"match"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
 ```
 
-The exit code is 0 when each status is `match`, and 1 when a status is not `match`. It is 2 for a refusal: bad input, or a temporary directory that the kit cannot remove.
+The exit code is 0 when Node and Python are `match`, and Pi is `match` or `untested_in_range`.
+It is 1 for `mismatch`, `missing` or `unparsed`.
+It is 2 for bad input or failure to remove the temporary directory.
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what the runtime check touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files read | `config/manifest.json`. |
+| Processes | Three version commands. Pi gets an empty temporary profile. |
+| Files created | A temporary directory that the kit removes; Pi can leave a Node compile cache. |
+| Not touched | The live profile and installed packages. |
+
+#### What runs
 
 In `scripts/tenant_pi.py`, `main()` does this for the action:
 
@@ -318,14 +396,12 @@ In `scripts/tenant_pi.py`, `main()` does this for the action:
 4. `_probe()` runs `<tool> --version` for each tool that it finds: no shell, no standard input, a timeout of 20 seconds. Each process gets the whole environment of your shell.
 5. For Pi, `_probe_pi()` first makes an empty temporary directory and sets `PI_CODING_AGENT_DIR` to it for that one process. It removes the directory after the command.
 6. `parse_version()` reads the version from the first output line.
-7. The comparison: the Pi version must be equal to `runtime.piVersion` as text. The Node and Python versions must be in their range (`parse_range()`, `in_range()`).
+7. Exact Pi version text gives `match`. Another version inside `runtime.piAcceptedRange` gives `untested_in_range`; outside it gives `mismatch`. Node and Python use their ranges (`parse_range()`, `in_range()`).
 8. `matches()` gives the exit code.
 
 The options `--pi`, `--node` and `--python` take the absolute path of another executable.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action | Writer |
 | --- | --- | --- |
@@ -335,21 +411,23 @@ The options `--pi`, `--node` and `--python` take the absolute path of another ex
 
 The kit writes no other file. It removes its temporary directory after the action. `pi --version` can leave `node-compile-cache/` in `$TMPDIR`.
 
-</details>
+#### Output
 
-<details><summary>Output</summary>
-
-The object has one entry for `pi`, `node` and `python`. Each entry has three keys:
+The object has one entry for `pi`, `node` and `python`.
+The Pi entry also has `tested` and `acceptedRange`; the retained shortened examples omit them.
+Save the actual command output as `runtime.json`. Do not copy a shortened example into that file.
+Each entry has these three common keys:
 
 | Key | Meaning |
 | --- | --- |
 | `installed` | The version that the tool printed, or `null`. |
 | `required` | The requirement from `runtime` in the manifest. |
-| `status` | `match`, `mismatch`, `missing` or `unparsed`. |
+| `status` | `match`, `untested_in_range` (Pi only), `mismatch`, `missing` or `unparsed`. |
 
 | `status` | Meaning |
 | --- | --- |
-| `match` | The version satisfies the requirement. |
+| `match` | Pi has the exact tested version text. Node or Python satisfies its range. |
+| `untested_in_range` | Pi satisfies the accepted range but differs from the tested version text. |
 | `mismatch` | The tool printed a version that does not satisfy the requirement. |
 | `missing` | The shell does not find the tool, or cannot start it. |
 | `unparsed` | The tool ran and gave no version that the kit can read. |
@@ -360,13 +438,14 @@ This is the report of a machine where another Pi version is installed. The run u
 {"node":{"installed":"24.21.0","required":">=24.0.0 <25","status":"match"},"pi":{"installed":"<installed>","required":"<pin>","status":"mismatch"},"python":{"installed":"3.11.2","required":">=3.11","status":"match"}}
 ```
 
-With `mismatch` for Pi you have three choices: stop, keep the installed Pi and record the difference, or install `<pin>` under a separate directory. Step 10 has the commands. The kit never changes the installed Pi.
+With `mismatch` for Pi, stop, keep the installed Pi with a recorded gap, or install `<pin>` under a separate directory.
+Step 10 has the commands. The kit never changes the installed Pi.
+With `untested_in_range`, keep the installed Pi and record `core_runtime_untested_in_range`.
+The kit tests ran on the tested pin only.
 
 See [the runtime version check](docs/check-runtime.md) for the version grammar and each exit code.
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - The live profile: the Pi process gets the empty temporary directory.
 - No install, no `npm`, no `git`, no network request from the kit.
@@ -374,7 +453,7 @@ See [the runtime version check](docs/check-runtime.md) for the version grammar a
 
 </details>
 
-## Step 4: create the private directory
+### Step 4: Create the private directory
 
 The kit creates the directory that holds your choices and your records. With `--target`, the new overlay already names the target, so a core-only profile needs no edit. The parent directory must exist: the kit does not create a parent.
 
@@ -383,7 +462,7 @@ mkdir -p "$HOME/.config"
 python3 scripts/tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/main"
 ```
 
-Expected output:
+You see this output:
 
 ```json
 {
@@ -408,7 +487,16 @@ Expected output:
 }
 ```
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what private-directory creation touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files read | The example overlay and four private templates. |
+| Files created | The private directory, five files and empty `inputs/`. |
+| Not touched | The target, live profile and Git configuration. |
+| External hosts | None. |
+
+#### What runs
 
 In `scripts/tenant_pi.py`, `main()` calls `_init_private()`:
 
@@ -427,11 +515,10 @@ In `scripts/tenant_pi.py`, `main()` calls `_init_private()`:
 - `_ancestors()` opens each directory above the new one, without following a symbolic link. Each must be owned by you or by root. None can be writable by group or others, unless it has the sticky bit as `/tmp` has. The direct parent must be owned by you. The new name must not exist.
 - `_create_file()` creates one file with an exclusive create, so it never replaces a file. It then checks the mode and the owner, writes the bytes and syncs the file.
 
-The directory is created with `os.mkdir` and mode `0700`. An exclusive create is the ownership rule of the kit: the kit writes only into a directory that it has just created.
+The kit creates the directory with `os.mkdir` and mode `0700`.
+An exclusive create prevents replacement of an existing entry. The kit writes the private templates only into its new directory.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Mode | Content | Writer |
 | --- | --- | --- | --- |
@@ -448,9 +535,7 @@ Read: the five templates `config/config.example.json`, `config/private/registry.
 
 After this step the kit never changes a file of the private directory. In this document, two later steps add one new file each: the launcher file (step 9) and the baseline file (step 12).
 
-</details>
-
-<details><summary>Output</summary>
+#### Output
 
 | Key | Meaning |
 | --- | --- |
@@ -465,9 +550,7 @@ After this step the kit never changes a file of the private directory. In this d
 
 A key that ends in `DisplayOnly` is text for you. The kit runs none of these lines. This rule holds for each output of the kit.
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - The target. The action does not create it and does not test that it is absent. Step 9 does both.
 - Git. The action runs no Git command and makes no `.git` directory.
@@ -478,7 +561,7 @@ See [the private directory](docs/private-directory.md) for each refusal.
 
 </details>
 
-## Step 5: create the parent of the target
+### Step 5: Create the parent of the target
 
 The kit creates the target directory in step 9, and only that one directory. You create its parent now. Put the parent beside the live profile, not inside it.
 
@@ -486,9 +569,17 @@ The kit creates the target directory in step 9, and only that one directory. You
 mkdir -p "$HOME/.pi/profiles"
 ```
 
-The command prints nothing.
+You see no output. The command creates the parent when it is absent.
 
-<details><summary>Files</summary>
+<details><summary>Drill-down: what the target parent touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files created | `~/.pi/` when absent, and `~/.pi/profiles/`; modes follow your umask. |
+| Not touched | Existing parent contents and the live profile. |
+| Reason | The kit creates only the target itself, never its parents. |
+
+#### Files
 
 | Path | Mode | Writer |
 | --- | --- | --- |
@@ -497,9 +588,7 @@ The command prints nothing.
 
 The command does not change an existing `~/.pi` and does not touch `~/.pi/agent`.
 
-</details>
-
-<details><summary>Why you do this and not the kit</summary>
+#### Why you do this and not the kit
 
 The guarded writer creates the target itself with an exclusive create, and no directory above it. So the owner and the mode of the parent are your decision. The kit checks the parent and refuses a bad one:
 
@@ -511,7 +600,7 @@ The guarded writer creates the target itself with an exclusive create, and no di
 
 </details>
 
-## Step 6: read the overlay
+### Step 6: Read the overlay
 
 The overlay is the one file that holds your choices. After step 4 it is complete for a core-only profile: change nothing. Open it one time to see what you tell the kit.
 
@@ -525,13 +614,22 @@ After each edit by hand, check the syntax before step 7:
 python3 -m json.tool "$HOME/.config/tenant-pi/overlay.json" >/dev/null && echo "JSON valid"
 ```
 
-Expected output:
+You see this output:
 
 ```text
 JSON valid
 ```
 
-<details><summary>The keys of the overlay</summary>
+<details><summary>Drill-down: what the overlay edit touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files read | `overlay.json` in the private directory. |
+| Files changed | Only that file, only when you edit it. |
+| Not touched | The target and live profile. |
+| External hosts | None from the JSON syntax check. |
+
+#### The keys of the overlay
 
 | Key | Core-only value | Meaning |
 | --- | --- | --- |
@@ -550,9 +648,7 @@ Five more keys are optional: `modelRoutes`, `memory`, `ownerPackages`, `ownerRes
 
 The overlay has no field for a secret. An `env` value is a `${NAME}` reference only. The kit refuses a path or a model name that holds `$`, a backtick or `{{`.
 
-</details>
-
-<details><summary>When you change the target by hand</summary>
+#### When you change the target by hand
 
 You need an edit only when step 4 ran without `--target`. The overlay then holds the sample target `/home/EXAMPLE_USER/new-agent`, and step 7 refuses it:
 
@@ -568,9 +664,7 @@ Change the one value of `target.agentDir` to the expanded absolute path, for exa
 
 The parser stops at the first character that it cannot accept. The cause is often at the end of the line before, for example a missing comma.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action | Writer |
 | --- | --- | --- |
@@ -580,7 +674,7 @@ The command `python3 -m json.tool` reads the file and writes nothing. With `>/de
 
 </details>
 
-## Step 7: validate
+### Step 7: Validate
 
 The kit checks the overlay against the manifest. The check is offline and writes nothing. Run it after each change of the overlay.
 
@@ -588,19 +682,28 @@ The kit checks the overlay against the manifest. The check is offline and writes
 python3 scripts/tenant_pi.py validate --overlay "$HOME/.config/tenant-pi/overlay.json"
 ```
 
-Expected output:
+You see this output:
 
 ```json
 {"scope":"offline structural and supported-input checks only","valid":true}
 ```
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what validation touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files read | The manifest and overlay, plus optional declared inputs. |
+| Files created | None. The kit builds the plan in memory and discards it. |
+| Not touched | Target and live-profile files. |
+| External hosts | None. |
+
+#### What runs
 
 In `scripts/tenant_pi.py`, `main()` does this for `validate`, `plan` and `generate`. The three actions share these steps:
 
 1. `_load_input()` reads `config/manifest.json` and the overlay through the bounded loader. The loader accepts a regular file of 1 MiB maximum, with UTF-8 text, unique keys and 64 nesting levels maximum. It follows no symbolic link.
 2. `prepare()` of `scripts/profile_plan.py` builds the **plan** in memory. It first calls `manifest()` and `overlay()` of `scripts/validate.py`.
-3. `manifest()` compares the manifest with reviewed values that are fixed in the script: `REVIEWED_SOURCES`, `REVIEWED_CLAIMS` and `REVIEWED_RESOURCES`. A changed pin in the manifest alone does not pass. The values of a component with the source kind `tree` are not fixed in the script: the script reads them from `config/manifest.json` of the kit, and `manifest()` checks each resource path against the tree.
+3. `manifest()` compares the manifest with fixed reviewed values: `REVIEWED_SOURCES`, `REVIEWED_CLAIMS` and `REVIEWED_RESOURCES`. A changed pin in the manifest alone does not pass. For source kind `tree`, the script instead reads component values from the kit's `config/manifest.json`. `manifest()` checks each resource path against the tree.
 4. `overlay()` checks each key of the overlay: the form, the selection rules, each path, each role, each reference.
 5. `_outside_kit()` refuses a target in the clone.
 6. A target equal to `SAMPLE_TARGET` gives `sample_target`.
@@ -610,20 +713,16 @@ With `--launcher`, `plan` and `generate` apply the launcher rules of step 8 betw
 
 `validate` then prints the fixed object. So `valid: true` means that the kit can build a plan from your choices. `validate` throws the plan away.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action |
 | --- | --- |
 | `config/manifest.json` | read |
 | `~/.config/tenant-pi/overlay.json` | read |
 
-No file is created or changed. The action opens no file of the target or of the live profile. It reads one environment value, `HOME`, to find `~/.pi/agent`. For the two place rules it resolves the symbolic links of the target path, of the clone path and of `~/.pi/agent`. That reads link targets only.
+The action creates and changes no file. It opens no file of the target or of the live profile. It reads one environment value, `HOME`, to find `~/.pi/agent`. For the two place rules it resolves the symbolic links of the target path, of the clone path and of `~/.pi/agent`. That reads link targets only.
 
-</details>
-
-<details><summary>Output</summary>
+#### Output
 
 | Key | Meaning |
 | --- | --- |
@@ -634,7 +733,7 @@ Three options exist for an overlay with optional modules: `--registry`, `--local
 
 </details>
 
-## Step 8: plan
+### Step 8: Plan
 
 The plan shows what `generate` will write, before a write. First you save the report of step 3 as a file, because `plan` and `generate` start no process. Read the plan before you continue.
 
@@ -644,7 +743,7 @@ python3 scripts/tenant_pi.py plan --overlay "$HOME/.config/tenant-pi/overlay.jso
   --launcher "$HOME/.config/tenant-pi/launch-main.sh" --runtime-report "$HOME/.config/tenant-pi/runtime.json"
 ```
 
-The first command prints nothing. Expected output of the second command, shortened:
+You see no output from the first command. You see this shortened output from the second command:
 
 ```json
 {
@@ -671,7 +770,16 @@ The first command prints nothing. Expected output of the second command, shorten
 }
 ```
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what planning touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files created | The shell saves `runtime.json`; `plan` itself writes nothing. |
+| Files read | The manifest, overlay and saved runtime report. |
+| Not touched | The target and launcher. Planning does not test their absence. |
+| External hosts | None from planning; the version check runs first. |
+
+#### What runs
 
 `plan` does the shared steps of step 7, and then these:
 
@@ -682,9 +790,7 @@ The first command prints nothing. Expected output of the second command, shorten
 
 The plan itself is **pure**: `prepare()` opens no file and starts no process. The same manifest and the same overlay give the same plan on each machine. That is why the measured versions come from a file that you supply, and why they change the printed output only.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action | Mode | Writer |
 | --- | --- | --- | --- |
@@ -695,9 +801,7 @@ The plan itself is **pure**: `prepare()` opens no file and starts no process. Th
 
 `plan` creates no file. It does not create the launcher file, and it does not test that the launcher file or the target is absent.
 
-</details>
-
-<details><summary>Output</summary>
+#### Output
 
 | Key | Meaning |
 | --- | --- |
@@ -710,7 +814,7 @@ The plan itself is **pure**: `prepare()` opens no file and starts no process. Th
 | `commands.launchStatus` | `not_runnable_until_generation_succeeds` in a plan. |
 | `commands.launcherDisplayOnly` | The launcher path of `--launcher`. |
 | `commands.piInstall` | The global install line of Pi, with a mark. See below. |
-| `commands.providerKeyWarning` | Only when a known provider key variable is set in the shell of the plan run: the names that are set, never a value. Absent here. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable). |
+| `commands.providerKeyWarning` | Names of known provider key variables that are set in the plan's shell. Never values. Absent here. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable). |
 | `commands.setupDisplayOnly` | The dependency lines that are default steps. Empty here, because Pi is installed and matches. |
 
 `commands.piInstall` has these keys:
@@ -718,7 +822,7 @@ The plan itself is **pure**: `prepare()` opens no file and starts no process. Th
 | Key | Meaning |
 | --- | --- |
 | `command` | The install line of the pinned Pi. |
-| `status` | `not_needed` (the report has `match`), `needed` (`missing`), `replaces_installed` (`mismatch`) or `installed_version_unknown` (no report, or `unparsed`). |
+| `status` | `not_needed` (the report has `match` or `untested_in_range`), `needed` (`missing`), `replaces_installed` (`mismatch`) or `installed_version_unknown` (no report, or `unparsed`). |
 | `installed`, `required` | The two versions from the report. |
 | `change` | With `replaces_installed`: `downgrade`, `upgrade` or `unordered`. Else `null`. |
 | `warning` | Always `global_install_replaces_pi_for_all_profiles`: one `pi` command serves each profile of the user. |
@@ -733,9 +837,7 @@ The shortened output leaves out seven keys. In a core-only plan they are empty o
 | `workflow` | `mcp` and `promptr`, each with `"enabled": false` | The record of the two workflow modules. It is there also when both are off. |
 | `ownerPackages`, `ownerResources`, `unmanaged` | empty | Lists from the optional overlay keys. |
 
-</details>
-
-<details><summary>The plan without a runtime report</summary>
+#### The plan without a runtime report
 
 Without `--runtime-report`, the kit does not know the installed versions. The plan then has two more gaps, and the Pi install line is a default step. Shortened:
 
@@ -763,7 +865,7 @@ See [the plan](docs/profile-plan.md#readiness-after-measured-facts) for each gap
 
 </details>
 
-## Step 9: generate
+### Step 9: Generate
 
 The kit writes the profile into the target. This is the first lasting write of the kit outside the private directory. The target must be absent: the kit never writes into an existing directory.
 
@@ -773,7 +875,7 @@ python3 scripts/tenant_pi.py generate --overlay "$HOME/.config/tenant-pi/overlay
   --launcher "$HOME/.config/tenant-pi/launch-main.sh" --runtime-report "$HOME/.config/tenant-pi/runtime.json"
 ```
 
-Expected output, shortened:
+You see this output, shortened:
 
 ```json
 {
@@ -797,7 +899,16 @@ Expected output, shortened:
 
 The profile is complete when `filesComplete` is `true`.
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what generation touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files read | The manifest, overlay, runtime report and Git commit files. |
+| Files created | The target, its settings and kit records, then the launcher. |
+| Not touched | Any existing target, the overlay and the live profile. |
+| External hosts | None. No install or process runs. |
+
+#### What runs
 
 `generate` does the shared steps of steps 7 and 8, and then these:
 
@@ -820,9 +931,7 @@ The writer does these things, in this order:
 
 The marker says `incomplete` until each file is on the disk. A run that stops in the middle leaves a directory that says so. The kit has no rollback and deletes nothing: you inspect such a directory and remove it yourself.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Mode | Content | Writer |
 | --- | --- | --- | --- |
@@ -873,9 +982,7 @@ exec env env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR=/home/you/.pi/pr
 
 The second line is `exec env `, then the launch line of the plan, byte for byte. Step 13 explains each part.
 
-</details>
-
-<details><summary>Output</summary>
+#### Output
 
 `generate` prints the keys of the plan, with these differences:
 
@@ -893,9 +1000,7 @@ The `readinessGaps` list is empty only with a report with `match` for Node and P
 
 The runtime report compares version numbers only. An empty gap list does not prove that Pi starts or that a model replies. Step 14 has those checks.
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - An existing directory. A second run with the same target stops and changes nothing. With the same `--launcher` it prints `target_exists: launcher.path`. Without `--launcher`, or with a new launcher path, it prints `target_exists: target`.
 - The parent of the target. The kit creates no parent.
@@ -907,24 +1012,26 @@ See [the CLI contract](docs/generator.md) and [the launcher file](docs/launcher.
 
 </details>
 
-## Step 10: install the dependencies
+### Step 10: Install the dependencies
 
-The kit installs nothing. For a core-only profile the one dependency is Pi itself. Read `commands.piInstall.status` in the output of step 9, and do what the table says.
+The kit installs nothing. With the prerequisites present, a core-only profile needs no package beyond Pi. Read `commands.piInstall.status` in the output of step 9, and do what the table says.
 
 | `status` | What you do |
 | --- | --- |
-| `not_needed` | Nothing. Go to step 11. |
+| `not_needed` | Do not install Pi. Record the gap for `untested_in_range`, if present. Go to step 11. |
 | `needed` | Install Pi with the commands below. |
 | `replaces_installed` | Make a decision; see "When another Pi version is installed" below. |
 | `installed_version_unknown` | The kit does not know the installed version. Do step 3 and read its `pi` entry. |
 
-For `needed`, first test whether you can write the global directory of npm:
+For `needed`, first test whether you can write the global directory of npm.
+Replace `<pin>` in each install command with `runtime.piVersion`, currently `1.0.4`:
+
 
 ```sh
 p="$(npm config get prefix)"; test -w "$p/lib/node_modules" && test -w "$p/bin" && echo writable || echo "not writable"
 ```
 
-Expected output, for a user who can write there:
+You see this output, for a user who can write there:
 
 ```text
 writable
@@ -938,9 +1045,19 @@ npm install --global -- @earendil-works/pi-coding-agent@<pin>
 
 Warning: a global install replaces the `pi` command of each profile of the user.
 
-Do step 3 again after an install. The `pi` entry must have `match`.
+Do step 3 again after an install. The installed pin must give `match`.
+An existing accepted version gives `untested_in_range`; skip installation and record its gap.
 
-<details><summary>Files</summary>
+<details><summary>Drill-down: what dependency installation touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files created | The npm package, executable link, cache and logs; optionally a user-owned prefix. |
+| Writer | You run npm. The kit prints the install command only. |
+| Effect | A global install replaces the Pi command shared by your profiles. |
+| Not touched | The kit edits no shell startup file. |
+
+#### Files
 
 | Path | Action | Writer |
 | --- | --- | --- |
@@ -952,9 +1069,7 @@ Do step 3 again after an install. The `pi` entry must have `match`.
 
 Pi is one program for the whole user account. A profile is a directory of data. Each profile of the user runs the same `pi` command, so the profile does not hold a copy of Pi.
 
-</details>
-
-<details><summary>When you cannot write the global directory</summary>
+#### When you cannot write the global directory
 
 When the test prints `not writable`, the global command fails. Install Pi under a directory that you own, and put it on `PATH` for the current shell:
 
@@ -965,9 +1080,7 @@ export PATH="$HOME/.npm-global/bin:$PATH"
 
 The `export` line changes the current shell only. To keep it, you add the line to your shell startup file yourself. The kit never edits that file.
 
-</details>
-
-<details><summary>When another Pi version is installed</summary>
+#### When another Pi version is installed
 
 With `replaces_installed`, the global line is not a default step. It replaces the installed Pi for each profile, and `change` says whether that is a `downgrade` or an `upgrade`. You have three choices:
 
@@ -977,16 +1090,14 @@ With `replaces_installed`, the global line is not a default step. It replaces th
 
 See [the setup guide](docs/guides/setup.md#pi) for the full rule.
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - The kit runs none of these commands. They are yours.
-- A core-only profile needs no other package. An optional module can add steps here; see [what an optional module adds](#what-an-optional-module-adds).
+- A core-only profile needs no other package. An optional module can add steps here; see [what an optional module adds](#optional-components).
 
 </details>
 
-## Step 11: decide how Pi gets a credential
+### Step 11: Decide how Pi gets a credential
 
 Pi needs a credential for a model provider. The kit writes no credential and reads none. You choose one of two ways before the first launch.
 
@@ -1001,26 +1112,33 @@ To test that a name is set without printing its value, replace `EXAMPLE_PROVIDER
 test -n "${EXAMPLE_PROVIDER_API_KEY:-}" && echo set || echo unset
 ```
 
-The command prints `set` or `unset`.
+You see `set` or `unset`.
 
-<details><summary>What you must know about keys in the shell</summary>
+<details><summary>Drill-down: what the credential choice touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Command | Tests whether a variable is set, without printing its value. |
+| Files created | None now. A later Pi login writes target `auth.json`. |
+| Not touched | The live login and the overlay. The kit stores no credential. |
+| Scope | A profile separates configuration; it is not a sandbox. |
+
+#### What you must know about keys in the shell
 
 - Pi reads a provider key from the environment of the launching shell, including in a profile with no login. Not verified: which variable names Pi reads for each provider. Use the name that the Pi documentation gives. A key exported for another tool can pay for a prompt in the new profile. See [print mode](docs/launcher.md#print-mode).
 - A profile is not a sandbox. Each process of your user can read each profile, the private directory and the environment. See [the privacy guide](docs/guides/privacy.md#configuration-separation-is-not-isolation).
 - The launcher file holds no key. The kit builds the launch line from the overlay, and the overlay has no field for a secret.
 
-</details>
+#### Not touched
 
-<details><summary>Not touched</summary>
-
-- The kit reads no credential file and no environment value for a credential. `init-private`, `baseline`, `validate`, `plan` and `generate` read `HOME` and no other environment value, with one exception: `plan` tests whether a known provider key variable name is set and reads no value; see [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable).
+- The kit reads no credential file or credential value. `init-private`, `baseline`, `validate`, `plan` and `generate` read `HOME`. The exception is `plan`: it also tests known provider key variable names, without reading values. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable).
 - `check-runtime` reads `PATH` to find the tools, and `TMPDIR` (or `TEMP` or `TMP`) for its temporary directory. It passes the whole environment of the shell to the three `--version` processes, with `PI_CODING_AGENT_DIR` replaced for Pi. So a provider key that the shell exports reaches these three processes.
 - The other actions read no environment value.
 - `auth.json` of the live profile. The kit copies no login from one profile to another, so the new profile starts with no login.
 
 </details>
 
-## Step 12: record the baseline of the live profile
+### Step 12: Record the baseline of the live profile
 
 Before the first launch, the kit records the state of the live profile. After the launch, step 14 compares the directory with this record. The comparison shows whether the live profile changed after the record.
 
@@ -1028,7 +1146,7 @@ Before the first launch, the kit records the state of the live profile. After th
 python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.config/tenant-pi/live-baseline.json"
 ```
 
-Expected output:
+You see this output:
 
 ```json
 {
@@ -1049,7 +1167,16 @@ Two more cases:
 
 See [the setup guide](docs/guides/setup.md#stage-8-launch) for both cases.
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what the baseline touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files read | No file content from the live profile. The kit lists directories and reads entry metadata. |
+| Files created | A new `live-baseline.json`, mode `0600`, in the private directory. |
+| Not touched | Live-profile entries and any existing baseline. |
+| External hosts | None. |
+
+#### What runs
 
 In `scripts/tenant_pi.py`, `main()` calls `_baseline()`:
 
@@ -1060,9 +1187,7 @@ In `scripts/tenant_pi.py`, `main()` calls `_baseline()`:
 5. `scan()` lists the directory at each level and makes one status call for each entry. It opens directories only and follows no symbolic link.
 6. `record()` and `encode()` make the bytes of the file. `write()` creates the file with `_create_file()`.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action | Mode | Writer |
 | --- | --- | --- | --- |
@@ -1073,9 +1198,7 @@ The baseline file is one JSON object. It has the path, the time `recordedAt`, an
 
 The file holds no file content. Below the first level it holds no name. It still shows the names of the direct entries, so treat it as private.
 
-</details>
-
-<details><summary>Output</summary>
+#### Output
 
 | Key | Meaning |
 | --- | --- |
@@ -1102,9 +1225,7 @@ When the directory is absent, `present` is `false` and the two counts are 0:
 
 The baseline file then holds `"present": false`, an empty `entries` list and `"mtimeNs": null`.
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - No file of the live profile is opened. `auth.json`, each session and `settings.json` get one status call each.
 - The action changes no entry of the directory.
@@ -1114,7 +1235,7 @@ See [the directory baseline](docs/directory-baseline.md).
 
 </details>
 
-## Step 13: launch the profile and log in
+### Step 13: Launch the profile and log in
 
 You start Pi with the new profile for the first time. This is the first step in which Pi runs with the target, and from here on Pi writes into the target. The kit does not run in this step.
 
@@ -1122,7 +1243,7 @@ You start Pi with the new profile for the first time. This is the first step in 
 "$HOME/.config/tenant-pi/launch-main.sh"
 ```
 
-Pi shows its own start screen with its version and waits for your input. For a login inside Pi, type:
+You see Pi's start screen with its version. Pi waits for your input. For a login inside Pi, type:
 
 ```text
 /login
@@ -1130,7 +1251,16 @@ Pi shows its own start screen with its version and waits for your input. For a l
 
 Choose your provider and follow its steps. Then exit Pi.
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what the launch touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Command | The launcher replaces its shell with Pi and selects the target. |
+| Files changed | Pi can write settings, login data, sessions, model data and helper tools in the target. |
+| Not touched | The private directory and, for core only, the clone. |
+| Limit | Step 14 checks the live profile. The full interactive procedure is not verified. |
+
+#### What runs
 
 The launcher file runs one line:
 
@@ -1149,9 +1279,7 @@ exec env env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR=/home/you/.pi/pr
 
 The file passes no argument to Pi. To give Pi an argument, type the launch line by hand, as in step 14. An optional module can put more assignments in front of the line.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 Pi can write these entries into the target after a login and a prompt. Not verified: their modes across Pi versions.
 
@@ -1169,9 +1297,7 @@ The purpose of `bin/` comes from a reading of the installed Pi 1.0.2 package (`d
 
 Pi can change `settings.json` after each command that changes a setting. The kit does not write the file again. To see the difference between two profiles, use the `compare` action; see [the candidate update guide](docs/guides/candidate-update.md#after-a-native-pi-operation).
 
-</details>
-
-<details><summary>Not touched</summary>
+#### Not touched
 
 - The live profile, when the launch line is used as it is. Step 14 checks it.
 - The private directory. Pi does not know it.
@@ -1181,11 +1307,11 @@ Not verified: the interactive launch and provider login as one complete procedur
 
 </details>
 
-## Step 14: run the checks
+### Step 14: Run the checks
 
 You check that the new profile works and that it stayed inside its directory. Record each check as passed, failed or not run. A check that did not run is "not run", never "passed".
 
-1. Read the Pi version of the profile. The output must be `<pin>`.
+1. Read the Pi version of the profile. The output must be `<pin>` or an accepted version. Record an untested-version gap when needed.
 
    ```sh
    PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi --version
@@ -1193,7 +1319,9 @@ You check that the new profile works and that it stayed inside its directory. Re
 
 2. Read the start screen of step 13. It must show no extension error and no peer warning.
 
-3. Send the fixed prompt in print mode. The command is the launch line of the plan with `-p` and the prompt. The reply must hold `43`, and the exit status must be 0.
+3. Send the fixed prompt in print mode. The command is the launch line with `-p` and the prompt. The reply must hold `43`, and the exit status must be 0.
+
+   Add `--model '<provider>/<model>'` before `-p` to select the provider explicitly. A shell key can otherwise select an unintended provider.
 
    ```sh
    env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi --no-approve -p 'What is 17 plus 26? Reply with the number only.'; echo "exit status: $?"
@@ -1205,7 +1333,7 @@ You check that the new profile works and that it stayed inside its directory. Re
    python3 scripts/tenant_pi.py check-baseline --dir "$HOME/.pi/agent" --baseline "$HOME/.config/tenant-pi/live-baseline.json"
    ```
 
-Expected output of check 4:
+You see this output of check 4:
 
 ```json
 {
@@ -1222,7 +1350,16 @@ Expected output of check 4:
 }
 ```
 
-<details><summary>What runs</summary>
+<details><summary>Drill-down: what the profile checks touch</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Processes | Pi reads its version and sends one model prompt. The baseline comparison is a kit action. |
+| Files read | The baseline. The kit lists live directories without opening their files. |
+| Files created | Pi adds a session file to the target. |
+| Result | A matching reply and an unchanged baseline are separate checks. |
+
+#### What runs
 
 Checks 1 and 3 run Pi, not the kit. With `-p`, Pi sends one prompt, prints the final reply and exits. The prompt does not hold the number `43`, so the number can only come from a model. See [print mode](docs/launcher.md#print-mode).
 
@@ -1233,9 +1370,7 @@ Check 4 is a kit action. In `scripts/tenant_pi.py`, `main()` calls `_check_basel
 3. `_dir_state()` scans the directory, as in step 12.
 4. `compare()` compares the two states and makes the output.
 
-</details>
-
-<details><summary>Files</summary>
+#### Files
 
 | Path | Action | Writer |
 | --- | --- | --- |
@@ -1245,9 +1380,7 @@ Check 4 is a kit action. In `scripts/tenant_pi.py`, `main()` calls `_check_basel
 
 `check-baseline` writes nothing.
 
-</details>
-
-<details><summary>Output</summary>
+#### Output
 
 | Key | Meaning |
 | --- | --- |
@@ -1268,16 +1401,14 @@ When the directory was absent at the baseline and is absent now, the result is `
 
 `changed` does not say which process made the change. A Pi that you ran in the live profile after `recordedAt` also changes it. Observed with Pi 1.0.2 and a `settings.json` in the directory: a bare `pi --version` changes its modification time. Not verified: other Pi versions. See [how to read the result](docs/directory-baseline.md#how-to-read-the-result).
 
-</details>
-
-<details><summary>Verification limits</summary>
+#### Verification limits
 
 - Not verified: checks 1 to 3 as part of a complete clean-client install.
 - The check 4 example shows the form of an `unchanged` result without a Pi launch. It does not prove a launch boundary.
 
 </details>
 
-## Step 15: record the install
+### Step 15: Record the install
 
 You write down what you ran and what you saw. The install log is the memory of this machine: a later update starts from it. The kit never reads the log.
 
@@ -1286,7 +1417,8 @@ git -C "$HOME/tenant-pi" rev-parse HEAD
 ${EDITOR:-vi} "$HOME/.config/tenant-pi/install-log.md"
 ```
 
-The first command prints the commit of the clone. Add one entry to the log with the fields of the form that is in the file:
+You see the clone's commit from the first command. The second command opens the log in your editor.
+Add one entry with the fields of the form in the file:
 
 ```text
 ## YYYY-MM-DD: short title
@@ -1304,7 +1436,16 @@ The first command prints the commit of the clone. Add one entry to the log with 
 
 Warning: do not write a secret value into the log. Write the name of a credential, never its value.
 
-<details><summary>Files</summary>
+<details><summary>Drill-down: what the install record touches</summary>
+
+| Piece | Detail |
+| --- | --- |
+| Files read | Git metadata and the install-log template. |
+| Files changed | You add an entry to `install-log.md`. |
+| Not touched | The kit never reads or updates this log. |
+| Limit | Record credential names only, never values. |
+
+#### Files
 
 | Path | Action | Writer |
 | --- | --- | --- |
@@ -1312,134 +1453,132 @@ Warning: do not write a secret value into the log. Write the name of a credentia
 
 The form in the file says what each field holds. "Model replied" and "Reply matched" are the two results of check 3. "Live agent directory" is the `result` of check 4 with its `recordedAt` time.
 
-</details>
-
-<details><summary>A Git history for the private directory</summary>
+#### A Git history for the private directory
 
 Step 4 printed a `git init` line for the private directory. It is optional. With it, each change of your overlay has a history, and a second machine can start from the same choices. The `.gitignore` of the directory keeps `inputs/` and the usual credential file names out of Git. It is not a security control: read `git status` before each commit.
 
 </details>
 
-## The footprint after a core-only install
+## Optional components
 
-This table has each path that the install created or changed on the machine.
+Each component other than `core` is optional. You enable one when you move its ID from `selection.disable` to `selection.enable` in the overlay. An enabled module can add to the footprint in the eight ways of this table. The examples show the output of `generate`.
 
-| Path | Kind and mode | Writer | Purpose |
-| --- | --- | --- | --- |
-| `~/tenant-pi/` | directory | Git | The clone. Not changed after the clone. |
-| `~/.config/`, `~/.pi/` | directories, mode from your umask | you (steps 4 and 5) | The parents. Only when they were absent before the install. |
-| `~/.config/tenant-pi/` | directory `0700` | the kit (step 4) | The private directory. |
-| `~/.config/tenant-pi/overlay.json` | file `0600` | the kit, then you | Your choices. |
-| `~/.config/tenant-pi/registry.json` | file `0600` | the kit, then you | Model evidence. `{}` for a core-only profile. |
-| `~/.config/tenant-pi/install-log.md` | file `0600` | the kit, then you | Your record of each install. |
-| `~/.config/tenant-pi/accepted-drift.md` | file `0600` | the kit, then you | Your list of differences that you keep on purpose. |
-| `~/.config/tenant-pi/.gitignore` | file `0600` | the kit | Names that Git must not track there. |
-| `~/.config/tenant-pi/inputs/` | directory `0700` | the kit | Empty. For the input files of optional modules. |
-| `~/.config/tenant-pi/runtime.json` | file, mode from your umask | you (step 8) | The saved report of `check-runtime`. |
-| `~/.config/tenant-pi/launch-main.sh` | file `0700` | the kit (step 9) | The launcher file. |
-| `~/.config/tenant-pi/live-baseline.json` | file `0600` | the kit (step 12) | The baseline of the live profile. |
-| `~/.pi/profiles/` | directory | you (step 5) | The parent of the target. |
-| `~/.pi/profiles/main/` | directory `0700` | the kit (step 9) | The target: the new profile. |
-| `~/.pi/profiles/main/settings.json` | file `0600` | the kit, then Pi | The Pi settings. |
-| `~/.pi/profiles/main/.tenant-pi/choices.json` | file `0600` | the kit | The inputs of this profile. |
-| `~/.pi/profiles/main/.tenant-pi/state.json` | file `0600` | the kit | The marker and the record of the generation. |
-| `~/.pi/profiles/main/auth.json` | file `0600` | Pi (step 13) | The login. |
-| `~/.pi/profiles/main/sessions/` | directory | Pi | The sessions. |
-| `~/.pi/profiles/main/models-store.json` | file `0600` | Pi | Model data of Pi. |
-| `~/.pi/profiles/main/bin/` | directory | Pi | Helper tools of Pi. |
-| `<npm prefix>/lib/node_modules/@earendil-works/pi-coding-agent/`, `<npm prefix>/bin/pi` | package and link | npm (step 10) | Pi itself. Only when you installed it. |
-| `~/.npm-global/` | directory | npm (step 10) | Pi under a directory that you own. Only when you used the `--prefix` form. |
-| `~/.npm/` | directory | npm | The cache and the logs of npm. |
-| One empty directory under `$TMPDIR` | directory `0700` | you (step 1) | From `mktemp -d`. You can remove it. |
-| `$TMPDIR/node-compile-cache/` | directory | Pi (seen after `pi --version` in steps 1 and 3) | The compile cache of Node. Observed with Pi 1.0.2. You can remove it. |
+| Class of change | Example |
+| --- | --- |
+| An entry in `packages` of `settings.json` | `context-meter`, an in-tree module: an entry with the absolute path of `packages/tenantext` in the clone, and a filter that loads one extension. |
+| More keys in `settings.json` | `mcp` adds `"extensions": ["-builtin:mcp"]`. A model role adds `defaultProvider`, `defaultModel` and `defaultThinkingLevel`. |
+| One more file in the target | `mcp` adds `mcp-adapter.json`. `hermes` adds `hermes-memory-config.json`. |
+| An assignment in front of the launch line | `mcp` puts `PI_MCP_CONFIG_MODE=exclusive` in front. The gateway route puts `TENANTEXT_LITELLM_BASE_URL=<address>` in front. |
+| More dependency steps for you | `mcp` adds a `pi update --extensions` line to `setupDisplayOnly`. An in-tree module of `packages/tenantext` needs `npm ci --ignore-scripts` in that directory, which leaves `node_modules/` in the clone. |
+| More inputs in the private directory | `mcp` reads `inputs/mcp-adapter.json`, and `validate`, `plan` and `generate` then need `--local-dir`. A model route reads `registry.json` with `--registry`. |
+| State outside the target at run time | The `wiki` module can keep a vault in `~/.llm-wiki/`. The `mcp` adapter keeps tokens in the keyring of the operating system. |
+| More gaps | `context-meter` adds three: `package_runtime_unverified`, `pi_line_unqualified` and `kit_test_missing`. |
 
-The Pi entries of the target are examples, not a complete list. Pi can create more entries, for example `npm/`; see step 13.
+The `packages` entry of the `context-meter` example:
 
-The kit itself writes in three places only: the private directory, the target and one temporary directory that it removes. In each place it creates new entries and never replaces an entry that existed before the run.
-
-What the install does not change:
-
-- The live profile `~/.pi/agent`. The kit refuses a target in it, and step 14 checks it. A live directory that only `PI_CODING_AGENT_DIR` names does not have the refusal.
-- Each shell startup file, and `PATH`.
-- System packages, services and timers.
-- The clone, after step 2.
-
-Two kit actions show the kit profiles of the machine. Both are read-only:
-
-```sh
-python3 scripts/tenant_pi.py list --parent "$HOME/.pi/profiles"
-python3 scripts/tenant_pi.py inventory --dir "$HOME/.pi/profiles/main"
+```json
+{"extensions": ["extensions/context-meter/index.ts"], "prompts": [], "skills": [], "source": "/home/you/tenant-pi/packages/tenantext", "themes": []}
 ```
 
-`list` reads `.tenant-pi/state.json` of each directory below the parent. `inventory` names the packages, extensions, skills and prompts of one profile. See [the candidate list](docs/candidate-list.md) and [the profile inventory](docs/profile-inventory.md).
+This entry is the reason for the warning of step 2. The profile points at the clone, so the clone must stay in its place.
 
-## Remove the install
+The launch line of the `mcp` example:
 
-The install has no service and no hook, so you remove it with the removal of its directories. Do the steps in this order.
+```text
+PI_MCP_CONFIG_MODE=exclusive env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR=/home/you/.pi/profiles/ex-mcp pi --no-approve
+```
 
-1. Exit each Pi that uses the profile.
+Three rules hold for each module:
 
-2. Remove the target.
+- A module that stays disabled adds no file, no key and no assignment.
+- The module can need a credential. The credential reaches Pi from the shell or from a Pi login, never from a file of the kit.
+- `readinessGaps` is not empty for a profile with a module that has a gap.
 
-   ```sh
-   rm -r "$HOME/.pi/profiles/main"
-   ```
+No optional module passed an accepted live trial in this release. Read [the module guide](docs/guides/modules.md) before you enable one. It has one row for each component, with its inputs, its credential method and its state. The details are in [in-tree packages](docs/packages.md), [memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md) and [model routes](docs/model-routes.md).
 
-   Warning: this deletes the login in `auth.json` and each session of the profile.
+Every optional component has label `skipped` by default and `unverified` when enabled.
+Manifest status `tested` means offline review, not a live trial. No optional component has label `ready`.
+A missing requirement makes its setup `blocked`. The [module guide](docs/guides/modules.md#status-labels) defines these labels.
 
-3. Remove the private directory.
+### Tenantext extensions
 
-   ```sh
-   rm -r "$HOME/.config/tenant-pi"
-   ```
+Status: `unverified`. The components add filtered entries from `packages/tenantext` to `settings.json`.
+Install that package's dependencies with npm as the setup guide specifies. Keep the clone in place.
+`context-meter` shows context use; `ops-footer` needs it. `resources` manages resource selections.
+The usage and doctor extensions can read login state outside the target; see the module guide for each path.
+`codex-accounts` needs an HTTPS gateway, model evidence and an environment-key reference. Its login route is `blocked`.
+Model routing can also add `defaultProvider`, `defaultModel` and `defaultThinkingLevel` without an extension.
 
-   Warning: this deletes your overlay, your install log, the launcher file and the baseline. If you ran `git init` there, it also deletes that Git history. Keep a copy if you want to generate the profile again.
+### Promptr
 
-4. Remove the parent of the target. The command works only when the directory is empty.
+Status: `unverified`. Promptr adds its in-tree package entry and keeps runtime state in profile `promptr/` and project `.promptr/`.
+It needs npm dependencies and a build in `packages/promptr`. The clone does not ship its `dist/` build output.
+Each Promptr skill needs `promptr`. Its OpenKnowledge and Herdr skills also need those external tools.
 
-   ```sh
-   rmdir "$HOME/.pi/profiles"
-   ```
+### MCP adapter
 
-5. Remove `~/.pi` and `~/.config`, only when you created them in steps 4 and 5. `rmdir` fails on a directory that holds an entry, so it never removes your files.
+Status: manifest `tested`, runtime `unverified`. MCP means Model Context Protocol, a protocol for tools and services.
+The module adds `mcp-adapter.json` and disables native Pi MCP with `-builtin:mcp`.
+It needs private `inputs/mcp-adapter.json`, the `--local-dir` option and `pi-mcp-adapter` installed through Pi.
+The launcher sets `PI_MCP_CONFIG_MODE=exclusive`. Tokens can use the operating-system keyring; spilled output uses `$TMPDIR`.
 
-   ```sh
-   rmdir "$HOME/.pi"
-   rmdir "$HOME/.config"
-   ```
+### Hermes memory
 
-6. Remove the clone.
+Status: manifest `tested`, runtime `unverified`. Hermes adds `hermes-memory-config.json`, then runtime memory files under the profile.
+Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together.
+It needs `pi-hermes-memory` and a compiler toolchain for `better-sqlite3`.
+`backgroundReview: true` also needs `roles.memory` and permits independent model calls.
 
-   ```sh
-   rm -rf "$HOME/tenant-pi"
-   ```
+### LLM Wiki
 
-7. Remove Pi, only when you installed it for this profile and no other profile uses it.
+Status: manifest `tested`, runtime `unverified`. LLM Wiki adds profile settings and can keep its vault outside the target.
+Select `wiki`, set `consent.memoryCapture: true` and supply `memory.wiki` together.
+It needs `@zosmaai/pi-llm-wiki`. A selected wiki home adds `WIKI_HOME` to the launch line.
+The setup guide gives the peer-override step for both Hermes and LLM Wiki.
+These npm modules have reviewed versions, but their declarations do not pin the registry version installed by Pi.
 
-   ```sh
-   npm uninstall --global @earendil-works/pi-coding-agent
-   ```
+### OpenViking memory
 
-   For the `--prefix` form of step 10, give the same prefix:
+Status: `unverified`. The module loads `packages/openviking-pi` and uses a separately configured OpenViking server.
+It needs npm dependencies, `memory.openviking` and both `consent.memoryCapture` and `consent.remoteMemoryWrites` set to `true`.
+User configuration can live under `~/.openviking/`; sessions and memories live on the server.
+The kit writes no server endpoint or key.
 
-   ```sh
-   npm uninstall --global --prefix "$HOME/.npm-global" @earendil-works/pi-coding-agent
-   ```
+### Knowledge and coordinator skills
 
-   Warning: this removes the `pi` command for each profile that uses that install, also for the live profile.
+Status: `unverified`. These components add filtered skill directories from `packages/tenantext`, not another service.
+Knowledge workflows need separately installed OpenKnowledge tools.
+Coordinator workflows need the tools and tracker described by each skill. The kit does not install those tools.
+The component READMEs list the [knowledge skills](packages/tenantext/skills/knowledge-skills/README.md)
+and [coordinator skills](packages/tenantext/skills/coordinator-skills/README.md).
+Herdr, `slopscore-pr` and `tracker-site` are separate selectable skills. Their external state can stay outside the profile.
 
-These paths stay after the seven steps:
+## Mac specifics
 
-- `~/.npm/`: the cache and the logs of npm. npm uses it for each project of the user. It is a cache: you can remove it.
-- `~/.npm-global/`: the prefix directory of step 10. Remove it only when it holds no other package. Not verified: what npm leaves in it after the uninstall.
-- The empty directory of step 1 under `$TMPDIR`. Remove it with `rmdir`.
-- `$TMPDIR/node-compile-cache/`: the compile cache of Node. It is a cache: you can remove it.
+Not verified: these steps on a Mac. `docs/guides/macos.md` has the full steps and the sources.
+The guide covers Apple silicon only. Bottle availability does not qualify a kit installation.
+A bottle is a prebuilt Homebrew package.
 
-The removal of `auth.json` does not end a login at the provider. Use the controls of the provider to end it. If you added a `PATH` line or an exported key to a shell startup file yourself, remove that line yourself.
+| Step | Difference on a Mac |
+| --- | --- |
+| All steps | macOS uses zsh. Put every `PATH` or variable line in `~/.zshrc`, never `~/.bashrc`. Run `exec zsh` to reload it. Use the kitty window's zsh to run Git hooks and the launcher. |
+| Prerequisites | Use native `arm64` tools and the Homebrew prefix `/opt/homebrew`. The guide does not require Rosetta. |
+| Prerequisites | `git`, `python@3.12`, `node@24` and `podman` have arm64 bottles for macOS 15 (Sequoia) and 26 (Tahoe), not 14 (Sonoma). |
+| Prerequisites | `gitleaks` and `colima` have arm64 bottles for macOS 14, 15 and 26. Recheck the formula for your macOS version. |
+| 1, 3, 10 | Select Node 24 and Python 3.11 or later. The guide selects `python@3.12`; check both version and `arm64` architecture. |
+| 4 to 9 | Use the expanded macOS home path in JSON. Keep the target outside the clone, private directory and live profile. |
+| 10 | Homebrew `node@24` needs its explicit `PATH`. The nvm alternative and native addon compilation remain unverified. |
+| Scan prerequisites | Podman is recommended instead of Docker Desktop. Colima is an untested alternative, not a configured scanner. |
+| Scan command | The script accepts `SCAN_ENGINE=docker`, not `podman`. A private `podman-bin/docker` symlink makes its `docker` calls reach Podman. |
+| Scan paths | Share the repository, Git directory and scan temporary directory into the VM at the same absolute paths. |
+| Scan temporary files | Set `TMPDIR` to private `scan-tmp/` under your home. That avoids assumptions about macOS temporary-directory sharing. |
+| Scan image | Pull the pinned image explicitly. The scan never pulls it; Podman short-name resolution and arm64 execution remain unverified. |
+| Scan binary | The current Homebrew gitleaks cannot satisfy exact output `v8.28.0`. The upstream darwin arm64 binary route remains unverified. |
+| 12 to 14 | Keep all baseline checks and the launcher unchanged. No accepted live Mac trial qualifies the launch, login or model reply. |
 
-Not verified: the removal commands. The list follows from the footprint table.
+Warning: the compatibility `PATH` changes every `docker` command in that shell. `TMPDIR` changes every temporary-directory user in that shell.
 
-## The components
+## Components
 
 ```text
  THE CLONE  ~/tenant-pi                        THE PRIVATE DIRECTORY  ~/.config/tenant-pi
@@ -1501,7 +1640,7 @@ The reasons for this structure:
 - **Gaps, not promises.** The kit cannot prove offline that Pi loads a package or that a model replies. It lists each such fact as a gap. A gap goes away only when a fact proves it.
 - **A profile is a directory, not a sandbox.** `PI_CODING_AGENT_DIR` selects the data of one Pi process. Each process of your user can still read each profile. See [the privacy guide](docs/guides/privacy.md).
 
-### The scripts
+### Scripts
 
 | Script | Role |
 | --- | --- |
@@ -1514,50 +1653,219 @@ The reasons for this structure:
 | `scripts/check_runtime.py` | The three version processes of `check-runtime`. |
 | `scripts/baseline.py` | The scan and the comparison of `baseline` and `check-baseline`. |
 | `scripts/kit_commit.py` | Reads the commit of the clone without a Git process. |
-| `scripts/model_routes.py`, `scripts/memory_modules.py`, `scripts/workflow_modules.py` | The parts of the plan that the optional modules add. |
-| `scripts/candidate_compare.py`, `scripts/carry.py`, `scripts/candidate_list.py`, `scripts/profile_inventory.py` | The update tools: `compare`, `carry`, `list` and `inventory`. |
-| `scripts/publish_check.py`, `scripts/doc_check.py`, `scripts/examples.py` | The checks of the kit itself. |
+| `scripts/model_routes.py` | Adds model routes to the plan. |
+| `scripts/memory_modules.py` | Adds memory configuration to the plan. |
+| `scripts/workflow_modules.py` | Adds workflow configuration to the plan. |
+| `scripts/candidate_compare.py` | Compares candidate profiles. |
+| `scripts/carry.py` | Prints patches for selected differences. |
+| `scripts/candidate_list.py` | Lists candidates under a parent. |
+| `scripts/profile_inventory.py` | Lists one profile's resources by name. |
+| `scripts/publish_check.py` | Checks the publish inventory and public text. |
+| `scripts/doc_check.py` | Checks Markdown links, JSON examples and CLI names. |
+| `scripts/examples.py` | Checks or regenerates the synthetic examples. |
+| `scripts/patch_extension_peers.mjs` | Corrects host-provided peers in installed extension manifests. |
+| `scripts/pi_npm_wrapper.sh` | Runs the package manager, then reapplies peer overrides. |
+| `scripts/pi_update.py` | Detects and qualifies Pi updates without changing an installed profile. |
+| `scripts/ci_update.py` | Adapts update jobs; only its request action writes to the network. |
+| `scripts/publish_portable.py` | Publishes the reviewed set as a portable snapshot. |
+| `scripts/scan.sh` | Scans tracked content and history for secrets and host values. |
+| `scripts/install-hooks.sh` | Installs, checks or removes the scan hooks. Not part of this base install. |
+| `scripts/git-hooks/dispatch` | Dispatches to the hook in the current worktree. |
+| `scripts/git-hooks/pre-commit` | Scans staged changes. |
+| `scripts/git-hooks/pre-merge-commit` | Scans the staged merge. |
+| `scripts/git-hooks/pre-push` | Scans commits that the push sends. |
+| `scripts/capture.py` | Retired entry point; refuses live capture. |
+| `scripts/install.py` | Retired entry point; refuses installation. |
 
 `python3 scripts/tenant_pi.py --help` lists the actions. Each action has its own `--help`.
+`scripts/setup_remotes.sh` is development-only. It configures fetch-only package-source remotes and is absent from portable snapshots.
+The remaining files under `scripts/` are scan rule lists and the development-only inventory, not executable scripts.
 
-## What an optional module adds
+### Generated files
 
-Each component other than `core` is optional. You enable one when you move its ID from `selection.disable` to `selection.enable` in the overlay. An enabled module can add to the footprint in the eight ways of this table. The examples show the output of `generate`.
+The target holds `settings.json`, `.tenant-pi/choices.json` and `.tenant-pi/state.json` after generation.
+The launcher is a separate file in the private directory. Step 9 gives each file's content and mode.
+The table includes the surrounding files, caches and runtime state of a base install.
 
-| Class of change | Example |
+| Path | Kind and mode | Writer | Purpose |
+| --- | --- | --- | --- |
+| `~/tenant-pi/` | directory | Git | The clone. Not changed after the clone. |
+| `~/.config/`, `~/.pi/` | directories, mode from your umask | you (steps 4 and 5) | The parents. Only when they were absent before the install. |
+| `~/.config/tenant-pi/` | directory `0700` | the kit (step 4) | The private directory. |
+| `~/.config/tenant-pi/overlay.json` | file `0600` | the kit, then you | Your choices. |
+| `~/.config/tenant-pi/registry.json` | file `0600` | the kit, then you | Model evidence. `{}` for a core-only profile. |
+| `~/.config/tenant-pi/install-log.md` | file `0600` | the kit, then you | Your record of each install. |
+| `~/.config/tenant-pi/accepted-drift.md` | file `0600` | the kit, then you | Your list of differences that you keep on purpose. |
+| `~/.config/tenant-pi/.gitignore` | file `0600` | the kit | Names that Git must not track there. |
+| `~/.config/tenant-pi/inputs/` | directory `0700` | the kit | Empty. For the input files of optional modules. |
+| `~/.config/tenant-pi/runtime.json` | file, mode from your umask | you (step 8) | The saved report of `check-runtime`. |
+| `~/.config/tenant-pi/launch-main.sh` | file `0700` | the kit (step 9) | The launcher file. |
+| `~/.config/tenant-pi/live-baseline.json` | file `0600` | the kit (step 12) | The baseline of the live profile. |
+| `~/.pi/profiles/` | directory | you (step 5) | The parent of the target. |
+| `~/.pi/profiles/main/` | directory `0700` | the kit (step 9) | The target: the new profile. |
+| `~/.pi/profiles/main/settings.json` | file `0600` | the kit, then Pi | The Pi settings. |
+| `~/.pi/profiles/main/.tenant-pi/choices.json` | file `0600` | the kit | The inputs of this profile. |
+| `~/.pi/profiles/main/.tenant-pi/state.json` | file `0600` | the kit | The marker and the record of the generation. |
+| `~/.pi/profiles/main/auth.json` | file `0600` | Pi (step 13) | The login. |
+| `~/.pi/profiles/main/sessions/` | directory | Pi | The sessions. |
+| `~/.pi/profiles/main/models-store.json` | file `0600` | Pi | Model data of Pi. |
+| `~/.pi/profiles/main/bin/` | directory | Pi | Helper tools of Pi. |
+| `<npm prefix>/lib/node_modules/@earendil-works/pi-coding-agent/`, `<npm prefix>/bin/pi` | package and link | npm (step 10) | Pi itself. Only when you installed it. |
+| `~/.npm-global/` | directory | npm (step 10) | Pi under a directory that you own. Only when you used the `--prefix` form. |
+| `~/.npm/` | directory | npm | The cache and the logs of npm. |
+| One empty directory under `$TMPDIR` | directory `0700` | you (step 1) | From `mktemp -d`. You can remove it. |
+| `$TMPDIR/node-compile-cache/` | directory | Pi (seen after `pi --version` in steps 1 and 3) | The compile cache of Node. Observed with Pi 1.0.2. You can remove it. |
+
+The Pi entries of the target are examples, not a complete list. Pi can create more entries, for example `npm/`; see step 13.
+
+With the paths in this procedure, the kit writes in three places: the private directory, the target and its temporary directory.
+It removes that temporary directory after the version probe. In each place it creates new entries and never replaces an entry that existed before the run.
+
+What the install does not change:
+
+- The live profile `~/.pi/agent`. The kit refuses a target in it, and step 14 checks it. A live directory that only `PI_CODING_AGENT_DIR` names does not have the refusal.
+- Each shell startup file, and `PATH`.
+- System packages, services and timers.
+- The clone, after step 2.
+
+Two kit actions show the kit profiles of the machine. Both are read-only:
+
+```sh
+python3 scripts/tenant_pi.py list --parent "$HOME/.pi/profiles"
+python3 scripts/tenant_pi.py inventory --dir "$HOME/.pi/profiles/main"
+```
+
+`list` reads `.tenant-pi/state.json` of each directory below the parent. `inventory` names the packages, extensions, skills and prompts of one profile. See [the candidate list](docs/candidate-list.md) and [the profile inventory](docs/profile-inventory.md).
+
+### Configuration files
+
+| File | Use |
 | --- | --- |
-| An entry in `packages` of `settings.json` | `context-meter`, an in-tree module: an entry with the absolute path of `packages/tenantext` in the clone, and a filter that loads one extension. |
-| More keys in `settings.json` | `mcp` adds `"extensions": ["-builtin:mcp"]`. A model role adds `defaultProvider`, `defaultModel` and `defaultThinkingLevel`. |
-| One more file in the target | `mcp` adds `mcp-adapter.json`. `hermes` adds `hermes-memory-config.json`. |
-| An assignment in front of the launch line | `mcp` puts `PI_MCP_CONFIG_MODE=exclusive` in front. The gateway route puts `TENANTEXT_LITELLM_BASE_URL=<address>` in front. |
-| More dependency steps for you | `mcp` adds a `pi update --extensions` line to `setupDisplayOnly`. An in-tree module of `packages/tenantext` needs `npm ci --ignore-scripts` in that directory, which leaves `node_modules/` in the clone. |
-| More inputs in the private directory | `mcp` reads `inputs/mcp-adapter.json`, and `validate`, `plan` and `generate` then need `--local-dir`. A model route reads `registry.json` with `--registry`. |
-| State outside the target at run time | The `wiki` module can keep a vault in `~/.llm-wiki/`. The `mcp` adapter keeps tokens in the keyring of the operating system. |
-| More gaps | `context-meter` adds three: `package_runtime_unverified`, `pi_line_unqualified` and `kit_test_missing`. |
+| `config/manifest.json` | Reviewed components, runtime requirements, source pins, claims and resources. |
+| `config/config.example.json` | Synthetic core-only overlay that `init-private` adapts to the target. |
+| `config/private/registry.json` | Empty model-evidence template. |
+| `config/private/install-log.md` | Template for the manual install record. |
+| `config/private/accepted-drift.md` | Template for differences that you accept. |
+| `config/private/gitignore` | Private-directory exclusions, including inputs and credential file names. |
+| Private `overlay.json` | Your target, module selection, routes, references and consent. |
+| Private `registry.json` | Your evidence for model choices; pass it with `--registry` when required. |
+| Private `inputs/mcp-adapter.json` | MCP server definitions; pass the private directory with `--local-dir`. |
 
-The `packages` entry of the `context-meter` example:
+### Directories of one user
 
-```json
-{"extensions": ["extensions/context-meter/index.ts"], "prompts": [], "skills": [], "source": "/home/you/tenant-pi/packages/tenantext", "themes": []}
+| Directory | Content and writer |
+| --- | --- |
+| `$HOME/tenant-pi` | Git writes the clone. Keep it in place while profiles refer to in-tree packages. |
+| `$HOME/.config/tenant-pi` | The kit creates private choices and records; you maintain them. |
+| `$HOME/.pi/profiles` | You create this parent for generated profiles. |
+| `$HOME/.pi/profiles/main` | The kit creates this target once; Pi later writes its runtime state. |
+| `$HOME/.pi/agent` | The live profile. Pi owns its state; the kit refuses a target inside it. |
+| `.local/` in the clone | Optional private client state. Git ignores it; that is not a security control. |
+
+## How to remove it
+
+The base install starts no service and installs no hook. Remove its directories in this order.
+
+1. Exit each Pi that uses the profile.
+
+Warning: step 2 deletes the login in `auth.json` and each session of the profile.
+
+2. Remove the target.
+
+   ```sh
+   rm -r "$HOME/.pi/profiles/main"
+   ```
+
+Warning: step 3 deletes your overlay, install log, launcher and baseline. It also deletes any Git history in that directory.
+
+Keep a copy if you want to generate the profile again.
+
+3. Remove the private directory.
+
+   ```sh
+   rm -r "$HOME/.config/tenant-pi"
+   ```
+
+4. Remove the parent of the target. The command works only when the directory is empty.
+
+   ```sh
+   rmdir "$HOME/.pi/profiles"
+   ```
+
+5. Remove `~/.pi` and `~/.config`, only when you created them in steps 4 and 5. `rmdir` fails on a directory that holds an entry, so it never removes your files.
+
+   ```sh
+   rmdir "$HOME/.pi"
+   rmdir "$HOME/.config"
+   ```
+
+6. Remove the clone.
+
+   ```sh
+   rm -rf "$HOME/tenant-pi"
+   ```
+
+Warning: step 7 removes the `pi` command for every profile that uses that installation, including the live profile.
+
+7. Remove Pi only when you installed it for this profile and no other profile uses it.
+
+   ```sh
+   npm uninstall --global @earendil-works/pi-coding-agent
+   ```
+
+   For the `--prefix` form of step 10, give the same prefix:
+
+   ```sh
+   npm uninstall --global --prefix "$HOME/.npm-global" @earendil-works/pi-coding-agent
+   ```
+
+These paths stay after the seven steps:
+
+- `~/.npm/`: the cache and the logs of npm. npm uses it for each project of the user. It is a cache: you can remove it.
+- `~/.npm-global/`: the prefix directory of step 10. Remove it only when it holds no other package. Not verified: what npm leaves in it after the uninstall.
+- The empty directory of step 1 under `$TMPDIR`. Remove it with `rmdir`.
+- `$TMPDIR/node-compile-cache/`: the compile cache of Node. It is a cache: you can remove it.
+
+The removal of `auth.json` does not end a login at the provider. Use the controls of the provider to end it. If you added a `PATH` line or an exported key to a shell startup file yourself, remove that line yourself.
+
+Not verified: the removal commands. The list follows from the footprint table.
+
+## Keep this file current
+
+Check these facts for each portable release. A text check does not prove a live installation.
+
+| Part of this file | Source | What checks verify today |
+| --- | --- | --- |
+| Node `>=24.0.0 <25`, Python `>=3.11`, Pi pin and accepted range | `runtime` in `config/manifest.json`; `scripts/check_runtime.py` | Runtime and contract tests check range rules. No check compares every version written here with the manifest. |
+| Example Node `24.21.0`, npm `11.19.0`, Python `3.11.2`, Git `2.39.5`, historical Pi `1.0.2` observations | Retained output examples and their provenance below | No check measures these example versions. They are not new runtime evidence. |
+| The 15 steps and their order | [README.md](README.md#the-stages) and [setup guide](docs/guides/setup.md), nine stages | Documentation tests check shared rules in the install guides. No test counts or orders this file's 15 steps. |
+| Script inventory and options | Tracked `scripts/` files; parser in `scripts/tenant_pi.py` | `doc_check.py` checks kit action and flag names. It does not prove this script inventory complete. |
+| Profile and private file inventory, modes and writers | `scripts/profile_write.py`, `scripts/private_init.py`, `scripts/launcher.py`, `scripts/baseline.py` | Unit tests check generated trees, modes and refusal rules. No check compares every footprint row with the implementation. |
+| JSON fields and quoted output lines | `scripts/tenant_pi.py`, `scripts/profile_plan.py`, `scripts/check_runtime.py`, `scripts/baseline.py` | `doc_check.py` parses JSON examples. Unit tests check output behavior, not every quoted example byte. |
+| Publish inventory | `PUBLISH`, `PUBLISH_DIRS` and exclusions in `scripts/publish_check.py` | `publish_check.py` checks the reviewed file set, examples and public-text rules. It does not approve a release. |
+| Relative links and reference paths | The files named by each link and the Components tables | `doc_check.py` checks Markdown links and anchors. Check plain-text paths separately with Git's tracked-file list. |
+| Frontmatter | This file's YAML block and its relative source resources | Parse it separately. `doc_check.py` treats frontmatter as text; it does not validate Open Knowledge Format (OKF) metadata. |
+| Optional module labels and footprints | `config/manifest.json` and [module guide](docs/guides/modules.md) | Module tests cover offline plans and consent. They do not qualify runtime behavior. |
+| Mac differences | `docs/guides/macos.md` and its upstream sources | Bottle listings and offline checks do not prove a Mac installation. |
+| Each line that starts with "Not verified" | Its stated limit and a future accepted run | No automatic check proves these claims. Remove a limit only when an accepted run supplies evidence. |
+
+After an edit, run the seven kit checks from the clone root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py --public
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py
+scripts/scan.sh --level fail history main..HEAD
 ```
 
-This entry is the reason for the warning of step 2. The profile points at the clone, so the clone must stay in its place.
+The history range compares a development branch with `main`. It does not scan uncommitted edits or a snapshot already at `main`.
+The commit hook checks staged edits. Use the release workflow for a portable snapshot.
+Keep this file generic: placeholders only, no host name, no account name and no private path.
 
-The launch line of the `mcp` example:
-
-```text
-PI_MCP_CONFIG_MODE=exclusive env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR=/home/you/.pi/profiles/ex-mcp pi --no-approve
-```
-
-Three rules hold for each module:
-
-- A module that stays disabled adds no file, no key and no assignment.
-- The module can need a credential. The credential reaches Pi from the shell or from a Pi login, never from a file of the kit.
-- `readinessGaps` is not empty for a profile with a module that has a gap.
-
-No optional module passed an accepted live trial in this release. Read [the module guide](docs/guides/modules.md) before you enable one. It has one row for each component, with its inputs, its credential method and its state. The details are in [in-tree packages](docs/packages.md), [memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md) and [model routes](docs/model-routes.md).
-
-## Where the outputs come from
+### Where the outputs come from
 
 The output examples use Linux `x86_64`, Node `24.21.0`, npm `11.19.0`, Python `3.11.2` and Git `2.39.5`.
 The runtime observations use Pi 1.0.2. `<pin>` represents the current manifest pin, not a new runtime observation.
@@ -1571,7 +1879,7 @@ Not verified:
 - The interactive launch, provider login and model-reply checks as one complete procedure.
 - The removal commands.
 
-## More documents
+### Reference
 
 | Document | For |
 | --- | --- |

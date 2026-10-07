@@ -24,7 +24,7 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | --- | --- |
 | [Setup](docs/guides/setup.md) | The nine stages with exact commands. Start here. |
 | [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Podman adaptations; macOS stays not qualified. |
-| [Explainer](EXPLAINER.md) | The install as a usual README procedure. Each step names the scripts, the functions and the files that it touches, and one table has the footprint. |
+| [Explainer](EXPLAINER.md) | The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
 | [Candidate update](docs/guides/candidate-update.md) | Regenerate, compare, carry choices, switch profiles. |
 | [Pi update checks](docs/pi-update.md) | Detect npm releases, qualify an isolated candidate, and read breaking changes. |

@@ -16,6 +16,8 @@ An offline check that passes is recorded as passed, not as platform qualificatio
 
 ## Before you start
 
+macOS uses zsh as its login shell; put all PATH and variable lines in `~/.zshrc`; reload with `exec zsh`.
+
 Read [setup: Before you start](setup.md#before-you-start), including the live-profile and environment checks.
 The examples keep the kit at `~/tenant-pi` and the private directory at `~/.config/tenant-pi`.
 Use `"$HOME/..."` in commands. In JSON, use the expanded absolute path, not `~` or `$HOME`.
@@ -38,7 +40,7 @@ Check the formula for your macOS version before installing. Do not infer support
 | [podman](https://formulae.brew.sh/formula/podman) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Recommended container runtime. |
 | [gitleaks](https://formulae.brew.sh/api/formula/gitleaks.json) | Native arm64 bottles: macOS 14 (Sonoma), 15 (Sequoia), 26 (Tahoe); current formula, not the required v8.28.0 | Homebrew binary cannot pass the scan version check. |
 | [colima](https://formulae.brew.sh/formula/colima) | Native arm64 bottles: macOS 14 (Sonoma), 15 (Sequoia), 26 (Tahoe); kit use not verified | Potential alternative only. |
-| nvm with Node 24 | Not verified here; nvm is a shell version manager, not a native bottle | Optional per-user alternative to Homebrew Node. |
+| nvm with Node 24 | Not verified here; nvm is a shell version manager, not a native bottle | Optional per-user alternative to Homebrew Node; initialize nvm in `~/.zshrc`. |
 | Xcode Command Line Tools | Not verified here; Apple supplies the toolchain, not a Homebrew bottle | Compile native addons when needed. |
 | Pi and the selected npm packages from setup Stage 6 | Not verified on arm64; npm packages, not Homebrew bottles | Install only the selected modules. |
 
@@ -104,7 +106,7 @@ Node must report a 24.x version. The `file` output should show `arm64`; `process
 If `file` reports a symbolic link, inspect its target with `file -L "$(command -v node)"`.
 Stop on `x86_64` or `x64`; correct the terminal and tool paths rather than adding Rosetta.
 `node@24` is keg-only, so its explicit `PATH` line matters.
-The export changes this shell only. Review any shell startup edit yourself.
+The export changes this zsh only. Review adding the export line to `~/.zshrc` yourself.
 
 Alternatively, use an existing per-user nvm installation instead of Homebrew Node:
 
@@ -218,8 +220,10 @@ export TMPDIR="$HOME/.config/tenant-pi/scan-tmp"
 docker info
 ```
 
-Warning: this `PATH` makes `docker` invoke Podman for every command in the current shell.
-Warning: the `TMPDIR` export changes the temporary-directory setting for every command in the current shell, not only the scan.
+Warning: this `PATH` makes `docker` invoke Podman for every command in the current zsh.
+Warning: the `TMPDIR` export changes the temporary-directory setting for every command in the current zsh, not only the scan.
+
+Review adding the `PATH`, `SCAN_ENGINE` and `TMPDIR` export lines to `~/.zshrc` yourself.
 
 Do not overwrite an existing compatibility directory. Inspect it instead.
 The repository, Git directory and scan temporary directory must be shared into the VM at the same absolute paths.
@@ -242,6 +246,7 @@ The `docker image inspect` command checks the exact short name that the scan scr
 Not verified: Podman resolves the short name.
 Stop if that inspection fails; the scan cannot use an image it cannot find.
 Keep the compatibility `PATH`, `SCAN_ENGINE` and `TMPDIR` in the shell that runs Git hooks.
+In kitty on macOS, this is the zsh of the window.
 Not verified: the pinned image's arm64 execution, Podman command compatibility and complete scan-hook run on macOS.
 A failure leaves the scan `blocked`; do not skip the hook or add emulation as an assumed fix.
 
@@ -288,6 +293,7 @@ Test those before choosing it. Installing Colima alone does not configure the sc
 
 Follow [setup Stage 7](setup.md#stage-7-authenticate) unchanged.
 Keep credentials out of the overlay. Check variable names in the same shell that runs the launcher.
+In kitty on macOS, this is the zsh of the window.
 Label: `skipped` until you run this stage.
 
 ## Stage 8: launch

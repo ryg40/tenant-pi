@@ -235,7 +235,7 @@ test('no production caller gives buildRoutingIndex an issue input, so the legacy
     const file = `${entry.parentPath}/${entry.name}`;
     const source = readFileSync(file, 'utf8');
     for (const line of source.split('\n')) {
-      if (/\b(buildRoutingIndex|issueLocator)\(/.test(line) && !/^export function /.test(line)) calls.push(`${file.slice(file.indexOf('/src/') + 1)}: ${line.trim()}`);
+      if (/\b(buildRoutingIndex|issueLocator)\(/.test(line) && !/^export function /.test(line)) calls.push(`${file.slice(file.lastIndexOf('/src/') + 1)}: ${line.trim()}`);
     }
   }
   const outside = calls.filter((c) => !c.startsWith('src/project/workstreams.mts:'));

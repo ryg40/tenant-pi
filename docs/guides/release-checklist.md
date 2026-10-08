@@ -129,7 +129,7 @@ These steps come from [publishing](../publishing.md).
 
    The command pushes two refs by name: the branch `portable` to the destination named by `--remote` and `--remote-branch`, and the tag `portable/<yyyymmdd>-<source sha>` of this snapshot. It pushes no other tag and no other branch. When the snapshot did not change, for example after a build with `--no-push`, it pushes the snapshot tag that already points at the snapshot commit. The commit and the tag carry the neutral identity `tenant-pi portable`.
 
-6. Record the tag, the gate results and the open gaps in the release notes.
+6. Write [the release notes](#release-notes) after the last gate, as a release entry on the tag at the publication service. A notes file in the snapshot changes the tree after the gates. The tested snapshot must ship with no later change.
 7. Update the documentation site of the kit, if you maintain one: set the new tag in its version file, run its capture script, and update the pages that changed. (The maintainers' site is tenant-docs; its `README.md` section `New release of a project` has the steps.)
 
 Never publish with `--skip-checks`.
@@ -137,6 +137,72 @@ Never publish with `--skip-checks`.
 Warning: `--force` can replace an existing remote snapshot chain, but it does not remove earlier tags.
 
 Use a new, empty repository for a new-root publication; see [publishing](../publishing.md#a-new-history).
+
+## Release notes
+
+The publication service is the Git host of the published repository, for example GitHub. The release notes of a snapshot are a release entry on its tag at the publication service. The maintainer of the release writes them after the last gate. The snapshot holds no notes file, because a later file changes the tested tree.
+
+The notes hold:
+
+- The tag, the source commit and the snapshot commit.
+- The Pi pin (`runtime.piVersion`) and the accepted range (`runtime.piAcceptedRange`).
+- The kind of release: full qualification, or a fast track with gate 6 not run.
+- Each gate 1 to 6 with one word and its result line. The word is passed, failed, blocked or not run.
+- The result line of the public reader check and of the documentation check.
+- Gate 7 and gate 8 with one word for each part. These two gates have no word for the whole gate.
+- For gate 7, one line for each optional module, route and service, as [the section of gate 7](#gate-7-optional-live-services-are-never-implied) says.
+- The changes since the previous tag, as a short list.
+- A link to the section [Platforms that are not qualified](#platforms-that-are-not-qualified) of this checklist at the tag. Write the full URL: the release entry is outside the tree.
+- Each known defect and each open gap.
+
+Never write "passed" for a gate that did not run. Do not write "all modules work" when only the core trial ran.
+
+Check the notes against [the public reader rules](../publishing.md#public-reader-rules) before you create the entry. The publish check does not read them, because they are not in the publish set.
+
+Warning: a list of changes that you copy from commit messages can hold references to a private tracker. Check the list against the public reader rules.
+
+Warning: a release entry is public when the repository is public.
+
+Use this template. Replace each placeholder in angle brackets. The release entry is Markdown: each list item is one line on the release page.
+
+```markdown
+- Tag: portable/<yyyymmdd>-<source sha>
+- Source commit: <source sha>
+- Snapshot commit: <snapshot sha>
+- Pi pin (runtime.piVersion): <version>
+- Accepted range (runtime.piAcceptedRange): <range>
+- Kind of release: <full qualification, or fast track: gate 6 not run, approved by the maintainer of the release>
+
+Gates
+
+1. Offline unit tests: <passed, failed, blocked or not run> - <result line>
+2. Examples: <passed, failed, blocked or not run> - <result line>
+3. Sample overlay: <passed, failed, blocked or not run> - <result line>
+4. Publish set: <passed, failed, blocked or not run> - <result line>
+   - Public reader check: <result line of publish_check.py --public>
+   - Documentation check: <result line of doc_check.py>
+5. Scanner (one line for each scan)
+   - Development history: <passed, failed, blocked or not run> - <result line with the level>
+   - Snapshot range: <passed, failed, blocked or not run> - <result line at level fail, or "empty range, no new commit">
+6. Clean Linux core trial: <passed, failed, blocked or not run> - <result line>
+7. Optional live services (one line for each, no total result)
+   - <module, route or service>: <passed, failed, blocked or not run> - <result line>
+8. Compose seat (no total result): config <passed, failed or not run>, build <passed, failed or not run>, table check <passed, failed or not run>
+
+Changes since <previous tag>
+
+- <change, checked against the public reader rules>
+
+Platforms that are not qualified: <full URL of docs/guides/release-checklist.md at the tag>#platforms-that-are-not-qualified
+
+Known defects
+
+- <defect, or "none known">
+
+Open gaps
+
+- <gap, or "none known">
+```
 
 ## Add a file to the publish set
 

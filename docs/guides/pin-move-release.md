@@ -290,10 +290,14 @@ The commands match the release evidence, with explicit failure handling instead 
    ```sh
    scripts/scan.sh all 2>&1 | tee "$LOGDIR/scan-all.log"
    printf '%s\n' 'gate 6 clean Linux core trial: not run (fast track)' | tee "$LOGDIR/gate-6.log"
+   printf '%s\n' 'gate 7 optional live services: <one line for each module, route and service>' | tee "$LOGDIR/gate-7.log"
+   printf '%s\n' 'gate 8 Compose seat: config not run, build not run, table check not run' | tee "$LOGDIR/gate-8.log"
    ```
 
    Check the scan exit code and its level; a development `level warn` result does not approve snapshot content.
    Record maintainer approval for the fast track, and record every gate 7 optional service separately as passed, failed, blocked, or not run.
+   Replace the gate 7 placeholder in the script with one line for each optional module, route and service.
+   Replace a `not run` part of gate 8 only with the result of the steps of [gate 8](release-checklist.md#gate-8-the-compose-seat).
 
 4. Build without pushing and inspect the exact snapshot and tag.
 
@@ -358,6 +362,33 @@ The commands match the release evidence, with explicit failure handling instead 
    Save it in your release record or your issue tracker, not the snapshot mirror.
    Do not report gate 6, interactive sessions, optional module loads, or native-provider authentication as proved by a loopback reply.
 
+9. Write the release notes from the evidence, then create the release entry on the tag.
+
+   ```sh
+   LOGDIR='<evidence directory>'
+   source "$LOGDIR/release.env" &&
+     test -n "${TAG:-}" &&
+     test -s "$LOGDIR/release-notes.md" &&
+     gh release create "$TAG" --repo '<owner>/<repo>' --verify-tag --title "$TAG" --notes-file "$LOGDIR/release-notes.md" &&
+     gh release view "$TAG" --repo '<owner>/<repo>' --json tagName,isDraft,url
+   ```
+
+   Each command runs only when the command before it succeeds.
+   Run this block by hand after the script ends. You write the notes after the script, so the script cannot read them.
+   Write `$LOGDIR/release-notes.md` first, with the content and the template of the [release checklist](release-checklist.md#release-notes).
+   Check the notes against the [public reader rules](../publishing.md#public-reader-rules) before you create the entry. The publish check does not read the notes.
+   Run `gh release create` only after the maintainer of the release approves the notes.
+   The block uses the GitHub CLI. Replace `<owner>/<repo>` with the name of your publication repository.
+   `--verify-tag` stops the command when the remote repository does not have the tag.
+   Check that the view prints the saved tag, `isDraft` as `false`, and the URL of the entry.
+   Do not add a notes file to the snapshot. A later file changes the tree that passed the gates.
+
+   Warning: a release entry is public when the repository is public.
+
+   Warning: the help of `gh release create` says that a published release locks its tag when the repository has release immutability on.
+
+   Not verified: the commands for a publication service other than GitHub.
+
 ## After release
 
 1. Reinstall changed installed skills from the durable main checkout, with separate approval for local writes.
@@ -400,6 +431,7 @@ The commands match the release evidence, with explicit failure handling instead 
 
 1. A worktree can lack Pi peer packages after `npm ci`; link missing peers from the main checkout's `node_modules/@earendil-works/` and confirm their versions.
 2. Tests can also fail at the unchanged baseline; record the comparison and block unexplained failures instead of blaming the pin.
+   Footer tests must check complete paths at a sufficient width and test truncation separately; qualification work-directory lengths vary.
 3. Check the foundation table of the development repository, if your copy has one, for merge conflicts.
    Resolve by row key and retain both reviewed changes.
 4. A commit body must contain no machine path; the history scan reads commit messages, not only file content.

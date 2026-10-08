@@ -374,6 +374,7 @@ async function finishHandoffPhaseB(pi: ExtensionAPI, ctx: HandoffHostCtx, name: 
   const marker = handoffSyncMarker(name, iso, receipt.runtime);
   receipt.sync = await syncWrapHistory(paths.cwd, `${marker}\n\n${text}`, "handoff");
   receipt.state = "saved";
+  delete receipt.reason;
   try { writeReceipt(paths, receipt); } catch { /* best effort */ }
   const choice = await ctx.ui.select(
     `Handoff ${name} valid (${receipt.bytes} bytes)\nRuntime: ${runtimeText}\nOpenKnowledge: ${receipt.sync}\n` +
@@ -1319,8 +1320,25 @@ Git: ${snap.ref || "unknown"} @ ${snap.head}${snap.dirty ? " (dirty)" : ""}
   // agent_end is too early: retries/follow-ups may remain and Herdr is working.
   let handoffFinishTimer: ReturnType<typeof setTimeout> | undefined;
   pi.on("session_shutdown", () => { clearTimeout(handoffFinishTimer); handoffFinishTimer = undefined; });
-  pi.on("agent_settled", (_event, ctx) => {
+  pi.on("agent_settled", (event, ctx) => {
     clearTimeout(handoffFinishTimer);
+    handoffFinishTimer = undefined;
+    if (event.aborted) {
+      // Persist the hold so a later successful turn cannot finish a cancelled handoff.
+      try {
+        const paths = projectPaths(ctx.cwd);
+        const sessionId = ctx.sessionManager.getSessionId();
+        for (const receipt of listReceipts(paths).filter(r => r.state === "requested" && r.sessionId === sessionId)) {
+          receipt.state = "invalid";
+          receipt.reason = "Authoring aborted; review the file and run /handoffr finish explicitly.";
+          writeReceipt(paths, receipt);
+          ctx.ui.notify(`Handoff ${receipt.name}: ${receipt.reason}`, "warning");
+        }
+      } catch {
+        ctx.ui.notify("Authoring aborted, but the handoff hold could not be saved. Check handoffs/ before the next turn.", "error");
+      }
+      return;
+    }
     const scheduledEpoch = epoch;
     handoffFinishTimer = setTimeout(() => {
       handoffFinishTimer = undefined;

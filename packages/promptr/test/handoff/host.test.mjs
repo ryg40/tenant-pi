@@ -52,7 +52,7 @@ async function fixture(run) {
   ui: { select: async () => choice, notify: text => notices.push(text) },
  };
  promptr(pi);
- const emit = async event => { for (const fn of events.get(event) ?? []) await fn({}, ctx); };
+ const emit = async (event, payload = {}) => { for (const fn of events.get(event) ?? []) await fn(payload, ctx); };
  const readReceipt = () => JSON.parse(fs.readFileSync(receiptFile, 'utf8'));
  try { await run({ events, commands, calls, notices, sent, ctx, emit, readReceipt,
   choose: value => { choice = value; }, busy: () => { idle = false; }, fail: value => { failedCommand = value; },
@@ -75,6 +75,55 @@ test('handoff finishes after settled handlers, never agent_end; Save only never 
  await h.emit('agent_settled');
  await delay(20);
  assert.equal(h.calls.length, 0);
+}));
+
+test('aborted settle holds a requested receipt across later turns until explicit finish', async () => fixture(async h => {
+ await h.emit('agent_settled');
+ await h.emit('agent_settled', { aborted: true });
+ await delay(20);
+ assert.equal(h.readReceipt().state, 'invalid');
+ assert.match(h.readReceipt().reason, /Authoring aborted/);
+ assert.equal(h.calls.length, 0);
+ await h.emit('agent_settled', { aborted: false });
+ await delay(20);
+ assert.equal(h.readReceipt().state, 'invalid');
+ assert.equal(h.calls.length, 0);
+ await h.commands.get('handoffr').handler('finish host-test', h.ctx);
+ assert.equal(h.readReceipt().state, 'saved');
+ assert.equal(h.readReceipt().reason, undefined);
+ assert.equal(h.calls.length, 0);
+}));
+
+test('aborted settle leaves another session and a second abort alone', async () => fixture(async h => {
+ const file = path.join(path.dirname(h.readReceipt().target), 'host-test.json');
+ fs.writeFileSync(file, JSON.stringify({ ...h.readReceipt(), sessionId: 'other' }));
+ await h.emit('agent_settled', { aborted: true });
+ assert.equal(h.readReceipt().state, 'requested');
+ assert.equal(h.notices.length, 0);
+ fs.writeFileSync(file, JSON.stringify({ ...h.readReceipt(), sessionId: 'source' }));
+ await h.emit('agent_settled', { aborted: true });
+ await h.emit('agent_settled', { aborted: true });
+ assert.equal(h.readReceipt().state, 'invalid');
+ assert.equal(h.notices.filter(n => n.includes('Authoring aborted')).length, 1);
+}));
+
+test('explicit finish keeps an aborted receipt invalid while its file is broken', async () => fixture(async h => {
+ await h.emit('agent_settled', { aborted: true });
+ fs.writeFileSync(h.readReceipt().target, 'not a handoff\n');
+ await h.commands.get('handoffr').handler('finish host-test', h.ctx);
+ assert.equal(h.readReceipt().state, 'invalid');
+ assert.doesNotMatch(h.readReceipt().reason, /Authoring aborted/);
+ assert.equal(h.calls.length, 0);
+}));
+
+test('aborted settle reports a hold that it cannot save, with no path in the notice', async () => fixture(async h => {
+ const target = h.readReceipt().target;
+ h.ctx.sessionManager.getSessionId = () => { throw new Error(`no session at ${target}`); };
+ await h.emit('agent_settled', { aborted: true });
+ assert.equal(h.readReceipt().state, 'requested');
+ assert.equal(h.notices.length, 1);
+ assert.match(h.notices[0], /hold could not be saved/);
+ assert.ok(!h.notices[0].includes(path.dirname(target)));
 }));
 
 test('shutdown and busy source cancel deferred finalization', async () => {

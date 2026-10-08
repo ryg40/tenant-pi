@@ -148,7 +148,7 @@ test('agent, activity, timing, output speed, context and tools come from observe
   state.idle = true;
   state.context = { tokens: 30_000, contextWindow: 200_000, percent: 15 };
   await emit('turn_end', { turnIndex: 0 }, ctx);
-  await emit('agent_settled', {}, ctx);
+  await emit('agent_settled', { aborted: true }, ctx);
   snap = telemetry.snapshot();
   assert.equal(snap.activity, 'ready');
   assert.equal(snap.runActivity.phase, 'settled');

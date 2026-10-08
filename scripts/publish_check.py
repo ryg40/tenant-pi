@@ -79,7 +79,7 @@ PUBLISH = (
     "docs/guides/release-checklist.md", "docs/guides/pin-move-release.md", "docs/guides/macos.md",
     "docs/guides/providers.md",
     "AGENTS.md", "GLOSSARY.md", "docs/agents/issue-tracker.md",
-    "tests/test_skill_invariants.py", "tests/test_knowledge_skills.py",
+    "tests/test_skill_invariants.py", "tests/test_knowledge_skills.py", "tests/test_get_status_contract.py",
     ".dockerignore", "deploy/compose/Dockerfile", "deploy/compose/sshd_config",
     "deploy/compose/entrypoint.sh", "deploy/compose/README.md", "tests/test_compose_seat.py",
     "deploy/compose/compose.yaml", "deploy/compose/compose.projects.yaml",

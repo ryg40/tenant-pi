@@ -16,6 +16,7 @@ Rules:
 
 - Do not open an issue on GitHub.
 - No `gh issue`, `gh pr`, `gh api`, `gh repo` or `glab` command applies to this repository.
+- `gh release create` and `gh release view` apply only to the release entry of a snapshot tag. See [the release checklist](../guides/release-checklist.md#release-notes). Only the maintainer of the release runs `gh release create`.
 - Do not write a local ticket file. There is no `.scratch/` directory. Do not add a file to `docs/wayfinder/issues/`.
 - When a skill says "publish to the issue tracker", create a Gitea issue with the operations below.
 

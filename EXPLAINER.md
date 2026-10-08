@@ -1552,6 +1552,8 @@ Knowledge workflows need separately installed OpenKnowledge tools.
 Coordinator workflows need the tools and tracker described by each skill. The kit does not install those tools.
 The component READMEs list the [knowledge skills](packages/tenantext/skills/knowledge-skills/README.md)
 and [coordinator skills](packages/tenantext/skills/coordinator-skills/README.md).
+The user command [get-status](packages/tenantext/skills/coordinator-skills/get-status/SKILL.md) gathers a status bundle and hands it to a Herdr coordinator.
+It closes the sending pane only after confirmed `go` delivery. Not verified: a live handoff with the pane close.
 Herdr, `slopscore-pr` and `tracker-site` are separate selectable skills. Their external state can stay outside the profile.
 
 ### Herdr and the question tool

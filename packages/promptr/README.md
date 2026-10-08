@@ -200,7 +200,10 @@ checkpoints, queue, provider/model/thinking, session file, context tokens) and
 a receipt `handoffs/<name>.json`, then sends one message asking the
 Coordinator to read the exact packaged `promptr-handoff/SKILL.md` path and write
 `handoffs/<name>.md` (ten fixed `## ` sections; reply `HANDOFF READY <name>`).
-Phase B runs after Pi fully settles (`agent_settled`, after retries/follow-ups),
+An aborted settle marks the requested receipts of the current session as `invalid` with an authoring-aborted reason.
+They stay held across later turns and restarts until an explicit `/handoffr finish <name>` in the same source session after review.
+The sidebar returns to Idle because cancellation ends activity, not because the handoff succeeded.
+Phase B runs after Pi fully settles without cancellation (`agent_settled`, after retries/follow-ups),
 or on `/handoffr finish [name]` in the idle source session: the file
 is validated (title, headings in order, non-empty "How to continue", <=64 KiB,
 no control characters), appended to the OpenKnowledge `projects/<id>/handoffs`

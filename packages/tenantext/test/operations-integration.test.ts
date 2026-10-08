@@ -21,8 +21,9 @@ test("suite language status preserves only fixed public fields", () => {
   assert.equal(languageStatus("STE on · guard passed\n"), undefined);
 });
 
-for (const reverse of [false, true]) test(`real meter, footer and Codex bus compose in ${reverse ? "reverse" : "suite"} order`, async () => {
-  const dir = mkdtempSync(join(tmpdir(), "tenantext-suite-"));
+for (const longPath of [false, true]) for (const reverse of [false, true]) test(`real meter, footer and Codex bus compose in ${reverse ? "reverse" : "suite"} order (${longPath ? "long" : "short"} path)`, async () => {
+  const dir = mkdtempSync(join(tmpdir(), `tenantext-suite-${longPath ? "x".repeat(140) : ""}`));
+  const directoryWidth = visibleWidth(dir) + 200;
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = dir;
   const handlers = new Map<string, Set<(event: any, ctx: any) => any>>();
@@ -84,9 +85,9 @@ for (const reverse of [false, true]) test(`real meter, footer and Codex bus comp
     await fire("before_provider_request", { payload: { instructions: "x".repeat(40000) } });
     bus.emit("tenantext:codex:status", { checkedAt: Date.now(), staleAfter: 60000, accounts: [{ provider: "openai-codex-2", label: "Codex 2", state: "ok", windows: [{ label: "5h", remainingPercent: 0 }] }], routing: { state: "unknown", selectedAccount: "codex2" } });
     assert.ok(!widgets.has("ops-footer-top"), "the default layout v4 sets no widget above the editor");
-    const v4 = component!.render(120).map(stripTerminalSequences);
+    const v4 = component!.render(directoryWidth).map(stripTerminalSequences);
     assert.match(v4[0], /^openai-codex\/gpt-6-astra · low/, "v4: the model row is first below the editor");
-    assert.match(v4[1], /pwd .*tenantext-suite-/, "v4: the directory row is second");
+    assert.ok(v4[1].includes(`pwd ${dir}`), "v4: the directory row shows the actual session start directory");
     assert.match(v4[2], /WARN 75\.0k\/100k 75%/, "v4: the bar is third");
     assert.match(v4[3], /Codex2 .*✗ 5h 0%.*◂ routed/);
     // The assertions below are for the v3 composition, selected by name.
@@ -104,12 +105,14 @@ for (const reverse of [false, true]) test(`real meter, footer and Codex bus comp
       const bar = width >= 40 ? 1 : 0;
       if (width >= 40) { assert.ok(lines.length >= 3); assert.match(lines[2], /^(openai-codex\/)?gpt-6-astra · low/, "v3 keeps the model below the editor"); assert.match(lines[bar], /WARN .*75%/); assert.match(lines[bar], /sys!/); }
       if (width >= 80) assert.match(lines[bar], /WARN 75\.0k\/100k 75%/);
-      if (width >= 80) assert.match(lines[0], /pwd .*tenantext-suite-/, "top row shows the session start directory");
+      // The renderer cuts a long path with no glyph, and the directory name can lead the row.
+      if (width >= 80) { const shown = lines[0].match(/pwd (\S+)/)?.[1] ?? ""; assert.ok(shown.length > 0 && dir.startsWith(shown), "top row shows a non-empty prefix of the session start directory"); }
       if (width >= 80) assert.match(lines[3], /Codex2 .*✗ 5h 0%.*◂ routed/);
       else if (width >= 40) assert.match(lines[3], /C(odex)?2 .*✗ 5h 0%/, "short or full account names below 80 columns, whichever fits");
       assert.ok(!lines.join("\n").includes("-----") && !lines.join("\n").includes("!1"));
     }
-    const wide = text(200).join("\n");
+    assert.ok(text(directoryWidth)[0].includes(`pwd ${dir}`), "v3: the top row shows the actual session start directory");
+    const wide = text(directoryWidth).join("\n");
     assert.match(wide, /fixture main · 3 worktrees/);
     assert.ok(!wide.includes("STE"), "a passing guard stays out of the footer");
     assert.ok(!/OK ok|OV ok|TOOLS|statuses:/.test(wide));
@@ -117,6 +120,9 @@ for (const reverse of [false, true]) test(`real meter, footer and Codex bus comp
     await fire("tool_execution_end");
     assert.match(text(200).join("\n"), /STE 2 flagged/);
     tokens = 1000;
+    await fire("agent_start");
+    await fire("agent_settled", { aborted: true });
+    assert.match(text(120)[1], /1\.0k\/100k 1%/, "cancelled turns still refresh context usage");
     await fire("session_compact");
     const compact = text(120)[1];
     assert.match(compact, /1\.0k\/100k 1%$/); assert.ok(!/OK|PLAN|WARN|CRIT/.test(compact));

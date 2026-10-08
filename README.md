@@ -4,6 +4,8 @@ tenant-pi is a guided kit for a Pi profile. You write your choices into a privat
 
 Status: portable release candidate. Linux is the first target. The offline stages are tested. Not verified: a complete live run on a clean client, with authentication and a model reply. No optional module is `ready` in this release. macOS, Windows, browser-hosted Pi and Pi inside Herdr are not qualified; see [the release checklist](docs/guides/release-checklist.md#platforms-that-are-not-qualified). See [the module guide](docs/guides/modules.md#status-labels) for the labels.
 
+The published copy of the kit is a snapshot mirror: the maintainer updates it with a reviewed snapshot of the kit. The published copy takes no issues. Each snapshot has a tag of the form `portable/<yyyymmdd>-<source sha>`. A tag can have a release entry: the release page of the tag on the publication service. The release entry holds [the release notes](docs/guides/release-checklist.md#release-notes) of that snapshot: the result of each gate of the release checklist and the open gaps. A tag with no release entry has no release notes.
+
 ## The stages
 
 1. Obtain the sources: clone the kit and run its offline checks.

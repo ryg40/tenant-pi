@@ -30,6 +30,7 @@ DEV_ONLY_TARGETS = ()
 EXTERNAL_FLAGS = frozenset({
     "--no-approve", "--extensions", "--version", "--prefix", "--ignore-scripts", "--global",
     "--no-verify", "--skip-checks", "--no-push", "--force", "--model", "--remote", "--remote-branch",
+    "--verify-tag",
 })
 # Environment names that the launch line or the kit text uses beside the manifest names.
 # `PI_CODING_AGENT_` is the prefix that the inventory command of the install text prints.

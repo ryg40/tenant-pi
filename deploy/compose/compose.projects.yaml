@@ -1,0 +1,12 @@
+# Optional second Compose file of the Compose seat: the projects directory.
+# A Compose file has no conditional volume, so this bind is in its own file.
+# Give the two files, in this sequence, only when a projects directory exists:
+#   docker compose --env-file <private dir>/seat.env \
+#     -f deploy/compose/compose.yaml -f deploy/compose/compose.projects.yaml up -d
+# The same rule is for "podman compose".
+
+services:
+  seat:
+    volumes:
+      # Read and write. A login starts in /projects when this bind is there.
+      - "${SEAT_PROJECTS_DIR:?set SEAT_PROJECTS_DIR to the absolute path of the projects directory}:/projects"

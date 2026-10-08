@@ -91,7 +91,7 @@ Default order, all shown: Agent, Activity, Tasks, Notebook, Queue, Draft, Alerts
 
 ## Known limits
 
-- Built and tested with the Pi 1.0.4 dependencies. The sidebar uses private Pi renderer adapters. A start on 1.0.2 showed the sidebar. A package load or a session with a model on 1.0.4 is not verified.
+- Built and tested with the Pi 1.1.0 dependencies. The sidebar uses private Pi renderer adapters. A start on 1.0.2 showed the sidebar. A package load or a session with a model on 1.1.0 is not verified.
 - A persistent overlay from another extension keeps the sidebar waiting and blocks panels/usage until it closes.
 - Pi refuses a regular/fullscreen switch while any overlay is shown, including the sidebar. Hide the sidebar (`/promptr off`), switch, then show it again.
 - A contributed panel taller than the sidebar is truncated; its lower rows cannot be reached. Very short terminals can leave room for only a panel header.

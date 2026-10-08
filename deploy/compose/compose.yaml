@@ -1,0 +1,61 @@
+# Compose file of the Compose seat: one container with one Pi profile for one user, reached over SSH.
+# The same file is for Docker Compose and for "podman compose".
+#
+# Compose reads the SEAT_* variables and KIT_COMMIT from the shell and from the file of --env-file.
+# The template of that file is seat.env.example. Run each command from the kit root:
+#   KIT_COMMIT=$(git rev-parse --short HEAD) docker compose \
+#     --env-file <private dir>/seat.env -f deploy/compose/compose.yaml up -d --build
+#
+# Under Podman only one value differs: SEAT_USERNS=keep-id:uid=<uid>,gid=<gid> in seat.env.
+# The file has no key that only one of the two runtimes knows.
+
+# The project name. Without it, the name is "compose", the name of this directory.
+name: tenant-pi-seat
+
+services:
+  seat:
+    build:
+      # The build context is the kit root, so the build needs no Git access.
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile
+      args:
+        # The account of the seat. Use the UID and the GID of the operator, so a bind mount has the correct owner.
+        SEAT_USER: "${SEAT_USER:-pi}"
+        SEAT_UID: "${SEAT_UID:-1000}"
+        SEAT_GID: "${SEAT_GID:-1000}"
+        # Mandatory. The build context has no .git directory, so the build cannot read the commit.
+        KIT_COMMIT: "${KIT_COMMIT:?set KIT_COMMIT to git rev-parse --short HEAD of the checkout}"
+    # The tag is the kit commit, so a new checkout gives a new image name.
+    image: "tenant-pi-seat:${KIT_COMMIT}"
+    # The entrypoint starts as root: sshd needs root. A login is only for the seat account.
+    user: "0:0"
+    # A small init program is process 1. It collects each process that has no parent.
+    init: true
+    # No automatic restart. An entrypoint that stops shows a fault that the operator must read.
+    restart: "no"
+    # Empty for Docker. For Podman: keep-id:uid=<uid>,gid=<gid>, so the seat account is the user of the machine.
+    userns_mode: "${SEAT_USERNS:-}"
+    ports:
+      # sshd listens on 2222 in the container. The default address is the local machine only.
+      # The address 0.0.0.0 opens the seat to the network.
+      - "${SEAT_BIND:-127.0.0.1}:${SEAT_SSH_PORT:-2222}:2222"
+    env_file:
+      # The environment of the container: the gateway key and the gateway URL. The template is compose.env.example.
+      - "${SEAT_PRIVATE_DIR:?set SEAT_PRIVATE_DIR to the absolute path of the private directory}/compose.env"
+    environment:
+      # The name of the variable in compose.env that holds the gateway key.
+      SEAT_KEY_VAR: "${SEAT_KEY_VAR:-TENANTEXT_LITELLM_API_KEY}"
+    volumes:
+      # The home directory: the profile, the sessions and the Herdr state stay after a recreate of the container.
+      - "seat-home:/home/${SEAT_USER:-pi}"
+      # The SSH host key stays after a recreate of the container.
+      - "seat-ssh:/etc/ssh/keys"
+      # The private directory, read-only: the entrypoint reads overlay.json and authorized_keys there.
+      - "${SEAT_PRIVATE_DIR}:/private:ro"
+    tmpfs:
+      # Memory only. The entrypoint writes the gateway key file here at each start.
+      - "/run/tenant-pi-seat:mode=0700"
+
+volumes:
+  seat-home:
+  seat-ssh:

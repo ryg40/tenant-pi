@@ -34,7 +34,7 @@ The live Pi pilot, its measurements and the Claude path are not proved.
 | Piece | Required | Checked by |
 | --- | --- | --- |
 | Node | `>=24.0.0 <25` (`engines`) | `promptr-doctor` |
-| Pi (`@earendil-works/pi-coding-agent`) | 1.0.x. The build, 756 tests, typecheck and offline smoke pass with the 1.0.4 pins. A start without a model is historical evidence from 1.0.2. The sidebar uses private Pi renderer adapters. A package load or a session with a model on 1.0.4 is not verified | `promptr-doctor`, `/promptr-doctor` |
+| Pi (`@earendil-works/pi-coding-agent`) | 1.1.x. The build, 778 tests, typecheck and offline smoke pass with the 1.1.0 pins. A start without a model is historical evidence from 1.0.2. The sidebar uses private Pi renderer adapters. A package load or a session with a model on 1.1.0 is not verified | `promptr-doctor`, `/promptr-doctor` |
 | Herdr | 0.9.x; needed for `/coordinatr-herdr`, Start fresh and the standalone generator. The sidebar works without it | `promptr-doctor` |
 | OpenKnowledge | an HTTPS origin plus `OPENKNOWLEDGE_USERNAME` / `OPENKNOWLEDGE_PASSWORD` exported in the shell that launches Pi and the companion. Optional: everything works locally without it | `promptr-doctor` (presence only), `--online` reads the bound brief |
 | Tracker | Gitea (default) or GitHub, read-only, chosen per project or machine with `promptr-tracker-init` / `/promptr-tracker init`; tokens `GITEA_TOKEN` / `GITHUB_TOKEN` for private repositories | `promptr-doctor`, `/promptr-tracker status`, `--online` reads page 1 |
@@ -49,7 +49,7 @@ in its own shell (Herdr inherits the launching shell).
 ```sh
 git clone <this repository> && cd <clone directory>/packages/promptr
 npm ci --ignore-scripts
-# pi-tui 1.0.4 is a pinned runtime dependency; pi-coding-agent 1.0.4 is a build/test dependency.
+# pi-tui 1.1.0 is a pinned runtime dependency; pi-coding-agent 1.1.0 is a build/test dependency.
 npm run build && npm run typecheck && npm test && npm run smoke
 npm run smoke:installed        # isolated install into a temporary agent dir (needs npm registry access)
 npm run install:local          # → <agent dir>/extensions/promptr, previous copy backed up
@@ -57,7 +57,7 @@ npm run install:local          # → <agent dir>/extensions/promptr, previous co
 
 `install:local` runs `npm pack`, unpacks the tarball into
 `<PI_CODING_AGENT_DIR|~/.pi/agent>/extensions/promptr`, installs the runtime
-dependency (`@earendil-works/pi-tui`, pinned 1.0.4) there, and moves any previous copy to
+dependency (`@earendil-works/pi-tui`, pinned 1.1.0) there, and moves any previous copy to
 `~/.local/share/promptr-handoffs/install-backups/<stamp>-<tag>/`. Flags:
 `--agent-dir <dir>`, `--backup-root <dir>`, `--tag <label>`, `--dry-run`,
 `--uninstall`. The package carries `dist/`, `skills/` (the

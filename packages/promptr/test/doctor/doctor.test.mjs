@@ -24,7 +24,7 @@ function probe(overrides = {}) {
   exists: (f) => f in files || f in dirs,
   readFile: (f) => files[f],
   stat: (f) => (f in dirs ? { exists: true, isDir: true, mode: dirs[f].mode, uid: dirs[f].uid, mtimeMs: 0 } : f in files ? { exists: true, isDir: false, mode: 0o100600, uid: 1000, mtimeMs: Date.parse('2026-09-08T09:30:00Z') } : undefined),
-  version: (bin) => ({ pi: '1.0.2', herdr: '0.9.0' })[bin],
+  version: (bin) => ({ pi: '1.1.0', herdr: '0.9.0' })[bin],
   promptLog: { entries: 12, pending: 0 },
   ...overrides.probe,
  };
@@ -167,10 +167,10 @@ test('cli: --init-tracker on a non-TTY exits 2; --tracker github runs the init n
  assert.match(DOCTOR_HELP, /--tracker <p>/);
 });
 
-test('the Pi check accepts only the tested 1.0 line and names it in the hint', () => {
- for (const [pi, level] of [['1.0.2', 'ok'], ['1.0.0', 'ok'], ['0.87.1', 'warn'], ['1.00.0', 'warn'], ['1.1.0', 'warn']]) {
+test('the Pi check accepts only the tested 1.1 line and names it in the hint', () => {
+ for (const [pi, level] of [['1.1.0', 'ok'], ['1.1.2', 'ok'], ['1.1', 'ok'], ['1.01.0', 'warn'], ['not-a-version', 'warn'], ['1.0.4', 'warn'], ['1.0.2', 'warn'], ['1.0.0', 'warn'], ['0.87.1', 'warn'], ['1.10.0', 'warn'], ['1.2.0', 'warn']]) {
   const check = byId(runDoctor(probe({ probe: { version: (bin) => ({ pi, herdr: '0.9.0' })[bin] } })), 'pi');
   assert.equal(check.level, level, pi);
-  if (level === 'warn') assert.match(check.detail ?? check.hint ?? JSON.stringify(check), /1\.0\.x/);
+  if (level === 'warn') assert.match(check.detail ?? check.hint ?? JSON.stringify(check), /1\.1\.x/);
  }
 });

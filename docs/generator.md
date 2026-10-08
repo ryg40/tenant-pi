@@ -83,7 +83,7 @@ The rule `read_or_json` stays for a directory that `inventory` or `list` cannot 
 python3 scripts/tenant_pi.py check-runtime [--pi <path>] [--node <path>] [--python <path>]
 ```
 
-`check-runtime` and `check-herdr` are the only actions that run a subprocess. `check-herdr` runs one `herdr --version` and reports `present`, `missing` or `unparsed`; see [Herdr and the question tool](herdr-setup.md). `remote-plan` prints SSH command lines and runs none. `check-runtime` runs at most three commands (one for each tool that it finds) without a shell, each with a 20 second timeout: `pi --version` with `PI_CODING_AGENT_DIR` set to an empty temporary directory that it removes, `node --version`, and `python3 --version`. It compares the results with `manifest.runtime` and prints one deterministic JSON object. Exit code 0 accepts Pi `match` or `untested_in_range` when Node and Python match. A failed requirement gives exit code 1. It reads `PATH` to find a tool that has no explicit path, and the three processes inherit the environment. It runs no other command, no network request and no install, and it reads no credential file. A failed removal of the temporary directory gives `cleanup_failed: check-runtime.tmpdir` and exit code 2. See `docs/check-runtime.md`.
+`check-runtime` and `check-herdr` are the only actions that run a subprocess. `check-herdr` runs one `herdr --version` and reports `present`, `missing` or `unparsed`; see [Herdr and the question tool](herdr-setup.md). `remote-plan` prints SSH command lines and runs none. `compose-plan` prints Compose command lines and runs none. `check-runtime` runs at most three commands (one for each tool that it finds) without a shell, each with a 20 second timeout: `pi --version` with `PI_CODING_AGENT_DIR` set to an empty temporary directory that it removes, `node --version`, and `python3 --version`. It compares the results with `manifest.runtime` and prints one deterministic JSON object. Exit code 0 accepts Pi `match` or `untested_in_range` when Node and Python match. A failed requirement gives exit code 1. It reads `PATH` to find a tool that has no explicit path, and the three processes inherit the environment. It runs no other command, no network request and no install, and it reads no credential file. A failed removal of the temporary directory gives `cleanup_failed: check-runtime.tmpdir` and exit code 2. See `docs/check-runtime.md`.
 
 ## `baseline` and `check-baseline`: the directory baseline
 
@@ -114,6 +114,60 @@ python3 scripts/tenant_pi.py generate --overlay /path/to/overlay.json --target '
 `plan` and `generate` also take an optional `--herdr-report <file>`: the JSON output of a previous `check-herdr` run. With the `herdr` component enabled, `present` removes `herdr_cli_unverified` from `readinessGaps`, and `missing` or `unparsed` replaces it with `herdr_cli_missing` or `herdr_cli_unparsed`. `herdr_session_unverified` stays with every report. A file that is not such a report stops the action with `herdr_report_status` or `herdr_report_installed` before any write. See [Herdr and the question tool](herdr-setup.md#verification-results).
 
 `commands.piInstall` marks the global Pi install line in each `plan` and `generate` output: `installed_version_unknown` without a report, `needed` for a `missing` Pi, `not_needed` for a `match` or Pi `untested_in_range`, and `replaces_installed` for a `mismatch`, with the `installed` and the `required` version and the `change` (`downgrade`, `upgrade` or `unordered`). Its `warning` is `global_install_replaces_pi_for_all_profiles`. With `not_needed` and `replaces_installed` the line is not in `commands.setupDisplayOnly`.
+
+## `compose-plan`: the files and the commands of a Compose seat
+
+```sh
+python3 scripts/tenant_pi.py compose-plan --account pi --uid 1000 --gid 1000 --public-key /home/EXAMPLE_USER/.ssh/id_ed25519.pub --gateway-url https://gateway.example.invalid/v1 --private-dir /home/EXAMPLE_USER/.config/tenant-pi --model codex-auto/astra [--provider litellm-codex] [--thinking high] [--ssh-port 2222] [--projects-dir /home/EXAMPLE_USER/projects] [--key-var TENANTEXT_LITELLM_API_KEY] [--enable herdr] [--clone /home/EXAMPLE_USER/tenant-pi] [--write]
+```
+
+`compose-plan` turns the answers of the container destination into one JSON object. Without `--write` it writes nothing. It starts no process with and without `--write`. `scripts/compose_plan.py` is a pure module: no process, no file, no environment value. The action reads two files through the bounded no-follow loader: the manifest and the public key file (64 KiB maximum). See [the Compose seat](../deploy/compose/README.md).
+
+`--model` is mandatory: the model of the interactive role. `--provider` (default `litellm-codex`) and `--thinking` (default `high`) are the two other parts of that role. Under `litellm-codex` the model is `codex-auto/luna`, `codex-auto/sol` or `codex-auto/astra`. The thinking level is `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. The three values stay separate: the overlay never holds a joined `<provider>/<model>` string.
+
+| Key | Content |
+| --- | --- |
+| `answers` | The validated answers, with `provider`, `model` and `thinking`. `componentsAdded` names each component that a chosen component requires. |
+| `overlay` | The overlay of the seat. `target.agentDir` is `/home/<account>/.pi/profiles/main`. `selection.enable` holds `core`, `model-routing`, `codex-accounts`, the `--enable` IDs and their `requires` of the manifest. `modelRoutes.gateway` is `{"auth":"env"}`. `roles.interactive` holds `provider`, `model`, `thinking` and `"route":"gateway"`, and `modelRoutes.cycle` holds that one choice. |
+| `registry` | The content of `registry.json`: `{"<provider>":{"<model>":["<thinking>"]}}`. `validate`, `plan` and `generate` need it with `--registry` for the role model. |
+| `seatEnv`, `composeEnv` | The lines of `seat.env` and `compose.env`. The key line of `compose.env` is `<key variable>=''`: empty, in single quotes. `SEAT_USERNS` is empty, and a comment line gives the Podman value with the UID and the GID of the answers. |
+| `authorizedKeys` | The public key file (`source`) and `<private dir>/authorized_keys` (`destination`). |
+| `commands` | For `docker` and for `podman`: `build`, `up`, `ps`, `logs` and `down`. Then the `login` line of `ssh`. Each entry has `argv` and `display`. A Compose entry has `kitCommit`, the `git` argument list whose output is `KIT_COMMIT`; its `display` starts with that assignment. An entry with `"changes": true` has `"approval": "user_approval_required"`. |
+| `warnings` | Static codes: `inspect_shows_key_value`, `bind_0_0_0_0_opens_seat_to_network`, and by answer `gid_20_is_dialout_in_image`, `uid_below_1000`, `gid_below_1000`, `mcp_input_file_required`. |
+| `written` | The paths that `--write` created, else an empty list. |
+
+Each Compose command carries `--env-file <private dir>/seat.env` and `-f <clone>/deploy/compose/compose.yaml`. With `--projects-dir` each one also carries `-f <clone>/deploy/compose/compose.projects.yaml`. No command has `-v`.
+
+| Rule | Cause |
+| --- | --- |
+| `account`, `reserved_account`: `compose-plan.account` | The name is not `[a-z_][a-z0-9_-]{0,31}`, or it is `root` or an account of the base image: `node`, `sshd`, `daemon`, `www-data`, `nobody`, `bin`, `sys`, `sync`, `games`, `man`, `lp`, `mail`, `news`, `uucp`, `proxy`, `backup`, `list`, `irc` or `_apt`. |
+| `integer`: `compose-plan.uid`, `.gid`, `.ssh_port` | The option value is not a decimal number. |
+| `account_id`: `compose-plan.uid`, `.gid` | The value is outside 500 to 65533. The GID 20 is accepted. A value below 1000 gives a warning. |
+| `port: compose-plan.ssh_port` | The port is outside 1024 to 65535. |
+| `absolute_path`, `shell_or_template`: `compose-plan.public_key`, `.private_dir`, `.clone`, `.projects_dir` | The path is not absolute, ends in `/`, or holds a character that the path rule of the overlay refuses. A path can hold spaces and quotes. |
+| `under_kit: compose-plan.private_dir` | The private directory is the clone, is under it, or holds it. With `--write`: it is under the kit that runs the action. |
+| `credential_free_https_url`, `gateway_api_prefix`: `compose-plan.gateway_url` | The URL breaks the gateway rule of the overlay, or does not end in `/v1`. |
+| `env_name: compose-plan.key_var` | The name is not a variable name, or it is `TENANTEXT_LITELLM_BASE_URL` or a `SEAT_` name. |
+| `undeclared_component`, `duplicate_component`: `compose-plan.components` | An `--enable` ID is not in the manifest, or is given twice. |
+| `model_id`: `compose-plan.provider`, `.model` | The value is not an ID of the form `[A-Za-z0-9][A-Za-z0-9._/:-]*`. |
+| `thinking: compose-plan.thinking` | The value is not a thinking level. |
+| `unsupported_gateway_model: compose-plan.model` | The provider is `litellm-codex`, and the model is not one of its three aliases. |
+| `unsupported_gateway_model: overlay.modelRoutes.choice` | The provider is not `litellm-codex`. The action runs the route rules with the registry of the plan, and the seat has the gateway route only. |
+| A rule with the field `overlay.<name>` | The action runs the overlay validator on the plan. For example `undeclared_env: overlay.env` for a key name other than `TENANTEXT_LITELLM_API_KEY`, and `memory_choices_required: overlay.memory` for a memory module. |
+| `input_missing`, `input_not_regular` and the other input rules: `compose-plan.public_key` | The loader cannot use the public key file. See [input file errors](#input-file-errors). |
+| `public_key_count: compose-plan.public_key has <n> key lines` | The file has more than one key line. The seat takes exactly one; comment lines and empty lines are allowed. |
+| `private_key`, `public_key_missing`, `public_key_line`: `compose-plan.public_key` | The file holds the text `PRIVATE KEY`; it has no key line; a line is not `<type> <key> [comment]` with the type `ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-*` or `sk-*`. A line with an option before the type is refused. |
+
+With `--write` the action creates `overlay.json`, `seat.env`, `compose.env`, `authorized_keys` and, as the fifth file, `registry.json` in the existing private directory, each with mode `0600` and with exclusive creation. `authorized_keys` is a byte-for-byte copy of the public key file. The entrypoint of the seat passes `--registry /private/registry.json` when the file exists. Every refusal comes before the first write:
+
+| Rule | Cause |
+| --- | --- |
+| `target_exists: compose-plan.<file>` | One of the five files exists. A link counts as a file. |
+| `private_dir_missing`, `private_dir_unsafe`: `compose-plan.private_dir` | The directory does not exist; the directory or a directory above it is a symbolic link or is not a directory. |
+| `under_pi_agent: compose-plan.private_dir` | The directory is `~/.pi/agent` or is under it. For this rule `--write` reads `HOME` (`home_required`, `absolute_path`: `compose-plan.home`). |
+| `write_failed: compose-plan.private_dir` | The system refuses a write. Some of the five files can then exist. |
+
+The action never reads the value of the key variable, and no output and no file holds a key value. The user pastes the value into `compose.env`. Exit code 0 with the plan, exit code 2 with one JSON diagnostic line on standard error. Limits: the action does not check that the projects directory exists, that the gateway is reachable from a container, or that a runtime is installed. Not verified: how Docker Compose and `podman-compose` read a `seat.env` value with a space or a quote.
 
 ## `init-private`: the private directory
 

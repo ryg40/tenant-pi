@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "runtime": {
-    "piVersion": "1.0.4",
-    "piAcceptedRange": ">=1.0.4 <1.1",
+    "piVersion": "1.1.0",
+    "piAcceptedRange": ">=1.1.0 <1.2",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
@@ -10,7 +10,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.0.4"
+        "spec": "@earendil-works/pi-coding-agent@1.1.0"
       },
       "status": "tested",
       "reason": null,
@@ -607,6 +607,7 @@
           "skills/coordinator-skills/pr",
           "skills/coordinator-skills/show-me",
           "skills/coordinator-skills/retro",
+          "skills/coordinator-skills/get-status",
           "skills/coordinator-skills/writing-for-agents"
         ],
         "prompts": [],
@@ -622,7 +623,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research ticket and a prototype ticket need the herdr skill and the herdr CLI; the wayfinder, research and prototype skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
+          "fact": "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research task, a prototype task and get-status need the herdr skill and the herdr CLI; the wayfinder, research, prototype and get-status skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
         },
         {
           "code": "kit_test_missing",
@@ -674,6 +675,10 @@
           {
             "file": "settings.json",
             "key": "package:packages/tenantext:skills/coordinator-skills/retro"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/get-status"
           },
           {
             "file": "settings.json",
@@ -865,7 +870,7 @@
         },
         {
           "code": "host_module_dependency",
-          "fact": "packages/promptr/package.json pins @earendil-works/pi-tui at 1.0.4 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.0.4, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.0.4 are not verified."
+          "fact": "packages/promptr/package.json pins @earendil-works/pi-tui at 1.1.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.1.0, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.1.0 are not verified."
         },
         {
           "code": "placeholder_defaults",

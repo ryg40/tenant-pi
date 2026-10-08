@@ -228,10 +228,11 @@ The reviewed source of the Herdr application is the open-source project `herdrde
 
 ### 1. Destination
 
-Ask: "Where do you install: on this machine, or on a remote Linux host over SSH?"
+Ask: "Where do you install: on this machine, on a remote Linux host over SSH, or in a container on this machine?"
 
 - Local: every later command runs here.
 - Remote: the user gives the SSH target, a host alias of their SSH configuration or `<user>@<host>`. Every later command of every stage runs on that host through `ssh`. The remote host is Linux. A remote install is not qualified: no trial on a disposable host is recorded.
+- Container: the profile goes into a Compose seat on this machine. Skip parts 2 to 8 of this stage and continue with Stage 4c. A Compose seat is not qualified: no trial of a container is recorded.
 
 Rules for SSH:
 
@@ -367,6 +368,122 @@ Ask: "Do you want structured questions in Pi?" A yes moves `questions` to `selec
 Write into `<private dir>/install-log.md`: the destination, the account, the confirmed paths, each approved and each refused item, and the result of each part. When a part fails, name the actions that are complete and the actions that are not. The user can then resume without a second run of a completed action.
 
 Done when the user answered parts 1, 2, 6 and 7, part 3 shows the right identity, and part 4 shows `present` or the user accepted `missing` as an open item.
+
+## Stage 4c: the Compose seat
+
+Goal: the five files of a Compose seat in `<private dir>`, a built image, and a seat that the user reaches over SSH. Run this stage only with the answer "container" in Stage 4a, part 1.
+
+The guided path supports the gateway route only, through the component `codex-accounts` ([modules guide](docs/guides/modules.md)). For a provider with a native login, write the private directory files by hand. Use the two env templates and the notes on the private directory in [the seat README](deploy/compose/README.md). Use the overlay rules of Stage 5. The `overlay` and `registry` keys of the plan in part 2 show the shape of these two files. The seat README permits an empty gateway key for a native login. Not verified: a native login in the seat.
+
+A Compose seat is a container, started by Compose, that holds one generated Pi profile for one user and is reached over SSH. [The Compose seat document](deploy/compose/README.md) has the facts: the image, the two env files, the gateway key, the login and the limits. [The Compose seat guide](docs/guides/compose-seat.md) has the procedure for the operator. Not verified: a start of the container, a login, and each behaviour under Podman.
+
+This machine needs Git, Python 3.11 or later, the clone of Stage 2, and Docker with Compose or Podman with a Compose provider. It does not need Node or Pi: the image holds them.
+
+### 1. The eight questions
+
+Ask each question with the question tool of your harness, the recommended answer first. Read-only commands give the defaults:
+
+```sh
+id -u; id -g; ls ~/.ssh/*.pub
+```
+
+| # | Question | Default | Rule |
+| --- | --- | --- | --- |
+| 1 | "Which account name does the seat use?" | `pi` | Lowercase letters, digits, `_` and `-`. Not `root` and not an account of the base image: `node`, `sshd`, `daemon`, `www-data`, `nobody`, `bin`, `sys`, `sync`, `games`, `man`, `lp`, `mail`, `news`, `uucp`, `proxy`, `backup`, `list`, `irc`, `_apt`. |
+| 2 | "Which UID and GID does the account have?" | The output of `id -u` and `id -g` | 1000 to 65533. A value from 500 to 999 and the GID 20 are accepted with a warning: they are the values of a macOS account. |
+| 3 | "Which SSH public key file opens the seat?" | A `.pub` file of `~/.ssh` | The absolute path of a public key file with exactly one key line. The action refuses a file with a private key. Never ask for a private key. |
+| 4 | "Which port of this machine receives the SSH connections?" | `2222` | 1024 to 65535. The seat listens on `127.0.0.1` only. |
+| 5 | "Do you want a projects directory in the seat?" | No | The absolute path of an existing directory. The seat gets it at `/projects`, with read and write access. |
+| 6 | "Which gateway URL and which key variable name?" | The name `TENANTEXT_LITELLM_API_KEY` | The URL is HTTPS, has no credential, and ends in `/v1`. Ask for the name of the variable, never for the key value. The overlay accepts only the default name. |
+| 7 | "Which components do you want?" | None more | The IDs of Stage 5, item 2. The action adds `core`, `model-routing`, `codex-accounts` and each component that a chosen component requires. |
+| 8 | "Which model for the interactive role?" | `litellm-codex`, `codex-auto/astra`, `high` | The provider, the model and the thinking level, as three separate values. Under `litellm-codex` the model is `codex-auto/astra` (recommended), `codex-auto/sol` or `codex-auto/luna`: the gateway registers only these three. The thinking level is `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. The action refuses a model of another provider: the seat has the gateway route only. |
+
+The registry file, `<private dir>/registry.json`, is the list of the models and the thinking levels that the user confirms: `validate`, `plan` and `generate` refuse a role model that it does not hold, and the action writes it with the one answer of question 8.
+
+The gateway must be reachable from inside the container. A gateway on this machine has another name inside a container than `localhost`.
+
+### 2. The plan
+
+Print the plan first. This command writes nothing and runs nothing:
+
+```sh
+cd <clone> && python3 scripts/tenant_pi.py compose-plan --account pi --uid "$(id -u)" --gid "$(id -g)" \
+  --public-key "$HOME/.ssh/id_ed25519.pub" --ssh-port 2222 --gateway-url '<gateway url>' \
+  --private-dir "$HOME/.config/tenant-pi" --model codex-auto/astra [--provider litellm-codex] [--thinking high] \
+  [--projects-dir '<projects dir>'] [--enable <component id>]
+```
+
+The output is one JSON object. Show the user these parts:
+
+- `overlay`: the content of `<private dir>/overlay.json`. `target.agentDir` is `/home/<account>/.pi/profiles/main`, a path inside the container. `roles.interactive` and the one entry of `modelRoutes.cycle` hold the answer of question 8.
+- `registry`: the content of `<private dir>/registry.json`: the provider, the model and the thinking level of question 8.
+- `seatEnv` and `composeEnv`: the lines of `<private dir>/seat.env` and `<private dir>/compose.env`. The key line of `composeEnv` is empty.
+- `authorizedKeys`: the public key file and its copy in `<private dir>`.
+- `commands`: the Compose lines for `docker` and for `podman`, and the login line. A line with `"changes": true` needs a yes from the user.
+- `warnings`: read each one to the user.
+
+| Warning | Meaning |
+| --- | --- |
+| `inspect_shows_key_value` | `docker compose config`, `docker inspect` and `podman inspect` print the key value of `compose.env`. Do not run them in this session. |
+| `bind_0_0_0_0_opens_seat_to_network` | The plan binds the port to `127.0.0.1`. A change of `SEAT_BIND` to `0.0.0.0` opens the seat to the network. |
+| `gid_20_is_dialout_in_image` | In the image, the group `dialout` has the GID 20. The seat account uses that group. |
+| `uid_below_1000`, `gid_below_1000` | The value is below the usual range of a Linux user account. |
+| `mcp_input_file_required` | The seat needs `<private dir>/inputs/mcp-adapter.json` before its first start. See Stage 5, item 6. |
+
+An error is one JSON line with `rule: field`, as in Stage 5. The action refuses a model other than the three under `litellm-codex` with `unsupported_gateway_model: compose-plan.model`, and a model of another provider with `unsupported_gateway_model: overlay.modelRoutes.choice`. A rule with the field `overlay.<name>` comes from the overlay validator: the action refuses a memory module before the write with `memory_choices_required`. Leave the module out, write the files, then add the module and its choices of Stage 5, item 5, to `overlay.json` by hand and run `validate`.
+
+### 3. Write the files
+
+`<private dir>` must exist, outside the clone. When it is absent, show and run on yes:
+
+```sh
+mkdir -p ~/.config/tenant-pi && chmod 700 ~/.config/tenant-pi
+```
+
+Ask: "Write these five files into `<private dir>`?" On yes, run the same command with `--write` as the last option. The action creates `overlay.json`, `seat.env`, `compose.env`, `authorized_keys` and `registry.json`, each with mode 600. It refuses when one of the five exists, for example `target_exists: compose-plan.overlay.json`, and then writes none. Do not delete a file of the user to make the action pass: the user moves the file, or names another private directory.
+
+With Podman, the user sets one more value in `<private dir>/seat.env`: the comment line above `SEAT_USERNS=` gives the exact value.
+
+The entrypoint of the seat gives `<private dir>/registry.json` to `validate`, `plan` and `generate` when the file exists. Another role model and each other choice of Stage 5 are edits of `<private dir>/overlay.json` by hand, before the first start; each model of the overlay also needs its entry in `<private dir>/registry.json`. After each edit, run the syntax check and the `validate` command of Stage 5 on this machine, with `--registry <private dir>/registry.json`.
+
+### 4. The key value
+
+Tell the user: "Open `<private dir>/compose.env` in your editor. Put the gateway key between the two single quotes of the `TENANTEXT_LITELLM_API_KEY=''` line. Save the file."
+
+- The user does this step. Never ask for the value, and never read, print or copy `compose.env` after this step.
+- The file keeps mode 600. Check the mode only: `ls -l <private dir>/compose.env`.
+- The single quotes stay: Compose then keeps the value literal.
+
+### 5. Build and start
+
+Use the `display` lines of `commands` for the runtime of the user, `docker` or `podman`. Show each line and run it on yes: first `build`, then `up`. Each Compose line carries `KIT_COMMIT` and `--env-file`, also `ps`, `logs` and `down`. The lines have this form:
+
+```sh
+KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml build
+KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml up -d
+KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml logs seat
+```
+
+With a projects directory, each line has a second `-f`, for `compose.projects.yaml`. The build runs the four offline checks of the kit and installs the pinned Pi. The `logs` line shows one line for each step of the first start.
+
+Warning: `down -v` removes the home volume with the profile and the sessions, and the seat gets a new host key. The plan has no line with `-v`.
+
+### 6. Which stages the seat replaces
+
+| Stage | In a Compose seat |
+| --- | --- |
+| 3 (Pi), 4 (package dependencies) | Skip. The image build does them. |
+| 4a, parts 2 to 8 | Skip. The image holds Herdr 0.9.3. `herdr` and `questions` are answers to question 7. |
+| 5 (the overlay) | Parts 1 to 3 of this stage write the overlay. |
+| 6 (plan and generate), 7 (declared npm packages) | Skip. The entrypoint of the seat runs `check-runtime`, `validate`, `plan` and `generate` at the first start. |
+| 8 (authentication) | Part 4 of this stage: the key is in `compose.env`. |
+| 9 (first launch) | The SSH login: the `login` line of the plan, `ssh -p <port> <account>@127.0.0.1`. |
+
+The first login asks the user to accept the host key of the seat. It then opens the tmux session `seat`, in `/projects` when the projects directory is there. `pi-profile` starts Pi with the profile. Then do checks 1 to 3 of Stage 9 inside the seat. The live `~/.pi/agent` of this machine is not a part of the seat, so check 4 does not apply.
+
+Record in `<private dir>/install-log.md`: the eight answers without a key value, the files that the action wrote, each command that ran, and each result. Record a login or a check that did not run as "not run".
+
+Done when the action wrote the five files, the user confirmed that the key value is in `compose.env`, and the user saw the login or accepted it as an open item.
 
 ## Stage 5: the private overlay
 
@@ -705,6 +822,16 @@ python3 scripts/tenant_pi.py compare --left '<old target>' --right '<new target>
 ```
 
 Carry wanted drift into the overlay first (`docs/candidate-compare.md`). To list the package sources and the extension, skill and prompt names of one directory without any value, run `python3 scripts/tenant_pi.py inventory --dir '<target>'` (`docs/profile-inventory.md`). Switching is the launch line with the other path. Auth, sessions and memory are not copied.
+
+A Compose seat has its own update path, the container path. The image tag is `KIT_COMMIT`: `up -d` alone keeps the old image. Pull the clone, then show the `build` line and the `up` line of Stage 4c again and run each on yes:
+
+```sh
+KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml build
+KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml up -d
+KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml logs seat
+```
+
+With Podman the lines start with `podman compose`. With a projects directory, each line keeps its second `-f`. The home volume and the host key stay. The entrypoint never writes into the profile of the seat: it generates the candidate `~/.pi/profiles/candidate-<commit>-<pin>` beside it, and the `logs` line shows the five next steps. The user does them inside the seat: compare, reconcile, set up, switch with the launcher `pi-profile-candidate-<commit>-<pin>`, and record the build with `cp /opt/tenant-pi/.seat-build ~/.tenant-pi/seat-build`. The offer repeats at each start until the user records the build. Never run a line with `down -v` for an update: it removes the profile and the sessions. See [the Compose seat guide](docs/guides/compose-seat.md#updates).
 
 ## Not in this kit
 

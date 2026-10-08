@@ -1,0 +1,12 @@
+# Build context rules of the Compose seat image (deploy/compose/Dockerfile).
+# The build context is the kit root, so this file is at the kit root.
+# Git metadata and private local files never enter the image.
+.git
+.local
+.env
+.env.*
+!.env.example
+# The build installs the dependencies and writes no bytecode.
+**/node_modules
+**/__pycache__
+**/*.pyc

@@ -337,11 +337,11 @@ Goal: agent fan-out through Herdr and structured questions in Pi, each approved 
 
 The kit declares no separate agent orchestration module at this pin. Three parts have separate results: the Herdr application (a host tool that the kit does not install), the Herdr skill, and the Pi question extension. `docs/herdr-setup.md` has the facts. `INSTALL.md`, Stage 4a, has the same steps with the full tables.
 
-Order: ask questions 1 to 3 before Stage 3 when the user names Herdr, a remote host or the question tool. Questions 6 and 7 are overlay choices; write them in Stage 3, and Stage 4 generates them.
+Order: ask question 1 before Stage 2 when the user names a container. For Herdr, a remote host or the question tool, ask questions 1 to 3 before Stage 3. Questions 6 and 7 are overlay choices; write them in Stage 3, and Stage 4 generates them.
 
 Use your question tool. In Claude Code that is `AskUserQuestion`; install no Pi extension into Claude Code. With no question tool, and in a headless session, ask in plain text with numbered options. No step waits for the Pi question extension.
 
-1. Ask: "Install on this machine, or on a remote Linux host over SSH?" For remote, the user gives the SSH target. Use the SSH configuration and the agent of the user. Never ask for a password or a private key, never copy a credential, never turn off host key verification. A remote install is unqualified; say so.
+1. Ask: "Install on this machine, on a remote Linux host over SSH, or in a container on this machine?" For a container, go to Stage 8a and skip questions 2 to 7. For remote, the user gives the SSH target. Use the SSH configuration and the agent of the user. Never ask for a password or a private key, never copy a credential, never turn off host key verification. A remote install is unqualified; say so.
 2. Ask: "An existing Linux account, or a new one?" A new account and each missing system prerequisite go into one list of privileged actions, one command for each item. The user approves or refuses each item. Do not give the account administrator rights. Every ordinary step then runs as the target account.
 3. Confirm the identity and the paths before any write:
 
@@ -382,6 +382,44 @@ Use your question tool. In Claude Code that is `AskUserQuestion`; install no Pi 
 - When a part fails, name the actions that are complete and the actions that are not.
 
 Done when `check-herdr` shows `present` or the user accepted `missing` as an open item, and the answers to questions 6 and 7 are in the overlay.
+
+## Stage 8a: the Compose seat (only with the answer "container")
+
+Goal: the five files of a Compose seat in the private directory, a built image, and a login over SSH.
+
+The guided path supports the gateway route only, through the component `codex-accounts` ([modules guide](../../docs/guides/modules.md)). For a provider with a native login, write the private directory files by hand. Use the two env templates and the notes on the private directory in [the seat README](../../deploy/compose/README.md). Use the overlay rules of Stage 3. The `overlay` and `registry` keys of the plan in [INSTALL.md, Stage 4c](../../INSTALL.md#stage-4c-the-compose-seat), part 2, show the shape of these two files. The seat README permits an empty gateway key for a native login. Not verified: a native login in the seat.
+
+A Compose seat is a container, started by Compose, that holds one generated Pi profile for one user and is reached over SSH. It is unqualified; say so. `INSTALL.md`, Stage 4c, has the same steps with the full tables. `deploy/compose/README.md` has the facts. This machine needs Git, Python 3.11 or later, the clone, and Docker with Compose or Podman with a Compose provider.
+
+Ask the eight questions in this order, the recommended answer first:
+
+1. "Which account name does the seat use?" Recommended: `pi`. Not `root`, not an account of the base image.
+2. "Which UID and GID does the account have?" Recommended: the output of `id -u` and `id -g`.
+3. "Which SSH public key file opens the seat?" Recommended: a `.pub` file of `~/.ssh`. Never ask for a private key.
+4. "Which port of this machine receives the SSH connections?" Recommended: `2222`. The seat listens on `127.0.0.1` only.
+5. "Do you want a projects directory in the seat?" Recommended: no. A yes needs the absolute path of an existing directory.
+6. "Which gateway URL and which key variable name?" Recommended name: `TENANTEXT_LITELLM_API_KEY`. The URL is HTTPS and ends in `/v1`. Ask for the name of the variable, never for the key value. The overlay accepts only the name `TENANTEXT_LITELLM_API_KEY` for the key and `TENANTEXT_LITELLM_BASE_URL` for the URL: the manifest declares only these for `codex-accounts`. Another name stops with `undeclared_env: overlay.env`.
+7. "Which components do you want?" Recommended: none more. The action adds `core`, `model-routing`, `codex-accounts` and each required component.
+8. "Which model for the interactive role?" Ask for the provider, the model and the thinking level as three separate values. Recommended: `litellm-codex`, `codex-auto/astra`, `high`. The other options are `codex-auto/sol` and `codex-auto/luna`: the gateway registers only these three models under `litellm-codex`. The action refuses another model with `unsupported_gateway_model`. The action writes the answer into `registry.json`, the list of the models and the thinking levels that the user confirms; `validate`, `plan` and `generate` refuse a role model that the file does not hold.
+
+Print the plan. This command writes nothing and runs nothing:
+
+```sh
+python3 scripts/tenant_pi.py compose-plan --account pi --uid "$(id -u)" --gid "$(id -g)" \
+  --public-key "$HOME/.ssh/id_ed25519.pub" --ssh-port 2222 --gateway-url '<gateway url>' \
+  --private-dir "$HOME/.config/tenant-pi" --model codex-auto/astra [--provider litellm-codex] [--thinking high] \
+  [--projects-dir '<projects dir>'] [--enable <component id>]
+```
+
+- Show `overlay`, `registry`, `seatEnv`, `composeEnv`, `authorizedKeys`, `commands` and each entry of `warnings`.
+- The private directory must exist, outside the clone, with mode 700. Ask before you create it.
+- Ask: "Write these five files into the private directory?" On yes, run the same command with `--write`. It creates `overlay.json`, `seat.env`, `compose.env`, `authorized_keys` and `registry.json` with mode 600. It refuses when one of them exists; do not delete a file to make it pass.
+- The user pastes the key value between the single quotes of the key line in `compose.env`, in their own editor. Never read, print or copy that file after this step. Do not run `docker compose config`, `docker inspect` or `podman inspect`: they print the key value.
+- With Podman, the user sets `SEAT_USERNS` in `seat.env` to the value of the comment line above it.
+- Show the `build` line and the `up` line of `commands` for the runtime of the user, and run each on yes. Each Compose line carries `KIT_COMMIT` and `--env-file`. Never add `-v` to `down`: it removes the profile and the sessions.
+- The seat replaces Stages 2, 3, 4 and 7 of this skill: the image build installs Pi and the packages, `compose-plan` writes the overlay, and the entrypoint generates the profile at the first start. The key in `compose.env` replaces Stage 5. The login line of the plan, `ssh -p <port> <account>@127.0.0.1`, replaces the launch of Stage 9. The login opens the tmux session `seat`; `pi-profile` starts Pi there.
+
+Done when the action wrote the five files, the user confirmed the key line, and the user saw the login or accepted it as an open item. Record a login that did not run as "not run".
 
 ## Stage 9: first launch and checks (live)
 
@@ -433,6 +471,8 @@ python3 scripts/tenant_pi.py compare --left '<old target>' --right '<new target>
 ```
 
 Read `changes`, `unsupported`, and `drift` with the user. User edits made inside Pi (`/model`, settings changes) show as drift; carry the ones to keep into the overlay first, per the table in `docs/candidate-compare.md`. Switching is the launch line with the other path. The kit copies no auth, sessions, or memory between candidates; say so before the user switches.
+
+For a Compose seat: pull the clone, then run the `build` line and the `up` line of Stage 8a again. The entrypoint generates a candidate beside the profile of the seat and prints the next steps.
 
 ## What this skill does not do
 

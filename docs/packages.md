@@ -111,7 +111,7 @@ Promptr is a Pi extension: a prompt queue, progress checkpoints, staged handoffs
 | License | MIT, `packages/promptr/LICENSE`; declared in `packages/promptr/package.json`. |
 | Skills | `packages/promptr/skills/`: `promptr-generate-task-prompt`, `promptr-handoff`, `openknowledge-project-pages` and `watch-herdr-agents` |
 | Publish rule | `("packages/promptr", ("node_modules/", "dist/", "LICENSE"))`; `packages/promptr/LICENSE` is explicit in `PUBLISH`. |
-| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.0.4`. The build, the 756 tests, the typecheck and `npm run smoke` pass with both dependencies at 1.0.4. Not verified on 1.0.4: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
+| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.1.0`. The build, the 778 tests, the typecheck and `npm run smoke` pass with both dependencies at 1.1.0. Not verified on 1.1.0: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
 
 ### Build and test
 
@@ -129,8 +129,8 @@ npm run typecheck
 
 Warning: `npm run install:local` and `npm run doctor` read or change the Pi directory of the host. Do not run them as a repository check. `npm run smoke:installed` installs into a new directory under the temporary directory and starts `pi` there without a prompt.
 
-A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now pins 1.0.4, matching the kit pin. Pi's caret dependency can still select a later `pi-tui`.
-The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on 1.0.4.
+A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now pins 1.1.0, matching the kit pin. Pi's caret dependency can still select a later `pi-tui`.
+The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on 1.1.0.
 
 ### Placeholder defaults
 

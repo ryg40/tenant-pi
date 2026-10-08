@@ -27,7 +27,9 @@ The kit runs none of these steps. `validate`, `plan` and `generate` write no cre
 
 ## Where the facts come from
 
-The Pi facts in this guide were read from the documentation and the source of Pi 1.0.4, and checked with `pi --list-models` on Pi 1.0.4 in an empty profile directory with no network and no provider key. No model request ran. Not verified: a login, a model reply, and each server behaviour. Read the Pi documentation of your installed version when `<pin>` is not 1.0.4.
+The kit pin is `<pin>` (`runtime.piVersion` in `config/manifest.json`). The Pi 1.0.4 facts in this guide were not read again on the pin. Read the Pi documentation of your installed version when a fact matters.
+
+The Pi facts in this guide were read from the documentation and the source of Pi 1.0.4, and checked with `pi --list-models` on Pi 1.0.4 in an empty profile directory with no network and no provider key. No model request ran. Not verified: a login, a model reply, and each server behaviour.
 
 ## Codex
 

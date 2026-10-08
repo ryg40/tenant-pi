@@ -24,6 +24,7 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | --- | --- |
 | [Setup](docs/guides/setup.md) | The nine stages with exact commands. Start here. |
 | [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Podman adaptations; macOS stays not qualified. |
+| [Compose seat](docs/guides/compose-seat.md) | A Pi profile in a container that you reach over SSH, with Docker Compose or Podman; not qualified. |
 | [Explainer](EXPLAINER.md) | The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
 | [Providers](docs/guides/providers.md) | Codex login, and llama-swap and vLLM as direct providers in `models.json` of the profile. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |

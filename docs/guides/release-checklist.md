@@ -17,6 +17,7 @@ It records a maintainer-approved fast track with gate 6 not run, not full releas
 | 5. Scanner | `scripts/scan.sh all` exits with 0. On `portable` the level is `fail`. Record the result line. | Yes |
 | 6. Clean Linux core trial | A core-only profile on a clean Linux user: setup Stages 1 to 9, with Stage 9 checks 1, 2 and 4 recorded. | Yes |
 | 7. Optional live services | Each optional module, the gateway and each MCP server: passed, failed, blocked or not run. | Report only |
+| 8. Compose seat | `docker compose config` reads the two Compose files: the short offline check. `docker compose build`: passed, failed or not run. The qualification table of [the Compose seat guide](compose-seat.md#qualification) matches the recorded trials. | Report only |
 
 Gates 1 to 4 are the four offline checks that `scripts/publish_portable.py` runs itself. Gate 1 includes [the documentation check](#documentation-check). The test `DocCheckRepoTests` of `tests/test_doc_check.py` runs it on the publish set. A finding fails the unit tests. Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
 
@@ -59,7 +60,7 @@ Run the offline gates on the candidate copy before accepting the move.
 The `questions` component has its own pin: the exact version 2.11.0 of `@juicesharp/rpiv-ask-user-question`. It is not a version range.
 The source of that version was not reviewed.
 `scripts/pi_update.py detect` exits 10 while the registry has a newer version.
-This continues until the owner reviews the newer version and moves the pin.
+This continues until the maintainer of the release reviews the newer version and moves the pin.
 
 ### Gate 6: the clean Linux core trial
 
@@ -81,6 +82,15 @@ A release note names each optional module, route and service with its result. Th
 
 Do not write "all modules work" when only the core trial ran. Do not describe a documentation review or an offline `generate` as a live installation.
 
+### Gate 8: the Compose seat
+
+- This gate is a report, like gate 7. It does not stop a snapshot. Record the `config` check, the build and the table check, each as passed, failed or not run.
+- Set `KIT_COMMIT` first: `export KIT_COMMIT="$(git rev-parse --short HEAD)"`. Run `docker compose config` from the kit root, with a `seat.env` and a `compose.env` in a private directory. It is the short offline check. Use the options of [the build and start commands](compose-seat.md#step-2-build-and-start).
+- Keep the key line of that `compose.env` empty: `docker compose config` prints each value of the file.
+- `docker compose build` needs Docker and the network. A release without it records `build: not run`.
+- The build runs the four offline checks inside the image. A build that passes is not a trial of a container. The evidence of a container is in the trial records.
+- Read each row of the qualification table. A row is `not qualified` unless an accepted trial record covers each item of the checklist of the guide.
+
 ## Platforms that are not qualified
 
 These platforms are not qualified in this release. A guide may give an adaptation for them, but marks it unqualified.
@@ -92,8 +102,9 @@ These platforms are not qualified in this release. A guide may give an adaptatio
 | Browser-hosted Pi | Not qualified | Gate 6 with Pi started from a browser terminal, with the launch environment checks of [the setup guide](setup.md#shells-that-do-not-inherit-your-variables). |
 | Pi inside Herdr | Not qualified | Gate 6 with Pi started in a Herdr pane, plus the `herdr` component loaded and used once. |
 | The `questions` component | Not qualified | An interactive session of a generated profile that loads the extension and shows one question dialog, plus the plain-text fallback in a session without it. |
-| A temporary Herdr session | Not qualified | A named test session that starts, shows its state, stops and is deleted, with no model request, on a host that the owner approves. |
-| Install on a remote Linux host over SSH | Not qualified | The lines of `remote-plan` run on a disposable Linux host that the owner approves, with the identity and ownership checks recorded. |
+| A temporary Herdr session | Not qualified | A named test session that starts, shows its state, stops and is deleted, with no model request, on a host that the maintainer of the release approves. |
+| [The Compose seat](compose-seat.md), each runtime | Not qualified | A trial record for the runtime that covers each item of [the checklist of the guide](compose-seat.md#what-a-trial-must-cover). |
+| Install on a remote Linux host over SSH | Not qualified | The lines of `remote-plan` run on a disposable Linux host that the maintainer of the release approves, with the identity and ownership checks recorded. |
 
 Each run needs a record with the exact commands, the versions, and each check as passed, failed, blocked or not run. The maintainer of the release accepts the record before the status changes.
 

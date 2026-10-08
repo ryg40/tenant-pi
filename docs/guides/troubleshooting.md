@@ -48,6 +48,7 @@ See [Switch wiki embeddings off](../memory-modules.md#switch-wiki-embeddings-off
 | `memory_disabled: overlay.consent` | `consent.memoryCapture` is `true`, and no memory module is enabled. | Set it to `false`, or enable `hermes` or `wiki` with a `memory` block. |
 | `memory_consent_required: overlay.consent.memoryCapture` | A memory module is enabled without consent. (documented) | Set `consent.memoryCapture: true` after you read [memory modules](../memory-modules.md). |
 | `moved_key: overlay.endpoints.tenantext is now overlay.endpoints.codex-accounts` | The overlay uses the old gateway key. | Rename the key to `codex-accounts` in `endpoints` and `env`. |
+| `undeclared_env: overlay.env` | An `env` value of the overlay names a variable that the manifest does not declare for the module. For `codex-accounts`, the allowed names are `TENANTEXT_LITELLM_API_KEY` for the key and `TENANTEXT_LITELLM_BASE_URL` for the URL. | Use the allowed name. With `compose-plan`, leave `--key-var` at its default. |
 | `unknown_fields: overlay` | The overlay has a key that this kit does not define. (documented) | Remove the key. |
 | `input_missing: runtime_report.file`, `invalid_json: runtime_report.file` | The `--runtime-report` file is absent (`input_missing`), or it is empty or not JSON (`invalid_json`). A `check-runtime` run that stops with exit code 2 leaves an empty file behind a `>` redirect. (documented) | Run `python3 scripts/tenant_pi.py check-runtime > "<file>"` again and read its exit code. Exit code 1 still writes the report. |
 | `runtime_report_required: runtime_report.pi.required`, `runtime_report.pi.tested` or `runtime_report.pi.acceptedRange` | The report comes from another tested version or range. The `required` rule also exists for `node` and `python`. (documented) | Make the report again with this kit. |
@@ -82,6 +83,37 @@ The same rules apply to each JSON input, with another field: `manifest.file`, `r
 | `home_required: target.home`, `absolute_path: target.home` | `HOME` is not set, or it is not an absolute path without a trailing slash. `validate`, `plan` and `generate` need it to find `~/.pi/agent`. (documented) | Run the command in a shell with `HOME` set to an absolute path. |
 | `target_exists: launcher.path` | The launcher file exists. The check runs before the target is created. | Remove the old file after review, or use a new name, for example `launch-main-2.sh`. |
 | `absolute_path: launcher.path` | The launcher path is relative. | Give an absolute path. |
+
+## The Compose seat
+
+The `compose-plan` action refuses an answer or a file with one of these rules. With `--write`, each refusal comes before the first write. [The CLI contract](../generator.md#compose-plan-the-files-and-the-commands-of-a-compose-seat) has the full table. [The Compose seat guide](compose-seat.md) has the procedure.
+
+| Diagnostic | Cause | Fix |
+| --- | --- | --- |
+| `reserved_account: compose-plan.account` | The account name is `root` or an account of the base image, for example `node` or `sshd`. (documented) | Use a new name, for example the default `pi`. |
+| `account_id: compose-plan.uid`, `account_id: compose-plan.gid` | The UID or the GID is outside 500 to 65533. The GID 20 is accepted. (documented) | Give the output of `id -u` and `id -g` of the operator. For `root`, choose a value from 1000. |
+| `port: compose-plan.ssh_port` | The port is outside 1024 to 65535. (documented) | Use a free port in that range, for example `2222`. |
+| `public_key_missing: compose-plan.public_key` | The public key file has no key line. An empty line and a comment line are not key lines. (documented) | Give the path of a `.pub` file that holds one key. |
+| `public_key_line: compose-plan.public_key` | A line is not `<type> <key> [comment]`, or it has an option before the type. (documented) | Give a `.pub` file that `ssh-keygen` wrote, without an option in front of the key. |
+| `public_key_count: compose-plan.public_key has <n> key lines` | The file has more than one key line. The seat takes exactly one. (documented) | Give a file with one key. To add a key later, edit `<private dir>/authorized_keys` and start the seat again. |
+| `private_key: compose-plan.public_key` | The file holds the text `PRIVATE KEY`. (documented) | Give the `.pub` file. Never give a private key to the kit. |
+| `private_dir_missing: compose-plan.private_dir` | With `--write`: the private directory does not exist. (documented) | Create it with `mkdir -p` and give it mode 700. Then run the command again. |
+| `private_dir_unsafe: compose-plan.private_dir` | With `--write`: the directory or a directory above it is a symbolic link or is not a directory. (documented) | Give a path through real directories. |
+| `target_exists: compose-plan.<file>` | With `--write`: one of the five files exists. The action then writes none. (documented) | Move the file after review, or name another private directory. Do not delete a file to make the action pass. |
+| `under_kit: compose-plan.private_dir` | The private directory is the clone, is under it, or holds it. With `--write`: it is under the kit that runs the action. (documented) | Name a private directory outside the kit, for example `"$HOME/.config/tenant-pi"`. |
+| `credential_free_https_url: compose-plan.gateway_url` | The URL breaks the gateway rule of the overlay: it is not HTTPS on port 443, or it holds a credential, a query or a fragment. (documented) | Give an HTTPS URL on port 443 without a user name, a password, a key, a `?` part or a `#` part. |
+| `gateway_api_prefix: compose-plan.gateway_url` | The URL does not end in `/v1`. (documented) | Add `/v1` at the end of the URL. |
+| `unsupported_gateway_model: compose-plan.model` | The provider is `litellm-codex`, and the model is not one of its three aliases. (documented) | Give `codex-auto/astra`, `codex-auto/sol` or `codex-auto/luna`. |
+| `unsupported_gateway_model: overlay.modelRoutes.choice` | The provider is not `litellm-codex`. The action runs the route rules with the registry of the plan, and the seat has the gateway route only. (documented) | Leave `--provider` at its default, `litellm-codex`. |
+
+The action also runs the overlay validator on the plan. `undeclared_env: overlay.env`, for a `--key-var` name that the manifest does not declare, has its row in [Overlay and input](#overlay-and-input).
+
+Faults of a seat that starts or updates:
+
+- The container stops at once. Read `logs seat`: a line with the prefix `seat:` names the step. An absent or empty `authorized_keys` stops the start.
+- The seat still runs the old kit after `up -d`. The image tag is `KIT_COMMIT`: set the new value, run `build`, then `up -d`.
+- `up` fails on the projects bind. Create the directory as the operator before the start, or leave out `compose.projects.yaml`. Not verified: a missing directory under Docker may be created with root as owner, and Podman may refuse the start.
+- Pi gets no reply from the gateway. The URL must be HTTPS on port 443, reachable from inside the container. See [the gateway route](compose-seat.md#the-gateway-route).
 
 ## Comparison and carry
 

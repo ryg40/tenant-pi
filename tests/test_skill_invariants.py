@@ -22,7 +22,7 @@ OPTIONAL_KIT_SKILLS = ("herdr-relay",)
 # the Herdr result contract is exempt from the wording rule, in the kit and plugin.
 PROTOCOL_LINES = {("herdr", "roles/contract.md"): {"Marker: SUBAGENT_COMPLETE"}}
 # Skills that only the user starts. No other text refers to one as a skill to load.
-USER_ONLY_SKILLS = ("grill-me", "to-spec", "to-tickets", "wayfinder", "retro")
+USER_ONLY_SKILLS = ("grill-me", "to-spec", "to-tickets", "wayfinder", "retro", "get-status")
 
 # A sentence that forbids the word is a finding too: a shipped text says "a Herdr pane".
 SUBAGENT = re.compile(r"sub[-\s]?agent|background agent", re.IGNORECASE)

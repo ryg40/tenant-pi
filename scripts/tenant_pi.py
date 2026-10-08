@@ -21,13 +21,15 @@ from scripts.candidate_list import child, report as list_report, safe_name, sele
 from scripts import kit_commit
 from scripts.profile_inventory import RESOURCE_DIRS, coordination_files, inventory
 from scripts.check_runtime import HERDR, TOOLS, check, check_herdr, matches
+from scripts import compose_plan as seat
 from scripts import launcher
+from scripts.model_routes import render
 from scripts.private_init import TARGET, TEMPLATES, check_location, check_target, init, inside, report as init_report, with_target
 from scripts.profile_plan import (PROVIDER_KEY_NAMES, herdr_report, prepare, provider_key_warning, readiness,
                                    runtime_report, setup_commands)
 from scripts.profile_write import WriteError, utc_now, write
 from scripts.remote_plan import remote_plan
-from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, parse, place, fail
+from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, overlay, parse, place, fail
 
 MAX_INPUT = 1024 * 1024
 # Nesting bound of one JSON input. The parser limit differs between Python versions, so the kit sets its own.
@@ -458,6 +460,72 @@ def _init_private(args):
     return init_report(init(args.dir, contents, forbidden), str(ROOT), args.target)
 
 
+def _integer(value, field):
+    """One decimal option value as an integer; the diagnostic does not echo it."""
+    if not value.isascii() or not value.isdigit() or len(value) > 6:
+        fail("integer", field)
+    return int(value)
+
+
+def _compose_write(plan, key_data):
+    """Create the five absent files of the Compose seat in the existing private directory, each with mode 0600.
+
+    No key value is written: the key line of `compose.env` is empty, and `authorized_keys` is the public key file.
+    """
+    private = plan["answers"]["privateDir"]
+    home = _home("compose-plan.home")
+    _outside(private, (("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent")), "compose-plan.private_dir")
+    contents = {"overlay.json": (json.dumps(plan["overlay"], indent=2) + "\n").encode(),
+                "seat.env": ("\n".join(plan["seatEnv"]) + "\n").encode(),
+                "compose.env": ("\n".join(plan["composeEnv"]) + "\n").encode(),
+                "authorized_keys": key_data,
+                "registry.json": (json.dumps(plan["registry"], indent=2) + "\n").encode()}
+    try:
+        fd = _open_dir(private)
+    except FileNotFoundError:
+        fail("private_dir_missing", "compose-plan.private_dir")
+    except OSError:
+        # The directory or a directory above it is a symbolic link or is not a directory.
+        fail("private_dir_unsafe", "compose-plan.private_dir")
+    try:
+        # Every refusal comes before the first write.
+        for name in seat.FILES:
+            try:
+                os.stat(name, dir_fd=fd, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            fail("target_exists", "compose-plan." + name)
+        for name in seat.FILES:
+            # Exclusive creation: an entry that appears after the check is refused, and no link is followed.
+            try:
+                out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=fd)
+            except FileExistsError:
+                fail("target_exists", "compose-plan." + name)
+            with os.fdopen(out, "wb") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(contents[name])
+    except OSError:
+        fail("write_failed", "compose-plan.private_dir")
+    finally:
+        os.close(fd)
+    return [plan["files"][name] for name in seat.FILES]
+
+
+def _compose_plan(args):
+    """The plan of the Compose seat. Reads the manifest and the public key file; writes only with `--write`."""
+    known = manifest(_load_input(args.manifest, "manifest.file"))
+    plan = seat.compose_plan(args.account, _integer(args.uid, "compose-plan.uid"), _integer(args.gid, "compose-plan.gid"),
+                             args.public_key, _integer(args.ssh_port, "compose-plan.ssh_port"), args.projects_dir,
+                             args.gateway_url, args.key_var, args.enable, args.private_dir, args.clone, known=known,
+                             model=args.model, provider=args.provider, thinking=args.thinking)
+    # The same rules as `validate`: a plan never holds an overlay that the entrypoint of the seat refuses.
+    overlay(plan["overlay"], known)
+    # The route rules with the registry of the plan: the gateway has no model of another provider.
+    render(plan["overlay"], plan["registry"])
+    key_data = seat.public_key(_load_input(args.public_key, "compose-plan.public_key", raw=True, limit=seat.MAX_KEY_FILE))
+    return {**plan, "written": _compose_write(plan, key_data) if args.write else []}
+
+
 def main(argv=None, *, clock=utc_now):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
@@ -491,6 +559,29 @@ def main(argv=None, *, clock=utc_now):
     rem.add_argument("--ssh-target", required=True, help="SSH target of the user: a host alias, or <user>@<host>")
     rem.add_argument("--remote-user", required=True, help="account on the remote host that owns the install")
     rem.add_argument("--remote-home", required=True, help="absolute home directory of that account on the remote host")
+    cmp_seat = subs.add_parser("compose-plan", help="print the files and the command lines of a Compose seat; runs none of them")
+    cmp_seat.add_argument("--account", default="pi", help="account name of the seat (default: pi)")
+    cmp_seat.add_argument("--uid", required=True, help="UID of the account: the UID of the user (id -u)")
+    cmp_seat.add_argument("--gid", required=True, help="GID of the account: the GID of the user (id -g)")
+    cmp_seat.add_argument("--public-key", required=True, help="absolute path of the SSH public key file of the user")
+    cmp_seat.add_argument("--ssh-port", default="2222", help="port on this machine that receives the SSH connections (default: 2222)")
+    cmp_seat.add_argument("--projects-dir", help="absolute path of the optional projects directory")
+    cmp_seat.add_argument("--gateway-url", required=True, help="credential-free HTTPS URL of the gateway; it ends in /v1")
+    cmp_seat.add_argument("--key-var", default="TENANTEXT_LITELLM_API_KEY",
+                          help="name of the variable that holds the gateway key (default: TENANTEXT_LITELLM_API_KEY)")
+    cmp_seat.add_argument("--enable", action="append", default=[], help="component ID to enable; repeat for more components")
+    cmp_seat.add_argument("--provider", default=seat.GATEWAY_PROVIDER,
+                          help="provider of the interactive role (default: litellm-codex)")
+    cmp_seat.add_argument("--model", required=True,
+                          help="model of the interactive role: codex-auto/luna, codex-auto/sol or codex-auto/astra")
+    cmp_seat.add_argument("--thinking", default="high", help="thinking level of the interactive role (default: high)")
+    cmp_seat.add_argument("--private-dir", required=True, help="absolute path of the existing private directory, outside the clone")
+    cmp_seat.add_argument("--clone", default=str(ROOT), help="absolute path of the kit clone (default: this clone)")
+    cmp_seat.add_argument("--write", action="store_true",
+                          help="write overlay.json, seat.env, compose.env, authorized_keys and registry.json into the private directory; "
+                          "each must be absent")
+    cmp_seat.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
+                          help="reviewed kit manifest (override remains strictly validated)")
     priv = subs.add_parser("init-private", help="create a new private directory for the overlay and its records")
     priv.add_argument("--dir", required=True, help="absolute path of the absent private directory; its parent exists")
     priv.add_argument("--overlay", action="append", default=[],
@@ -572,6 +663,10 @@ def main(argv=None, *, clock=utc_now):
             # Display only: no process starts, no file is opened, and no SSH option is added.
             report = remote_plan(args.ssh_target, args.remote_user, args.remote_home)
             print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
+            return 0
+        if args.action == "compose-plan":
+            # Display only without `--write`: no process starts. The key variable is a name; its value is never read.
+            print(json.dumps(_compose_plan(args), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
         if args.action == "init-private":
             # Never runs Git: the `git init` line is display text for the user.

@@ -97,7 +97,7 @@ def _tree_resources(kind, item):
 # Reviewed anchors are independent of editable manifest claims. Pins are intentionally
 # repeated here so an altered manifest cannot bless an unrelated upstream source.
 REVIEWED_SOURCES = {
-    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.4"},
+    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.1.0"},
     "model-routing": {"kind": "builtin"},
     # A tree component has no upstream pin: its anchor is the tree of this kit. The `openviking`
     # memory module is one of them: `packages/openviking-pi` is a vendored copy.

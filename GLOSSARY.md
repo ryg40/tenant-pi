@@ -25,3 +25,7 @@ _Avoid_: Manual test, smoke test
 **Trial account**:
 A temporary Linux user created for one trial and removed after it; it holds no credential beyond the scoped key of that trial.
 _Avoid_: Test user, service account
+
+**Compose seat**:
+A container, started by Compose, that holds one generated Pi profile for one user and is reached over SSH.
+_Avoid_: Pi seat, container profile, sandbox

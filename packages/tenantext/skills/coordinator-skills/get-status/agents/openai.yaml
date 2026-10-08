@@ -1,0 +1,5 @@
+interface:
+  display_name: "Get Status"
+  short_description: "Status bundle and next-round coordinator"
+policy:
+  allow_implicit_invocation: false

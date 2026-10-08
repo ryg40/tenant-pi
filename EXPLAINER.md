@@ -110,7 +110,7 @@ Optional components stay off until you select them. See [Optional components](#o
 | --- | --- | --- | --- |
 | Node with npm | `>=24.0.0 <25` | `config/manifest.json`, `runtime.nodeRange` | Step 1 prints both versions. Example: Node `24.21.0`, npm `11.19.0`. |
 | Python | `>=3.11` | `config/manifest.json`, `runtime.pythonRange` | Step 1 prints the version. The kit uses the standard library only. |
-| Pi | Tested pin `1.0.4`; accepted range `>=1.0.4 <1.1` | `config/manifest.json`, `runtime.piVersion` and `runtime.piAcceptedRange` | Step 3 checks the version without using the live profile. Step 10 installs the pin when needed. |
+| Pi | Tested pin `1.1.0`; accepted range `>=1.1.0 <1.2` | `config/manifest.json`, `runtime.piVersion` and `runtime.piAcceptedRange` | Step 3 checks the version without using the live profile. Step 10 installs the pin when needed. |
 | Git | Any current version for the clone | [Setup guide](docs/guides/setup.md#before-you-start) | Step 1 prints the version. Scanning has separate requirements in [secret handling](docs/secret-handling.md#scanner). |
 
 `<pin>` means `runtime.piVersion` in `config/manifest.json`, the tested Pi version.
@@ -1025,7 +1025,7 @@ The kit installs nothing. With the prerequisites present, a core-only profile ne
 | `installed_version_unknown` | The kit does not know the installed version. Do step 3 and read its `pi` entry. |
 
 For `needed`, first test whether you can write the global directory of npm.
-Replace `<pin>` in each install command with `runtime.piVersion`, currently `1.0.4`:
+Replace `<pin>` in each install command with `runtime.piVersion`, currently `1.1.0`:
 
 
 ```sh
@@ -1901,6 +1901,7 @@ Not verified:
 | [The module guide](docs/guides/modules.md) | Each component. |
 | [The candidate update guide](docs/guides/candidate-update.md) | A new kit version: regenerate, compare, switch. |
 | [The privacy guide](docs/guides/privacy.md) | What the kit separates and what it does not. |
+| [The Compose seat guide](docs/guides/compose-seat.md) | The Compose seat: the same profile in a container that you reach over SSH. Not verified: a start of that container. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [The CLI contract](docs/generator.md) | Each action, each input rule. |
 | [The private directory](docs/private-directory.md), [the plan](docs/profile-plan.md), [the launcher file](docs/launcher.md), [the runtime check](docs/check-runtime.md), [the directory baseline](docs/directory-baseline.md) | The reference of one action each. |

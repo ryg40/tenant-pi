@@ -1,0 +1,15 @@
+# sshd configuration of the Compose seat.
+# The image build replaces @SEAT_USER@ with the account name of the seat.
+# The file has no AcceptEnv line: a client sets no variable in a session.
+Port 2222
+HostKey /etc/ssh/keys/ssh_host_ed25519_key
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+AuthorizedKeysFile .ssh/authorized_keys
+AllowUsers @SEAT_USER@
+UsePAM no
+X11Forwarding no
+PrintMotd no

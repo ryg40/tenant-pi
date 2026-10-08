@@ -59,6 +59,7 @@ PUBLISH = (
     "scripts/profile_inventory.py", "tests/test_profile_inventory.py", "docs/profile-inventory.md",
     "scripts/check_runtime.py", "tests/test_check_runtime.py", "docs/check-runtime.md", "docs/herdr-setup.md",
     "scripts/remote_plan.py", "tests/test_remote_plan.py",
+    "scripts/compose_plan.py", "tests/test_compose_plan.py",
     "tests/test_owner_packages.py", "docs/owner-packages.md",
     "tests/test_unmanaged.py", "docs/accepted-drift.md",
     "tests/test_owner_resources.py", "docs/owner-resources.md",
@@ -79,6 +80,11 @@ PUBLISH = (
     "docs/guides/providers.md",
     "AGENTS.md", "GLOSSARY.md", "docs/agents/issue-tracker.md",
     "tests/test_skill_invariants.py", "tests/test_knowledge_skills.py",
+    ".dockerignore", "deploy/compose/Dockerfile", "deploy/compose/sshd_config",
+    "deploy/compose/entrypoint.sh", "deploy/compose/README.md", "tests/test_compose_seat.py",
+    "deploy/compose/compose.yaml", "deploy/compose/compose.projects.yaml",
+    "deploy/compose/seat.env.example", "deploy/compose/compose.env.example", "deploy/compose/profile.sh",
+    "docs/guides/compose-seat.md",
 )
 # Package directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.

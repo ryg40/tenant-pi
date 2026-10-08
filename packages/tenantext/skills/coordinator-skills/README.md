@@ -15,6 +15,7 @@
 | `pr` | The template of a merge record: the comment on the Gitea issue of a merged topic branch, and the body of a Gitea pull request. |
 | `show-me` | Visual forms for conversation and Gitea comments: pseudocode, trees, Mermaid, diff, and an HTML artifact. |
 | `retro` | The user command for a retrospective: findings from the last OpenViking sessions of both harnesses, each mapped to the file that enforces it. |
+| `get-status` | Gather the work status into a bundle and start a Herdr coordinator. After `PLAN`, record the handoff when OpenKnowledge is present, then send `go`. Close the sending pane only when `go` is delivered; otherwise keep it open. The new coordinator reports the round in its own pane. |
 | `writing-for-agents` | The style reference for a document that an agent reads: a skill, a steering file, a doc behind a pointer. |
 
 The separate [knowledge-skills component](../knowledge-skills/README.md) ships OpenKnowledge discovery, skill authoring and OKF guidance.
@@ -41,16 +42,18 @@ Start a new session, or run `/reload` in Pi, to load the skills.
 
 `to-spec` and `to-tickets` publish through the tracker contract `docs/agents/issue-tracker.md` of the repository. They need the token that the contract names.
 
-`wayfinder` reads the tracker document `docs/agents/issue-tracker.md` of the repository. Without that file it stops. `wayfinder`, `research` and `prototype` start Herdr panes with the kit skill `herdr`. They name knowledge sources and review tools that the kit does not install: OpenViking, OpenKnowledge with the `okknow` skill, the LLM-WIKI tools of Pi, the `walkr` skill, `pidesktop` and an artifact server.
+`wayfinder` reads the tracker document `docs/agents/issue-tracker.md` of the repository. Without that file it stops. `wayfinder`, `research`, `prototype` and `get-status` start Herdr panes with the kit skill `herdr`. They name knowledge sources and review tools that the kit does not install: OpenViking, OpenKnowledge with the `okknow` skill, the LLM-WIKI tools of Pi, the `walkr` skill, `pidesktop` and an artifact server.
 
 `pr` names `pidesktop` for a screenshot. `show-me` names the `walkr` skill and `pidesktop` for the review of an HTML artifact. The kit does not install them. Without them, use the text forms and Mermaid.
 
 ## Rules for a cross-skill call
 
-A skill that needs another skill says: "Load the <name> skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi." The case of the first letter is free. The rest is exact, with single spaces. `<name>` is a skill of this component, or one of the kit skills `herdr` and `slopscore-pr`. A skill that only the user starts is never loaded from another skill: `grill-me`, `to-spec`, `to-tickets`, `wayfinder`, `retro`.
+A skill that needs another skill says: "Load the <name> skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi." The case of the first letter is free. The rest is exact, with single spaces. `<name>` is a skill of this component, or one of the kit skills `herdr` and `slopscore-pr`. A skill that only the user starts is never loaded from another skill: `grill-me`, `to-spec`, `to-tickets`, `wayfinder`, `retro`, `get-status`.
 
 The test `tests/test_skill_invariants.py` of the kit checks these rules in each `.md` file of a skill directory and in this file.
 
 ## Credits rule
 
-Each skill directory has a `CREDITS.md`. It names the upstream source, the upstream path, the upstream version and commit, and the licence, and it lists the changes from that upstream commit in two to five bullets. The upstream licence text is in `licenses/mattpocock-skills-MIT.txt` of this package, and `THIRD_PARTY_NOTICES.md` names the source. The skill `show-me` and the visual menu of `pr` come from `humanlayer/skills`, with credit to Dex Horthy; that licence text is in `licenses/humanlayer-skills-MIT.txt`. A new skill directory without `CREDITS.md` fails the test `tests/test_skill_invariants.py` of the kit.
+An original skill says that it is original and names the kit parts that it uses.
+
+Each skill directory has a `CREDITS.md`. For an adapted skill, it names the upstream source, the upstream path, the upstream version and commit, and the licence, and it lists the changes from that upstream commit in two to five bullets. The upstream licence text is in `licenses/mattpocock-skills-MIT.txt` of this package, and `THIRD_PARTY_NOTICES.md` names the source. The skill `show-me` and the visual menu of `pr` come from `humanlayer/skills`, with credit to Dex Horthy; that licence text is in `licenses/humanlayer-skills-MIT.txt`. A new skill directory without `CREDITS.md` fails the test `tests/test_skill_invariants.py` of the kit.

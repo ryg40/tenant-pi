@@ -60,7 +60,7 @@ class UnitTests(unittest.TestCase):
     def test_cli_tree_is_the_real_parser(self):
         top, actions = cli_tree()
         self.assertIn("--help", top)
-        self.assertEqual({"compare", "carry", "inventory", "list", "check-runtime", "check-herdr", "remote-plan", "init-private",
+        self.assertEqual({"compare", "carry", "inventory", "list", "check-runtime", "check-herdr", "remote-plan", "compose-plan", "init-private",
                           "baseline", "check-baseline", "validate", "plan", "generate"}, set(actions))
         self.assertIn("--launcher", actions["generate"])
         self.assertIn("--launcher", actions["plan"])
@@ -406,7 +406,7 @@ class TreeTests(unittest.TestCase):
     def test_clean_tree(self):
         findings, counts = self.run_check()
         self.assertEqual([], findings)
-        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": 13}, counts)
+        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": 14}, counts)
 
     def test_each_rule(self):
         cases = {
@@ -526,7 +526,7 @@ class HerdrStageTests(unittest.TestCase):
     def test_each_guide_asks_the_same_decisions(self):
         for name in self.DOCS:
             stage = self.stage(name)
-            for expected in ("on this machine, or on a remote Linux host over SSH", "existing", "privileged actions",
+            for expected in ("on this machine, on a remote Linux host over SSH, or in a container on this machine", "existing", "privileged actions",
                              "approves or refuses each item", "id -un", "command -v herdr && herdr --version",
                              "tenant_pi.py check-herdr", "packages/tenantext/skills/herdr/install.sh",
                              "separate approval", "`questions`", "plain text", "no Pi extension into Claude Code",

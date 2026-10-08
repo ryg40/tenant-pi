@@ -143,6 +143,14 @@ python3 scripts/tenant_pi.py remote-plan --ssh-target build-host --remote-user d
 
 Read each line, then run the lines that you approve in your own terminal. The lines add no SSH option, so your SSH configuration and your known hosts stay in force. A remote install is not qualified.
 
+For a profile in a container, print the files and the command lines of a Compose seat first. The action writes nothing without `--write`, and it runs no command:
+
+```sh
+python3 scripts/tenant_pi.py compose-plan --uid 1000 --gid 1000 --public-key /home/EXAMPLE_USER/.ssh/id_ed25519.pub --gateway-url https://gateway.example.invalid/v1 --private-dir /home/EXAMPLE_USER/.config/tenant-pi --model codex-auto/astra
+```
+
+Read the overlay, the env file lines and each command line. The key line of the env file is empty: you paste the key value yourself. A Compose seat is not qualified. See [the Compose seat](../../deploy/compose/README.md).
+
 After `generate`, `inventory --dir` shows two more results under `coordination`: whether the Herdr skill file is readable, and whether the question extension is declared or installed. A working session and a working question dialog are separate live checks.
 
 Both components are `unverified`. [Herdr and the question tool](../herdr-setup.md) lists what no test proves.

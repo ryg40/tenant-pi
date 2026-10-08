@@ -133,7 +133,7 @@ REVIEWED_RESOURCES = {
     **{cid: _tree_resources(kind, item) for cid, (_, kind, item) in TREE_COMPONENTS.items()},
     "hermes": {"extensions": ["src/index.ts"], "skills": [], "prompts": [], "themes": []},
     # The wiki package also declares skills, prompts, and an MCP server; only the extension loads.
-    "wiki": {"extensions": ["extensions"], "skills": [], "prompts": [], "themes": []},
+    "wiki": {"extensions": ["extensions/llm-wiki/index.ts"], "skills": [], "prompts": [], "themes": []},
     "mcp": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
     "questions": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
 }

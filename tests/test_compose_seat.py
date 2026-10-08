@@ -316,6 +316,12 @@ class ProfileTests(unittest.TestCase):
         self.text = (SEAT / "profile.sh").read_text(encoding="utf-8")
         self.code = content(self.text)
 
+    def run_shell(self, script, *arguments, **env):
+        """Run a script in a shell that is not interactive, with an environment that holds PATH and HOME only."""
+        return subprocess.run(["sh", "-euc", script, "sh", *arguments], text=True,
+                              capture_output=True, timeout=20, stdin=subprocess.DEVNULL,
+                              env={"PATH": "/usr/bin:/bin", "HOME": "/home/EXAMPLE_USER", **env})
+
     def run_profile(self, run_dir, command, **env):
         """Read a copy of the profile, with the key directory changed, in a shell that is not interactive."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -323,9 +329,7 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(1, self.code.count("seat_run=/run/tenant-pi-seat"))
             copy.write_text(self.text.replace("seat_run=/run/tenant-pi-seat", f"seat_run='{run_dir}'"),
                             encoding="utf-8")
-            return subprocess.run(["sh", "-euc", f'. "$1"; {command}', "sh", str(copy)], text=True,
-                                  capture_output=True, timeout=20, stdin=subprocess.DEVNULL,
-                                  env={"PATH": "/usr/bin:/bin", "HOME": "/home/EXAMPLE_USER", **env})
+            return self.run_shell(f'. "$1"; {command}', str(copy), **env)
 
     def test_path_has_the_launcher_directory_and_the_pi_prefix(self):
         with tempfile.TemporaryDirectory() as run_dir:
@@ -352,7 +356,11 @@ class ProfileTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as run_dir:
             result = self.run_profile(run_dir, "env")
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertLessEqual({line.split("=")[0] for line in result.stdout.splitlines()}, {"PATH", "HOME", "PWD"})
+        # A shell exports names of its own. The baseline is the same shell without the profile.
+        baseline = self.run_shell("env")
+        self.assertEqual(0, baseline.returncode, baseline.stderr)
+        names = [{line.split("=")[0] for line in run.stdout.splitlines()} for run in (result, baseline)]
+        self.assertLessEqual(names[0], names[1])
 
     def test_interactive_ssh_login_starts_or_attaches_the_tmux_session(self):
         at = self.code.index('tmux new-session -A -s seat -c "$seat_dir" && exit')

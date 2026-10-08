@@ -28,23 +28,33 @@ For a real boundary, run each profile as a separate OS user, in a container, or 
 | --- | --- | --- |
 | The kit clone | Reviewed source, the manifest, the synthetic example overlay, the in-tree packages. No user value. | Yes |
 | `.local/` in the clone | Optional. The default `--local-dir`, and the optional local deny list of the scanner. It can hold private state. | No. The Git ignore rule is not a security control. |
-| The private directory | `overlay.json`, `registry.json`, `install-log.md`, `accepted-drift.md`, `.gitignore`, `inputs/` (for example `inputs/mcp-adapter.json`), launcher files, baseline files, saved `compare` reports. | Only if you run `git init` there. The kit prints that line and never runs it. |
-| A generated profile | `settings.json`, `.tenant-pi/choices.json`, `.tenant-pi/state.json`, optional module files. After launch, Pi adds `auth.json`, `sessions/`, `npm/` and module state. | No |
+| The private directory | `overlay.json`, `registry.json`, `install-log.md`, `accepted-drift.md`, `.gitignore`, `inputs/` (for example `inputs/mcp-adapter.json`), launcher files, baseline files, saved `compare` reports, the facts file `results-facts.json` and the results file `INSTALLER_KIT_RESULTS.md`. | Only if you run `git init` there. The kit prints that line and never runs it. |
+| A generated profile | `settings.json`, `.tenant-pi/choices.json`, `.tenant-pi/state.json`, optional module files. After launch, Pi adds `auth.json`, `models-store.json`, `sessions/`, module state, and `npm/` with a declared npm package. | No |
 | The live profile `~/.pi/agent` | Your existing Pi setup. | The kit never writes it. It reads it only when you name it with `--dir`: `baseline` and `check-baseline` read the name, kind, size and modification time of each entry and open no file; `inventory` reads `settings.json` and lists three directories. |
 
 Keep the private directory outside the clone. `init-private` refuses a path inside the clone, inside `~/.pi/agent` and inside a known overlay target. See [the private directory](../private-directory.md).
 
 Keep each generated profile outside the clone too. `validate`, `plan` and `generate` refuse a `target.agentDir` inside the clone that runs them, with `under_kit: overlay.target.agentDir`. A second clone, or the main clone when you run the kit from a Git worktree, is not protected. See [the generator](../generator.md).
 
+A personal wiki vault holds the pages of the user, and each profile of the account uses it. The kit refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`. The vaults are `.llm-wiki` in the home directory, `<WIKI_HOME>/.llm-wiki`, and, for an action that reads the overlay, `<wikiHome>/.llm-wiki` of `memory.wiki.wikiHome`. `baseline` and `init-private` read no overlay, so they know the first two only. This command reports the vault from `lstat` calls and opens no file:
+
+```sh
+python3 scripts/tenant_pi.py check-wiki-vault
+```
+
+The wiki extension itself writes into the vault when the agent uses a wiki tool; see [an existing vault](../memory-modules.md#an-existing-vault).
+
+The sample overlay enables no memory module. The install flow marks the two local memory modules `hermes` and `wiki` in its checklist and asks for the consent with one sentence. Both store text of the sessions on this machine: Hermes below the profile, the wiki in the vault. With the value of the install flow, `ambientPersonalVault: true`, the wiki also adds text from the vault to each prompt in each directory, and that text goes to the model provider of the session. Without `consent.memoryCapture: true`, nothing is captured.
+
 Keep each generated profile outside the live profile. `validate`, `plan` and `generate` refuse a `target.agentDir` that is `~/.pi/agent` or is under it, with `under_pi_agent: overlay.target.agentDir`. The kit does not read `PI_CODING_AGENT_DIR`: a live profile that only this variable names is not protected.
 
-The `.gitignore` of the private directory ignores `inputs/`, `.env`, `.env.*`, `auth.json`, `models.json`, `mcp-adapter.json`, `sessions/`, `*.key`, `*.pem`, `*.db`, `*.sqlite` and `*baseline*.json`. It is not a security control. Read `git status` before each commit.
+The `.gitignore` of the private directory ignores `inputs/`, `.env`, `.env.*`, `auth.json`, `models.json`, `mcp-adapter.json`, `sessions/`, `*.key`, `*.pem`, `*.db`, `*.sqlite`, `*baseline*.json`, `INSTALLER_KIT_RESULTS.md` and `results-facts.json`. It is not a security control. Read `git status` before each commit.
 
 `.tenant-pi/choices.json` holds the whole overlay copy, the registry and the MCP definitions of a profile. It holds `${NAME}` references, never a resolved secret. Treat it as private like the overlay.
 
 ## What the kit never does
 
-The kit commands are `validate`, `plan`, `generate`, `compare`, `carry`, `inventory`, `list`, `check-runtime`, `init-private`, `baseline` and `check-baseline`. None of them:
+The kit commands are `validate`, `plan`, `generate`, `compare`, `carry`, `inventory`, `list`, `check-runtime`, `check-wiki-vault`, `components`, `init-private`, `baseline`, `check-baseline` and `results`. None of them:
 
 - edits a shell startup file such as `~/.bashrc`, `~/.zshrc` or `~/.profile`, or changes `PATH`;
 - installs a package, runs `npm`, `pip`, `git` or a system package manager;
@@ -52,7 +62,7 @@ The kit commands are `validate`, `plan`, `generate`, `compare`, `carry`, `invent
 - runs `pi`, except `pi --version` inside `check-runtime` with an empty temporary `PI_CODING_AGENT_DIR`;
 - opens a network connection or makes a model call;
 - reads `auth.json`, `models.json`, a session, a memory store or the live `settings.json`. `baseline` and `check-baseline` read the status of each entry of the directory that you name (name, kind, size, modification time) and open no file; see [the directory baseline](../directory-baseline.md);
-- reads an environment value other than `HOME` (`init-private`, `baseline`, `validate`, `plan`, `generate`) and `PATH` (`check-runtime`). `plan` also tests a fixed list of provider key variable names for presence and reads no value; see [the warning](../profile-plan.md#the-warning-for-a-provider-key-variable). Exception: `check-runtime` passes the full environment of the caller to its three child processes (`pi --version`, `node --version`, `python3 --version`), with `PI_CODING_AGENT_DIR` replaced for the Pi process;
+- reads an environment value other than `HOME` (`init-private`, `baseline`, `validate`, `plan`, `generate`, `check-wiki-vault`, `results`), `WIKI_HOME` (the same actions, for the place of a wiki vault only) and `PATH` (`check-runtime`). `plan` also tests a fixed list of provider key variable names for presence and reads no value; see [the warning](../profile-plan.md#the-warning-for-a-provider-key-variable). Exception: `check-runtime` passes the full environment of the caller to its three child processes (`pi --version`, `node --version`, `python3 --version`), with `PI_CODING_AGENT_DIR` replaced for the Pi process;
 - copies auth, sessions, memory, queues, keyring state or installed packages between profiles;
 - writes, prints or resolves a secret value.
 

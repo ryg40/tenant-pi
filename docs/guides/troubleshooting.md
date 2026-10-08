@@ -75,6 +75,7 @@ The same rules apply to each JSON input, with another field: `manifest.file`, `r
 | `unsafe_owner: target.parents`, `unsafe_permissions: target.parents` | A directory above the target belongs to another user, or others can write to it without a sticky bit. (documented) | Use a parent tree that only you own. |
 | `pi_login_blocked: overlay.modelRoutes.gateway.auth` | The gateway uses `auth: "login"`. A fresh profile cannot log in to the gateway at this pin. (documented) | Use `{"auth": "env"}` and export `TENANTEXT_LITELLM_API_KEY`. |
 | `target_exists: init-private.dir` | The private directory exists. | Keep the existing directory, or name a new one. The action never adopts a directory. |
+| `under_wiki_vault: overlay.target.agentDir`, `under_wiki_vault: launcher.path`, `under_wiki_vault: baseline.out`, `under_wiki_vault: init-private.dir`, `under_wiki_vault: init-private.target`, `under_wiki_vault: results.out_dir`, `under_wiki_vault: results.target` | The path is a personal wiki vault or is below one. The vaults are `~/.llm-wiki`, `<WIKI_HOME>/.llm-wiki` when the shell has `WIKI_HOME`, and, for an action that reads the overlay, `<wikiHome>/.llm-wiki` of `memory.wiki.wikiHome`. `baseline` and `init-private` read no overlay, so they know the first two only. (documented) | Choose a path outside the vault. To record the vault, give it as `--dir` of `baseline` and keep `--out` in the private directory. |
 | `under_pi_agent: init-private.dir` | The private directory is inside `~/.pi/agent`. | Use a directory outside the live profile, for example `"$HOME/.config/tenant-pi"`. |
 | `under_kit: init-private.dir`, `under_overlay_target: init-private.dir` | The path is inside the kit clone or inside a profile target. (documented) | Use a directory outside both. |
 | `absolute_path: init-private.target`, `shell_or_template: init-private.target` | The `--target` path is relative, starts with `~`, or has a `$`. The kit does not expand a path. (documented) | Give the expanded absolute path, for example `--target "$HOME/.pi/profiles/main"` in double quotes. |
@@ -174,14 +175,14 @@ The Node dependencies of `packages/tenantext` are absent. Run `npm ci --ignore-s
 
 ### Pi warns about host-provided extension packages
 
-Pi `0.99.x` printed this warning at start. Not verified: the warning on the kit pin in `config/manifest.json`, key `runtime.piVersion`.
+Pi `0.99.x` printed this warning at start. With the kit pin in `config/manifest.json`, key `runtime.piVersion`, it was observed for `typebox` in the question extension.
 
 ```text
 Warning: Extension package ".../package.json": Host-provided extension packages must be declared in
 peerDependencies with a "*" range, not dependencies: typebox.
 ```
 
-A memory package lists a host module under `dependencies`. Run the override by hand:
+A memory package or the question extension lists a host module under `dependencies`, and the override did not run after the install. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"

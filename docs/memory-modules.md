@@ -2,7 +2,7 @@
 
 Status: offline implementation, not a qualified runtime. `scripts/memory_modules.py` is a pure module: no file, environment, subprocess, or network access. Validation, planning, and generation make zero model calls and zero network writes; the tests prove this with a blocked-socket, blocked-subprocess fixture. Not verified: live capture behaviour. Get explicit consent before a live capture test.
 
-Three modules can be enabled: `hermes` (`pi-hermes-memory`), `wiki` (`@zosmaai/pi-llm-wiki`) and `openviking` (the vendored package `packages/openviking-pi`). The two npm modules are declared without a version, so `pi update --extensions` installs the current registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. `openviking` also needs `consent.remoteMemoryWrites`, because each capture is a write to a server. The default example enables none of them and emits no memory extension.
+Three modules can be enabled: `hermes` (`pi-hermes-memory`), `wiki` (`@zosmaai/pi-llm-wiki`) and `openviking` (the vendored package `packages/openviking-pi`). The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. `openviking` also needs `consent.remoteMemoryWrites`, because each capture is a write to a server. The default example enables none of them and emits no memory extension. The install flow marks `hermes` and `wiki` in its checklist and asks for the consent with one sentence; the user keeps or removes each mark. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
 
 ## Activation truth table
 
@@ -42,7 +42,7 @@ A configured credential name, an endpoint, or a reachable service never enables 
 | `hermes.childExtensionPaths` | absolute paths or `builtin:<name>` | Extension sources the child `pi -p` process must load. Only allowed when review is on. The validator checks the form and the presence of a path, not that a path names the right extension. |
 | `wiki.ambientPersonalVault` | boolean | `true` lets the extension create `~/.llm-wiki/` on the first session start and inject recall in every directory. `false` keeps the extension quiet until a project vault exists or a tool is called. |
 | `wiki.backgroundTasks` | boolean | `true` sets the wiki background task model from `roles.memory`. `false` leaves the wiki on the session model when the agent invokes an ingest tool. |
-| `wiki.wikiHome` | absolute path | Optional, and only with `ambientPersonalVault: true`. Moves the personal vault to `<wikiHome>/.llm-wiki/` through a process-local `WIKI_HOME` assignment on the launch line. At this pin `resolveProjectVaultRoot` treats `WIKI_HOME` as the project's own vault, so every ambient surface fires wherever Pi starts; a quiet wiki with a relocated vault is not possible, and the validator fails `wiki_home_is_ambient`. |
+| `wiki.wikiHome` | absolute path | Optional, and only with `ambientPersonalVault: true`. Moves the personal vault to `<wikiHome>/.llm-wiki/` through a process-local `WIKI_HOME` assignment on the launch line. At this pin `resolveProjectVaultRoot` treats `WIKI_HOME` as the project's own vault, so every ambient surface fires wherever Pi starts; a quiet wiki with a relocated vault is not possible, and the validator fails `wiki_home_is_ambient`. Without `wikiHome`, the launch line removes an inherited `WIKI_HOME`, so the vault is the one of the home directory. Do not set `wikiHome` to use an existing `~/.llm-wiki/`; see [an existing vault](#an-existing-vault). |
 | `wiki.embedding` | object or `null` | Optional. Omitted or `null` disables embeddings. An object requires selection, capture consent, and `consent.embeddingTextTransfer: true`. |
 | `wiki.embedding.provider` | `openai-compatible` | Required. The user selects the protocol explicitly. The kit selects no service. |
 | `wiki.embedding.baseUrl` | HTTP(S) URL | Required. Emitted unchanged as `embeddingBaseUrl`. Credentials, fragments, underscore host labels, Unicode IDN hosts, and encoded `%23` fail validation. The seven rejected query names are `key`, `token`, `api_key`, `apikey`, `secret`, `password`, `authorization` (case-insensitive). This list is not a complete credential detector; never put credentials in a URL. |
@@ -77,18 +77,125 @@ Model cost when review is on: one completion per review trigger, per detected co
 
 Source: `@zosmaai/pi-llm-wiki@0.12.4`, `extensions/llm-wiki/index.ts`, `lib/task-config.ts`, `lib/utils.ts`.
 
+The facts of this table were read in the source of 0.12.4. A comparison of the sources of 0.12.4 and 0.12.5 found two changes: the key `autoRecall`, and the system prompt of the subagent (`lib/subagent.ts`). The facts of [an existing vault](#an-existing-vault) were run at 0.12.5. Not verified: a newer version.
+
 | Behaviour | Source fact | Kit handling |
 | --- | --- | --- |
 | Settings key | `loadTaskConfig` reads the `llm-wiki` section of `<agent dir>/settings.json`, then the project `.pi/settings.json`, which wins. | The kit owns `/llm-wiki` in the candidate's `settings.json` only. A trusted project's `.pi/settings.json` can set `ambientPersonalVault`, `trajectories`, or a task model above it; project trust is a launch-time choice outside the kit, and `--no-approve` does not grant it. |
 | Vault resolution | `resolveVaultRoot(cwd)`: a `.llm-wiki/` in the working directory or a parent wins; otherwise the personal root, `WIKI_HOME` or the HOME directory. The personal vault is `<root>/.llm-wiki/`. | Not under the agent directory. The `shared_home_state` gap names this unless `wikiHome` is set. |
-| Ambient creation | On `session_start`, when `ambientPersonalVault` is true (the Pi default) and no vault exists, `bootstrapVault` silently creates the personal vault and `before_agent_start` injects recall on every turn in every directory. | The kit always writes `ambientPersonalVault` explicitly; the default example value is `false`. |
+| Ambient creation | On `session_start`, when `ambientPersonalVault` is true (the Pi default) and no vault exists, `bootstrapVault` silently creates the personal vault and `before_agent_start` injects recall on every turn in every directory. | The kit always writes `ambientPersonalVault` explicitly. The example block above has `false`; the install flow writes `true`. |
 | Background model | `taskModel` selects the model for ingest and synthesis; unset means the session model. The installed 0.12.5 reader ignores `taskThinkingLevel`. | Existing emission from `roles.memory` stays unchanged. The kit still restricts thinking to `low`, `medium`, `high`, `xhigh`. This source gap is not runtime qualification. |
 | Trajectories | Off unless `trajectories: true`; the capture tools are not registered when off. | The kit writes `trajectories: false`. |
 | Credentials | `taskModelApiKey`, `embeddingApiKey`, and their base URLs are settings fields. | No chat credential is written. Embeddings use an environment reference or a fixed non-secret placeholder, as described below. |
-| Resources | The package declares extensions, skills, prompts, and an MCP server. | Only `extensions` loads. The `/wiki-*` prompt commands and the skill are filtered out; widening the filter is a manifest review, not an overlay choice. |
+| Resources | The package declares extensions, skills, prompts, and an MCP server. | Only the extension file `extensions/llm-wiki/index.ts` loads. The filter entry names the file: with the Pi version of the kit pin, an entry that names the directory `extensions` loads no extension of this package. The `/wiki-*` prompt commands and the skill are filtered out; widening the filter is a manifest review, not an overlay choice. |
 | Peer warning | The package lists `@earendil-works/pi-tui` and `typebox` under `dependencies`. | `peer_override_required` gap and setup line. |
 
 With `ambientPersonalVault: false`, no `WIKI_HOME`, and no project vault, nothing in the wiki writes without an agent tool call. Recall injection, the session notice, and the periodic reminder all pass through the same ambient gate, and a project vault or a trusted project settings file reopens it.
+
+### An existing vault
+
+The facts of this section are from `@zosmaai/pi-llm-wiki@0.12.5` with the Pi version of the kit pin. Source places are relative to `extensions/llm-wiki/`. Against 0.12.4, the source of 0.12.5 adds the key `autoRecall` and changes the system prompt of the subagent (`lib/subagent.ts`). The vault resolution, the bootstrap, the metadata and the embedding store are equal. Not verified: a newer version. After an install or an update of the package, the vault check of the install flow is the proof for the installed version.
+
+The rule of the kit: an established vault of the user is used as it is. The kit makes no second vault. It refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`. The vaults are `.llm-wiki` in the home directory, `<WIKI_HOME>/.llm-wiki`, and, for an action that reads the overlay, `<wikiHome>/.llm-wiki` of `memory.wiki.wikiHome`. `baseline` and `init-private` read no overlay, so they know the first two only.
+
+| Fact | Source | Proof |
+| --- | --- | --- |
+| The personal vault is `<root>/.llm-wiki/`. The root is `WIKI_HOME` when the variable is set and not empty, else the home directory. | `lib/utils.ts`, `getPersonalWikiRoot` | Start runs with a fixture vault. |
+| The agent directory does not change the vault. A new profile of the same account uses an existing `~/.llm-wiki/` with no extra setting. | `lib/host.ts`: `PI_CODING_AGENT_DIR` selects the settings files only. | A profile that the kit generated loaded the extension and used the fixture vault of its home directory. |
+| A `WIKI_HOME` of the launching shell that names another directory makes a second, new vault there at the first session start. This occurs with `ambientPersonalVault` `true` and `false`. The vault of the home directory stays unchanged and is not used. | `lib/utils.ts`, `resolveProjectVaultRoot` | A start with a launch line that does not remove the variable made `<WIKI_HOME>/.llm-wiki/`. |
+| With an existing vault and `ambientPersonalVault: true`, a session start rewrites no file of the vault. It makes `meta/qmd/` when that directory is absent, and it makes and removes a lock below it. | `index.ts`, `lib/qmd-indexing.ts`, `recoverQmdIndex` | Start runs of a profile that the kit generated, with two fixture vaults: one with `knowledge_format: "okf-0.2"`, one with a `config.json` that has no `knowledge_format` and no `vault_id`. Each file kept its SHA-256 and its modification time. Only `meta/qmd/` was new, and only the time of `meta/` changed. |
+| With an existing vault, `ambientPersonalVault: false` and no project vault, a session start writes nothing. | `index.ts`: the ambient gate | The same two fixture vaults: no file, no directory and no time changed. |
+| The wiki tools use the personal vault with each value of `ambientPersonalVault`. The switch stops only the start notice, the reminder and the recall injection. | `lib/tools.ts`, `resolveVaultPaths` | A tool run with a stub model. Not verified: a tool run from a profile that the kit generated. |
+| With embeddings off, the extension reads `meta/embeddings.json` and never writes it. Recall is then keyword-only. | `lib/recall.ts`, `lib/embeddings.ts` | Tool runs with a stub model: the store kept its bytes and its time, and no embedding request left. |
+| With embeddings on and a model label other than the label in the store, the next write tool embeds all pages again and overwrites the store. | `lib/embeddings.ts`, `reindexEmbeddings` | Tool runs with a stub model. |
+| At a session start, with each setting, the extension moves an inner vault one level up when `<root>/.llm-wiki/.llm-wiki/config.json` exists. | `lib/utils.ts`, `migrateDoubledPersonalVault` | Not verified: no run; the code only. |
+| With no vault and `ambientPersonalVault: true`, a session start makes the vault. With `false`, the start makes nothing; only `wiki_bootstrap` makes a vault. | `index.ts`, `lib/bootstrap.ts` | Start runs with an empty home directory. |
+
+The start runs used RPC mode with no provider key, so no model call was possible. Not verified: a start in interactive mode; the handler is the same code.
+
+Warning: a `WIKI_HOME` that differs from the place of the existing vault makes a second vault, and the existing vault stays unused. The launch line of a wiki profile with no `wikiHome` removes an inherited `WIKI_HOME`. A `wikiHome` in the overlay, or a manual `pi` command in a shell that exports the variable, still moves the vault.
+
+Warning: embeddings with a model label other than the label in `meta/embeddings.json` make the next write tool send each page to the endpoint again and overwrite each stored vector. The write of the store is not atomic. To keep a store, leave `memory.wiki.embedding` off, or give the exact model label of the store.
+
+Warning: the tool `wiki_bootstrap` with no `root` makes a project vault in the working directory. On an existing vault it rewrites `config.json` and `WIKI_SCHEMA.md`. Not verified: no run; the code only (`lib/tools.ts`, `lib/bootstrap.ts`).
+
+#### What the kit does for an existing vault
+
+- The overlay is the one source of the vault place. With no `memory.wiki.wikiHome`, the vault is `~/.llm-wiki/`, and the launch line removes an inherited `WIKI_HOME`. With `wikiHome`, the vault is `<wikiHome>/.llm-wiki/`.
+- The profile target, the launcher file, the `--out` file of `baseline`, the private directory of `init-private`, the private directory of `compose-plan --write` and the `--out-dir` directory of `results` are refused with `under_wiki_vault` when they are `<home>/.llm-wiki` or are under it. With `WIKI_HOME` set, the same rule covers `<WIKI_HOME>/.llm-wiki`. Trailing `/` characters of `WIKI_HOME` do not count. The rule compares path text, and each root counts as written and with its links resolved.
+- An action that reads an overlay also knows the vault of that overlay. With `memory.wiki.wikiHome`, the same rule covers `<wikiHome>/.llm-wiki` for the profile target of `validate`, `plan` and `generate`, for the launcher file, and for the `--out-dir` directory and each `--target` of `results` with `--overlay`. `compose-plan --write` applies the rule to the overlay of its plan; that overlay has no `wikiHome`.
+- `baseline` and `init-private` have no overlay of a profile. They know the vault of the home directory and the vault of `WIKI_HOME` only. Limit: they do not refuse a place below the vault of a `wikiHome` that only an overlay names.
+- `validate`, `plan` and `generate` open no file of a vault. `results` refuses a `--target` that is a vault or is under one, with `under_wiki_vault: results.target`, before it opens a file of the target. `baseline` on a vault opens its directories to list them and opens no file.
+- The action `check-wiki-vault` reports the vault before a profile is generated.
+
+The profile that uses an existing vault with the smallest number of writes has `"ambientPersonalVault": false`, `"backgroundTasks": false`, no `wikiHome` and no `embedding`. Then a session start writes nothing, and the wiki tools use the vault. This is the quiet form.
+
+The install flow writes `"ambientPersonalVault": true` for a vault that exists and for no vault. At 0.12.5, a session start then changes no existing file of a vault and makes only `meta/qmd/`. The extension then injects recall from the vault into each prompt, in each working directory. With no vault, the first start makes one. The flow sets no `embedding`. It sets `wikiHome` only when `WIKI_HOME` is set in the environment of the user, and not for the result `second_vault`: [INSTALL.md](../INSTALL.md#the-llm-wiki-vault) has the table. The flow records a baseline of the vault before the first Pi command and compares it after the first launch.
+
+#### The vault check
+
+```sh
+python3 scripts/tenant_pi.py check-wiki-vault
+```
+
+The action has no option. It reads `HOME`, and `WIKI_HOME` when that variable is set and not empty. It uses `lstat` calls only. It opens no file and no directory, it lists nothing, and it writes nothing. It starts no process.
+
+One JSON object on standard output, here for a home directory with a vault and no `WIKI_HOME`:
+
+```json
+{"home":{"config":true,"doubled":false,"embeddings":{"exists":true,"size":1048576},"exists":true,"kind":"directory","ownedByUser":true,"root":"/home/EXAMPLE_USER","vault":"/home/EXAMPLE_USER/.llm-wiki"},"personalVault":"home","result":"vault_exists","wikiHome":null}
+```
+
+| Key | Value |
+| --- | --- |
+| `home` | The facts of `<HOME>/.llm-wiki`. |
+| `wikiHome` | The facts of `<WIKI_HOME>/.llm-wiki`, or `null` when the variable is not set or is empty. |
+| `personalVault` | `wikiHome` when the variable is set, else `home`: the vault that the extension uses as the personal vault. |
+| `result` | `vault_exists`: the personal vault is there. `no_vault`: no vault is at either root. `second_vault`: `WIKI_HOME` names a root with no vault, and the home directory has a vault; a session start then makes a second vault. |
+| `root`, `vault` | The root and the vault directory, as text. |
+| `kind` | `directory`, `symlink`, `other` (for example a file), `absent`, or `unreadable` when the system refuses the call. |
+| `exists` | `true` for `directory` and `symlink`. The keys below are then measured; else they are `false` or `null`. |
+| `config` | Whether `<vault>/config.json` is there. The extension makes no new vault in a directory that has no `config.json`; it reports a blocked setup. |
+| `doubled` | Whether `<vault>/.llm-wiki/config.json` is there: the layout that the extension moves at a session start. |
+| `embeddings` | Whether `<vault>/meta/embeddings.json` is there, and its `size` in bytes when it is a regular file. |
+| `ownedByUser` | Whether the owner of the vault directory is the user that runs the action. For a `symlink`, this is the owner of the link. |
+
+The exit code is 0 for each result. A `WIKI_HOME` with trailing `/` characters names the same root as the value without them. A `HOME` or a `WIKI_HOME` that is not an absolute path gives exit code 2, with `home_required: check-wiki-vault.home`, `absolute_path: check-wiki-vault.home` or `absolute_path: check-wiki-vault.wiki_home` on standard error. The report shows no content of a vault. It shows the paths of the two roots.
+
+Limits: the action does not read `config.json`, so it does not know the format of the vault. It does not find a project vault of a working directory. It does not read the `llm-wiki` settings of a profile. A vault of another account is outside the action.
+
+#### Files that the extension writes in an existing vault
+
+The kit writes none of these. The extension writes them at the given trigger. Paths are relative to `.llm-wiki/`.
+
+| Path | Action | Trigger | Setting | Proof |
+| --- | --- | --- | --- | --- |
+| `meta/qmd/`, `meta/qmd/index.lock/owner.json` | Make the directory; make and remove the lock | Session start | The ambient gate is open: `ambientPersonalVault: true`, a project vault, or `WIKI_HOME` | Start runs |
+| `meta/qmd/current`, `previous`, `staging-*`, `swap.json` | Rename, remove | A session start with a swap journal; each reindex | The ambient gate is open; each write tool | Not verified: the code only (`lib/qmd-indexing.ts`) |
+| Inner `.llm-wiki/*` | Move one level up, remove the inner directory | Session start | Each | Not verified: the code only (`lib/utils.ts`) |
+| `wiki/sources/obs-<date>-<slug>.md` | Make a new page | `wiki_observe` | Each | Tool runs with a stub model |
+| Other new pages, `raw/sources/SRC-*/` | Make | `wiki_retro`, `wiki_ensure_page`, `wiki_ingest`, `wiki_capture_source` | Each; `taskModel` selects the ingest model | Not verified: the code only (`lib/retro.ts`, `lib/tools.ts`, `lib/source-packet.ts`) |
+| `meta/events.jsonl` | Add one line | Each write tool, `wiki_log_event` | Each | Tool runs with a stub model |
+| `meta/registry.json`, `meta/backlinks.json`, `meta/index.md`, `meta/log.md` | Write the whole file again (temporary file, then rename) | The reindex after each write tool or page edit; `wiki_rebuild_meta`; `wiki_lint` | Each | Tool runs with a stub model |
+| `wiki/index.md`, `wiki/log.md`, `wiki/<folder>/index.md` | Write again or make; remove the `index.md` of a folder with no page | The same reindex | Only a vault with `knowledge_format: "okf-0.2"` | Tool runs with a stub model |
+| `config.json` | Write again one time, to add `vault_id` | The first reindex of a vault with no `vault_id` | Each | Tool runs with a stub model |
+| `config.json`, `WIKI_SCHEMA.md` | Write again | `wiki_bootstrap` on the vault | Each | Not verified: the code only (`lib/bootstrap.ts`) |
+| `meta/qmd/manifest.json`, `meta/qmd/current/index.sqlite`, `index-state.json`, `meta/qmd/documents/**` | Make, update | The same reindex | Each | Tool runs with a stub model |
+| `meta/embeddings.json` | Write the whole file again; the write is not atomic | The reindex after a write tool; `wiki_ingest`; `wiki_reindex_embeddings` | Only with `embeddingProvider` and a key | Tool runs with a stub model |
+| `.discoveries/gaps.json`, a report in `outputs/`, repaired pages with backups | Make, write again | `wiki_lint`; a repair only with `auto_fix=true` | Each | Not verified: the code only (`lib/lint.ts`, `lib/legacy-repair.ts`) |
+| `raw/trajectories/**`, `wiki/skills`, `wiki/cases` | Make | The trajectory tools | Only `trajectories: true`; the kit writes `false` | Not verified: the code only |
+
+A session end and a compaction wait for pending background tasks and write nothing of their own. The read tools `wiki_recall`, `wiki_search` and `wiki_status` write nothing. Each prompt with an open ambient gate reads `meta/registry.json`, the pages and the whole `meta/embeddings.json`.
+
+Outside the vault: `/wiki-model` and `/wiki-trajectories` write `.pi/settings.json` of the working directory, and `/wiki-settings` can write the `settings.json` of the agent directory again. Not verified: no run; the code only (`lib/task-config.ts`).
+
+#### Settings keys that the kit does not emit or that the package does not read
+
+- `autoRecall`: with `false`, the extension injects no recall before a prompt. The kit does not emit this key, so the default of the package applies: recall is on when the ambient gate is open.
+- `taskThinkingLevel`: the kit emits this key with `backgroundTasks: true`. The reviewed package version does not read it; no file of the package names it.
+- The kit also does not emit `notices`, `semanticWeight`, `recallLinksThreshold`, `recallSkillInlineMax`, `synthesisLanguage`, `synthesisMaxTokens`, `wikilinkValidation`, `customTypes`, `taskModelBaseUrl`, `taskModelApiKey` and `taskModelApiKeyEnv`.
+
+Not verified: a vault that two accounts of the operating system share, a vault that is a symbolic link, and a start of the extension with a vault that the account cannot write.
 
 ### Switch wiki embeddings off
 
@@ -253,7 +360,7 @@ The kit does not run the files under `packages/openviking-pi/scripts/`. `e2e-liv
 
 ### Refresh the vendored copy
 
-`pi update --extensions` and the kit update pipeline (`docs/pi-update.md`) handle npm pins. They do not change `packages/openviking-pi`. A refresh is a manual step, until the kit has a command for it. `<openviking checkout>` is a clone of the OpenViking repository and `<commit>` is the reviewed commit:
+`pi update --extensions` moves an installed npm source without a version, and the kit update pipeline (`docs/pi-update.md`) moves the Pi pin. They do not change `packages/openviking-pi`. A refresh is a manual step, until the kit has a command for it. `<openviking checkout>` is a clone of the OpenViking repository and `<commit>` is the reviewed commit:
 
 ```sh
 work="$(mktemp -d)"
@@ -267,16 +374,17 @@ git -C '<openviking checkout>' archive '<commit>' examples agent-plugins | tar -
 
 | Output | Present when | Content |
 | --- | --- | --- |
-| `settings.json` `packages` | any module | `npm:pi-hermes-memory` with `extensions: ["src/index.ts"]`; the absolute path of `packages/openviking-pi` in this kit with `extensions: ["index.ts"]`; `npm:@zosmaai/pi-llm-wiki` with `extensions: ["extensions"]`; all other resource lists empty. Declared after the other in-tree packages, in this order. |
+| `settings.json` `packages` | any module | `npm:pi-hermes-memory` with `extensions: ["src/index.ts"]`; the absolute path of `packages/openviking-pi` in this kit with `extensions: ["index.ts"]`; `npm:@zosmaai/pi-llm-wiki` with `extensions: ["extensions/llm-wiki/index.ts"]`; all other resource lists empty. Declared after the other in-tree packages, in this order. |
 | `settings.json` `llm-wiki` | wiki | `ambientPersonalVault`, `trajectories: false`, and with background tasks `taskModel` and `taskThinkingLevel`. Explicit embeddings add `embeddingProvider`, `embeddingBaseUrl`, `embeddingModel`, and exactly one of `embeddingApiKeyEnv` or placeholder-only `embeddingApiKey`. |
 | `hermes-memory-config.json` | hermes | Review off: `reviewEnabled`, `correctionDetection`, `flushOnCompact`, `flushOnShutdown`, `autoConsolidate` all `false`, `memoryOverflowStrategy: "reject"`. Review on: the same keys `true`, `memoryOverflowStrategy: "auto-consolidate"`, `reviewTransport`, `llmModelOverride`, `llmThinkingOverride`, and `childExtensionPaths` when given. |
 | `.tenant-pi/choices.json` `memory` | any module | The activation record (`enabled`, `localCapture`, `backgroundModelCalls`, `remoteWrites`, transport, child source count, personal vault location, and `captureToolResults` for `openviking`) and the setup facts: `WIKI_HOME` and the two `OPENVIKING_*` variables. For `openviking`, `remoteWrites` is `true` and `localCapture` is `false`: the module keeps no memory store on the client. |
 | `.tenant-pi/choices.json` `memory.activation.wiki.embeddings` | wiki | `enabled`, `writeTimeRequests`, and `queryTimeRequests` are booleans. `backfill` is `"separate action"`. Optional `expectedDimensions` records the later verification expectation. The plan shows this same activation record. |
 | `.tenant-pi/state.json` `outputs` | hermes | Lists the Hermes file as a declared output. |
 | Launch line | `wikiHome` | `WIKI_HOME='<path>'` precedes `PI_CODING_AGENT_DIR=...`. |
+| Launch line | wiki without `wikiHome` | `-u WIKI_HOME` follows `-u PI_CODING_AGENT_SESSION_DIR`: the line removes an inherited `WIKI_HOME`. See [the wiki home](launcher.md#the-wiki-home). |
 | Launch line | openviking | `OPENVIKING_CAPTURE_TOOL_RESULTS=true` or `=false` precedes `PI_CODING_AGENT_DIR=...`, and `OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=<n>` when the overlay has `recallContextTimeoutMs`. Both are process-local: the kit exports nothing and writes no shell file. A manual `pi` command without them uses the files and the defaults of the extension. |
-| Setup lines | hermes or wiki | `pi update --extensions` to reconcile the declared packages, then `node scripts/patch_extension_peers.mjs`. Display only. |
-| Setup lines | openviking | `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only. The module adds no `pi update --extensions` line and no peer override line: Pi installs nothing for a path package, and the package lists no host module as a dependency. |
+| Setup lines | hermes or wiki | One `pi install <source>` line for each declared npm source, with the source string of `settings.json`, then `node scripts/patch_extension_peers.mjs`. Display only. |
+| Setup lines | openviking | `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only. The module adds no `pi install` line and no peer override line: Pi installs nothing for a path package, and the package lists no host module as a dependency. |
 | Extra file | openviking | None. No generated file holds an endpoint, a key or a user of the server. |
 
 Readiness gaps of `openviking`: the gaps of its manifest entry (`install_step_required`, `server_required`, `package_runtime_unverified`, `kit_test_missing`, `capture_cost_unmeasured`) and `shared_home_state`. Readiness gaps of the two npm modules: `package_runtime_unverified` and `peer_override_required` per module, `native_addon_unverified` for `better-sqlite3`, `session_backfill_scope_unverified` for Hermes, `project_settings_override` for the wiki, `child_provider_unverified` when child sources are given, `shared_home_state` for the wiki without `wikiHome`. The `memory` role adds `model_catalog_unverified` and `provider_auth_unverified` like every role; it does not add `role_activation_unavailable` when a module consumes it.
@@ -303,6 +411,6 @@ The CLI fixtures block network calls and subprocesses, guard credential environm
 Secret canaries remain absent from diagnostics, generated files, and comparison reports.
 Tests also check unchanged chat settings, vault choices, trajectories, ownership filters, and unverified readiness.
 
-`tests/test_memory_modules.py` covers: default generation with no memory module; no consent; consent without selection; selection without choices; local-only consent for both modules with every background switch off; remote-write refusal without `openviking`; `openviking` without the capture consent, without the remote consent, without selection and without choices; its package declaration after the in-tree packages, its two launch variables in both states, its activation record, its gaps and its setup line; the variable names and the bounds against `shared/config-schema.mjs` of the vendored package; its invalid choice shapes with a secret canary, and the refusal of an endpoint or a credential name; missing memory role; unsupported wiki thinking; missing child provider for `llama.cpp`, `openai-codex-2`, and a gateway role; every invalid choice shape with a secret canary, including `wikiHome` with a quiet wiki; the process-local `WIKI_HOME` fact; hostile Hermes file shapes in comparison; guarded publication of the Hermes file with tamper rejection; redacted comparison of the Hermes file and the wiki section; and a CLI generate-and-compare run in a disposable HOME with blocked sockets and subprocesses, ambient `~/.llm-wiki` and `~/.pi/agent/hermes-memory-config.json` canaries beside the candidate that stay unread and unchanged; and a CLI plan, generate and compare run of an `openviking` profile in a disposable HOME with blocked sockets and subprocesses, with canary values in `~/.openviking/ovcli.conf`, `~/.openviking/ov.conf` and the `OPENVIKING_*` credential variables that reach no output. `tests/test_carry.py` covers the carry of the two `openviking` fields.
+`tests/test_memory_modules.py` covers: default generation with no memory module; no consent; consent without selection; selection without choices; local-only consent for both modules with every background switch off; remote-write refusal without `openviking`; `openviking` without the capture consent, without the remote consent, without selection and without choices; its package declaration after the in-tree packages, its two launch variables in both states, its activation record, its gaps and its setup line; the variable names and the bounds against `shared/config-schema.mjs` of the vendored package; its invalid choice shapes with a secret canary, and the refusal of an endpoint or a credential name; missing memory role; unsupported wiki thinking; missing child provider for `llama.cpp`, `openai-codex-2`, and a gateway role; every invalid choice shape with a secret canary, including `wikiHome` with a quiet wiki; the process-local `WIKI_HOME` fact; the removal of an inherited `WIKI_HOME` for a wiki with no `wikiHome`, and no removal with `wikiHome` or without the wiki; hostile Hermes file shapes in comparison; guarded publication of the Hermes file with tamper rejection; redacted comparison of the Hermes file and the wiki section; and a CLI generate-and-compare run in a disposable HOME with blocked sockets and subprocesses, ambient `~/.llm-wiki` and `~/.pi/agent/hermes-memory-config.json` canaries beside the candidate that stay unread and unchanged; and a CLI plan, generate and compare run of an `openviking` profile in a disposable HOME with blocked sockets and subprocesses, with canary values in `~/.openviking/ovcli.conf`, `~/.openviking/ov.conf` and the `OPENVIKING_*` credential variables that reach no output. `tests/test_carry.py` covers the carry of the two `openviking` fields.
 
-Not verified for `openviking`: a start of a generated profile against a live server, `npm ci` of the package on a clean client, and the effect of `captureToolResults` on storage. The kit tests do not run the test suite of the vendored package. Not verified: the published `dependencies` of the two npm packages before peer overrides; see `docs/host-peer-overrides.md`. Not run: any Pi start with a memory package, the `direct` or `subprocess` review against a fixture provider, the peer override on a fresh install, and the wiki vault creation. Those stay `unverified` in every plan.
+Not verified for `openviking`: a start of a generated profile against a live server, `npm ci` of the package on a clean client, and the effect of `captureToolResults` on storage. The kit tests do not run the test suite of the vendored package. Not verified: the published `dependencies` of the two npm packages before peer overrides; see `docs/host-peer-overrides.md`. Not run: any Pi start with the Hermes package or the OpenViking package, a wiki tool call from a profile that the kit generated, the `direct` or `subprocess` review against a fixture provider, and the peer override on a fresh install. Those stay `unverified` in every plan. The start runs of the wiki package are in [an existing vault](#an-existing-vault).

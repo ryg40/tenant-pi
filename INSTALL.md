@@ -4,6 +4,8 @@ This file is for an agent that a user points at this repository: Claude Code, Pi
 
 The kit prepares a separate Pi profile in a new directory. It never writes into an existing Pi profile directory. The companion guide `skills/tenant-pi-install/SKILL.md` follows the same order and asks a question at each stage. Its stage names and numbers differ from the ones here.
 
+The order differs from `docs/guides/setup.md`, the guide for a person without an agent. That guide does the offline stages of the kit first, and it installs Node, Pi and the package dependencies after `generate`. This file installs first, so that `plan` and `generate` get a runtime report with the measured versions. Both orders give the same generated files.
+
 `<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
 
 `runtime.piAcceptedRange` is the accepted Pi range. `runtime.piVersion` is the tested version.
@@ -14,7 +16,7 @@ The Pi install line stays a plain command with `not_needed`, not `replaces_insta
 Words used below:
 
 - `<clone>`: the directory of this repository, for example `~/tenant-pi`.
-- `<private dir>`: a directory outside the clone that only the user can read, for example `~/.config/tenant-pi`. It holds the overlay, the input files and the install log.
+- `<private dir>`: a directory outside the clone that only the user can read, for example `~/.config/tenant-pi`. It holds the overlay, the input files, the install log and the results file.
 - `<target>`: the absolute path of the new profile directory from `target.agentDir` in the overlay.
 
 ## Rules for the agent
@@ -25,6 +27,7 @@ Words used below:
 4. Adapt the syntax of a command to the machine (see "Local differences"). Do not adapt the rules of the kit: no secret in a file, no generation into an existing directory, no edit of a live profile.
 5. Record what you ran, what you skipped, and every adaptation in `<private dir>/install-log.md`. A live check that did not run is "not run", never "passed".
 6. If a stage fails, keep the earlier stages, say what failed, and stop at a state the user can resume from.
+7. At the end of Stage 9, and at each earlier stop, write the results file: see "The results file" in Stage 9. The last line of your work is the full path of that file. Exception: when the clone does not exist yet, do not run `results`. Tell the user in plain text the last stage, the reason and the next step.
 
 Warning: `.local/` inside the clone is ignored by Git but is not a security control. Keep the overlay and the input files in `<private dir>`, outside the clone.
 
@@ -191,7 +194,7 @@ Done when `check-runtime` reports `match` or `untested_in_range` for `pi` in the
 
 ## Stage 4: package dependencies
 
-Goal: the in-tree Tenantext package can load. Needed when any Tenantext component is enabled in Stage 5. The recommended selection enables them.
+Goal: the in-tree Tenantext package can load. Run this stage now. The recommended set of the checklist of Stage 5 enables Tenantext components. Skip it only if the user later switches every Tenantext component off in Stage 5.
 
 ```sh
 cd ~/tenant-pi/packages/tenantext && npm ci --ignore-scripts
@@ -241,6 +244,20 @@ Rules for SSH:
 - Do not write the SSH target into a tracked file of the clone. It can go into `<private dir>/install-log.md`.
 
 ### 2. Account
+
+Before you ask, look for an LLM Wiki vault of the user who installs. Run the probe as that user:
+
+```sh
+python3 <clone>/scripts/tenant_pi.py check-wiki-vault
+```
+
+The action reads `HOME` and `WIKI_HOME`, opens no file and writes nothing. When `exists` is `true` for a root of the output, tell the user these facts before the question:
+
+- A profile of the user's own account uses that vault.
+- A new account gets a new vault in its own home directory. The vault of the user stays unchanged and is not used.
+- The kit does not share a vault between two accounts.
+
+The user decides. "The LLM Wiki vault" in Stage 5 has the keys of the output.
 
 Ask: "Which Linux account owns the install: an existing account, or a new account?"
 
@@ -357,7 +374,7 @@ The shared install is a separate approval. Before it, show what exists at each o
 
 ### 7. The question extension
 
-Ask: "Do you want structured questions in Pi?" A yes moves `questions` to `selection.enable` in the overlay (Stage 5). Stage 7 then installs the package into the profile. The extension gives Pi the `ask_user_question` tool. It is `unverified`: tell the user the gaps of `docs/herdr-setup.md`.
+Ask: "Do you want structured questions in Pi?" A yes moves `questions` to `selection.enable` in the overlay (Stage 5). The `pi install` line of Stage 7 then installs the package into the profile. The extension gives Pi the `ask_user_question` tool. It is `unverified`: tell the user the gaps of `docs/herdr-setup.md`.
 
 - The extension reads a guidance file below the configuration directory of the user. The kit does not write it. Do not replace an existing file.
 - A loaded extension is not a working question dialog. The dialog needs an interactive session.
@@ -395,7 +412,7 @@ id -u; id -g; ls ~/.ssh/*.pub
 | 4 | "Which port of this machine receives the SSH connections?" | `2222` | 1024 to 65535. The seat listens on `127.0.0.1` only. |
 | 5 | "Do you want a projects directory in the seat?" | No | The absolute path of an existing directory. The seat gets it at `/projects`, with read and write access. |
 | 6 | "Which gateway URL and which key variable name?" | The name `TENANTEXT_LITELLM_API_KEY` | The URL is HTTPS, has no credential, and ends in `/v1`. Ask for the name of the variable, never for the key value. The overlay accepts only the default name. |
-| 7 | "Which components do you want?" | None more | The IDs of Stage 5, item 2. The action adds `core`, `model-routing`, `codex-accounts` and each component that a chosen component requires. |
+| 7 | "Which components do you want?" | None more | The IDs of the checklist of Stage 5, item 2. The action adds `core`, `model-routing`, `codex-accounts` and each component that a chosen component requires. |
 | 8 | "Which model for the interactive role?" | `litellm-codex`, `codex-auto/astra`, `high` | The provider, the model and the thinking level, as three separate values. Under `litellm-codex` the model is `codex-auto/astra` (recommended), `codex-auto/sol` or `codex-auto/luna`: the gateway registers only these three. The thinking level is `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. The action refuses a model of another provider: the seat has the gateway route only. |
 
 The registry file, `<private dir>/registry.json`, is the list of the models and the thinking levels that the user confirms: `validate`, `plan` and `generate` refuse a role model that it does not hold, and the action writes it with the one answer of question 8.
@@ -538,25 +555,97 @@ The command prints `JSON valid`, or the line and the column of the first syntax 
 Edit `overlay.json` for the other answers of the user. A core-only profile needs none of them:
 
 1. `target.agentDir`: `--target` sets it. Change it by hand only as described above.
-2. `selection.enable` and `selection.disable`: move each chosen ID from `disable` to `enable`. Recommended full set: `core`, `model-routing`, `tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `coordinator-skills`, `knowledge-skills`, `slopscore-pr`. `herdr` and `herdr-relay` are optional and disabled by default. Enable `herdr` too if you select `herdr-relay`. No install stage requires either component. `questions` is the Pi question extension from npm; it is `unverified`, and Stage 4a asks for it. `promptr` and its four skills are `unverified` and need the build step of Stage 4. `tracker-site` is selectable but `unverified`; it needs Python 3.11 or later and Git on `PATH`, with no third-party Python package. `check-runtime` checks Python, not Git. `openviking` is a memory module; see item 5.
+2. `selection`: do "The checklist" below. The action `components` is the one source of the component list, and this file holds no copy of it. The action marks the recommended set. That set holds the core, the in-tree extensions and skills for daily work, and the two local memory modules. Each in-tree component is `unverified`: no test of the kit loads it with the kit pin. `promptr` needs the build step of Stage 4. Stage 4a has the questions for `herdr` and `questions`.
 3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/model-routes.md`.
 4. Gateway, only when the user routes through the Tenantext gateway: `modelRoutes.gateway` is `{"auth": "env"}`; `endpoints.codex-accounts` is the gateway URL that ends in `/v1`; `env.codex-accounts` is `${TENANTEXT_LITELLM_API_KEY}`. The user exports the key themselves.
-5. `hermes`, `wiki` and `openviking`: optional, off by default. Each needs `consent.memoryCapture: true` and a `memory` block. `openviking` also needs `consent.remoteMemoryWrites: true`, an OpenViking server that the user set up, and `npm ci --ignore-scripts` in `packages/openviking-pi`. Read `docs/memory-modules.md` with the user first.
-6. `mcp`: optional, off by default. The server definitions go to `<private dir>/inputs/mcp-adapter.json`, and the overlay gets `inputs.mcpFile: "inputs/mcp-adapter.json"`. Every `validate`, `plan` and `generate` call then needs `--local-dir ~/.config/tenant-pi`. Read `docs/workflow-modules.md` with the user first.
+5. `hermes`, `wiki` and `openviking`, the memory modules. The checklist marks `hermes` and `wiki`. It does not mark `openviking`. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
+   - For `hermes` and `wiki`, the answer of the user to the checklist is the consent. Ask no second question. With both modules on, the overlay gets these two keys:
+
+   ```json
+   {
+     "consent": {"memoryCapture": true, "remoteMemoryWrites": false, "telemetry": false},
+     "memory": {
+       "schemaVersion": 1,
+       "hermes": {"backgroundReview": false},
+       "wiki": {"ambientPersonalVault": true, "backgroundTasks": false},
+       "openviking": null
+     }
+   }
+   ```
+
+   - The `memory` block holds all three module keys. The key of a module that is off is `null`. With no memory module on, write no `memory` block and keep `consent.memoryCapture: false`.
+   - With these values no module makes a model call of its own, and no `roles.memory` is necessary. Both modules store text and answer tool calls only. To switch the background model calls on later, see [POST_INSTALL.md](POST_INSTALL.md#switch-a-memory-module-on).
+   - With `wiki` on, do "The LLM Wiki vault" below before you write `memory.wiki`.
+   - `openviking`, only when the user switched it on: ask "Do you agree that session content goes to your OpenViking server?" A yes sets `consent.remoteMemoryWrites: true`. The module also needs an OpenViking server that the user set up, a `memory.openviking` object, and `npm ci --ignore-scripts` in `packages/openviking-pi`. Read `docs/memory-modules.md` with the user first.
+6. `mcp`: optional. The checklist does not mark it. The server definitions go to `<private dir>/inputs/mcp-adapter.json`, and the overlay gets `inputs.mcpFile: "inputs/mcp-adapter.json"`. Every `validate`, `plan` and `generate` call then needs `--local-dir ~/.config/tenant-pi`. Read `docs/workflow-modules.md` with the user first.
 
 7. Registry, required when `modelRoutes` names a model for a role or the cycle: edit `~/.config/tenant-pi/registry.json` (mode 600; `init-private` creates it as `{}`, the fallback does not create it).
    Its whole shape is `{"<provider>": {"<model>": ["<thinking level>"]}}`, with one entry for each model of `roles` and `modelRoutes.cycle`.
    The user confirms each entry. The file is evidence of the user's choice, not a model catalog. See `docs/generator.md`.
 
+### The checklist
+
+The checklist replaces a question with options. It shows each component of the kit, so that no component is hidden from the user.
+
+1. Run the action. For a new overlay:
+
+   ```sh
+   cd ~/tenant-pi && python3 scripts/tenant_pi.py components --format text
+   ```
+
+   For an overlay that exists, add `--overlay <file>`. The marks are then the `selection.enable` list of that file.
+2. Print the complete output to the user as plain text. Remove no line and change no line. The last line of the output says how to answer.
+3. When the list marks `hermes` and `wiki`, print this sentence directly below the list: "`hermes` and `wiki` are marked. Both store text of your sessions on this machine. With the default setting, `wiki` also adds text from your vault to each prompt in each directory, and that text goes to your model provider. Keep a mark only when you agree to that. Switch off the number of a module that you do not want." When the list marks only one of the two, name that one. Without a mark at `wiki`, leave out the sentence about the vault.
+4. Stop and wait for the answer of the user. Do not open a question dialog after the list: a dialog can hide the text before it. The user answers `ok`, or names the numbers to switch on and the numbers to switch off.
+5. Turn the answer into the list of each component that is on: each marked line, plus each number that the user switched on, minus each number that the user switched off. `--select` takes that complete list, as IDs or as numbers, not only the changes. Run:
+
+   ```sh
+   python3 scripts/tenant_pi.py components --select <ids or numbers, separated by commas>
+   ```
+
+   The action writes no file. `core` is locked and is always in the output.
+6. Read `added` of the output. Tell the user each ID of it: the action added that component because another one requires it.
+7. Write the `selection` object of the output into `overlay.json`, in place of the `selection` object that is there.
+8. Read `prerequisites` of the output. For each `overlay:` code, set the key: items 5 and 6 of the list above have the values. For each `env:` and `gap:` code, tell the user what the component needs; `docs/guides/modules.md` has one row for each component. An `env:` or `gap:` code does not block the install. A `setup:` code is a setup line of the plan: Stage 7 runs it.
+
+### The LLM Wiki vault
+
+Do this part when `wiki` is on, before you write `memory.wiki`. The rule of the kit: the profile uses an existing vault of the user as it is. The kit makes no second vault. It refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`. The vaults are `.llm-wiki` in the home directory, `<WIKI_HOME>/.llm-wiki`, and, for an action that reads the overlay, `<wikiHome>/.llm-wiki`. `baseline` and `init-private` read no overlay, so they know the first two only.
+
+```sh
+cd ~/tenant-pi && python3 scripts/tenant_pi.py check-wiki-vault
+```
+
+The action has no option. It reads `HOME` and `WIKI_HOME`, uses `lstat` calls only, opens no file and writes nothing. Run it as the account that will run the profile, in the shell that will launch Pi. `docs/memory-modules.md`, section "The vault check", has each key of the output.
+
+Read `result`, `personalVault` and the two roots `home` and `wikiHome`. Then tell the user the result in one or two sentences:
+
+| Output | `memory.wiki.wikiHome` | Tell the user |
+| --- | --- | --- |
+| `vault_exists`, `personalVault` is `home`, `home.config` is `true` | Do not set it. | The profile uses the vault `~/.llm-wiki/` with no extra setting. The kit refuses each place of its own writes that is the vault or is below it. At `@zosmaai/pi-llm-wiki` 0.12.5 a start changes no existing file of a vault and adds only its index directory `meta/qmd/`. Not verified: a newer version. Pages change only when the agent of the user calls a wiki write tool. |
+| `vault_exists`, `personalVault` is `wikiHome`, `wikiHome.config` is `true` | The value of `wikiHome.root`. | The same sentences, for the vault `<WIKI_HOME>/.llm-wiki/`. When `home.exists` is also `true`: the vault of the home directory stays unchanged and is not used. |
+| `second_vault` | Do not set it. | `WIKI_HOME` names a directory with no vault, and a vault exists in the home directory. The profile uses the vault of the home directory. The launch line removes the inherited variable for the Pi process. |
+| `no_vault`, `wikiHome` is `null` | Do not set it. | No vault exists. The extension makes `~/.llm-wiki/` at the first start. |
+| `no_vault`, `wikiHome` is not `null` | The value of `wikiHome.root`. | No vault exists. The extension makes `<WIKI_HOME>/.llm-wiki/` at the first start, the place that the environment of the user names. |
+
+- `ambientPersonalVault: true` is the value of this flow for each result. The extension then injects recall from the vault into each prompt, in each working directory. `false` is the quiet form: a start writes nothing, no recall goes into a prompt, and the tools still use the vault. Set `false` only when the user asks for it. `wikiHome` needs `true`.
+- `doubled` is `true` for the vault that the profile uses: stop and ask the user. The vault holds an inner vault, `.llm-wiki/.llm-wiki/config.json`, and the extension moves the inner vault one level up at the first start. `wiki` stays off until the user agrees: run `components --select` again without `wiki`, and set `memory.wiki` to `null`. When this rule and the next rule both apply, this rule wins: do not give the message of the next rule.
+- `config` is `false` for a vault that exists and that the profile uses: do not tell the user that the profile uses the vault. Tell the user that the directory has no `config.json`. The extension makes no new vault in such a directory, and it reports a blocked setup. For `memory.wiki.wikiHome`, use the row with the same `personalVault`.
+- `embeddings.exists` is `true`: tell the user that embeddings stay off and that the store `meta/embeddings.json` stays unchanged. Never set `memory.wiki.embedding` on your own. See the second `Warning:` of [an existing vault](docs/memory-modules.md#an-existing-vault).
+- `ownedByUser` is `false`: tell the user. Not verified: a start of the extension with a vault that the account cannot write.
+- The probe sees the vault of one account only. Stage 4a, part 2, has the rule for a new account.
+- Record `result` and the path of the vault in the install log. Stage 9 records the baseline of the vault before the first Pi command, and compares it after the first launch.
+
+### Validate
+
 Validate after each edit:
 
 ```sh
-cd ~/tenant-pi && python3 scripts/tenant_pi.py validate --overlay ~/.config/tenant-pi/overlay.json --registry ~/.config/tenant-pi/registry.json
+cd ~/tenant-pi && python3 scripts/tenant_pi.py validate --overlay ~/.config/tenant-pi/overlay.json [--registry ~/.config/tenant-pi/registry.json]
 ```
 
-Without `--registry`, a `modelRoutes` choice stops with `registry_required: registry`.
-Omit `--registry` when the overlay sets no role and no cycle model.
-An overlay without `modelRoutes` refuses the option with `registry_without_routes: registry`.
+Add `--registry` only when the overlay has `modelRoutes` with a model for a role or for the cycle. Without the option, such an overlay stops with `registry_required: registry`.
+An overlay without `modelRoutes` refuses the option with `registry_without_routes: registry`. A core-only overlay is one, and so is the recommended set with no model route.
 
 An error is one JSON line on standard error with `rule: field`, never a value. `docs/candidate-compare.md` lists the common corrections.
 
@@ -586,11 +675,11 @@ Done when `validate` prints `"valid":true`.
 
 ```sh
 cd ~/tenant-pi
-python3 scripts/tenant_pi.py plan --overlay ~/.config/tenant-pi/overlay.json --registry ~/.config/tenant-pi/registry.json
-python3 scripts/tenant_pi.py generate --overlay ~/.config/tenant-pi/overlay.json --registry ~/.config/tenant-pi/registry.json --target '<target>'
+python3 scripts/tenant_pi.py plan --overlay ~/.config/tenant-pi/overlay.json [--registry ~/.config/tenant-pi/registry.json]
+python3 scripts/tenant_pi.py generate --overlay ~/.config/tenant-pi/overlay.json [--registry ~/.config/tenant-pi/registry.json] --target '<target>'
 ```
 
-Use the same `--registry` choice as in Stage 5 for both commands.
+Use the same `--registry` choice as in Stage 5 for both commands: give the option only when the overlay has `modelRoutes`.
 
 Add `--local-dir ~/.config/tenant-pi` to both commands when `mcp` is enabled.
 
@@ -634,27 +723,39 @@ Done when `generate` prints `"filesComplete":true` and `<target>` holds `setting
 
 ## Stage 7: declared npm packages
 
-Only when `mcp`, `hermes`, `wiki` or `questions` is enabled. The plan prints the second line only with `hermes`, `wiki` or `questions`.
+Only when `mcp`, `hermes`, `wiki` or `questions` is enabled. The recommended set of the checklist holds `hermes` and `wiki`, so this stage applies to it. The plan prints one `pi install` line for each declared `npm:` source, in the order of `packages` in `settings.json`. It prints the last line, the peer override, only with `hermes`, `wiki` or `questions`.
 
-Record the baseline of the live agent directory first: see "Before the first launch" in Stage 9. `pi update --extensions` is the first Pi command that names `<target>`.
+Record the baseline of the live agent directory first, and with `wiki` the baseline of the vault: see the two "Before the first launch" parts of Stage 9. The first `pi install` line is the first Pi command that names `<target>`.
+
+Run the lines of `commands.setupDisplayOnly` that name `<target>`, in the order of the plan. With all four components they are:
 
 ```sh
-PI_CODING_AGENT_DIR='<target>' pi update --extensions
+PI_CODING_AGENT_DIR='<target>' pi install npm:pi-hermes-memory
+PI_CODING_AGENT_DIR='<target>' pi install npm:@zosmaai/pi-llm-wiki
+PI_CODING_AGENT_DIR='<target>' pi install npm:pi-mcp-adapter
+PI_CODING_AGENT_DIR='<target>' pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0
 PI_CODING_AGENT_DIR='<target>' node ~/tenant-pi/scripts/patch_extension_peers.mjs
 ```
 
-`mcp`, `hermes` and `wiki` are declared without a version. The first command installs the current registry version of each; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. `questions` is declared at the exact version 2.11.0. The second command corrects host-provided peers in the installed manifests.
+- Use each source string as the plan prints it. `pi install` leaves `settings.json` unchanged only when the string is identical to the declared string. With a different string, or with a source that the profile does not declare, Pi rewrites `settings.json`, and `compare` shows the change as drift.
+- `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. The facts of an existing vault are from `@zosmaai/pi-llm-wiki` 0.12.5. After an install or an update of the `wiki` package, check 8 of Stage 9 is the proof for the installed version.
+- `questions` is declared at the exact version 2.11.0, and its line installs that version.
+- `pi update --extensions` is not a setup command. With the kit pin it does not install or change a source with an exact version. It only moves an installed source without a version to the newest registry version.
+- The last command corrects host-provided peers in the installed manifests. Run it after the `pi install` lines.
 
 To reapply the correction after each update, `docs/host-peer-overrides.md` describes an `npmCommand` wrapper.
 
 - The commands of that document write to `~/.pi/agent`. Replace `~/.pi/agent` with `<target>` in every path.
 - Ask before each write.
 - The wrapper is for Linux and macOS. The systemd unit of that document is for Linux only.
-- The `npmCommand` key then shows as drift in `compare` (Stage 10). That is expected.
+- The `npmCommand` key then shows as drift in `compare`; see "Keep an accepted difference" in [POST_INSTALL.md](POST_INSTALL.md#keep-an-accepted-difference). That is expected.
 
 Hermes builds `better-sqlite3`. On macOS that needs the Xcode command line tools from Stage 1.
 
-Done when `PI_CODING_AGENT_DIR='<target>' pi list` shows the declared sources.
+Done when `PI_CODING_AGENT_DIR='<target>' pi list` prints a path line that starts with `<target>/npm/node_modules/` below each declared `npm:` source, and a second run of the override script prints nothing. With `questions`, `python3 scripts/tenant_pi.py inventory --dir '<target>'` also shows `coordination.questionExtension` as `installed`.
+
+- `pi list` prints a declared source also when the package is not installed. Only the path line below the source shows an installed package.
+- Limit: no part of this check compares the installed version with the declared version.
 
 ## Stage 8: authentication
 
@@ -699,6 +800,21 @@ cd ~/tenant-pi && python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" 
 
 Done when the output has `"complete":true` under `baseline`. Record `recordedAt` of the output.
 
+### Before the first launch: the baseline of the vault
+
+Only with `wiki`. Goal: a record that can prove, after the launch, that the content of the vault stayed as it was. Record it one time, at the same moment as the baseline of the live agent directory. `<vault>` is the vault that the profile uses, from "The LLM Wiki vault" in Stage 5. `<vault>` is `<wikiHome>/.llm-wiki` when the overlay has `memory.wiki.wikiHome`, else the `.llm-wiki` directory in the home directory. Write it as an absolute path, for example `/home/<name>/.llm-wiki`.
+
+```sh
+cd ~/tenant-pi && python3 scripts/tenant_pi.py baseline --dir '<vault>' --out "$HOME/.config/tenant-pi/wiki-vault-baseline.json"
+```
+
+- The action lists the directories of the vault and opens no file. The one write is the new file in `<private dir>`. The action refuses an `--out` file that is below the vault of the home directory or below `<WIKI_HOME>/.llm-wiki`. It does not know a vault that only the overlay names: keep `--out` in `<private dir>`.
+- Run it also when no vault exists. The baseline then records that the vault is absent.
+- When the vault is a symbolic link, the action stops with `not_directory: baseline.dir`. Use the `realpath` rule of the part above.
+- The comparison of check 8 names the direct entries of the vault only. For a record of the entries below `meta/`, record a second baseline of an existing vault: `--dir '<vault>/meta'` and `--out "$HOME/.config/tenant-pi/wiki-vault-meta-baseline.json"`.
+
+Done when the output has `"complete":true` under `baseline`.
+
 ### Launch
 
 The recommended way to launch is the launcher file. Add `--launcher '<launcher file>'` to the `generate` command of Stage 6, for example `--launcher ~/.config/tenant-pi/launch-<name>.sh`. After a complete generation, the kit writes that file with mode `0700`: `#!/bin/sh` and one `exec` line with the exact `commands.launchDisplayOnly` line of the plan. Ask the user to run the file, or run it on yes. With the gateway, the shell that runs the file must export `TENANTEXT_LITELLM_API_KEY`; the file holds no key. See `docs/launcher.md`.
@@ -712,12 +828,14 @@ Rule: the profile keeps its sessions in `<target>/sessions`. The launch line hol
 1. `pi --version` in that environment prints `<pin>` or an accepted version. Record the untested-version gap when needed.
 2. Startup prints no extension error and no peer warning.
 3. The chosen model replies to the fixed prompt, and the reply holds the expected number: see "Check 3: the model reply" below. An auth error with the gateway means the key did not reach the process.
-4. The profile stayed inside its directory. `ls -la '<target>'` shows the generated files plus what Pi wrote: `auth.json`, `sessions/`, `npm/`, the state directories of the extensions. The comparison of the live agent directory with its baseline gives `unchanged`: see "Check 4: the comparison with the baseline" below.
-5. With Hermes: `<target>/pi-hermes-memory/` exists after the first session. With the wiki and ambient off: `~/.llm-wiki` was not created.
+4. The profile stayed inside its directory. `ls -la '<target>'` shows the generated files plus what Pi wrote: `auth.json`, `models-store.json`, `sessions/`, the state directories of the extensions, and `npm/` only with a declared npm package. Pi also adds the key `lastChangelogVersion` to `settings.json`. Observed with Pi 1.1.0 and a core-only profile. The comparison of the live agent directory with its baseline gives `unchanged`: see "Check 4: the comparison with the baseline" below.
+5. With Hermes: `<target>/pi-hermes-memory/` exists after the first session. With the wiki, `ambientPersonalVault: false` and no vault before the launch: `~/.llm-wiki` was not created.
 6. With the MCP module: `/mcp-adapter status` inside Pi lists only the servers from the input file.
 7. With `herdr` or `questions`: five separate results, each recorded on its own line. `python3 scripts/tenant_pi.py check-herdr` gives the Herdr command. `python3 scripts/tenant_pi.py inventory --dir '<target>'` gives `coordination.herdrSkill` and `coordination.questionExtension`. The question dialog and a temporary Herdr session are live checks that the user approves first; without them, record "not run". A present command and a readable skill file do not prove a session or a question dialog. `docs/herdr-setup.md` has the steps and the values.
 
-Record each check as passed, failed, or not run. Check 4 has one more value, not verified.
+8. With `wiki`: the content of the vault stayed as it was. The comparison of the vault with its baseline gives `unchanged` or only the expected difference: see "Check 8: the comparison of the vault" below.
+
+Record each check as passed, failed, or not run. Check 4 has one more value, not verified. Check 8 has the same value.
 
 ### Check 3: the model reply
 
@@ -792,6 +910,61 @@ With `changed`, find out whether a Pi ran in the live profile after `recordedAt`
 - A Pi ran there. Record check 4 as not verified, with the names, the answer of the user and your own command when you ran one. Do not record it as passed.
 - To get a proof after that: the user closes each Pi of the live profile. Record a second baseline with a new file name, for example `live-baseline-2.json`. Launch the generated profile again and send one prompt. Then compare with the second baseline.
 
+### Check 8: the comparison of the vault
+
+Only with `wiki`, after the first launch. `<vault>` is the directory of the vault baseline:
+
+```sh
+cd ~/tenant-pi && python3 scripts/tenant_pi.py check-baseline --dir '<vault>' --baseline "$HOME/.config/tenant-pi/wiki-vault-baseline.json"
+```
+
+With `ambientPersonalVault: true`, the first start of the extension makes the index directory `meta/qmd/` in an existing vault, and that changes the modification time of `meta/`. The comparison then prints `changed` with exit code 1. This one difference is expected:
+
+```json
+{"added":[],"dir":"/home/EXAMPLE_USER/.llm-wiki","directoryModified":false,"modified":["meta"],"now":"present","recordedAt":"2030-01-01T00:00:00Z","removed":[],"result":"changed","scope":"Compares the name, kind, size and modification time of each entry at all levels, and names the direct entries only. Opens no file. Covers the time after recordedAt only.","was":"present"}
+```
+
+| Output | Meaning | Record check 8 as |
+| --- | --- | --- |
+| `"result":"unchanged"` | No entry of the vault differs. This is the result with `ambientPersonalVault: false`, and with a vault that had `meta/qmd/` before. | passed |
+| `"result":"changed"`, `"modified":["meta"]`, `"added":[]`, `"removed":[]`, `"directoryModified":false` | The expected difference of an existing vault with `ambientPersonalVault: true`. | passed |
+| `"result":"changed"`, `"was":"absent"`, `"now":"present"` | No vault was there before, and the extension made one at the first start. `added` names its entries. | passed |
+| Each other output with `changed` | Another entry of the vault differs: a name in `added` or `removed`, a name other than `meta` in `modified`, or `"directoryModified":true`. | failed, or not verified: see below |
+| `"result":"no_baseline"` | The baseline file does not exist. | not run, never passed |
+
+With another difference, stop. Do not launch the profile again. Tell the user the names. Then ask: did an agent of the user call a wiki write tool after `recordedAt`, in this profile or in another Pi of the account? Each profile of the account uses the same vault.
+
+- No wiki tool ran. Record check 8 as failed, with the names, and report it.
+- A wiki tool ran. Record check 8 as not verified, with the names and the answer of the user. Do not record it as passed.
+
+Limit: the comparison names the direct entries only. `"modified":["meta"]` does not show which entry below `meta/` differs. With the second baseline of the part "Before the first launch", compare `meta/` itself: `--dir '<vault>/meta'` and `--baseline "$HOME/.config/tenant-pi/wiki-vault-meta-baseline.json"`. The expected output has `"added":["qmd"]`, `"modified":[]`, `"removed":[]` and `"directoryModified":true`.
+
+Not verified: these outputs after a start of Pi with the wiki package. They come from `check-baseline` on a directory with the same change. Not verified: the names of the entries of a new vault.
+
+### The results file
+
+Write the results file at the end of this stage, and at each earlier stop of rule 6. The file is `<private dir>/INSTALLER_KIT_RESULTS.md`. It is the guide for the user: what the install did, the account, how to start Pi, where each part is, which components are on and off, and how to add a component that is off. `install-log.md` stays the record of the commands.
+
+1. Write the facts file `<private dir>/results-facts.json`, with mode 600. It holds the facts that the kit cannot read: the date, your name, `complete` or `stopped`, the last stage, the next step, the account and the command that opens a shell of it, the launcher of each candidate, one row for each stage, one row for each check, the vault of Stage 5, and notes. `docs/install-results.md`, section "The facts file", has the schema and an example. The schema is closed.
+2. Write no secret value into the facts file. Name a credential by its environment variable only. The action refuses a text that has the form of a secret.
+3. Show the command and run it on yes:
+
+   ```sh
+   cd ~/tenant-pi && python3 scripts/tenant_pi.py results --facts ~/.config/tenant-pi/results-facts.json --overlay ~/.config/tenant-pi/overlay.json --target '<target>' --out-dir ~/.config/tenant-pi
+   ```
+
+   The output has `"complete":true` and the `path` of the file. The file has mode 600.
+4. The file exists from an earlier stop or from an earlier candidate: add `--replace`, and name each candidate with its own `--target`. The action then writes the complete file again. Without `--replace`, an existing file stops the action with `target_exists: results.out_dir`.
+5. The install stopped before an overlay or a target existed: leave out `--overlay` or `--target`, and give no launcher in the facts file. When `<private dir>` does not exist, use the home directory of the account as `--out-dir`, and keep the facts file there. When the clone does not exist yet, the action does not exist: do not run `results`. Tell the user in plain text the last stage, the reason and the next step. The last line of your work is then the next step.
+6. The action refuses an `--out-dir` directory inside the clone, inside a target, and one that is a vault or is below one. It refuses a `--target` that is a vault or is below one. `<private dir>` is the right place.
+7. The install made a new account, and the user who started you cannot read `<private dir>`: put a copy of the file into the home directory of that user too. The copy needs administrator rights, so show the command and run it only on yes, for example `sudo install -m 600 -o '<user>' '<private dir>/INSTALLER_KIT_RESULTS.md' '<home of that user>/INSTALLER_KIT_RESULTS.md'`. Not verified: this command on a clean host.
+
+Then end your work with these lines:
+
+- The file has the section "How to add a component that is off". Do not repeat its steps: name the file.
+- [POST_INSTALL.md](POST_INSTALL.md) is the next document. It has the commands of each later update and change.
+- The last line is the full path of the results file. With a copy, name both paths.
+
 ## Local differences
 
 Adapt the syntax, keep the rule.
@@ -814,24 +987,11 @@ If a command of the kit fails on the machine for a syntax reason, rewrite the sy
 
 ## Stage 10: updates
 
-A new kit version never changes a live profile. Pull the clone. Regenerate into a new target from the same overlay with another `target.agentDir`. Then compare:
+The first install ends with Stage 9. This stage is one message to the user, and it runs no command.
 
-```sh
-cd ~/tenant-pi && git pull
-python3 scripts/tenant_pi.py compare --left '<old target>' --right '<new target>'
-```
+Tell the user the rule of each later change: the kit changes no profile in place. A new kit version, a new component or a new Pi pin gives a new candidate directory from the same overlay with another `target.agentDir`. The old candidate stays as the fallback. Auth, sessions and memory are not copied.
 
-Carry wanted drift into the overlay first (`docs/candidate-compare.md`). To list the package sources and the extension, skill and prompt names of one directory without any value, run `python3 scripts/tenant_pi.py inventory --dir '<target>'` (`docs/profile-inventory.md`). Switching is the launch line with the other path. Auth, sessions and memory are not copied.
-
-A Compose seat has its own update path, the container path. The image tag is `KIT_COMMIT`: `up -d` alone keeps the old image. Pull the clone, then show the `build` line and the `up` line of Stage 4c again and run each on yes:
-
-```sh
-KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml build
-KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml up -d
-KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml logs seat
-```
-
-With Podman the lines start with `podman compose`. With a projects directory, each line keeps its second `-f`. The home volume and the host key stay. The entrypoint never writes into the profile of the seat: it generates the candidate `~/.pi/profiles/candidate-<commit>-<pin>` beside it, and the `logs` line shows the five next steps. The user does them inside the seat: compare, reconcile, set up, switch with the launcher `pi-profile-candidate-<commit>-<pin>`, and record the build with `cp /opt/tenant-pi/.seat-build ~/.tenant-pi/seat-build`. The offer repeats at each start until the user records the build. Never run a line with `down -v` for an update: it removes the profile and the sessions. See [the Compose seat guide](docs/guides/compose-seat.md#updates).
+[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, `compare` and `carry`, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
 
 ## Not in this kit
 

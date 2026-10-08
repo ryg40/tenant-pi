@@ -17,7 +17,7 @@ python3 scripts/tenant_pi.py generate --overlay /home/EXAMPLE_USER/.config/tenan
 - `generate --launcher` applies the static rules and the ancestor and absence checks before it creates the target. It writes the launcher file only after the profile is complete (`filesComplete` is `true`). A failed generation writes no launcher file.
 - Without `--launcher`, the output of `plan` and `generate` does not change.
 
-With `--launcher`, the two actions read `HOME` to find `~/.pi/agent`, as `init-private` does. The launcher rules read no other environment value. `HOME` must be set and must be an absolute path without a trailing slash.
+With `--launcher`, the two actions read `HOME` to find `~/.pi/agent` and `~/.llm-wiki`, as `init-private` does. They also read `WIKI_HOME`, to find the wiki vault of that root. The launcher rules read no other environment value. `HOME` must be set and must be an absolute path without a trailing slash.
 
 ## The file
 
@@ -33,6 +33,7 @@ The second line is `exec env `, then the `commands.launchDisplayOnly` line of th
 - `env` is necessary. A POSIX shell refuses `exec NAME=value command`, because `exec` takes a command, not an assignment. `env` sets the assignments of the line for the one `pi` process, as the shell does when the user types the line.
 - `exec` replaces the shell with `pi`. No shell process stays.
 - The line holds a second `env`, with `-u PI_CODING_AGENT_SESSION_DIR`. It removes that variable for the one `pi` process; see "The session directory" below. The file has `env` two times because the file and the typed line hold the same text.
+- With the `wiki` component and no `memory.wiki.wikiHome`, the same `env` also holds `-u WIKI_HOME`; see "The wiki home" below.
 - When the gateway is enabled, the line holds the `TENANTEXT_LITELLM_BASE_URL` assignment. The URL is public configuration, not a key.
 - The file holds no API key and no other secret value. `TENANTEXT_LITELLM_API_KEY` reaches `pi` only from the environment of the shell that runs the file. Export it in that shell, or start the file from a secret store you already use.
 - The file passes no arguments: it does not contain `"$@"`. To give Pi an argument, run the plan line by hand.
@@ -61,7 +62,7 @@ Why the line removes the variable and does not set a directory:
 - The line does not hold the target path a second time. The quoting of a target with a space or a quote character stays in one place.
 - An empty assignment (`PI_CODING_AGENT_SESSION_DIR=`) also gives the default in Pi 1.0.2, but only because the source tests the value for truth. No Pi document states it, so the kit does not use it.
 
-`env -u` is in GNU coreutils. Not verified: BusyBox, the BSDs and macOS. POSIX.1-2018 does not list the option; not verified: POSIX.1-2024. The launch line has the form `[assignments] env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR=<quoted target> pi --no-approve`.
+`env -u` is in GNU coreutils. Not verified: BusyBox, the BSDs and macOS. POSIX.1-2018 does not list the option; not verified: POSIX.1-2024. The launch line has the form `[assignments] env -u PI_CODING_AGENT_SESSION_DIR [-u WIKI_HOME] PI_CODING_AGENT_DIR=<quoted target> pi --no-approve`.
 
 Pi variables and settings that move a state path out of the agent directory, from Pi 1.0.2 (`docs/environment-variables.md` and a search of `dist/` for `process.env`):
 
@@ -79,9 +80,25 @@ Pi variables and settings that move a state path out of the agent directory, fro
 | `PI_MANAGED_INSTALL_ROOT` | The root of a managed Pi install, for the self-update (`dist/package-manager-cli.js`). | Not handled. The kit installs Pi with npm, not as a managed install. |
 | `HOME`, `TMPDIR` | Not Pi variables. With `PI_CODING_AGENT_DIR` set, `HOME` does not move the agent directory. Pi and its extensions can read other paths under `HOME`. | Not handled. |
 
-The other names of the Pi 1.0.2 table (`PI_OFFLINE`, `PI_SKIP_VERSION_CHECK`, `PI_TELEMETRY`, `PI_CACHE_RETENTION`, `PI_SHARE_VIEWER_URL`, `PI_RADIUS_GATEWAY`, the terminal names) hold no path. An installed extension can read its own variables; `WIKI_HOME` is one, see [the memory modules](memory-modules.md).
+The other names of the Pi 1.0.2 table (`PI_OFFLINE`, `PI_SKIP_VERSION_CHECK`, `PI_TELEMETRY`, `PI_CACHE_RETENTION`, `PI_SHARE_VIEWER_URL`, `PI_RADIUS_GATEWAY`, the terminal names) hold no path. An installed extension can read its own variables; `WIKI_HOME` is one, see "The wiki home" below.
 
-The dependency lines of the plan (`commands.setupDisplayOnly`: `pi update --extensions`, the peer override) set `PI_CODING_AGENT_DIR` only. Not verified: that `pi update --extensions` writes no session file.
+The dependency lines of the plan (`commands.setupDisplayOnly`: the `pi install` lines, the peer override) set `PI_CODING_AGENT_DIR` only. Observed with Pi 1.1.0 and no `PI_CODING_AGENT_SESSION_DIR` in the environment: the `pi install` lines make no `sessions/` directory in the target. Not verified: that `pi install` writes no session file when `PI_CODING_AGENT_SESSION_DIR` is set.
+
+## The wiki home
+
+Rule: the overlay is the one source of the place of the personal wiki vault. This rule applies only to a profile with the `wiki` component.
+
+| Overlay | Launch line | Personal vault |
+| --- | --- | --- |
+| `wiki` enabled, no `memory.wiki.wikiHome` | `env -u PI_CODING_AGENT_SESSION_DIR -u WIKI_HOME PI_CODING_AGENT_DIR=<quoted target> pi --no-approve` | `~/.llm-wiki/` |
+| `wiki` enabled, with `memory.wiki.wikiHome` | `WIKI_HOME=<quoted wikiHome> env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR=<quoted target> pi --no-approve` | `<wikiHome>/.llm-wiki/` |
+| `wiki` not enabled | No change: the line neither sets nor removes `WIKI_HOME`. | None |
+
+Why the rule is necessary: the wiki extension reads `WIKI_HOME` before the home directory. A shell that exports the variable makes the extension start a second, new vault at `<WIKI_HOME>/.llm-wiki/` at the first session start, also with `ambientPersonalVault: false`. An existing `~/.llm-wiki/` then stays unused. See [an existing vault](memory-modules.md#an-existing-vault).
+
+Proved with the Pi version of the kit pin and `@zosmaai/pi-llm-wiki@0.12.5`, in RPC mode with no provider key: a profile that the kit generated, started through its launch line from an environment that exports `WIKI_HOME`, made no vault at that place. The same start with a line that has no `-u WIKI_HOME` made a vault there.
+
+A manual `pi` command without the launch line does not remove the variable. The action `check-wiki-vault` reports this state as `second_vault`.
 
 ## Print mode
 
@@ -146,6 +163,7 @@ Each refusal is a static `rule: field` text. It contains no path and no value. A
 | `path_too_long: launcher.path` | The path has more than 1024 characters. |
 | `under_target: launcher.path` | The path is the target or is under it. The target is `target.agentDir` of the overlay and, for `generate`, `--target`. |
 | `under_pi_agent: launcher.path` | The path is `~/.pi/agent` or is under it. |
+| `under_wiki_vault: launcher.path` | The path is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. With `memory.wiki.wikiHome` in the overlay, also `<wikiHome>/.llm-wiki`. The kit writes nothing below a personal wiki vault. |
 | `under_kit: launcher.path` | The path is the kit clone or is under it. This includes `.local/` of the clone. |
 | `target_exists: launcher.path` | `generate` only. The path exists: a file, a directory, a link, a dangling link or another entry. |
 | `parent_missing: launcher.path.parent` | `generate` only. The parent, or a directory above it, does not exist. The kit does not create a parent. |
@@ -155,7 +173,7 @@ Each refusal is a static `rule: field` text. It contains no path and no value. A
 | `unsafe_path: launcher.path.parents` | `generate` only. The parent or a directory above it is a symbolic link or is not a directory. |
 | `home_required: launcher.home`, `absolute_path: launcher.home` | `HOME` is not set or is not an absolute path. |
 
-The three location rules (`under_target`, `under_pi_agent`, `under_kit`) compare path text. Each root counts twice: as written, and with its symbolic links resolved (this reads link targets only, no file content). The ancestor walk then refuses each symbolic link above the file, so a link cannot reach a root from another name. The path cannot start with `!`, `+` or `-` and cannot have a leading or trailing slash or a `.` or `..` segment: the absolute-path rule allows only `/` as the first character.
+The four location rules (`under_target`, `under_pi_agent`, `under_wiki_vault`, `under_kit`) compare path text. Each root counts twice: as written, and with its symbolic links resolved (this reads link targets only, no file content). The ancestor walk then refuses each symbolic link above the file, so a link cannot reach a root from another name. The path cannot start with `!`, `+` or `-` and cannot have a leading or trailing slash or a `.` or `..` segment: the absolute-path rule allows only `/` as the first character.
 
 These failures come after a complete generation. `generate` returns exit code 1 with the full report and the diagnostic under `launcher`:
 
@@ -190,6 +208,8 @@ The boundary is the Linux-first boundary of the guarded writer; see [the guarded
 - The text: the shebang and `exec env ` plus the line, and the refusal of an empty line, a newline, a NUL, non-ASCII text and a non-string value.
 - The file from the real CLI in a disposable `HOME` with a gateway profile and a target name with a space and quote characters: the bytes of the file equal `#!/bin/sh`, then `exec env ` plus `commands.launchDisplayOnly` of the `plan` output and of the `generate` output; mode `0700`; the gateway URL is in the line; no key name and no key value is in the file or the output. A core-only profile gives the same form.
 - The session directory (`test_inherited_session_dir_does_not_reach_pi`): with a target name that has a space and the two quote characters, the plan line and the file hold `env -u PI_CODING_AGENT_SESSION_DIR` before the `PI_CODING_AGENT_DIR` assignment. In an environment that exports `PI_CODING_AGENT_SESSION_DIR` and another `PI_CODING_AGENT_DIR`, a recording `pi` gets the target as `PI_CODING_AGENT_DIR` and no `PI_CODING_AGENT_SESSION_DIR`, from `/bin/sh -c '<plan line>'` and from the file. Another variable of the caller stays. `tests/test_profile_plan.py` checks the form for a target with a quote character.
+- The wiki home (`test_inherited_wiki_home_does_not_reach_pi`): for a wiki profile with no `wikiHome`, the plan line and the file hold `-u WIKI_HOME`. In an environment that exports `WIKI_HOME`, a recording `pi` gets no `WIKI_HOME`, from `/bin/sh -c '<plan line>'` and from the file. A control without the launch line gets the inherited value. With `wikiHome`, the recording `pi` gets the overlay value.
+- A launcher path under `~/.llm-wiki`, under `<WIKI_HOME>/.llm-wiki`, under `<wikiHome>/.llm-wiki` of the overlay, and under the real directory of a vault that is a link: `under_wiki_vault`, from `plan` and from `generate`.
 - That the file runs the same command as the plan line: a recording `pi` on `PATH` gets the same arguments and the same full environment (a sorted `env` dump, which holds `PI_CODING_AGENT_DIR`, `TENANTEXT_LITELLM_BASE_URL` and the key) from `/bin/sh -c '<plan line>'` and from the file. The key comes from the environment of the caller.
 - `plan --launcher`: the path under `commands`, no file and no target written; the refusal of a relative path and of a path under the target, the kit clone and `~/.pi/agent`. Without `--launcher`, no new key.
 - Each refusal from the CLI, with no target, no launcher and no other change in the test directory: an existing file, a relative path, a path equal to and under the target, a path under the kit clone (also `.local/`), a path under `~/.pi/agent` (also when `~/.pi/agent` is a link), an absent parent, a linked ancestor, a path that is too long, and a missing or relative `HOME`. A failed generation (an existing target, `pi_login_blocked`) writes no launcher.
@@ -200,6 +220,7 @@ Not verified: behaviour on macOS, on a shell other than `dash` as `/bin/sh`, or 
 Not verified: that Pi never reads the launcher path, so that no Pi trim rule applies to it. The kit gives the path to Pi in no file and no argument; no test runs Pi.
 Not verified: a run of the file with a real Pi. The test uses a recording `pi` script.
 Not verified: that a real Pi, started from a shell that exports `PI_CODING_AGENT_SESSION_DIR`, writes its sessions into `<target>/sessions`.
+Not verified: the wiki home rule in an interactive Pi session. The proof used RPC mode.
 Not verified: `env -u` on macOS, the BSDs and BusyBox. The tests use GNU coreutils.
 Not verified: `unsafe_parent_owner` with a real non-root caller under a root-owned parent. The test changes the caller identity with a patch.
 Not verified: `file_privacy`, `short_write`, `write_failed`, `target_changed` and `target_unavailable` through a real filesystem fault. The tests force them with a patch or a umask; `target_changed` has no test.

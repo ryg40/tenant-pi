@@ -102,7 +102,7 @@ The file must be the unchanged output of `check-herdr`: else `herdr_report_statu
 
 ### After a regeneration
 
-A new candidate comes from the overlay. With `herdr` and `questions` in `selection.enable`, each regenerated candidate has the same two package entries. The regeneration writes into the new, absent target only. The old candidate, the active profile `~/.pi/agent`, the guidance file of the extension and the shared skill directories stay unchanged. Pi installs the question extension for each candidate on its own: `questionExtension` is `declared` until `pi update --extensions` ran for that candidate. See [the candidate update guide](guides/candidate-update.md).
+A new candidate comes from the overlay. With `herdr` and `questions` in `selection.enable`, each regenerated candidate has the same two package entries. The regeneration writes into the new, absent target only. The old candidate, the active profile `~/.pi/agent`, the guidance file of the extension and the shared skill directories stay unchanged. Pi installs the question extension for each candidate on its own: `questionExtension` is `declared` until the `pi install` line of the plan ran for that candidate. See [the candidate update guide](guides/candidate-update.md).
 
 ### Live checks that the owner approves
 
@@ -182,7 +182,7 @@ The registry metadata of version 2.11.0 was read: the name, the license, the one
 With `questions` in `selection.enable`, the plan does this:
 
 - It adds one entry to `packages` of `settings.json`: the source `npm:@juicesharp/rpiv-ask-user-question@2.11.0` with the filter `extensions: ["index.ts"]`. The entry comes after the in-tree packages, the memory packages and the MCP package, and before owner packages.
-- It adds two setup lines: `pi update --extensions` with the target directory, then `node scripts/patch_extension_peers.mjs`. Pi installs the package under `<target>/npm/`. The second line moves `typebox` to `peerDependencies` in the installed manifest; see [host peer overrides](host-peer-overrides.md).
+- It adds two setup lines: `pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0` with the target directory, then `node scripts/patch_extension_peers.mjs`. The first line installs the package under `<target>/npm/`. `pi update --extensions` does not install it, because the source has an exact version. The second line moves `typebox` to `peerDependencies` in the installed manifest; see [host peer overrides](host-peer-overrides.md).
 - It writes no other file. The extension reads its guidance file below the configuration directory of the user. The kit does not write or check that file.
 
 The plan lists these gaps with the subject `questions`:

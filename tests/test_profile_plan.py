@@ -251,9 +251,11 @@ class PlanTests(unittest.TestCase):
         choices = result["files"][".tenant-pi/choices.json"]["content"]
         self.assertEqual([], choices["pendingPackages"])
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(self.overlay["target"]["agentDir"])
-        # Pi installs the declared package; the peer override then corrects its `typebox` entry.
-        self.assertEqual([agent + " pi update --extensions", agent + " node scripts/patch_extension_peers.mjs"],
-                         result["commands"]["setup"][1:])
+        # `pi install` installs the declared package; the peer override then corrects its `typebox` entry.
+        # The line holds the identical source string of `settings.json`.
+        self.assertEqual([agent + " pi install " + shlex.quote(package["source"]),
+                          agent + " node scripts/patch_extension_peers.mjs"], result["commands"]["setup"][1:])
+        self.assertNotIn("pi update --extensions", json.dumps(result["commands"]))
         codes = {gap["code"] for gap in result["readinessGaps"] if gap["subject"] == "questions"}
         self.assertEqual({"package_runtime_unverified", "pi_line_unqualified", "package_source_unreviewed",
                           "peer_package_unverified", "question_ui_unverified", "shared_config_outside_profile",
@@ -514,7 +516,7 @@ class PiInstallTests(unittest.TestCase):
 
     def test_only_the_pi_line_leaves_the_setup_lines(self):
         # The lines of the npm modules stay in each case; a synthetic second line stands for them.
-        other = "PI_CODING_AGENT_DIR=/home/EXAMPLE_USER/new-agent pi update --extensions"
+        other = "PI_CODING_AGENT_DIR=/home/EXAMPLE_USER/new-agent pi install npm:example-package"
         self.plan["commands"]["setup"].append(other)
         self.assertEqual([self.line, other], setup_commands(self.plan)["setup"])
         self.assertEqual([self.line, other], setup_commands(self.plan, report(pi=None, pi_status="missing"))["setup"])

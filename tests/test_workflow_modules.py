@@ -257,7 +257,7 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(["PI_MCP_CONFIG_MODE=exclusive", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
                          shlex.split(plan["commands"]["launch"]))
         self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
-                          "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi update --extensions"],
+                          "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi install npm:pi-mcp-adapter"],
                          plan["commands"]["setup"])
         gaps = {(g["code"], g["subject"]) for g in plan["readinessGaps"]}
         for expected in (("package_runtime_unverified", "mcp"), ("peer_range_unverified", "mcp"), ("credential_store_shared", "mcp"),
@@ -292,10 +292,39 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(["PI_MCP_CONFIG_MODE=exclusive", "WIKI_HOME=/home/Test User/wiki",
                           "env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
                          shlex.split(plan["commands"]["launch"]))
-        self.assertEqual(3, len(plan["commands"]["setup"]))
-        self.assertTrue(plan["commands"]["setup"][2].endswith("node scripts/patch_extension_peers.mjs"))
+        # One install line for each npm source, in the order of `packages`; the peer override line is last.
+        agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
+        self.assertEqual([agent + " pi install npm:@zosmaai/pi-llm-wiki", agent + " pi install npm:pi-mcp-adapter",
+                          agent + " node scripts/patch_extension_peers.mjs"], plan["commands"]["setup"][1:])
         # The wiki package declares an MCP server of its own; only one path can load it and both are closed here.
         self.assertEqual([BUILTIN_MCP_OFF], plan["files"]["settings.json"]["content"]["extensions"])
+
+    def test_setup_has_one_install_line_for_each_declared_npm_source(self):
+        data = self.base("hermes", "wiki", "questions")
+        data["consent"]["memoryCapture"] = True
+        data["memory"] = {"schemaVersion": 1, "hermes": {"backgroundReview": False}, "openviking": None,
+                          "wiki": {"ambientPersonalVault": False, "backgroundTasks": False}}
+        owner = "/home/example/git/owner skills"
+        data["ownerPackages"] = [owner, {"source": "/home/example/git/owner-tools", "skills": ["skills/example"]}]
+        plan = prepare(self.manifest_data, data, mcp_definitions=DEFINITIONS)
+        packages = plan["files"]["settings.json"]["content"]["packages"]
+        sources = [p if type(p) is str else p["source"] for p in packages]
+        npm = [source for source in sources if source.startswith("npm:")]
+        # The order of `packages`: the memory modules, the MCP adapter, the question extension.
+        self.assertEqual(["npm:pi-hermes-memory", "npm:@zosmaai/pi-llm-wiki", "npm:pi-mcp-adapter",
+                          "npm:@juicesharp/rpiv-ask-user-question@2.11.0"], npm)
+        self.assertEqual([owner, "/home/example/git/owner-tools"], sources[-2:])
+        agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
+        setup = plan["commands"]["setup"]
+        # Each line holds the identical source string of `settings.json`, as one shell word. The peer override
+        # line is last. No line names an owner package, and no line is `pi update --extensions`.
+        self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
+                          *(agent + " pi install " + shlex.quote(source) for source in npm),
+                          agent + " node scripts/patch_extension_peers.mjs"], setup)
+        self.assertEqual([[*shlex.split(agent), "pi", "install", source] for source in npm],
+                         [shlex.split(line) for line in setup[1:-1]])
+        self.assertNotIn("owner", json.dumps(plan["commands"]))
+        self.assertNotIn("pi update", json.dumps(plan["commands"]))
 
 
 class WorkflowPublicationTests(unittest.TestCase):

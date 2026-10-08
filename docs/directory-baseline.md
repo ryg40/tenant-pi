@@ -20,7 +20,7 @@ python3 scripts/tenant_pi.py check-baseline --dir /home/EXAMPLE_USER/.pi/agent -
 | `--out <path>` | `baseline` | An absolute path of a file that does not exist. Its parent exists and is owned by the caller. 1024 characters maximum. |
 | `--baseline <path>` | `check-baseline` | The absolute path of the file of an earlier `baseline` run. |
 
-`baseline` reads `HOME` to find `~/.pi/agent`, as `init-private` and `--launcher` do. It reads no other environment value. It does not read `PI_CODING_AGENT_DIR`: the user names that directory with `--dir`. `check-baseline` reads no environment value.
+`baseline` reads `HOME` to find `~/.pi/agent` and `~/.llm-wiki`, as `init-private` and `--launcher` do. It reads `WIKI_HOME` to find the wiki vault of that root. It reads no other environment value. It does not read `PI_CODING_AGENT_DIR`: the user names that directory with `--dir`. `check-baseline` reads no environment value.
 
 The actions are not specific to the live agent directory. The same two commands work for the directory in `PI_CODING_AGENT_SESSION_DIR`, with another baseline file.
 
@@ -171,6 +171,7 @@ Each refusal is a static `rule: field` text. It contains no path and no value. E
 | `path_too_long: baseline.out` | `--out` has more than 1024 characters. |
 | `under_dir: baseline.out` | `--out` is `--dir` or is under it. A baseline never goes into the directory that it records. |
 | `under_pi_agent: baseline.out` | `--out` is `~/.pi/agent` or is under it. |
+| `under_wiki_vault: baseline.out` | `--out` is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. The kit writes nothing below a personal wiki vault; `--dir` can name the vault. |
 | `under_kit: baseline.out` | `--out` is the kit clone or is under it. This includes `.local/` of the clone. |
 | `target_exists: baseline.out` | The `--out` path exists: a file, a directory, a link, a dangling link or another entry. The entry is not changed. |
 | `parent_missing: baseline.out.parent` | The parent of `--out`, or a directory above it, does not exist. |

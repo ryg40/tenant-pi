@@ -119,6 +119,17 @@ class OwnerPackageTests(unittest.TestCase):
         # No setup command installs or updates an owner package.
         self.assertEqual(1, len(plan["commands"]["setup"]))
         self.assertNotIn("owner skills", json.dumps(plan["commands"]))
+        # The same beside a kit npm module: the install line names the kit source only.
+        self.overlay["selection"]["disable"].remove("questions")
+        self.overlay["selection"]["enable"].append("questions")
+        plan = prepare(self.manifest, self.overlay)
+        agent = "PI_CODING_AGENT_DIR=" + self.overlay["target"]["agentDir"]
+        self.assertEqual([agent + " pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0",
+                          agent + " node scripts/patch_extension_peers.mjs"], plan["commands"]["setup"][1:])
+        self.assertEqual([FILTERED, PLAIN, {"source": "/srv/only source"}],
+                         plan["files"]["settings.json"]["content"]["packages"][2:])
+        for source in (FILTERED["source"], PLAIN, "/srv/only source"):
+            self.assertNotIn(source, json.dumps(plan["commands"]))
 
     def test_compare_shows_added_removed_and_changed_owner_packages_as_markers(self):
         old = candidate(overlay_for("/home/example/old"))

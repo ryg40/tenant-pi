@@ -32,6 +32,7 @@ Each extension and each skill of the packages is one component in `config/manife
 
 Facts for a selection:
 
+- The `components` action prints one line for each component of the manifest, with the names of its extensions and skills, its required IDs and its prerequisites. See [the CLI contract](generator.md#components-the-checklist-of-the-components).
 - `herdr-relay` is optional and disabled by default. No component requires it. Enable `herdr` too when you select it. A kit without the relay directory remains valid while the relay stays disabled. Enabling an absent relay fails with `tree_resource_missing`.
 - An `unverified` component can be enabled. The plan lists each of its gaps as a readiness gap with the component ID as the subject.
 - `openviking` is a memory module: it also needs `consent.memoryCapture`, `consent.remoteMemoryWrites` and a `memory.openviking` block. Its package declaration comes after the other in-tree packages. See [the memory modules](memory-modules.md).

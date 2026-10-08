@@ -1,5 +1,7 @@
 # Candidate update guide
 
+The short form of this guide is [POST_INSTALL.md](../../POST_INSTALL.md): the commands of each task after a base install. This guide has the details.
+
 The kit never updates a profile in place. Each change makes a new candidate directory. You compare it with the old one and then switch by hand. This guide follows the lifecycle of [the profile lifecycle](../profile-lifecycle.md).
 
 ## The loop
@@ -110,7 +112,7 @@ Do nothing. The next candidate does not have the change.
 
 ## After a native Pi operation
 
-Pi can write `settings.json` of a profile on its own. Examples: `pi update --extensions`, `pi install`, `/model`, a settings change in the interface, a `/resources` toggle, and the `npmCommand` wrapper setup.
+Pi can write `settings.json` of a profile on its own. Examples: `pi install` of a new source or of a source string that differs from the declared string, `/model`, a settings change in the interface, a `/resources` toggle, and the `npmCommand` wrapper setup. `pi update --extensions` does not write `settings.json`. `pi install` does not write it when the source string is identical to the declared string.
 
 After each such operation:
 
@@ -132,7 +134,7 @@ To go back, run the launcher of the old candidate. Without launcher files, use t
 
 Limits of a switch:
 
-- Each candidate authenticates and installs its declared packages on its own. Run setup Stages 6 and 7 for the new candidate. The kit copies no auth, sessions, memory or packages. With `questions`, `inventory` shows `coordination.questionExtension` as `declared` for the new candidate until `pi update --extensions` ran for it.
+- Each candidate authenticates and installs its declared packages on its own. Run setup Stages 6 and 7 for the new candidate. The kit copies no auth, sessions, memory or packages. With `questions`, `inventory` shows `coordination.questionExtension` as `declared` for the new candidate until the `pi install` line of the plan ran for it.
 - Going back is not a data rollback. Data that a session wrote into a candidate stays there.
 - The live `~/.pi/agent` stays untouched. Replacing it is your manual decision and is out of scope of the kit.
 - Old candidates stay on disk. The kit deletes nothing. Remove an old candidate by hand only after you checked that no launcher points at it.

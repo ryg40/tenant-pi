@@ -47,7 +47,8 @@ PROVIDER_KEY_NAMES = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BA
 PROVIDER_KEY_WARNING = "provider_key_in_launching_environment"
 PROVIDER_KEY_FACT = ("Pi reads a provider key from the environment of the launching shell, including in a profile with "
                      "no login. A model reply can come from a provider that you did not choose.")
-# npm components that the plan declares as a Pi package of the profile; `pi update --extensions` installs them.
+# npm components that the plan declares as a Pi package of the profile. The plan prints one `pi install <source>`
+# line for each: `pi update --extensions` does not install a source with an exact version.
 DECLARED_NPM = ("questions",)
 # The declared npm components whose installed manifest lists a host-provided module under `dependencies`.
 PEER_OVERRIDE_NPM = ("questions",)
@@ -241,7 +242,10 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
                          "subject": name})
     # `env -u` removes an inherited session directory, so Pi keeps the sessions under the target
     # (docs/launcher.md, "The session directory").
-    launch = "env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR=" + shlex.quote(target) + " pi --no-approve"
+    # A wiki profile with no `wikiHome` also removes an inherited `WIKI_HOME` ("The wiki home").
+    unset = ["PI_CODING_AGENT_SESSION_DIR", *(memory["unset"] if memory is not None else ())]
+    launch = ("env " + " ".join("-u " + name for name in unset) + " PI_CODING_AGENT_DIR=" + shlex.quote(target)
+              + " pi --no-approve")
     files = {"settings.json": {"mode": "0600", "content": settings}}
     if memory is not None:
         settings["packages"].extend(memory["packages"])
@@ -260,6 +264,9 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
         for item in mcp["setup"]:
             launch = item["instruction"] + " " + launch
     settings["packages"].extend(declared_packages)
+    # The npm sources of the kit components, in the order and with the strings of `settings.json`. The owner
+    # packages come after this line, so no setup line names one of them.
+    npm_sources = [entry["source"] for entry in settings["packages"] if entry["source"].startswith("npm:")]
     # Owner packages come last, in overlay order: a plain path stays a string, a filtered entry
     # keeps only the keys the overlay gives. The kit does not open, install or load these paths.
     for item in overlay_data.get("ownerPackages", []):
@@ -274,9 +281,10 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
     # The npm memory modules. The vendored OpenViking package is a path inside the kit: Pi installs
     # nothing for it, and it lists no host module as a dependency.
     npm_memory = any(components[cid]["source"]["kind"] == "npm" for cid in enabled & set(MEMORY))
-    if npm_memory or mcp is not None or declared_packages:
-        # Pi reconciles declared packages with `pi update --extensions` (packages.md).
-        setup.append("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " pi update --extensions")
+    for source in npm_sources:
+        # `pi install` installs a source with or without an exact version. It leaves `settings.json` unchanged
+        # when the source string is identical to the declared string, so the line holds that string.
+        setup.append("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " pi install " + shlex.quote(source))
     if npm_memory or enabled & set(PEER_OVERRIDE_NPM):
         # The peer override corrects host-provided `dependencies` in the installed memory manifests and in
         # the manifest of the question extension; the adapter lists none, so the mcp module alone needs no override.

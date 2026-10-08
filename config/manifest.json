@@ -1228,7 +1228,7 @@
       "license": "MIT",
       "resources": {
         "extensions": [
-          "extensions"
+          "extensions/llm-wiki/index.ts"
         ],
         "skills": [],
         "prompts": [],

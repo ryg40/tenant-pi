@@ -1,7 +1,7 @@
 # Host-provided peer overrides for Pi extension packages
 
 Status: reviewed script and offline test. The kit does not install it, run it, or configure a service.
-The observations below use Pi 0.99.1. Not verified: the same runtime behaviour with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
+The observations below use Pi 0.99.1, unless the text names another version. Observed with Pi 1.1.0: the warning for `typebox` in `@juicesharp/rpiv-ask-user-question` 2.11.0, and its removal by the script. Not verified: the other runtime behaviour below with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
 ## Why it is needed
 
@@ -32,6 +32,14 @@ node scripts/patch_extension_peers.mjs /path/to/npm    # an explicit npm root
 ```
 
 Restart Pi after a change. The script needs Node 18 or later.
+
+## Install the packages before the first start
+
+Observed with Pi 1.1.0: a start of Pi installs a declared package that is missing. That install does not run the override. Each start then prints the peer warning until the override script runs.
+
+The setup lines of the plan prevent this. They install each declared npm source with `pi install <source>`, and the script is the last line. Run them before the first start of the profile. `pi update --extensions` does not replace them: it does not install or change a source with an exact version.
+
+With the `npmCommand` wrapper below in `settings.json`, each install that Pi runs goes through the wrapper.
 
 ## Cause
 

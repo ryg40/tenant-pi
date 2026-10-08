@@ -81,7 +81,7 @@ Source: `pi-mcp-adapter@3.2.0`, `config.ts`, `types.ts`, `init.ts`, `utils.ts`, 
 - the `mcp__<server>` tool not returning after a failed connection;
 - `mcpScript` under Bun.
 
-The versions 3.3.0 and 4.0.0 exist; neither was reviewed. The manifest declares `pi-mcp-adapter` without a version, so an install takes the current registry version. The rules in this document were read at 3.2.0 and are not re-verified for a later version.
+The versions 3.3.0 and 4.0.0 exist; neither was reviewed. The manifest declares `pi-mcp-adapter` without a version, so an install takes the newest registry version. The rules in this document were read at 3.2.0 and are not re-verified for a later version.
 
 ### Scopes that can still affect a launch
 
@@ -149,7 +149,7 @@ The kit ships the MIT `open-knowledge` skill. `ok init` also writes a project-lo
 | `.tenant-pi/choices.json` `mcpDefinitions` | always | The validated input document, or `null`. Private, mode `0600`; the writer and the comparison rebuild the plan from it. |
 | `.tenant-pi/state.json` `outputs` | mcp | Lists the adapter file. |
 | Launch line | mcp | `PI_MCP_CONFIG_MODE=exclusive` precedes every other assignment. |
-| Setup lines | mcp | `pi update --extensions`. The peer override line appears only with a memory module. |
+| Setup lines | mcp | `pi install npm:pi-mcp-adapter`. The peer override line appears only with a memory module or with `questions`. |
 
 The module adds these readiness gaps:
 

@@ -16,7 +16,7 @@ python3 scripts/tenant_pi.py init-private --dir /home/EXAMPLE_USER/.config/tenan
 
 The overlay-target refusal covers three things only: the sample target of `config/config.example.json`, the path of `--target`, and the `target.agentDir` of each `--overlay` file that the caller names. The action does not search for overlays. Without `--overlay` and without `--target`, no real overlay target is checked. The `--overlay` option is the way the action learns the target of another overlay.
 
-The action reads `HOME` to find `~/.pi/agent`. It reads no other environment value. `HOME` must be set and must be an absolute path without a trailing slash.
+The action reads `HOME` to find `~/.pi/agent` and `~/.llm-wiki`. It reads `WIKI_HOME` to find the wiki vault of that root. It reads no other environment value. `HOME` must be set and must be an absolute path without a trailing slash.
 
 ## What it creates
 
@@ -30,9 +30,11 @@ The action reads `HOME` to find `~/.pi/agent`. It reads no other environment val
 | `<dir>/.gitignore` | file | `0600` | From `config/private/gitignore` |
 | `<dir>/inputs` | directory | `0700` | Empty. It holds the fixed `overlay.inputs` slots, for example `inputs/mcp-adapter.json` |
 
+An install adds more files to the directory later, and `init-private` creates none of them: the saved runtime report, each launcher file, each baseline file, the facts file `results-facts.json` and the results file `INSTALLER_KIT_RESULTS.md`. See [the results file](install-results.md).
+
 The templates are tracked text files of the kit. The action copies each template without a change. Without `--target` it does not edit the overlay copy: the target of the copy is the fake sample target `/home/EXAMPLE_USER/new-agent`, and the user must change it. `validate`, `plan` and `generate` refuse an overlay with the sample target; see "The target option".
 
-The `.gitignore` template ignores these names: `inputs/`, `.env`, `.env.*`, `auth.json`, `models.json`, `mcp-adapter.json`, `sessions/`, `*.key`, `*.pem`, `*.db`, `*.sqlite`, `*baseline*.json`. It has no negation line (`!`). It does not ignore `overlay.json`, `registry.json`, `install-log.md` or `accepted-drift.md`: these four files are the record that a second host or a recovery starts from.
+The `.gitignore` template ignores these names: `inputs/`, `.env`, `.env.*`, `auth.json`, `models.json`, `mcp-adapter.json`, `sessions/`, `*.key`, `*.pem`, `*.db`, `*.sqlite`, `*baseline*.json`, `INSTALLER_KIT_RESULTS.md`, `results-facts.json`. It has no negation line (`!`). It does not ignore `overlay.json`, `registry.json`, `install-log.md` or `accepted-drift.md`: these four files are the record that a second host or a recovery starts from.
 
 Warning: the `.gitignore` file is not a security control. A secret in a file with another name is not ignored. Read `git status` before each commit, and do not write a secret value into the overlay, the registry or the two Markdown files.
 
@@ -87,6 +89,7 @@ Each refusal is a static `rule: field` text. It contains no path and no value. T
 | `path_too_long: init-private.dir` | The path has more than 1024 characters. | None |
 | `under_kit: init-private.dir` | The path is the kit clone or is under it. This includes `.local/` of the clone. | None |
 | `under_pi_agent: init-private.dir` | The path is `~/.pi/agent` or is under it. | None |
+| `under_wiki_vault: init-private.dir` | The path is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. | None |
 | `under_overlay_target: init-private.dir` | The path is the `target.agentDir` of an overlay or is under it. The overlays are `config/config.example.json`, each `--overlay` file, and the new overlay with the path of `--target`. | None |
 | `absolute_path: init-private.target`, `text: init-private.target`, `shell_or_template: init-private.target` | The `--target` path is not an absolute POSIX path of the kit form. A path that starts with `~` gives `absolute_path`; a path with `$` gives `shell_or_template`. | None |
 | `path_too_long: init-private.target` | The `--target` path has more than 1024 characters. | None |
@@ -94,6 +97,7 @@ Each refusal is a static `rule: field` text. It contains no path and no value. T
 | `under_private_dir: init-private.target` | The `--target` path is under `--dir`. | None |
 | `under_kit: init-private.target` | The `--target` path is the kit clone or is under it. | None |
 | `under_pi_agent: init-private.target` | The `--target` path is `~/.pi/agent` or is under it. | None |
+| `under_wiki_vault: init-private.target` | The `--target` path is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. | None |
 | `target_exists: init-private.dir` | The path exists: a directory (also an empty one), a file, a link or another entry. | None |
 | `parent_missing: init-private.dir.parent` | The parent, or a directory above it, does not exist. The action does not create a parent. | None |
 | `unsafe_parent_owner: init-private.dir.parent` | The parent is owned by root and the caller is not root. | None |
@@ -111,7 +115,7 @@ Each refusal is a static `rule: field` text. It contains no path and no value. T
 | `write_failed: init-private.dir`, `short_write: init-private.dir.files`, `target_changed: init-private.dir` | A write fails after the directory is created, or another process replaces the directory. | The directory stays, incomplete |
 | `target_unavailable: init-private.dir` | The creation of the directory itself fails. | None |
 
-The three location rules of `--dir` (`under_kit`, `under_pi_agent`, `under_overlay_target`) compare path text before any other access. The three location rules of `--target` (`under_private_dir`, `under_kit`, `under_pi_agent`) run after them and work in the same way; the target path also counts with its symbolic links resolved. Each forbidden root counts twice: as written, and with its symbolic links resolved (this reads link targets only, no file content). The ancestor walk then refuses each symbolic link above the new directory, so a link cannot reach a forbidden root from another name.
+The four location rules of `--dir` (`under_kit`, `under_pi_agent`, `under_wiki_vault`, `under_overlay_target`) compare path text before any other access. The four location rules of `--target` (`under_private_dir`, `under_kit`, `under_pi_agent`, `under_wiki_vault`) run after them and work in the same way; the target path also counts with its symbolic links resolved. Each forbidden root counts twice: as written, and with its symbolic links resolved (this reads link targets only, no file content). The ancestor walk then refuses each symbolic link above the new directory, so a link cannot reach a forbidden root from another name.
 
 The action has no rollback. After a failure with `"candidate_created": true`, inspect the directory and remove it yourself; a second run refuses it with `target_exists`.
 

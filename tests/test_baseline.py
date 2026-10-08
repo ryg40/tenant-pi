@@ -509,6 +509,14 @@ class CliTests(Fixture):
         self.refused("under_pi_agent: baseline.out", self.record(out=self.live / "live-baseline.json"))
         self.refused("under_pi_agent: baseline.out", self.record(other, out=self.live / "sessions" / "b.json"))
         self.refused("under_kit: baseline.out", self.record(out=ROOT / ".local" / "live-baseline.json"))
+        # The baseline of a wiki vault never goes into a vault: the one of the home directory or the one of WIKI_HOME.
+        vault = self.home / ".llm-wiki"
+        self.refused("under_wiki_vault: baseline.out", self.record(out=vault / "vault-baseline.json"))
+        self.refused("under_wiki_vault: baseline.out", self.record(vault, out=vault / "meta" / "b.json"))
+        with patch.dict(os.environ, {"WIKI_HOME": str(other)}):
+            self.refused("under_wiki_vault: baseline.out", self.record(out=other / ".llm-wiki" / "b.json"))
+            self.refused("under_wiki_vault: baseline.out", self.record(out=vault / "b.json"))
+        self.assertFalse(os.path.lexists(vault))
         self.refused("absolute_path: baseline.out", self.record(out="live-baseline.json"))
         self.refused("parent_missing: baseline.out.parent", self.record(out=self.home / "absent" / "b.json"))
         self.refused("absolute_path: baseline.dir", self.record("relative/agent"))

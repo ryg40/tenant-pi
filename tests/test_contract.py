@@ -449,6 +449,16 @@ class ContractTests(unittest.TestCase):
             finally:
                 validate.ROOT = root
 
+    def test_npm_extension_entry_names_a_file(self):
+        data = load(ROOT / "config/manifest.json")
+        entries = [(cid, entry) for cid, c in data["components"].items() if c["source"]["kind"] == "npm"
+                   for entry in c["resources"]["extensions"]]
+        self.assertIn(("wiki", "extensions/llm-wiki/index.ts"), entries)
+        for cid, entry in entries:
+            with self.subTest(cid=cid):
+                # The pinned Pi loads no extension from a filter entry that names a directory of an npm package.
+                self.assertRegex(entry, r"\A(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.ts\Z")
+
     def test_one_tree_component_per_extension_and_skill(self):
         data = load(ROOT / "config/manifest.json")
         package = json.loads((ROOT / "packages/tenantext/package.json").read_text(encoding="utf-8"))

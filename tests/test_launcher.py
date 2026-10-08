@@ -332,6 +332,92 @@ class CliTests(Fixture):
         bare = subprocess.run(["pi", "--no-approve"], env=run_env, cwd=self.base, capture_output=True, text=True, check=True)
         self.assertIn("|" + elsewhere + "|set|", bare.stdout)
 
+    def wiki_overlay(self, **wiki):
+        data = load(ROOT / "config/config.example.json")
+        data["target"]["agentDir"] = str(self.target)
+        data["selection"] = {"enable": ["core", "wiki"], "disable": []}
+        data["consent"]["memoryCapture"] = True
+        data["memory"] = {"schemaVersion": 1, "hermes": None, "openviking": None,
+                          "wiki": {"ambientPersonalVault": True, "backgroundTasks": False, **wiki}}
+        self.overlay.write_text(json.dumps(data))
+
+    def test_inherited_wiki_home_does_not_reach_pi(self):
+        # A shell can export WIKI_HOME. The wiki extension then starts a second vault there. With no
+        # `wikiHome` in the overlay, the plan line and the launcher file remove the variable.
+        self.wiki_overlay()
+        result = subprocess.run([sys.executable, str(CLI), "generate", "--overlay", str(self.overlay),
+                                 "--manifest", str(self.manifest), "--target", str(self.target),
+                                 "--launcher", str(self.path)], cwd=self.base, env=self.env,
+                                text=True, capture_output=True, check=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        line = json.loads(result.stdout)["commands"]["launchDisplayOnly"]
+        self.assertEqual("env -u PI_CODING_AGENT_SESSION_DIR -u WIKI_HOME PI_CODING_AGENT_DIR=" + shlex.quote(str(self.target))
+                         + " pi --no-approve", line)
+        self.assertEqual(("#!/bin/sh\nexec env " + line + "\n").encode("ascii"), self.path.read_bytes())
+        record = self.base / "record bin"
+        record.mkdir()
+        fake = record / "pi"
+        fake.write_text('#!/bin/sh\nprintf "%s|" "$@" "$PI_CODING_AGENT_DIR" "${WIKI_HOME-unset}" "${WIKI_HOME+set}" '
+                        '"$OTHER_NAME"\nprintf "\\n"\n')
+        fake.chmod(0o700)
+        elsewhere = str(self.base / "other wiki home")
+        run_env = {"PATH": str(record) + ":/usr/bin:/bin", "WIKI_HOME": elsewhere, "OTHER_NAME": "kept"}
+        expected = "--no-approve|" + str(self.target) + "|unset||kept|\n"
+        by_line = subprocess.run(["/bin/sh", "-c", line], env=run_env, cwd=self.base,
+                                 capture_output=True, text=True, check=True)
+        by_file = subprocess.run([str(self.path)], env=run_env, cwd=self.base,
+                                 capture_output=True, text=True, check=True)
+        self.assertEqual((expected, expected), (by_line.stdout, by_file.stdout))
+        self.assertEqual(("", ""), (by_line.stderr, by_file.stderr))
+        # Control: without the launch line, the recording `pi` gets the inherited value.
+        bare = subprocess.run(["pi", "--no-approve"], env=run_env, cwd=self.base, capture_output=True, text=True, check=True)
+        self.assertIn("|" + elsewhere + "|set|", bare.stdout)
+        # With `wikiHome`, the line sets the variable to the overlay value and does not remove it.
+        chosen = str(self.base / "chosen wiki home")
+        self.wiki_overlay(wikiHome=chosen)
+        plan = subprocess.run([sys.executable, str(CLI), "plan", "--overlay", str(self.overlay),
+                               "--manifest", str(self.manifest)], cwd=self.base, env=self.env,
+                              text=True, capture_output=True, check=False)
+        self.assertEqual(0, plan.returncode, plan.stderr)
+        line = json.loads(plan.stdout)["commands"]["launchDisplayOnly"]
+        self.assertEqual("WIKI_HOME=" + shlex.quote(chosen) + " env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR="
+                         + shlex.quote(str(self.target)) + " pi --no-approve", line)
+        by_line = subprocess.run(["/bin/sh", "-c", line], env=run_env, cwd=self.base,
+                                 capture_output=True, text=True, check=True)
+        self.assertEqual("--no-approve|" + str(self.target) + "|" + chosen + "|set|kept|\n", by_line.stdout)
+
+    def test_launcher_in_a_wiki_vault_is_refused(self):
+        # The kit writes nothing below a personal wiki vault: the one of the home directory and the one of WIKI_HOME.
+        other = self.base / "wiki home"
+        inherited = dict(self.env, WIKI_HOME=str(other))
+        for path, env in ((self.home / ".llm-wiki" / "launch.sh", None),
+                          (self.home / ".llm-wiki" / "outputs" / "launch.sh", None),
+                          (self.home / ".llm-wiki" / "launch.sh", inherited),
+                          (other / ".llm-wiki" / "launch.sh", inherited)):
+            with self.subTest(path=str(path)[-40:], inherited=env is not None):
+                self.refused("under_wiki_vault: launcher.path", "--launcher", str(path), env=env)
+                plan = self.run_cli("plan", "--launcher", str(path), env=env)
+                self.assertEqual({"candidate_created": False, "error": "under_wiki_vault: launcher.path"}, json.loads(plan.stderr))
+        # A vault that is a link does not hide its real place.
+        real = self.base / "real vault"
+        real.mkdir()
+        (self.home / ".llm-wiki").symlink_to(real, target_is_directory=True)
+        self.refused("under_wiki_vault: launcher.path", "--launcher", str(real / "launch.sh"))
+        # Without the variable, the other place is no vault: the path fails a later rule.
+        self.refused("parent_missing: launcher.path.parent", "--launcher", str(other / ".llm-wiki" / "launch.sh"))
+        # The vault of `memory.wiki.wikiHome` of the overlay counts also: the launch line names it.
+        data = copy.deepcopy(self.data)
+        data["selection"]["enable"].append("wiki")
+        data["consent"]["memoryCapture"] = True
+        data["memory"] = {"schemaVersion": 1, "hermes": None, "openviking": None,
+                          "wiki": {"ambientPersonalVault": True, "backgroundTasks": False, "wikiHome": str(other)}}
+        self.overlay.write_text(json.dumps(data))
+        for path in (other / ".llm-wiki" / "launch.sh", other / ".llm-wiki" / "outputs" / "launch.sh"):
+            with self.subTest(path=str(path)[-40:], overlay=True):
+                self.refused("under_wiki_vault: launcher.path", "--launcher", str(path))
+                plan = self.run_cli("plan", "--launcher", str(path))
+                self.assertEqual({"candidate_created": False, "error": "under_wiki_vault: launcher.path"}, json.loads(plan.stderr))
+
     def test_core_only_profile(self):
         data = load(ROOT / "config/config.example.json")
         data["target"]["agentDir"] = str(self.target)

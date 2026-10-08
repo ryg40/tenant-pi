@@ -12,3 +12,5 @@ sessions/
 *.db
 *.sqlite
 *baseline*.json
+INSTALLER_KIT_RESULTS.md
+results-facts.json

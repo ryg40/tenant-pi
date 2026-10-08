@@ -154,10 +154,10 @@ class MemoryContractTests(unittest.TestCase):
         self.assertIn({"code": "peer_override_required", "subject": "hermes"}, plan["readinessGaps"])
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
         self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
-                          agent + " pi update --extensions", agent + " node scripts/patch_extension_peers.mjs",
+                          agent + " pi install npm:pi-hermes-memory", agent + " node scripts/patch_extension_peers.mjs",
                           "npm --prefix " + shlex.quote(str(ROOT / OPENVIKING_DIR)) + " ci --ignore-scripts"],
                          plan["commands"]["setup"])
-        # The module alone: no npm package to reconcile, no peer override, no file of its own.
+        # The module alone: no npm package to install, no peer override, no file of its own.
         data = self.openviking(memory={"openviking": {"captureToolResults": False}})
         overlay(data, self.components)
         plan = prepare(self.manifest_data, data)
@@ -217,7 +217,7 @@ class MemoryContractTests(unittest.TestCase):
         plan = prepare(self.manifest_data, data)
         settings = plan["files"]["settings.json"]["content"]
         self.assertEqual([{"source": "npm:pi-hermes-memory", "extensions": ["src/index.ts"], "skills": [], "prompts": [], "themes": []},
-                          {"source": "npm:@zosmaai/pi-llm-wiki", "extensions": ["extensions"], "skills": [], "prompts": [], "themes": []}],
+                          {"source": "npm:@zosmaai/pi-llm-wiki", "extensions": ["extensions/llm-wiki/index.ts"], "skills": [], "prompts": [], "themes": []}],
                          settings["packages"])
         self.assertEqual({"ambientPersonalVault": False, "trajectories": False}, settings["llm-wiki"])
         self.assertEqual({"reviewEnabled": False, "correctionDetection": False, "flushOnCompact": False,
@@ -241,10 +241,14 @@ class MemoryContractTests(unittest.TestCase):
             self.assertIn(expected, codes)
         self.assertNotIn(("child_provider_unverified", "hermes"), codes)
         self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
-                          "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi update --extensions",
+                          "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi install npm:pi-hermes-memory",
+                          "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi install npm:@zosmaai/pi-llm-wiki",
                           "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " node scripts/patch_extension_peers.mjs"],
                          plan["commands"]["setup"])
-        self.assertTrue(plan["commands"]["launch"].startswith("env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR="))
+        # The wiki has no `wikiHome`: the line also removes an inherited `WIKI_HOME`.
+        self.assertTrue(plan["commands"]["launch"].startswith(
+            "env -u PI_CODING_AGENT_SESSION_DIR -u WIKI_HOME PI_CODING_AGENT_DIR="))
+        self.assertEqual(["WIKI_HOME"], render_memory(data, self.components)["unset"])
 
     def test_background_model_calls_require_a_memory_role_and_a_child_provider(self):
         self.error(self.base("hermes", memory={"hermes": HERMES_ON}), "memory_role_required")
@@ -460,6 +464,25 @@ class MemoryContractTests(unittest.TestCase):
                          plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["setup"])
         rendered = render_memory(data, self.components)
         self.assertEqual(rendered["settings"], {"llm-wiki": plan["files"]["settings.json"]["content"]["llm-wiki"]})
+        # The overlay names the vault place, so the line sets the variable and does not remove it.
+        self.assertEqual([], rendered["unset"])
+        self.assertNotIn("-u WIKI_HOME", plan["commands"]["launch"])
+
+    def test_launch_line_removes_an_inherited_wiki_home_only_for_a_wiki_with_no_wiki_home(self):
+        for ambient in (True, False):
+            data = self.base("wiki", memory={"wiki": {**WIKI_OFF, "ambientPersonalVault": ambient}})
+            overlay(data, self.components)
+            plan = prepare(self.manifest_data, data)
+            self.assertEqual(["env", "-u", "PI_CODING_AGENT_SESSION_DIR", "-u", "WIKI_HOME",
+                              "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
+                             shlex.split(plan["commands"]["launch"]))
+            self.assertEqual("home", plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["activation"]["wiki"]["personalVault"])
+            self.assertEqual([], plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["setup"])
+        # Without the wiki, a memory module does not change the removed names.
+        data = self.base("hermes", memory={"hermes": HERMES_OFF})
+        overlay(data, self.components)
+        self.assertEqual([], render_memory(data, self.components)["unset"])
+        self.assertNotIn("WIKI_HOME", prepare(self.manifest_data, data)["commands"]["launch"])
         validate_memory(data, self.components)
 
 

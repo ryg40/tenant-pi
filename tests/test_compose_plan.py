@@ -441,6 +441,11 @@ class CliTests(unittest.TestCase):
         self.refused("under_pi_agent: compose-plan.private_dir", "--write", **{"--private-dir": str(live)})
         self.assertEqual([], os.listdir(live))
         self.refused("under_kit: compose-plan.private_dir", "--write", **{"--private-dir": str(ROOT / ".local/seat")})
+        # Never a write into a personal wiki vault.
+        vault = self.home / ".llm-wiki/seat"
+        vault.mkdir(parents=True)
+        self.refused("under_wiki_vault: compose-plan.private_dir", "--write", **{"--private-dir": str(vault)})
+        self.assertEqual([], os.listdir(vault))
         self.assertEqual([], os.listdir(self.private))
 
     def test_public_key_file(self):

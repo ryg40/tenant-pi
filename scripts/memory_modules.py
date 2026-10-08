@@ -216,12 +216,13 @@ def render_memory(overlay, components):
 
     The caller runs the overlay validator first; it already includes `validate_memory`.
     `packages` are Pi package declarations, `settings` are settings.json keys, `files`
-    are whole extra profile files, `setup` are process-local launch facts, `gaps` are
-    readiness gaps, and `activation` is the public truth table recorded with the plan.
+    are whole extra profile files, `setup` are process-local launch facts, `unset` are the
+    names that the launch line removes, `gaps` are readiness gaps, and `activation` is the
+    public truth table recorded with the plan.
     `ROOT` is used only as text, for the path of the in-tree package.
     """
     enabled = set(overlay["selection"]["enable"])
-    result = {"packages": [], "settings": {}, "files": {}, "setup": [], "gaps": [], "activation": {}}
+    result = {"packages": [], "settings": {}, "files": {}, "setup": [], "unset": [], "gaps": [], "activation": {}}
     block = overlay.get("memory", {})
     role = overlay["roles"].get("memory")
     for cid in MEMORY:
@@ -296,6 +297,8 @@ def render_memory(overlay, components):
                                         "instruction": "WIKI_HOME=" + shlex.quote(choice["wikiHome"])})
                 record["personalVault"] = "wikiHome"
             else:
+                # An inherited `WIKI_HOME` would start a second vault there; the overlay alone names the vault place.
+                result["unset"].append("WIKI_HOME")
                 result["gaps"].append({"code": "shared_home_state", "subject": cid})
                 record["personalVault"] = "home"
         result["activation"][cid] = record

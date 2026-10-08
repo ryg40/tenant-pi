@@ -35,7 +35,9 @@ The gateway URL must be a credential-free HTTPS URL ending exactly `/v1`. The po
 
 `validate`, `plan` and `generate` also refuse an overlay whose `target.agentDir` is `~/.pi/agent` or a path under it, before any write, with `under_pi_agent: overlay.target.agentDir` and exit code 2. `~/.pi/agent` is the live profile: the directory that a bare `pi` command opens. The rule name is the one of `init-private --target` and of `--launcher`. The root and the target each count as written and with their symbolic links resolved, as for `under_kit` (this reads link targets only, no file content). A target through a linked name is refused, and so is a target in the directory behind a linked `~/.pi/agent`. The rule runs after the overlay is valid, after `under_kit` and `sample_target`, and after the location rules of `--launcher`.
 
-For this rule the three actions read `HOME`. The rule reads no other environment value. `HOME` must be set and must be an absolute path without a trailing slash; else the action stops with `home_required: target.home` or `absolute_path: target.home` and exit code 2. With `--launcher`, the launcher rules read `HOME` first and name the field `launcher.home`. Limit: the rule knows only `~/.pi/agent`. The kit does not read `PI_CODING_AGENT_DIR`, so a live agent directory that only this variable names is not refused. `tests/test_cli.py` covers the directory itself, a path under it, a path through a link, a linked `~/.pi/agent`, a linked `HOME`, a target beside the directory, a missing or relative `HOME`, and the limit.
+The three actions also refuse a `target.agentDir` that is `~/.llm-wiki` or a path under it, with `under_wiki_vault: overlay.target.agentDir` and exit code 2. `~/.llm-wiki` is the personal vault of the wiki extension. With `WIKI_HOME` set to an absolute path, the rule also covers `<WIKI_HOME>/.llm-wiki`; an empty value counts as not set, and trailing `/` characters do not count. With `memory.wiki.wikiHome` in the overlay, the rule also covers `<wikiHome>/.llm-wiki`: the launch line gives this root to the extension. The kit writes nothing below a vault. The roots and the target count as for `under_pi_agent`, and the rule runs after it. See [an existing vault](memory-modules.md#an-existing-vault).
+
+For this rule the three actions read `HOME`. The rule reads no other environment value; the rule `under_wiki_vault` above also reads `WIKI_HOME`. `HOME` must be set and must be an absolute path without a trailing slash; else the action stops with `home_required: target.home` or `absolute_path: target.home` and exit code 2. With `--launcher`, the launcher rules read `HOME` first and name the field `launcher.home`. Limit: the rule knows only `~/.pi/agent`. The kit does not read `PI_CODING_AGENT_DIR`, so a live agent directory that only this variable names is not refused. `tests/test_cli.py` covers the directory itself, a path under it, a path through a link, a linked `~/.pi/agent`, a linked `HOME`, a target beside the directory, a missing or relative `HOME`, and the limit.
 
 `.tenant-pi/state.json` also carries a minimal non-secret provenance record (kit schema, Pi pin, Node range, enabled components and their pins, declared outputs, the UTC generation time `generatedAt` and the kit commit `kitCommit`); see `docs/candidate-compare.md`. `generate` reads `kitCommit` from the Git metadata files of the kit clone through the bounded loader, not with `git rev-parse HEAD`, and records `unknown` when they are absent or malformed; see `docs/candidate-list.md`. A complete state marker means only that files were published. `filesComplete` can be true while `runtimeReady` remains false. A pre-publication failure leaves an incomplete candidate and no launch instruction. Cleanup failures after publication return a completion warning. Inspect incomplete candidates manually; do not retry in place or delete uncertain paths. No automatic rollback occurs. The agent directory is not an OS sandbox: HOME, working directory, environment, and trusted project resources can affect Pi. Review every gap before manually qualifying runtime under separate authorization.
 
@@ -83,7 +85,7 @@ The rule `read_or_json` stays for a directory that `inventory` or `list` cannot 
 python3 scripts/tenant_pi.py check-runtime [--pi <path>] [--node <path>] [--python <path>]
 ```
 
-`check-runtime` and `check-herdr` are the only actions that run a subprocess. `check-herdr` runs one `herdr --version` and reports `present`, `missing` or `unparsed`; see [Herdr and the question tool](herdr-setup.md). `remote-plan` prints SSH command lines and runs none. `compose-plan` prints Compose command lines and runs none. `check-runtime` runs at most three commands (one for each tool that it finds) without a shell, each with a 20 second timeout: `pi --version` with `PI_CODING_AGENT_DIR` set to an empty temporary directory that it removes, `node --version`, and `python3 --version`. It compares the results with `manifest.runtime` and prints one deterministic JSON object. Exit code 0 accepts Pi `match` or `untested_in_range` when Node and Python match. A failed requirement gives exit code 1. It reads `PATH` to find a tool that has no explicit path, and the three processes inherit the environment. It runs no other command, no network request and no install, and it reads no credential file. A failed removal of the temporary directory gives `cleanup_failed: check-runtime.tmpdir` and exit code 2. See `docs/check-runtime.md`.
+`check-runtime` and `check-herdr` are the only actions that run a subprocess. `check-herdr` runs one `herdr --version` and reports `present`, `missing` or `unparsed`; see [Herdr and the question tool](herdr-setup.md). `check-wiki-vault` starts no process: it reports the personal LLM Wiki vault from `lstat` calls; see [the vault check](memory-modules.md#the-vault-check). `remote-plan` prints SSH command lines and runs none. `compose-plan` prints Compose command lines and runs none. `check-runtime` runs at most three commands (one for each tool that it finds) without a shell, each with a 20 second timeout: `pi --version` with `PI_CODING_AGENT_DIR` set to an empty temporary directory that it removes, `node --version`, and `python3 --version`. It compares the results with `manifest.runtime` and prints one deterministic JSON object. Exit code 0 accepts Pi `match` or `untested_in_range` when Node and Python match. A failed requirement gives exit code 1. It reads `PATH` to find a tool that has no explicit path, and the three processes inherit the environment. It runs no other command, no network request and no install, and it reads no credential file. A failed removal of the temporary directory gives `cleanup_failed: check-runtime.tmpdir` and exit code 2. See `docs/check-runtime.md`.
 
 ## `baseline` and `check-baseline`: the directory baseline
 
@@ -93,6 +95,14 @@ python3 scripts/tenant_pi.py check-baseline --dir /home/EXAMPLE_USER/.pi/agent -
 ```
 
 `baseline` records the name, kind, size and modification time of each entry of one explicitly named directory, at all levels. It opens directories only and follows no link, so it reads no file content. Its one write is the absent `--out` file, mode `0600`, exclusive create. It refuses an existing file and a path under `--dir`, under `~/.pi/agent` or under the kit clone, before it lists the directory. It reads `HOME`. `check-baseline` compares the directory with that file and prints `unchanged`, `changed` (with the names of the direct entries that differ) or `no_baseline`. It writes nothing, and its exit code is 1 when the result is not `unchanged`. Neither action starts a process. See `docs/directory-baseline.md`.
+
+## `results`: the results file of an install
+
+```sh
+python3 scripts/tenant_pi.py results --overlay /path/to/overlay.json --facts /path/to/results-facts.json --target '/existing/owned/parent/new profile' --out-dir /existing/owned/dir
+```
+
+`results` writes `<out-dir>/INSTALLER_KIT_RESULTS.md`, mode `0600`: fixed sentences of the kit with the facts of one install. It reads the manifest, the overlay, a facts file with a closed schema, and the two files `.tenant-pi/state.json` and `settings.json` of each `--target`. It opens only these two files of a target, and it takes a status of `npm/node_modules/<name>/package.json` for each declared npm package. It refuses an `--out-dir` under the kit clone, under a personal wiki vault (`under_wiki_vault`) or under a `--target`, and it replaces an existing file only with `--replace`. It refuses a `--target` that is a personal wiki vault or is under one (`under_wiki_vault: results.target`) before it opens a file of the target. Without `--out-dir` it prints the text and writes nothing. It starts no process. It reads `HOME` and `WIKI_HOME` for the vault rule; it reads no other environment value. `HOME` is necessary only with `--out-dir`. See `docs/install-results.md`.
 
 ## `--launcher`: the launcher file
 
@@ -165,9 +175,47 @@ With `--write` the action creates `overlay.json`, `seat.env`, `compose.env`, `au
 | `target_exists: compose-plan.<file>` | One of the five files exists. A link counts as a file. |
 | `private_dir_missing`, `private_dir_unsafe`: `compose-plan.private_dir` | The directory does not exist; the directory or a directory above it is a symbolic link or is not a directory. |
 | `under_pi_agent: compose-plan.private_dir` | The directory is `~/.pi/agent` or is under it. For this rule `--write` reads `HOME` (`home_required`, `absolute_path`: `compose-plan.home`). |
+| `under_wiki_vault: compose-plan.private_dir` | The directory is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. |
 | `write_failed: compose-plan.private_dir` | The system refuses a write. Some of the five files can then exist. |
 
 The action never reads the value of the key variable, and no output and no file holds a key value. The user pastes the value into `compose.env`. Exit code 0 with the plan, exit code 2 with one JSON diagnostic line on standard error. Limits: the action does not check that the projects directory exists, that the gateway is reachable from a container, or that a runtime is installed. Not verified: how Docker Compose and `podman-compose` read a `seat.env` value with a space or a quote.
+
+## `components`: the checklist of the components
+
+```sh
+python3 scripts/tenant_pi.py components [--format text] [--overlay /path/to/overlay.json]
+python3 scripts/tenant_pi.py components --select ops-footer,13
+```
+
+`components` prints one entry for each component of `config/manifest.json`, in manifest order. It is the one source of the component list for an install: a document does not hold a second copy. `scripts/components.py` is a pure module: no process, no file, no environment value. The action reads the manifest and, with `--overlay`, that overlay through the bounded no-follow loader. It writes no file and it enables nothing.
+
+The data form is the default: one JSON object with `count`, `marks`, `components` and `scope`. `marks` is `recommended` without `--overlay` and `overlay` with it. Each entry of `components` has these keys:
+
+| Key | Content |
+| --- | --- |
+| `number` | The position in the manifest, from 1. The number is the handle of the checklist. |
+| `id`, `kind`, `status` | The component ID, the kind of its manifest `source` and its manifest status. |
+| `extensions`, `skills` | The names from `resources` of the manifest. A skill has the name of its directory. An extension has the name of its directory. A path that names no directory of its own, for example `index.ts`, gives the name of the package. A component with no resource has two empty lists. |
+| `requires` | The IDs that the component needs. |
+| `prerequisites` | Plain codes, in a fixed order. `overlay:<key>` is an overlay key that `validate` needs. `env:<NAME>` is a name of the manifest key `env`. `gap:<code>` is a readiness gap that names a step or a tool of the host. `setup:<line>` is a setup line that `plan` prints, without the directory of the profile. |
+| `recommended` | `true` for an ID of the recommended set. The set is `RECOMMENDED` in `scripts/components.py`. |
+| `marked` | The state of the checklist. Without `--overlay` it is `recommended`. With `--overlay` it is `true` for each ID in `selection.enable` of that overlay. |
+| `locked` | `true` for `core`: the user cannot switch it off. |
+
+A `gap:` code is a manifest gap whose code ends in `_required`. For the two npm memory modules it is also `peer_override_required`, and `native_addon_unverified` for `hermes`: the plan adds them. An `env:` name is a declared name, not a proof that the component fails without it. With `--overlay`, the action reads only `selection.enable`. It does not check the other rules of the overlay; use `validate` for that.
+
+`--format text` prints the numbered checklist for a person: one line for each component, then one line that says how to answer. A line holds the number, `[x]` or `[ ]`, the ID, the names of the extensions and the skills, the status, the required IDs and a short note of the prerequisites. `core` is locked and each other component requires it, so a line names only the other required IDs. The note gives the count of the setup lines, not their text. The same command prints the same bytes on each run.
+
+`--select <ids or numbers, separated by commas>` prints the `selection` object of an overlay for the chosen components. `enable` holds `core`, then the chosen IDs and each ID that one of them requires, by name. `disable` holds each other ID, by name. `added` names each ID that the requirement rule added. `prerequisites` holds the codes of each enabled component that has one. The action writes no file: copy the object into the overlay, add each `overlay:` key of the prerequisites, and then run `validate`.
+
+| Rule | Cause |
+| --- | --- |
+| `undeclared_component: components.select` | An item of `--select` is not an ID of the manifest and not a number of the checklist. An empty item has the same rule. |
+| `blocked_component: components.select` | A chosen or required component has the manifest status `blocked`. |
+| `option_conflict: components.select` | `--select` is given with `--overlay` or with `--format text`. |
+| `required_fields: overlay.selection`, `undeclared_component: overlay.selection` | The `--overlay` file has no `selection.enable`, or the list names an ID that the manifest does not have. |
+
+Exit code 0 with the output, exit code 2 with one JSON diagnostic line on standard error. A diagnostic never holds an input value. `tests/test_components.py` covers the three forms, the recommended set and each kind of prerequisite code. Not verified: the use of the checklist in an install session.
 
 ## `init-private`: the private directory
 

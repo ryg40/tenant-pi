@@ -79,7 +79,8 @@ class InitTests(Fixture):
         self.assertEqual(b"{}\n", (ROOT / TEMPLATES["registry.json"]).read_bytes())
         ignore = (ROOT / TEMPLATES[".gitignore"]).read_text().splitlines()
         for line in ("inputs/", ".env", ".env.*", "auth.json", "models.json", "mcp-adapter.json", "sessions/",
-                     "*.key", "*.pem", "*.db", "*.sqlite", "*baseline*.json"):
+                     "*.key", "*.pem", "*.db", "*.sqlite", "*baseline*.json",
+                     "INSTALLER_KIT_RESULTS.md", "results-facts.json"):
             self.assertIn(line, ignore)
         # No negation and no rule that hides a file the directory must track.
         self.assertFalse([line for line in ignore if line.startswith("!")])
@@ -452,6 +453,8 @@ class CliTests(Fixture):
                 (self.agent, "under_pi_agent: init-private.target"),
                 (self.agent / "profiles" / "main", "under_pi_agent: init-private.target"),
                 (self.base / "to agent" / "main", "under_pi_agent: init-private.target"),
+                # A personal wiki vault is no place for a profile.
+                (self.home / ".llm-wiki" / "profile", "under_wiki_vault: init-private.target"),
                 (ROOT / ".local" / "tenant-pi-test-target-absent", "under_kit: init-private.target"),
                 (self.base / "to kit" / "docs" / "tenant-pi-test-target-absent", "under_kit: init-private.target"),
                 # The private directory and the target must stay outside of each other.
@@ -484,6 +487,8 @@ class CliTests(Fixture):
                 (ROOT / "config" / "private" / "new", "under_kit: init-private.dir"),
                 (self.agent, "under_pi_agent: init-private.dir"),
                 (self.agent / "private", "under_pi_agent: init-private.dir"),
+                (self.home / ".llm-wiki", "under_wiki_vault: init-private.dir"),
+                (self.home / ".llm-wiki" / "private", "under_wiki_vault: init-private.dir"),
                 ("/home/EXAMPLE_USER/new-agent", "under_overlay_target: init-private.dir"),
                 ("/home/EXAMPLE_USER/new-agent/private", "under_overlay_target: init-private.dir")):
             with self.subTest(directory=str(directory)):
@@ -492,6 +497,15 @@ class CliTests(Fixture):
         self.assertFalse((self.base / "absent").exists())
         self.assertEqual([], list((self.parent / "exists").iterdir()))
         self.assertEqual({"auth.json", "models.json", "settings.json"}, {p.name for p in self.agent.iterdir()})
+
+    def test_wiki_home_vault_is_refused_for_the_directory_and_the_target(self):
+        other = self.base / "wiki home"
+        env = dict(self.env, WIKI_HOME=str(other))
+        self.refused(other / ".llm-wiki" / "private", "under_wiki_vault: init-private.dir", env=env)
+        self.refused(self.home / ".llm-wiki" / "private", "under_wiki_vault: init-private.dir", env=env)
+        self.refused(self.dir, "under_wiki_vault: init-private.target", "--target", str(other / ".llm-wiki" / "main"), env=env)
+        self.assertFalse(os.path.lexists(self.dir))
+        self.assertFalse(other.exists())
 
     def test_linked_pi_agent_and_linked_ancestor(self):
         real = self.base / "real agent"

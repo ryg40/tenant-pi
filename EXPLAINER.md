@@ -501,7 +501,7 @@ You see this output:
 
 In `scripts/tenant_pi.py`, `main()` calls `_init_private()`:
 
-1. `_home()` reads `HOME`. It is the only environment value that the action reads. The action needs it to know `~/.pi/agent`.
+1. `_home()` reads `HOME`. The action needs it to know `~/.pi/agent` and `~/.llm-wiki`. `_wiki_home()` reads `WIKI_HOME`, to know a wiki vault at another root. The action reads no other environment value.
 2. `_load_input()` reads the five templates that `TEMPLATES` in `scripts/private_init.py` names.
 3. `check_target()` checks the form of `--target`: an absolute path, 1024 characters maximum, not the sample target of the example.
 4. `_roots()` makes the list of forbidden places: the clone, `~/.pi/agent` and each known overlay target. Each place counts as written and with its symbolic links resolved.
@@ -709,6 +709,7 @@ In `scripts/tenant_pi.py`, `main()` does this for `validate`, `plan` and `genera
 5. `_outside_kit()` refuses a target in the clone.
 6. A target equal to `SAMPLE_TARGET` gives `sample_target`.
 7. `_outside_pi_agent()` refuses a target that is `~/.pi/agent` or is under it, with `under_pi_agent`. `_home()` reads `HOME` for this rule. The target and the directory each count as written and with their symbolic links resolved.
+8. `_outside_wiki_vault()` refuses a target that is `~/.llm-wiki` or is under it, with `under_wiki_vault`. With `WIKI_HOME` set, the rule also covers `<WIKI_HOME>/.llm-wiki`. With `memory.wiki.wikiHome` in the overlay, the rule also covers `<wikiHome>/.llm-wiki`. The same rule refuses a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory. `baseline` and `init-private` read no overlay, so they know the first two vaults only.
 
 With `--launcher`, `plan` and `generate` apply the launcher rules of step 8 between items 6 and 7.
 
@@ -721,7 +722,7 @@ With `--launcher`, `plan` and `generate` apply the launcher rules of step 8 betw
 | `config/manifest.json` | read |
 | `~/.config/tenant-pi/overlay.json` | read |
 
-The action creates and changes no file. It opens no file of the target or of the live profile. It reads one environment value, `HOME`, to find `~/.pi/agent`. For the two place rules it resolves the symbolic links of the target path, of the clone path and of `~/.pi/agent`. That reads link targets only.
+The action creates and changes no file. It opens no file of the target or of the live profile. It reads `HOME` to find `~/.pi/agent` and `~/.llm-wiki`, and `WIKI_HOME` to find a wiki vault at another root. For the two place rules it resolves the symbolic links of the target path, of the clone path and of `~/.pi/agent`. That reads link targets only.
 
 #### Output
 
@@ -1132,7 +1133,7 @@ You see `set` or `unset`.
 
 #### Not touched
 
-- The kit reads no credential file or credential value. `init-private`, `baseline`, `validate`, `plan` and `generate` read `HOME`. The exception is `plan`: it also tests known provider key variable names, without reading values. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable).
+- The kit reads no credential file or credential value. `init-private`, `baseline`, `validate`, `plan`, `generate`, `check-wiki-vault` and `results` read `HOME`, and `WIKI_HOME` for the place of a wiki vault only. The exception is `plan`: it also tests known provider key variable names, without reading values. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable).
 - `check-runtime` reads `PATH` to find the tools, and `TMPDIR` (or `TEMP` or `TMP`) for its temporary directory. It passes the whole environment of the shell to the three `--version` processes, with `PI_CODING_AGENT_DIR` replaced for Pi. So a provider key that the shell exports reaches these three processes.
 - The other actions read no environment value.
 - `auth.json` of the live profile. The kit copies no login from one profile to another, so the new profile starts with no login.
@@ -1470,7 +1471,7 @@ Each component other than `core` is optional. You enable one when you move its I
 | More keys in `settings.json` | `mcp` adds `"extensions": ["-builtin:mcp"]`. A model role adds `defaultProvider`, `defaultModel` and `defaultThinkingLevel`. |
 | One more file in the target | `mcp` adds `mcp-adapter.json`. `hermes` adds `hermes-memory-config.json`. |
 | An assignment in front of the launch line | `mcp` puts `PI_MCP_CONFIG_MODE=exclusive` in front. The gateway route puts `TENANTEXT_LITELLM_BASE_URL=<address>` in front. |
-| More dependency steps for you | `mcp` adds a `pi update --extensions` line to `setupDisplayOnly`. `questions` adds that line and the peer override line. An in-tree module of `packages/tenantext` needs `npm ci --ignore-scripts` in that directory, which leaves `node_modules/` in the clone. |
+| More dependency steps for you | `mcp` adds a `pi install` line with its npm source to `setupDisplayOnly`. `questions` adds a `pi install` line with its npm source, and the peer override line. An in-tree module of `packages/tenantext` needs `npm ci --ignore-scripts` in that directory, which leaves `node_modules/` in the clone. |
 | More inputs in the private directory | `mcp` reads `inputs/mcp-adapter.json`, and `validate`, `plan` and `generate` then need `--local-dir`. A model route reads `registry.json` with `--registry`. |
 | State outside the target at run time | The `wiki` module can keep a vault in `~/.llm-wiki/`. The `mcp` adapter keeps tokens in the keyring of the operating system. |
 | More gaps | `context-meter` adds three: `package_runtime_unverified`, `pi_line_unqualified` and `kit_test_missing`. |
@@ -1497,7 +1498,8 @@ Three rules hold for each module:
 
 No optional module passed an accepted live trial in this release. Read [the module guide](docs/guides/modules.md) before you enable one. It has one row for each component, with its inputs, its credential method and its state. The details are in [in-tree packages](docs/packages.md), [memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md) and [model routes](docs/model-routes.md).
 
-Every optional component has label `skipped` by default and `unverified` when enabled.
+Every optional component has label `skipped` in the sample overlay and `unverified` when enabled.
+The install flow of [INSTALL.md](INSTALL.md#stage-5-the-private-overlay) prints a checklist of all components with a recommended set marked. `hermes` and `wiki` are in that set.
 Manifest status `tested` means offline review, not a live trial. No optional component has label `ready`.
 A missing requirement makes its setup `blocked`. The [module guide](docs/guides/modules.md#status-labels) defines these labels.
 
@@ -1526,15 +1528,16 @@ The launcher sets `PI_MCP_CONFIG_MODE=exclusive`. Tokens can use the operating-s
 ### Hermes memory
 
 Status: manifest `tested`, runtime `unverified`. Hermes adds `hermes-memory-config.json`, then runtime memory files under the profile.
-Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together.
+Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together. The checklist of the install flow marks `hermes`; the consent key is written only when you keep the mark.
 It needs `pi-hermes-memory` and a compiler toolchain for `better-sqlite3`.
 `backgroundReview: true` also needs `roles.memory` and permits independent model calls.
 
 ### LLM Wiki
 
 Status: manifest `tested`, runtime `unverified`. LLM Wiki adds profile settings and can keep its vault outside the target.
-Select `wiki`, set `consent.memoryCapture: true` and supply `memory.wiki` together.
-It needs `@zosmaai/pi-llm-wiki`. A selected wiki home adds `WIKI_HOME` to the launch line.
+Select `wiki`, set `consent.memoryCapture: true` and supply `memory.wiki` together. The checklist of the install flow marks `wiki`; the consent key is written only when you keep the mark.
+It needs `@zosmaai/pi-llm-wiki`. A selected wiki home adds `WIKI_HOME` to the launch line. With no selected wiki home, the launch line removes an inherited `WIKI_HOME`, and the vault is `~/.llm-wiki/`.
+An existing vault is used as it is, and `check-wiki-vault` reports it. The kit refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`.
 The setup guide gives the peer-override step for both Hermes and LLM Wiki.
 These npm modules have reviewed versions, but their declarations do not pin the registry version installed by Pi.
 
@@ -1562,7 +1565,7 @@ Status: `unverified` for both components. Herdr is a terminal workspace manager 
 The `herdr` component adds the Herdr skill of `packages/tenantext` to one profile. It does not install the Herdr application.
 `check-herdr` reports the `herdr` command: `present` with the version, `missing` or `unparsed`.
 The `questions` component adds the npm package `@juicesharp/rpiv-ask-user-question` at an exact version. It gives Pi the `ask_user_question` tool.
-The plan then prints `pi update --extensions` and the peer override line. Without the tool, a skill asks in plain text.
+The plan then prints a `pi install` line with the source of the package, and the peer override line. Without the tool, a skill asks in plain text.
 `remote-plan` prints the SSH command lines for an install on a remote Linux host. It runs none of them.
 Not verified: a Pi session that loads either component, the question dialog, a Herdr session, and a remote install.
 See [Herdr and the question tool](docs/herdr-setup.md) for each result and each limit.
@@ -1665,6 +1668,7 @@ The reasons for this structure:
 | `scripts/private_init.py` | The private directory of `init-private`. |
 | `scripts/launcher.py` | The launcher file. |
 | `scripts/check_runtime.py` | The three version processes of `check-runtime`, and the one of `check-herdr`. |
+| `scripts/wiki_vault.py` | The `lstat` calls of `check-wiki-vault`. |
 | `scripts/remote_plan.py` | The SSH command lines of `remote-plan`, as data. |
 | `scripts/baseline.py` | The scan and the comparison of `baseline` and `check-baseline`. |
 | `scripts/kit_commit.py` | Reads the commit of the clone without a Git process. |
@@ -1716,6 +1720,8 @@ The table includes the surrounding files, caches and runtime state of a base ins
 | `~/.config/tenant-pi/runtime.json` | file, mode from your umask | you (step 8) | The saved report of `check-runtime`. |
 | `~/.config/tenant-pi/launch-main.sh` | file `0700` | the kit (step 9) | The launcher file. |
 | `~/.config/tenant-pi/live-baseline.json` | file `0600` | the kit (step 12) | The baseline of the live profile. |
+| `~/.config/tenant-pi/results-facts.json` | file, mode from your umask | you | Only when you write the results file: the facts of the install. See [the results file](docs/install-results.md). |
+| `~/.config/tenant-pi/INSTALLER_KIT_RESULTS.md` | file `0600` | the kit (`results`) | Only when you run the `results` action: what the install did and where each part is. |
 | `~/.pi/profiles/` | directory | you (step 5) | The parent of the target. |
 | `~/.pi/profiles/main/` | directory `0700` | the kit (step 9) | The target: the new profile. |
 | `~/.pi/profiles/main/settings.json` | file `0600` | the kit, then Pi | The Pi settings. |
@@ -1900,6 +1906,7 @@ Not verified:
 | --- | --- |
 | [The setup guide](docs/guides/setup.md) | The same install as nine stages, with each option. |
 | [INSTALL.md](INSTALL.md) | The same install for an installing agent. |
+| [POST_INSTALL.md](POST_INSTALL.md) | The commands for each update and change after a base install. |
 | [The module guide](docs/guides/modules.md) | Each component. |
 | [The candidate update guide](docs/guides/candidate-update.md) | A new kit version: regenerate, compare, switch. |
 | [The privacy guide](docs/guides/privacy.md) | What the kit separates and what it does not. |

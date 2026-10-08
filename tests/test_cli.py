@@ -867,6 +867,58 @@ class CliTests(unittest.TestCase):
         self.save()
         self.check_unchanged(before_source, before_fixture)
 
+    def test_target_in_a_wiki_vault_refused_before_any_write(self):
+        # The kit writes nothing below a personal wiki vault: `<home>/.llm-wiki`, and `<WIKI_HOME>/.llm-wiki` when set.
+        vault = self.home / ".llm-wiki"
+        vault.mkdir()
+        other = self.base / "wiki home"
+        (other / ".llm-wiki").mkdir(parents=True)
+        linked = self.base / "linked-vault"
+        linked.symlink_to(vault, target_is_directory=True)
+        env = {name: value for name, value in self.env.items() if name != "WIKI_HOME"}
+        inherited = dict(env, WIKI_HOME=str(other))
+        for target, case in ((vault, env), (vault / "profile", env), (linked / "profile", env),
+                             (vault / "profile", inherited), (other / ".llm-wiki" / "profile", inherited)):
+            for action in ("validate", "plan", "generate"):
+                with self.subTest(target=str(target.relative_to(self.base)), action=action, inherited=case is inherited):
+                    self.assert_refused(self.run_target(action, target, env=case), "under_wiki_vault: overlay.target.agentDir")
+        self.assertEqual(([], []), (os.listdir(vault), os.listdir(other / ".llm-wiki")))
+        # Without the variable, the other place is no vault.
+        result = self.run_target("generate", other / ".llm-wiki" / "profile", env=env)
+        self.assertEqual((0, ""), (result.returncode, result.stderr))
+        # An empty value is no value, as in the extension. A value that is no absolute path names no root.
+        for value in ("", "relative"):
+            result = self.run_target("validate", other / ".llm-wiki" / "second", env=dict(env, WIKI_HOME=value))
+            self.assertEqual((0, ""), (result.returncode, result.stderr))
+        # Trailing separators of the variable do not change the root.
+        result = self.run_target("validate", other / ".llm-wiki" / "second", env=dict(env, WIKI_HOME=str(other) + "//"))
+        self.assert_refused(result, "under_wiki_vault: overlay.target.agentDir")
+
+    def test_target_in_the_vault_of_the_overlay_wiki_home_refused_before_any_write(self):
+        # The launch line gives `memory.wiki.wikiHome` to the extension: the vault there is a vault of the user too.
+        chosen = self.base / "chosen wiki home"
+        vault = chosen / ".llm-wiki"
+        vault.mkdir(parents=True)
+        linked = self.base / "linked-chosen"
+        linked.symlink_to(vault, target_is_directory=True)
+        env = {name: value for name, value in self.env.items() if name != "WIKI_HOME"}
+        # Without `wikiHome` in the overlay, the place is no vault.
+        result = self.run_target("validate", vault / "profile", env=env)
+        self.assertEqual((0, ""), (result.returncode, result.stderr))
+        self.data["selection"] = {"enable": ["core", "wiki"], "disable": []}
+        self.data["consent"]["memoryCapture"] = True
+        self.data["memory"] = {"schemaVersion": 1, "hermes": None, "openviking": None,
+                               "wiki": {"ambientPersonalVault": True, "backgroundTasks": False, "wikiHome": str(chosen)}}
+        for target in (vault, vault / "profile", linked / "profile"):
+            for action in ("validate", "plan", "generate"):
+                with self.subTest(target=str(target.relative_to(self.base)), action=action):
+                    self.assert_refused(self.run_target(action, target, env=env), "under_wiki_vault: overlay.target.agentDir")
+        self.assertEqual([], os.listdir(vault))
+        # A target beside the vault is not refused.
+        result = self.run_target("generate", chosen / "profile", env=env)
+        self.assertEqual((0, ""), (result.returncode, result.stderr))
+        self.assertEqual([], os.listdir(vault))
+
     def test_linked_live_agent_directory_and_linked_home_are_refused(self):
         # `~/.pi/agent` is a link: the directory behind it is the live profile too.
         real = self.base / "real agent"
@@ -1233,6 +1285,137 @@ class CliTests(unittest.TestCase):
         self.assertTrue({"settings.json", "choices.json", "state.json"} <= set(log.read_text().splitlines()))
         self.assertFalse((self.base / "called").exists())
 
+    def wiki_fixture(self, variant, root=None):
+        """A fixture vault at `<root>/.llm-wiki` with invented content and one old time on each file and directory.
+
+        The root is the home directory when the caller names no other.
+        """
+        vault = (self.home if root is None else root) / ".llm-wiki"
+        config = {"name": "fixture", "mode": "personal", "topic": "fixture", "created": "2024-01-02", "version": "1.0"}
+        files = {"WIKI_SCHEMA.md": "# Fixture schema\n",
+                 "wiki/concepts/fixture-alpha.md": "---\ntype: concept\ntitle: Fixture Alpha\n---\nKEEP ALPHA\n",
+                 "wiki/entities/fixture-beta.md": "---\ntype: entity\ntitle: Fixture Beta\n---\nKEEP BETA\n",
+                 "meta/registry.json": json.dumps({"version": "1.0", "pages": {"concepts/fixture-alpha": {"type": "concept"}}}),
+                 "meta/backlinks.json": "{}", "meta/index.md": "# Index\n", "meta/log.md": "# Log\n",
+                 "meta/events.jsonl": '{"event": "fixture"}\n',
+                 "meta/embeddings.json": json.dumps({"version": "1.0", "entries": {"concepts/fixture-alpha": {
+                     "hash": "0" * 64, "model": "fixture-embed", "dim": 4, "vector": [0.5, 0.5, 0.5, 0.5],
+                     "updated": "2024-01-02T03:04:05.000Z"}}}),
+                 "meta/qmd/manifest.json": "{}"}
+        if variant == "okf":
+            config.update(vault_id="00000000-0000-4000-8000-000000000001", knowledge_format="okf-0.2")
+            files.update({"wiki/index.md": "# Wiki index\n", "wiki/log.md": "# Wiki log\n"})
+        files["config.json"] = json.dumps(config)
+        for name in ("raw/sources", "raw/assets", "outputs", ".discoveries", "templates/pages"):
+            (vault / name).mkdir(parents=True)
+        for name, content in files.items():
+            (vault / name).parent.mkdir(parents=True, exist_ok=True)
+            (vault / name).write_text(content)
+        for path in (vault, *vault.rglob("*")):
+            os.utime(path, ns=(1704164645000000000, 1704164645000000000))
+        return vault, {Path(name).name for name in files}
+
+    @staticmethod
+    def vault_state(vault):
+        """SHA-256 and modification time of each file, and the modification time of each directory."""
+        return {str(path.relative_to(vault)): (hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+                                              os.lstat(path).st_mtime_ns)
+                for path in (vault, *vault.rglob("*"))}
+
+    def test_kit_actions_keep_an_existing_wiki_vault(self):
+        # An established vault of the user: no kit action opens a file of it, writes below it or changes a time.
+        manifest = self.base / "kit-manifest.json"
+        manifest.write_bytes(self.manifest.read_bytes())
+        hook_base = (self.base / "sitecustomize.py").read_text()
+        env = {name: value for name, value in self.env.items() if name != "WIKI_HOME"}
+        # A second vault of the user at a root that is not the home directory: `wikiHome` of one overlay names it.
+        chosen = self.base / "chosen wiki home"
+        cases = (("ambient", {"ambientPersonalVault": True}), ("quiet", {"ambientPersonalVault": False}),
+                 ("wiki-home", {"ambientPersonalVault": True, "wikiHome": str(self.home)}),
+                 ("wiki-home-elsewhere", {"ambientPersonalVault": True, "wikiHome": str(chosen)}))
+        for variant in ("okf", "legacy"):
+            with self.subTest(variant=variant):
+                for root in (self.home, chosen):
+                    if (root / ".llm-wiki").exists():
+                        shutil.rmtree(root / ".llm-wiki")
+                vault, names = self.wiki_fixture(variant)
+                second, _ = self.wiki_fixture(variant, chosen)
+                log = self.base / (variant + "-opens.log")
+                self.assertEqual(variant == "okf", "knowledge_format" in json.loads((vault / "config.json").read_text()))
+                # The hook fails each open of a file below the vault: by its path, or by its name alone for an open
+                # relative to a directory. `baseline` opens the directories to list them.
+                (self.base / "sitecustomize.py").write_text(
+                    hook_base + "import os\n"
+                    "_log = os.open(" + repr(str(log)) + ", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n"
+                    "def audit(event, args):\n"
+                    "    if event != 'open' or not isinstance(args[0], str):\n"
+                    "        return\n"
+                    "    listing = isinstance(args[2], int) and bool(args[2] & os.O_DIRECTORY)\n"
+                    "    os.write(_log, (('dir ' if listing else 'file ') + args[0] + '\\n').encode('utf-8', 'replace'))\n"
+                    "    if not listing and (args[0].startswith(" + repr((str(vault), str(second))) + ") or args[0] in "
+                    + repr(sorted(names)) + "):\n"
+                    "        raise AssertionError('vault file opened')\n"
+                    "sys.addaudithook(audit)\n")
+                before, before_second = self.vault_state(vault), self.vault_state(second)
+                self.assertEqual(set(before), set(before_second))
+                # Thirteen directories with the vault itself, and each file of the variant.
+                self.assertEqual(13 + (13 if variant == "okf" else 11), len(before))
+                self.assertEqual({1704164645000000000}, {mtime for _, mtime in before.values()})
+                for name, wiki in cases:
+                    target = self.parent / (variant + " " + name)
+                    self.data["target"]["agentDir"] = str(target)
+                    self.data["selection"] = {"enable": ["core", "wiki"], "disable": []}
+                    self.data["consent"]["memoryCapture"] = True
+                    self.data["memory"] = {"schemaVersion": 1, "hermes": None, "openviking": None,
+                                           "wiki": {"backgroundTasks": False, **wiki}}
+                    self.save()
+                    for action, extra in (("validate", ()), ("plan", ()), ("generate", ("--target", str(target)))):
+                        result = self.run_cli(action, *extra, manifest=manifest, env=env)
+                        self.assertEqual((0, ""), (result.returncode, result.stderr), (name, action))
+                    line = json.loads(result.stdout)["commands"]["launchDisplayOnly"]
+                    self.assertEqual("wikiHome" not in wiki, "-u WIKI_HOME " in line)
+                    if "wikiHome" in wiki:
+                        self.assertTrue(line.startswith("WIKI_HOME=" + shlex.quote(wiki["wikiHome"]) + " env "), line)
+                    self.assertEqual(wiki["ambientPersonalVault"],
+                                     json.loads((target / "settings.json").read_text())["llm-wiki"]["ambientPersonalVault"])
+                for extra in ({}, {"WIKI_HOME": str(self.base / "elsewhere")}):
+                    probe = subprocess.run([sys.executable, str(CLI), "check-wiki-vault"], cwd=self.base, env={**env, **extra},
+                                           text=True, capture_output=True, check=False)
+                    self.assertEqual((0, ""), (probe.returncode, probe.stderr))
+                    report = json.loads(probe.stdout)
+                    self.assertEqual("second_vault" if extra else "vault_exists", report["result"])
+                    self.assertEqual({"root": str(self.home), "vault": str(vault), "kind": "directory", "exists": True,
+                                      "config": True, "doubled": False, "ownedByUser": True,
+                                      "embeddings": {"exists": True, "size": (vault / "meta/embeddings.json").stat().st_size}},
+                                     report["home"])
+                # Until here no action opened the vault or a directory of it.
+                opened = log.read_text().splitlines()
+                self.assertIn("file overlay.json", opened)
+                self.assertEqual([], [line for line in opened if ".llm-wiki" in line])
+                out = self.base / (variant + "-wiki-baseline.json")
+                for action, option in (("baseline", "--out"), ("check-baseline", "--baseline")):
+                    result = subprocess.run([sys.executable, str(CLI), action, "--dir", str(vault), option, str(out)],
+                                            cwd=self.base, env=env, text=True, capture_output=True, check=False)
+                    self.assertEqual((0, ""), (result.returncode, result.stderr), action)
+                self.assertEqual("unchanged", json.loads(result.stdout)["result"])
+                self.assertIn("dir .llm-wiki", log.read_text().splitlines())
+                self.assertEqual(before, self.vault_state(vault))
+                # No action opened or listed the vault of `wikiHome`: the same bytes and the same times.
+                self.assertEqual(before_second, self.vault_state(second))
+                self.assertEqual([], [line for line in log.read_text().splitlines() if str(chosen) in line])
+                # Control: the comparison sees one changed time and one changed byte.
+                os.utime(vault / "meta", ns=(1, 1))
+                (vault / "wiki/concepts/fixture-alpha.md").write_text("CHANGED")
+                after = self.vault_state(vault)
+                self.assertEqual({"meta", "wiki/concepts/fixture-alpha.md"},
+                                 {name for name in before if before[name] != after[name]})
+        # Control: the hook stops a file open below the vault.
+        for name in (str(vault / "config.json"), "embeddings.json"):
+            blocked = subprocess.run([sys.executable, "-c", "open(" + repr(name) + ").close()"],
+                                     cwd=vault / "meta", env=env, text=True, capture_output=True, check=False)
+            self.assertIn("vault file opened", blocked.stderr)
+        self.assertFalse((self.base / "called").exists())
+
     def test_compare_opens_only_declared_files_and_redacts(self):
         left, right = self.generate_pair()
         # Private runtime state beside the declared files must stay unread.
@@ -1425,7 +1608,8 @@ class CliTests(unittest.TestCase):
                                   if key in ("herdrSkill", "questionExtension")})
         setup = json.loads(result.stdout)["commands"]["setupDisplayOnly"]
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(str(second))
-        self.assertEqual([agent + " pi update --extensions", agent + " node scripts/patch_extension_peers.mjs"], setup[1:])
+        self.assertEqual([agent + " pi install " + shlex.quote(expected[1]["source"]),
+                          agent + " node scripts/patch_extension_peers.mjs"], setup[1:])
         # The first candidate, the active profile and every shared place of the user are unchanged.
         self.assertEqual(before_first, {name: (first / name).read_bytes() for name in before_first})
         self.assertEqual(before_home, inventory(self.home))

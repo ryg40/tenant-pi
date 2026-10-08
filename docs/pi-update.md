@@ -56,7 +56,7 @@ Each step has `name`, `exitCode`, and an absolute `log` path. A skipped dependen
 5. Copy `packages/tenantext` and `packages/promptr` into the run directory.
 6. Run `npm ci --ignore-scripts` in each copy.
 7. Link each copy's Pi dependencies to the candidate installation. The links cover `pi-coding-agent`, `pi-ai`, `pi-tui`, and `pi-agent-core`.
-8. Run Tenantext's type check and tests. Run Promptr's build and tests.
+8. Run Tenantext's type check and tests. Run Promptr's build and tests. The Tenantext test file `test/pi-package-install.test.ts` checks three rules of the candidate Pi that the setup lines of the plan depend on. `update()` installs no missing npm source with an exact version. `update()` installs a missing npm source without a version. An install of a declared source by its identical string runs one install and leaves the bytes of `settings.json` equal. A failure of that file means that the setup lines of `scripts/profile_plan.py` need a review.
 9. Generate a core-only profile from the candidate copy in the run directory.
 10. Launch that profile once in print mode against the built-in loopback endpoint.
 11. Compare the live directory with its baseline, also after a failed step.

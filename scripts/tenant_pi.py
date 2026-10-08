@@ -21,7 +21,9 @@ from scripts.candidate_list import child, report as list_report, safe_name, sele
 from scripts import kit_commit
 from scripts.profile_inventory import RESOURCE_DIRS, coordination_files, inventory
 from scripts.check_runtime import HERDR, TOOLS, check, check_herdr, matches
+from scripts import components as checklist
 from scripts import compose_plan as seat
+from scripts import install_results as results
 from scripts import launcher
 from scripts.model_routes import render
 from scripts.private_init import TARGET, TEMPLATES, check_location, check_target, init, inside, report as init_report, with_target
@@ -29,6 +31,7 @@ from scripts.profile_plan import (PROVIDER_KEY_NAMES, herdr_report, prepare, pro
                                    runtime_report, setup_commands)
 from scripts.profile_write import WriteError, utc_now, write
 from scripts.remote_plan import remote_plan
+from scripts import wiki_vault
 from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, overlay, parse, place, fail
 
 MAX_INPUT = 1024 * 1024
@@ -358,7 +361,7 @@ def _baseline(args, clock):
     home = _home("baseline.home")
     absolute(args.dir, baseline.DIR_FIELD)
     baseline.check_location(args.out, _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
-                                              ("under_dir", args.dir))))
+                                              *_wiki_vaults(home), ("under_dir", args.dir))))
     # An existing baseline or a bad parent stops before the directory is listed.
     baseline.preflight(args.out)
     value = baseline.record(args.dir, baseline.stamp(clock), _dir_state(args.dir, baseline.DIR_FIELD))
@@ -391,7 +394,7 @@ def _overlay_target(data, field):
 
 
 def _home(field):
-    """`HOME` as an absolute path; the only environment value that a location rule reads."""
+    """`HOME` as an absolute path; with `WIKI_HOME`, the only environment values that a location rule reads."""
     home = os.environ.get("HOME")
     if home is None:
         fail("home_required", field)
@@ -429,10 +432,56 @@ def _outside_pi_agent(target, field):
     _outside(target, (("under_pi_agent", _home("target.home") + "/.pi/agent"),), field)
 
 
-def _launcher_location(path, plan, targets):
+def _wiki_home(field=None):
+    """`WIKI_HOME` when it is set and not empty, as the wiki extension reads it; else None.
+
+    With `field`, a value that is not an absolute path stops. Without it, such a value names no root.
+    Trailing separators do not count: the extension and the vault rules take the same root with them.
+    """
+    value = os.environ.get("WIKI_HOME")
+    if not value:
+        return None
+    value = value.rstrip("/") or "/"
+    if field is not None:
+        absolute(value, field)
+    return value if value.startswith("/") else None
+
+
+def _overlay_wiki_home(data):
+    """`memory.wiki.wikiHome` of one parsed overlay when it is an absolute path; else None."""
+    memory = data.get("memory") if type(data) is dict else None
+    choice = memory.get("wiki") if type(memory) is dict else None
+    value = choice.get("wikiHome") if type(choice) is dict else None
+    return value if type(value) is str and value.startswith("/") else None
+
+
+def _wiki_vaults(home, overlay_data=None):
+    """The personal vault places of the wiki extension as forbidden roots: the kit writes nothing below a vault.
+
+    `<home>/.llm-wiki`, and `<WIKI_HOME>/.llm-wiki` when the variable is set. With the overlay of the action,
+    also `<wikiHome>/.llm-wiki` of its `memory.wiki.wikiHome`: the launch line gives this root to the
+    extension. The kit reads the value of `WIKI_HOME` for this rule and for `check-wiki-vault` only.
+    """
+    roots = dict.fromkeys(wiki_vault.path(root) for root in (home, _wiki_home(), _overlay_wiki_home(overlay_data))
+                          if root is not None)
+    return tuple(("under_wiki_vault", root) for root in roots)
+
+
+def _outside_wiki_vault(target, field, overlay_data):
+    """Refuse a profile target that is a personal wiki vault or under one, before any write."""
+    _outside(target, _wiki_vaults(_home("target.home"), overlay_data), field)
+
+
+def _check_wiki_vault():
+    """Report the personal wiki vault of this account from `lstat` calls. Opens no file and writes nothing."""
+    return wiki_vault.report(_home("check-wiki-vault.home"), _wiki_home("check-wiki-vault.wiki_home"))
+
+
+def _launcher_location(path, plan, targets, overlay_data):
     """Static launcher refusals for `plan` and `generate`, before any filesystem access."""
     home = _home("launcher.home")
     launcher.check_location(path, _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
+                                          *_wiki_vaults(home, overlay_data),
                                           *(("under_target", target) for target in dict.fromkeys(targets)))))
     launcher.text(plan["commands"]["launch"])
 
@@ -449,13 +498,13 @@ def _init_private(args):
         # The form first: the location rules resolve the links of the path.
         check_target(args.target)
         targets.append(args.target)
-    forbidden = _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
+    forbidden = _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"), *_wiki_vaults(home),
                         *(("under_overlay_target", target) for target in targets)))
     if args.target is not None:
         # The directory rules first, then the rules of the new target; both before any write.
         check_location(args.dir, forbidden)
         _outside(args.target, (("under_private_dir", args.dir), ("under_kit", str(ROOT)),
-                               ("under_pi_agent", home + "/.pi/agent")), TARGET)
+                               ("under_pi_agent", home + "/.pi/agent"), *_wiki_vaults(home)), TARGET)
         contents["overlay.json"] = with_target(template, args.target)
     return init_report(init(args.dir, contents, forbidden), str(ROOT), args.target)
 
@@ -474,7 +523,8 @@ def _compose_write(plan, key_data):
     """
     private = plan["answers"]["privateDir"]
     home = _home("compose-plan.home")
-    _outside(private, (("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent")), "compose-plan.private_dir")
+    _outside(private, (("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
+                       *_wiki_vaults(home, plan["overlay"])), "compose-plan.private_dir")
     contents = {"overlay.json": (json.dumps(plan["overlay"], indent=2) + "\n").encode(),
                 "seat.env": ("\n".join(plan["seatEnv"]) + "\n").encode(),
                 "compose.env": ("\n".join(plan["composeEnv"]) + "\n").encode(),
@@ -526,6 +576,94 @@ def _compose_plan(args):
     return {**plan, "written": _compose_write(plan, key_data) if args.write else []}
 
 
+def _results_candidate(directory, launchers):
+    """The row of one `--target` directory: its state record, its `settings.json` and one status call for each declared npm package."""
+    field = "results.target"
+    try:
+        os.close(_open_dir(directory))
+        present = True
+    except FileNotFoundError:
+        present = False
+    except OSError:
+        # The directory or a directory above it is a symbolic link or is not a directory.
+        fail("not_directory", field)
+    state = settings = None
+    error = False
+    if present:
+        try:
+            state = _load_input(directory + "/.tenant-pi/state.json", field + ".state.json", optional=True)
+            settings = _load_input(directory + "/settings.json", field + ".settings.json", optional=True)
+        except Invalid:
+            # A file that does not load is a state of the candidate, not a stop: the file is for a failed install too.
+            error = True
+    installed = {name: os.path.isfile(directory + "/npm/node_modules/" + name + "/package.json")
+                 for name in results.npm_names(settings)}
+    launcher_path = launchers.get(directory)
+    return results.candidate(directory, present, state, installed, error, launcher_path,
+                             None if launcher_path is None else os.path.isfile(launcher_path))
+
+
+def _results(args):
+    """The text of the results file, and the report of its one write when `--out-dir` is given.
+
+    Reads the manifest, the overlay, the facts file and the kit files of each `--target`. Every refusal
+    comes before the write, and the vault rule of a `--target` comes before the first open below it.
+    """
+    targets = results.target_list(args.target)
+    if args.out_dir is None and args.replace:
+        fail("out_dir_required", "results.replace")
+    if args.out_dir is not None:
+        # The form first: the location rules resolve the links of the path.
+        results.check_location(args.out_dir)
+        home = _home("results.home")
+        # Private state stays outside the clone, the kit writes nothing below a vault, and a candidate holds no
+        # file that the kit did not declare.
+        _outside(args.out_dir, (("under_kit", str(ROOT)), *_wiki_vaults(home),
+                                *(("under_target", target) for target in targets)), results.FIELD)
+    else:
+        # A print needs no home directory: a `HOME` that is not set or is no absolute path names no root.
+        home = os.environ.get("HOME")
+        home = home if home is not None and home.startswith("/") else None
+    # The kit opens no file of a vault: a candidate is never a vault and is never below one.
+    for target in targets:
+        _outside(target, _wiki_vaults(home), "results.target")
+    known = manifest(_load_input(args.manifest, "manifest.file"))
+    overlay_data = None
+    if args.overlay is not None:
+        absolute(args.overlay, "results.overlay")
+        overlay_data = _load_input(args.overlay, "overlay.file")
+        overlay(overlay_data, known)
+        # The vault of `memory.wiki.wikiHome` counts as the two other vaults do.
+        if args.out_dir is not None:
+            _outside(args.out_dir, _wiki_vaults(None, overlay_data), results.FIELD)
+        for target in targets:
+            _outside(target, _wiki_vaults(None, overlay_data), "results.target")
+    facts = results.facts(_load_input(args.facts, "facts.file"), targets)
+    launchers = {item["target"]: item["path"] for item in facts["places"].get("launchers", [])}
+    text = results.render(commit=_kit_commit(), kit_root=str(ROOT), overlay_path=args.overlay, overlay=overlay_data,
+                          known=known, facts=facts, candidates=[_results_candidate(target, launchers) for target in targets])
+    if args.out_dir is None:
+        return text, None
+    return text, results.report(results.write(args.out_dir, text.encode("utf-8"), args.replace))
+
+
+def _components(args):
+    """The checklist of the manifest components as text. Reads the manifest and an optional overlay; writes nothing."""
+    if args.select is not None and (args.overlay is not None or args.format != "json"):
+        fail("option_conflict", "components.select")
+    known = manifest(_load_input(args.manifest, "manifest.file"))
+    if args.select is not None:
+        output = checklist.selection(known, checklist.parse_select(args.select, known))
+    else:
+        enabled = None
+        if args.overlay is not None:
+            enabled = checklist.overlay_enabled(_load_input(args.overlay, "overlay.file"), known)
+        output = checklist.report(known, enabled)
+        if args.format == "text":
+            return checklist.text(output)
+    return json.dumps(output, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n"
+
+
 def main(argv=None, *, clock=utc_now):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
@@ -555,6 +693,8 @@ def main(argv=None, *, clock=utc_now):
                     help="reviewed kit manifest (override remains strictly validated)")
     hrd = subs.add_parser("check-herdr", help="report the herdr command of the host: present with its version, or missing")
     hrd.add_argument("--" + HERDR, help=f"absolute path of the {HERDR} executable (default: {HERDR} on PATH)")
+    subs.add_parser("check-wiki-vault", help="report the personal LLM Wiki vault of this account: present, absent, "
+                    "or a second vault through WIKI_HOME")
     rem = subs.add_parser("remote-plan", help="print the SSH command lines of the remote stages; runs none of them")
     rem.add_argument("--ssh-target", required=True, help="SSH target of the user: a host alias, or <user>@<host>")
     rem.add_argument("--remote-user", required=True, help="account on the remote host that owns the install")
@@ -582,11 +722,29 @@ def main(argv=None, *, clock=utc_now):
                           "each must be absent")
     cmp_seat.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
                           help="reviewed kit manifest (override remains strictly validated)")
+    cmpn = subs.add_parser("components", help="print the checklist of all components: data, a numbered list, or a selection")
+    cmpn.add_argument("--format", choices=checklist.FORMATS, default="json",
+                      help="json (default): the checklist as data; text: the numbered list for a person")
+    cmpn.add_argument("--overlay", help="explicit local JSON choices file; the marks are then its selection.enable")
+    cmpn.add_argument("--select", help="component IDs or checklist numbers, separated by commas; "
+                      "prints the selection object of an overlay and writes no file")
+    cmpn.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
+                      help="reviewed kit manifest (override remains strictly validated)")
     priv = subs.add_parser("init-private", help="create a new private directory for the overlay and its records")
     priv.add_argument("--dir", required=True, help="absolute path of the absent private directory; its parent exists")
     priv.add_argument("--overlay", action="append", default=[],
                       help="overlay whose target the directory must stay outside of; repeat for more overlays")
     priv.add_argument("--target", help="absolute path of the new profile directory; the new overlay gets it as target.agentDir")
+    res = subs.add_parser("results", help="write the local file INSTALLER_KIT_RESULTS.md of one install, or print its text")
+    res.add_argument("--facts", required=True, help="explicit JSON file with the facts of the installing agent")
+    res.add_argument("--overlay", help="absolute path of the local JSON choices file; leave it out when the install has none")
+    res.add_argument("--target", action="append", default=[],
+                     help="absolute path of a candidate directory; repeat for more candidates")
+    res.add_argument("--out-dir", help="absolute path of the existing directory that gets the file, outside the clone; "
+                     "without it the text is printed and nothing is written")
+    res.add_argument("--replace", action="store_true", help="replace an existing file of --out-dir")
+    res.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
+                     help="reviewed kit manifest (override remains strictly validated)")
     for action in ("validate", "plan", "generate"):
         cmd = subs.add_parser(action, help=f"{action} a private local overlay")
         cmd.add_argument("--overlay", required=True, help="explicit local JSON choices file")
@@ -659,6 +817,10 @@ def main(argv=None, *, clock=utc_now):
             report = check_herdr(args.herdr)
             print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0 if report[HERDR]["status"] == "present" else 1
+        if args.action == "check-wiki-vault":
+            # `lstat` calls only: no file of a vault is opened, no directory is listed, and nothing is written.
+            print(json.dumps(_check_wiki_vault(), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
+            return 0
         if args.action == "remote-plan":
             # Display only: no process starts, no file is opened, and no SSH option is added.
             report = remote_plan(args.ssh_target, args.remote_user, args.remote_home)
@@ -668,9 +830,22 @@ def main(argv=None, *, clock=utc_now):
             # Display only without `--write`: no process starts. The key variable is a name; its value is never read.
             print(json.dumps(_compose_plan(args), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
+        if args.action == "components":
+            # Read-only: no process starts and no file is written. `--select` prints a selection; it changes no overlay.
+            sys.stdout.write(_components(args))
+            return 0
         if args.action == "init-private":
             # Never runs Git: the `git init` line is display text for the user.
             print(json.dumps(_init_private(args), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
+            return 0
+        if args.action == "results":
+            # No process starts. The vault rule reads `HOME` and `WIKI_HOME`; no other environment value is read.
+            # Without `--out-dir` nothing is written.
+            text, written = _results(args)
+            if written is None:
+                sys.stdout.write(text)
+            else:
+                print(json.dumps(written, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
         manifest_data = _load_input(args.manifest, "manifest.file")
         overlay_data = _load_input(args.overlay, "overlay.file")
@@ -700,10 +875,12 @@ def main(argv=None, *, clock=utc_now):
         launcher_path = getattr(args, "launcher", None)
         if launcher_path is not None:
             _launcher_location(launcher_path, plan, (plan["targetAgentDir"], args.target)
-                               if args.action == "generate" else (plan["targetAgentDir"],))
+                               if args.action == "generate" else (plan["targetAgentDir"],), overlay_data)
         # No profile is generated into the live profile. The rule runs after the rules that need no `HOME`
         # and after the launcher rules, which name their own `HOME` field.
         _outside_pi_agent(plan["targetAgentDir"], "overlay.target.agentDir")
+        # No profile is generated into a personal wiki vault: also not into the vault of `memory.wiki.wikiHome`.
+        _outside_wiki_vault(plan["targetAgentDir"], "overlay.target.agentDir", overlay_data)
         if args.action == "validate":
             output = {"valid": True, "scope": "offline structural and supported-input checks only"}
         elif args.action == "plan":

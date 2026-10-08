@@ -178,13 +178,16 @@ python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.conf
 Keep the extra baselines for inherited `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` as setup specifies.
 Do not replace an existing baseline or record it after a target Pi command.
 
-Only for `mcp`, `hermes`, `wiki` or `questions`:
+Only for `mcp`, `hermes`, `wiki` or `questions`. Run only the `pi install` lines that your plan prints, with each source string as the plan prints it:
 
 ```sh
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi update --extensions
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0
 ```
 
-Only for `hermes`, `wiki` or `questions`, also:
+Only for `hermes`, `wiki` or `questions`, also, after the `pi install` lines:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"

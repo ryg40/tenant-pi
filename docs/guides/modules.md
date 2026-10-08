@@ -13,7 +13,7 @@ The manifest has three statuses. This guide maps them to four labels. The same l
 | Label | Meaning | From |
 | --- | --- | --- |
 | `blocked` | The kit refuses to enable the module. `validate` stops with `blocked_component: overlay.selection.enable`. | Manifest status `blocked`. Also a refused choice, for example the gateway with `auth: "login"` (`pi_login_blocked`). |
-| `skipped` | The user did not enable the module. Nothing is generated for it. | The module is in `selection.disable`. This is the default of every module except `core`. |
+| `skipped` | The user did not enable the module. Nothing is generated for it. | The module is in `selection.disable`. This is the state of every module except `core` in the sample overlay. |
 | `unverified` | The kit validates, plans and generates the module offline. No accepted live trial proves that Pi loads it and that it works. | Manifest status `tested` or `unverified`, when the module is enabled. |
 | `ready` | The module passed an accepted live trial on the qualified platform. | No module has this label in this release. |
 
@@ -34,7 +34,7 @@ Columns:
 
 | Component | Required inputs | Maintained source (pin) | Credential method | State scope | Consent | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `core` | `target.agentDir` | npm `@earendil-works/pi-coding-agent@<pin>` | Pi native `/login` after launch; Pi writes `auth.json` | Profile: `auth.json`, `sessions/`, `npm/` | none | `tested`, `unverified` |
+| `core` | `target.agentDir` | npm `@earendil-works/pi-coding-agent@<pin>` | Pi native `/login` after launch; Pi writes `auth.json` | Profile: `auth.json`, `models-store.json`, `sessions/`; `npm/` with a declared npm package | none | `tested`, `unverified` |
 | `model-routing` | `roles`, optional `modelRoutes`; `--registry` file when `modelRoutes` names a model | builtin Pi settings | Native provider `/login` | Profile: `settings.json` keys | none | `tested`, `unverified` |
 | `tenantext` | none | tree `packages/tenantext` | none | Profile. Not verified: other paths. | none | `unverified`, `unverified` |
 | `codex-accounts` | `modelRoutes.gateway` `{"auth": "env"}`, `endpoints.codex-accounts` (HTTPS URL that ends in `/v1`), `env.codex-accounts` `${TENANTEXT_LITELLM_API_KEY}` | tree `packages/tenantext` | `TENANTEXT_LITELLM_API_KEY` in the launching shell; `TENANTEXT_LITELLM_BASE_URL` on the launch line. `auth: "login"` is `blocked`. | Profile | none | `unverified`, `unverified` |
@@ -72,6 +72,16 @@ Facts that hold for every row:
 - `herdr-relay` is optional and disabled by default. No component requires it. Selecting it requires `herdr`; otherwise validation reports `missing_dependency`.
 - The relay directory can be absent while the relay stays disabled. Enabling an absent relay reports `tree_resource_missing`.
 - A module that the user leaves disabled contributes no file, no key and no launch-line assignment.
+
+To see all components as one numbered checklist, with the recommended set marked, run:
+
+```sh
+python3 scripts/tenant_pi.py components --format text
+```
+
+The action reads the manifest and writes nothing. With `--select` it prints the `selection` object for the IDs or the numbers that you choose. See [the CLI contract](../generator.md#components-the-checklist-of-the-components).
+
+The recommended set holds the core, the in-tree extensions and skills for daily work, and the two local memory modules `hermes` and `wiki`. The marks are a proposal: the action enables nothing. The install flow of [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay) prints this list and waits for the answer of the user.
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [workflow modules](../workflow-modules.md), [model routes](../model-routes.md).
 
@@ -117,7 +127,7 @@ Give the file with `--registry` to `validate`, `plan` and `generate`. Without th
 
 ## Optional modules in short
 
-- **Memory** (`hermes`, `wiki`): three parts together enable a module: the ID in `selection.enable`, `consent.memoryCapture: true`, and a `memory` block. Consent alone enables nothing. Read [memory modules](../memory-modules.md) first. Hermes with `backgroundReview: true` makes model calls on its own.
+- **Memory** (`hermes`, `wiki`): three parts together enable a module: the ID in `selection.enable`, `consent.memoryCapture: true`, and a `memory` block. Consent alone enables nothing. The checklist marks both modules, and the install flow writes the consent key only when the user keeps a mark. Both store text of the sessions on this machine. Before `wiki` goes on, run `python3 scripts/tenant_pi.py check-wiki-vault`: the profile uses an existing vault as it is. Read [memory modules](../memory-modules.md) first. Hermes with `backgroundReview: true` makes model calls on its own; the install flow writes `false`.
 - **MCP** (`mcp`): the server list goes into `inputs/mcp-adapter.json` of the private directory. Every `validate`, `plan` and `generate` then needs `--local-dir "$HOME/.config/tenant-pi"`. The kit disables the native Pi MCP with `-builtin:mcp`. Read [workflow modules](../workflow-modules.md) first.
 - **Owner packages and directories**: `ownerPackages` adds a Pi package that you maintain. `ownerResources` adds a skills or prompts directory. See [owner packages](../owner-packages.md) and [owner resources](../owner-resources.md). Each entry adds a permanent `owner_package_unqualified` or `owner_resource_unqualified` gap.
 - **Agent fan-out**: no subagents module exists. Use the `herdr` component or the Herdr skill installer. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.
@@ -133,7 +143,7 @@ python3 scripts/tenant_pi.py check-herdr
 
 The output names `present` with the version, `missing` or `unparsed`. The action installs nothing and starts no Herdr session. With `missing`, install Herdr from the source that you reviewed, then run the action again. Do not upgrade a present Herdr as a part of this setup.
 
-The `questions` component adds the Pi question extension to one profile. The plan then prints two more setup lines: `pi update --extensions` and the peer override. Run them in Stage 6 of [the setup guide](setup.md).
+The `questions` component adds the Pi question extension to one profile. The plan then prints two more setup lines: `pi install` with the source of the extension, and the peer override. Run them in Stage 6 of [the setup guide](setup.md).
 
 For an install on a remote Linux host, print the SSH command lines first. The action runs none of them:
 
@@ -157,7 +167,7 @@ Both components are `unverified`. [Herdr and the question tool](../herdr-setup.m
 
 ## Change a selection
 
-1. Edit `selection.enable` and `selection.disable` in the overlay.
+1. Edit `selection.enable` and `selection.disable` in the overlay. `python3 scripts/tenant_pi.py components --select <ids>` prints the complete `selection` object, with each required component.
 2. Run `validate`. The command shows the first rule that fails, for example `missing_dependency: overlay.selection.enable`.
 3. Run `plan` and read the new gaps.
 4. Generate into a new target. See [the candidate update guide](candidate-update.md).

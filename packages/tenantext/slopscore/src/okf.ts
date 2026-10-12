@@ -243,7 +243,7 @@ export function okfBranchLine(summary: OkfSummary | undefined): string {
 }
 
 function escapeCell(value: string): string {
-	return value.replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
+	return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 }
 
 /** Render the standalone context-bundle table and named failures. */

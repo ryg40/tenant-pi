@@ -245,6 +245,16 @@ test("reads the requested commit and ignores dirty working-tree files", () => {
 	assert.equal(readOkf(r.dir).conformant, false);
 });
 
+test("bundle table cells escape every backslash before every bar", () => {
+	const output = renderOkf({
+		revision: "abc123", present: true, root: String.raw`a\|b\|c\\d|e`, version: "0.2",
+		conformant: true, conformanceFailures: [], conceptCount: 0, verifiedCount: 0,
+		logCurrent: false, codeDays: 0, maintainedDays: 0, keptCurrentShare: 0,
+		staleCount: 0, staleConcepts: [], calculatedPoints: 3, points: 3, oneShot: false,
+	});
+	assert.equal(output.split("\n")[4], String.raw`| a\\\|b\\\|c\\\\d\|e | 0.2 | 0 | yes | no | 0% (0/0) | 0 | 0 | 3.0 / 10 |`);
+});
+
 test("renderer has the required columns and verified concept count", () => {
 	const r = repo();
 	r.commit("bundle and plan", {

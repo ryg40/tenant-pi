@@ -1,18 +1,21 @@
 """Only in-memory synthetic inputs exercise the pure planner."""
 import copy
 import json
+from pathlib import Path
 import re
 import shlex
 import unittest
 from unittest.mock import patch
 
-from scripts.profile_plan import (GLOBAL_INSTALL_WARNING, OUTPUTS, PROVIDER_KEY_NAMES, UNTESTED_PI_FACT, prepare,
-                                   provider_key_warning, readiness, runtime_report, setup_commands)
+from scripts.profile_plan import (GLOBAL_INSTALL_WARNING, OUTPUTS, PROVIDER_KEY_NAMES, UNTESTED_PI_FACT,
+                                   peer_override_line, prepare, provider_key_warning, readiness, runtime_report,
+                                   setup_commands)
 from scripts.check_runtime import parse_range
 from tests.test_model_routes import NATIVE, GATEWAY, REGISTRY
 from scripts.validate import ROOT, Invalid, load, manifest
 
 TENANTEXT_PACKAGE = str(ROOT / "packages/tenantext")
+PEER_SCRIPT = shlex.quote(str(ROOT / "scripts/patch_extension_peers.mjs"))
 RUNTIME = load("config/manifest.json")["runtime"]
 PIN = RUNTIME["piVersion"]
 # A stable patch after the pin's numeric version, including a prerelease pin.
@@ -254,7 +257,7 @@ class PlanTests(unittest.TestCase):
         # `pi install` installs the declared package; the peer override then corrects its `typebox` entry.
         # The line holds the identical source string of `settings.json`.
         self.assertEqual([agent + " pi install " + shlex.quote(package["source"]),
-                          agent + " node scripts/patch_extension_peers.mjs"], result["commands"]["setup"][1:])
+                          agent + " node " + PEER_SCRIPT], result["commands"]["setup"][1:])
         self.assertNotIn("pi update --extensions", json.dumps(result["commands"]))
         codes = {gap["code"] for gap in result["readinessGaps"] if gap["subject"] == "questions"}
         self.assertEqual({"package_runtime_unverified", "pi_line_unqualified", "package_source_unreviewed",
@@ -264,6 +267,26 @@ class PlanTests(unittest.TestCase):
         # No file of the profile holds a guidance file of the extension, and the launch line is unchanged.
         self.assertEqual({"settings.json", ".tenant-pi/choices.json"}, set(result["files"]))
         self.assertNotIn("rpiv", result["commands"]["launch"])
+
+    def test_the_peer_override_line_runs_from_each_directory(self):
+        self.enable("questions")
+        line = prepare(self.manifest, self.overlay)["commands"]["setup"][-1]
+        words = shlex.split(line)
+        self.assertEqual(["PI_CODING_AGENT_DIR=" + self.overlay["target"]["agentDir"], "node"], words[:2])
+        # The script path is absolute, it is the script of this kit, and the file exists.
+        script = Path(words[2])
+        self.assertEqual(3, len(words))
+        self.assertTrue(script.is_absolute(), line)
+        self.assertEqual(ROOT / "scripts/patch_extension_peers.mjs", script)
+        self.assertTrue(script.is_file())
+        self.assertEqual(line, peer_override_line(self.overlay["target"]["agentDir"]))
+
+    def test_the_peer_override_line_is_one_shell_word_for_each_path(self):
+        # A space, an apostrophe and a double quote in the kit root and in the target.
+        root, target = Path("/srv/the kit of it's \"user\""), "/home/a user/it's a \"profile\""
+        line = peer_override_line(target, root)
+        self.assertEqual(["PI_CODING_AGENT_DIR=" + target, "node", str(root / "scripts/patch_extension_peers.mjs")],
+                         shlex.split(line))
 
     def test_question_extension_follows_the_tree_package_and_precedes_owner_packages(self):
         self.enable("questions")

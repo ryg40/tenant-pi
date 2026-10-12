@@ -2,6 +2,8 @@
 
 `packages/tenantext` and `packages/promptr` hold the sources of the two optional Pi packages. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. Each package has its own license metadata, tests and documentation.
 
+Tenantext and Promptr pin `@types/node` to `24.19.2` for their Node `>=24.0.0 <25` requirement.
+
 ## Kit components
 
 Each extension and each skill of the packages is one component in `config/manifest.json`. The components `coordinator-skills` and `knowledge-skills` each hold several skills, with one filter entry for each. The source kind is `tree`: `{"kind": "tree", "path": "packages/<name>"}`. The example overlay enables none of them. Observed with Pi 0.99.1: a profile with the extension and skill components tested on that version starts and loads the extensions after `npm ci --ignore-scripts` in `packages/tenantext`; without that step the load fails on the missing `yaml` module. Not verified: the same on the kit pin in `config/manifest.json`, key `runtime.piVersion`, or on a clean client. This observation does not cover `resources`. Not verified: a profile with `resources` starts and loads the extension.
@@ -46,6 +48,15 @@ Facts for a selection:
 - `ops-footer` and `doctor` import files of other extensions of the package. The import of a file does not need the other component to be enabled. The only runtime import of `ops-footer` is a file import of `context-meter/service.ts`. `ops-footer` and `context-meter` exchange ownership events. The manifest keeps `context-meter` as a requirement of `ops-footer`: this is a safe choice, not a proven need. Not verified: the behaviour of `ops-footer` and `doctor` when the other extensions are off.
 - `resources` adds the `/resources` command. The command shows the extensions, skills, prompts and MCP servers of the agent directory, turns each one on or off, and saves named profiles. `docs/resources.md` has the command and the settings syntax. The component declares no environment variable. It follows the reviewed resource settings syntax. Not verified: a load of the component with the kit pin.
 - Install the Node dependencies of a package before Pi loads it (the "Test" and "Build and test" commands below). Not verified: which components need `node_modules/` at load time.
+
+## Decision-server credential
+
+`context-meter` reads the variable named by `nextMoveKeyEnv`; its default is `TENANTEXT_NEXT_MOVE_KEY` (source reading).
+The key goes in the Bearer header of a POST to `nextMoveUrl`, when that URL is set.
+The default URL is empty.
+The component also sends session counters and the last 300 characters of the last user message, after whitespace normalization (source reading).
+
+Not verified: these requests in a generated profile.
 
 ## Tenantext (`packages/tenantext`)
 

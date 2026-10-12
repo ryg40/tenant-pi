@@ -23,6 +23,8 @@ python3 scripts/tenant_pi.py check-baseline --dir /home/EXAMPLE_USER/.pi/agent -
 `baseline` reads `HOME` to find `~/.pi/agent` and `~/.llm-wiki`, as `init-private` and `--launcher` do. It reads `WIKI_HOME` to find the wiki vault of that root. It reads no other environment value. It does not read `PI_CODING_AGENT_DIR`: the user names that directory with `--dir`. `check-baseline` reads no environment value.
 
 The actions are not specific to the live agent directory. The same two commands work for the directory in `PI_CODING_AGENT_SESSION_DIR`, with another baseline file.
+Observed with Pi 1.1.0: a launch without a prompt writes no session file, even without `env -u PI_CODING_AGENT_SESSION_DIR`.
+The session-directory comparison proves separation only after a session with a prompt.
 
 ## Why an action and not guide commands
 
@@ -133,10 +135,12 @@ Each action prints one JSON object on standard output, with sorted keys and fixe
 | `result` | Meaning | Stage 9 check 4 |
 | --- | --- | --- |
 | `unchanged` | No entry was added, removed or modified after `recordedAt`. A directory that was absent is still absent (`was` and `now` are `absent`). | passed |
-| `changed` | The directory differs from the baseline. The three name lists and `directoryModified` say where. | failed, or not verified: see the next section |
+| `changed` | The directory differs from the baseline. Read the three name lists, `directoryModified`, `was` and `now` to find the difference. | failed, or not verified: see the next section |
 | `no_baseline` | The baseline file does not exist. The action compared nothing. | not run |
 
 Record check 4 as passed only when `recordedAt` is before the first Pi command that names the target. A baseline from a later time gives `unchanged` and proves nothing about the launch: the check is then not run. Nothing in the output ties `recordedAt` to the launch, so the reader compares the two times.
+
+A removed directory gives `changed`, `was: present` and `now: absent`, even with three empty name lists and `directoryModified: false`.
 
 `changed` with three empty name lists and `"directoryModified":true` means that an entry was made and removed again, for example a lock file. No entry differs now.
 
@@ -147,7 +151,7 @@ The comparison shows what changed. It does not show which process changed it.
 A Pi that the user runs in the live profile during the install also changes the live agent directory:
 
 - A session writes a file under `sessions`.
-- Pi can write `auth.json`, `settings.json`, `models-store.json` and the state files of the extensions.
+- Pi can write `auth.json`, `settings.json`, `models-store.json`, `bin/` and the state files of the extensions.
 - A bare `pi --version` changes only the modification time of the directory. Observed with Pi 1.0.2: with a `settings.json` in the agent directory, `pi --version` gave `changed` with empty name lists and `"directoryModified":true`. With an empty agent directory it changed nothing.
 
 So read `changed` in this way:

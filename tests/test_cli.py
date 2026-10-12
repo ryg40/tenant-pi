@@ -23,6 +23,7 @@ from tests.test_model_routes import NATIVE, GATEWAY, REGISTRY
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
+PEER_SCRIPT = shlex.quote(str(ROOT / "scripts/patch_extension_peers.mjs"))
 RUNTIME = load(ROOT / "config/manifest.json")["runtime"]
 OUTSIDE = ".".join(map(str, parse_range(RUNTIME["piAcceptedRange"], "f")[1]))
 _lower = parse_range(RUNTIME["piAcceptedRange"], "f")[0]
@@ -1609,7 +1610,7 @@ class CliTests(unittest.TestCase):
         setup = json.loads(result.stdout)["commands"]["setupDisplayOnly"]
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(str(second))
         self.assertEqual([agent + " pi install " + shlex.quote(expected[1]["source"]),
-                          agent + " node scripts/patch_extension_peers.mjs"], setup[1:])
+                          agent + " node " + PEER_SCRIPT], setup[1:])
         # The first candidate, the active profile and every shared place of the user are unchanged.
         self.assertEqual(before_first, {name: (first / name).read_bytes() for name in before_first})
         self.assertEqual(before_home, inventory(self.home))

@@ -1,6 +1,6 @@
 # Candidate comparison without profile modification
 
-Status: offline implementation, not a qualified runtime workflow. `scripts/candidate_compare.py` is a pure module. The `compare` action of `scripts/tenant_pi.py` reads at most ten declared files and writes nothing. No install, login, symlink switch, shell edit, process restart, or runtime-data copy exists in the kit.
+Status: offline implementation, not a qualified runtime workflow. `scripts/candidate_compare.py` is a pure module. The `compare` action of `scripts/tenant_pi.py` reads at most five declared files for each side. It writes nothing. No install, login, symlink switch, shell edit, process restart, or runtime-data copy exists in the kit.
 
 ## Update model
 

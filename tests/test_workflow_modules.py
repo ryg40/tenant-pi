@@ -20,6 +20,7 @@ from scripts.workflow_modules import (BUILTIN_MCP_OFF, MCP_CONFIG, MCP_MODE_NAME
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
+PEER_SCRIPT = shlex.quote(str(ROOT / "scripts/patch_extension_peers.mjs"))
 PIN = load(ROOT / "config/manifest.json")["runtime"]["piVersion"]
 CANARY = "CANARY_SECRET"
 SLOT = "inputs/mcp-adapter.json"
@@ -295,7 +296,7 @@ class WorkflowPlanTests(unittest.TestCase):
         # One install line for each npm source, in the order of `packages`; the peer override line is last.
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
         self.assertEqual([agent + " pi install npm:@zosmaai/pi-llm-wiki", agent + " pi install npm:pi-mcp-adapter",
-                          agent + " node scripts/patch_extension_peers.mjs"], plan["commands"]["setup"][1:])
+                          agent + " node " + PEER_SCRIPT], plan["commands"]["setup"][1:])
         # The wiki package declares an MCP server of its own; only one path can load it and both are closed here.
         self.assertEqual([BUILTIN_MCP_OFF], plan["files"]["settings.json"]["content"]["extensions"])
 
@@ -320,7 +321,7 @@ class WorkflowPlanTests(unittest.TestCase):
         # line is last. No line names an owner package, and no line is `pi update --extensions`.
         self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
                           *(agent + " pi install " + shlex.quote(source) for source in npm),
-                          agent + " node scripts/patch_extension_peers.mjs"], setup)
+                          agent + " node " + PEER_SCRIPT], setup)
         self.assertEqual([[*shlex.split(agent), "pi", "install", source] for source in npm],
                          [shlex.split(line) for line in setup[1:-1]])
         self.assertNotIn("owner", json.dumps(plan["commands"]))

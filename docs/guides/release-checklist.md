@@ -10,7 +10,7 @@ It records a maintainer-approved fast track with gate 6 not run, not full releas
 
 | Gate | Command or evidence | Required |
 | --- | --- | --- |
-| 1. Offline unit tests | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q` prints `OK` | Yes |
+| 1. Offline unit tests | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q` ends with a line starting with `OK`; a skipped-test count is expected | Yes |
 | 2. Examples | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py` prints `examples valid` | Yes |
 | 3. Sample overlay | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json` prints `valid: ...` | Yes |
 | 4. Publish set | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py` prints `publish set valid: ...` | Yes |
@@ -163,6 +163,9 @@ Warning: a list of changes that you copy from commit messages can hold reference
 
 Warning: a release entry is public when the repository is public.
 
+The skipped-test count depends on the client. Observed on three client types: root with Docker and Node skips 1 test. A non-root client with Node and without Docker skips 4 tests. A client without Node skips 7 tests.
+Record the client alongside the actual count, rather than copying one count to another client.
+
 Use this template. Replace each placeholder in angle brackets. The release entry is Markdown: each list item is one line on the release page.
 
 ```markdown
@@ -175,7 +178,7 @@ Use this template. Replace each placeholder in angle brackets. The release entry
 
 Gates
 
-1. Offline unit tests: <passed, failed, blocked or not run> - <result line>
+1. Offline unit tests: <passed, failed, blocked or not run> - <result line, test count and skipped count>; client: <root or non-root, Docker availability, Node availability>
 2. Examples: <passed, failed, blocked or not run> - <result line>
 3. Sample overlay: <passed, failed, blocked or not run> - <result line>
 4. Publish set: <passed, failed, blocked or not run> - <result line>

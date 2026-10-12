@@ -159,7 +159,7 @@ Only for `promptr`:
 cd "$HOME/tenant-pi/packages/promptr" && npm ci --ignore-scripts && npm run build
 ```
 
-Hermes builds `better-sqlite3`. If a native addon needs compilation, install the Apple toolchain when absent:
+The package `pi-hermes-memory` uses the native module `better-sqlite3`. Observed with `better-sqlite3` 13.0.3 and npm 11.19.0 on Linux x64: the module holds a prebuilt binary. npm runs no install script, nothing is compiled, and the module loads from that file. Not verified: a prebuilt binary for macOS. Only when no prebuilt binary fits the platform and the Node version, a build from source needs a compiler toolchain. With npm 11, npm does not start that build on its own. Observed with npm 11.19.0: the `npm warn install-scripts` line of the `wiki` install names `better-sqlite3`, and npm runs no install script. For a build from source, install the Apple toolchain when absent:
 
 ```sh
 xcode-select --install
@@ -192,6 +192,10 @@ Only for `hermes`, `wiki` or `questions`, also, after the `pi install` lines:
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
 ```
+
+The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it. With `wiki`, read [the audit summary of npm](setup.md#the-audit-summary-of-npm) before the `pi install` line.
+
+Warning: do not run `npm audit fix` in the profile.
 
 Keep the setup guide's declared-package version caveats and compare the profile after native Pi operations.
 Regenerate the runtime report and run `plan` again after changing Node or Pi.

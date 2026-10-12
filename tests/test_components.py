@@ -87,7 +87,8 @@ class ChecklistTests(unittest.TestCase):
                          tuple(skills[key] for key in ("number", "kind", "status", "extensions", "requires",
                                                        "recommended", "marked", "locked")))
         self.assertEqual(["grilling", "grill-me", "wayfinder", "research", "prototype", "domain-modeling", "to-spec",
-                          "to-tickets", "pr", "show-me", "retro", "get-status", "writing-for-agents"], skills["skills"])
+                          "to-tickets", "pr", "show-me", "retro", "get-status", "dummies", "writing-for-agents"],
+                         skills["skills"])
         self.assertEqual(["env:GITEA_TOKEN", "gap:host_tool_required"], skills["prerequisites"])
         self.assertEqual({"number": 7, "id": "ops-footer", "kind": "tree", "status": "unverified",
                           "extensions": ["ops-footer"], "skills": [], "requires": ["core", "context-meter"],
@@ -236,7 +237,7 @@ class TextTests(unittest.TestCase):
         self.assertEqual(16, sum("[x]" in line for line in lines[:27]))
         self.assertEqual(" 1 [x] core (locked) | tested", lines[0])
         self.assertEqual(" 7 [x] ops-footer | extension: ops-footer | unverified | requires: context-meter", lines[6])
-        self.assertEqual(13, lines[13].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
+        self.assertEqual(14, lines[13].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
         self.assertEqual(4, lines[14].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
         self.assertEqual("26 [x] wiki | extension: llm-wiki | tested | needs: consent.memoryCapture, "
                          "memory.wiki, peer_override_required, 2 setup lines", lines[25])

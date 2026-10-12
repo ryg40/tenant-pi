@@ -431,7 +431,8 @@ The commands match the release evidence, with explicit failure handling instead 
 
 1. A worktree can lack Pi peer packages after `npm ci`; link missing peers from the main checkout's `node_modules/@earendil-works/` and confirm their versions.
 2. Tests can also fail at the unchanged baseline; record the comparison and block unexplained failures instead of blaming the pin.
-   Footer tests must check complete paths at a sufficient width and test truncation separately; qualification work-directory lengths vary.
+   Footer tests must check complete paths up to the adapter's 256-character cap at a sufficient width.
+   Test renderer truncation separately, because qualification work-directory lengths vary.
 3. Check the foundation table of the development repository, if your copy has one, for merge conflicts.
    Resolve by row key and retain both reviewed changes.
 4. A commit body must contain no machine path; the history scan reads commit messages, not only file content.

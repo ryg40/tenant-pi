@@ -46,7 +46,8 @@ See [Switch wiki embeddings off](../memory-modules.md#switch-wiki-embeddings-off
 | `blocked_component: overlay.selection.enable` | A `blocked` module is enabled. | Move it to `selection.disable`. See [the module guide](modules.md). |
 | `missing_dependency: overlay.selection.enable` | An enabled module requires another module that is not enabled. Example: `ops-footer` needs `context-meter`. | Enable the required module. |
 | `memory_disabled: overlay.consent` | `consent.memoryCapture` is `true`, and no memory module is enabled. | Set it to `false`, or enable `hermes` or `wiki` with a `memory` block. |
-| `memory_consent_required: overlay.consent.memoryCapture` | A memory module is enabled without consent. (documented) | Set `consent.memoryCapture: true` after you read [memory modules](../memory-modules.md). |
+| `memory_choices_required: overlay.memory` | A memory module is enabled, and the overlay has no `memory` block. `validate` looks for the block first, so this error comes before the consent error. | Add the `memory` block of [setup Stage 2](setup.md#stage-2-edit-the-local-choices), step 5. |
+| `memory_consent_required: overlay.consent.memoryCapture` | A memory module is enabled, the overlay has the `memory` block, and `consent.memoryCapture` is `false`. (documented) | Set `consent.memoryCapture: true` after you read [memory modules](../memory-modules.md). |
 | `moved_key: overlay.endpoints.tenantext is now overlay.endpoints.codex-accounts` | The overlay uses the old gateway key. | Rename the key to `codex-accounts` in `endpoints` and `env`. |
 | `undeclared_env: overlay.env` | An `env` value of the overlay names a variable that the manifest does not declare for the module. For `codex-accounts`, the allowed names are `TENANTEXT_LITELLM_API_KEY` for the key and `TENANTEXT_LITELLM_BASE_URL` for the URL. | Use the allowed name. With `compose-plan`, leave `--key-var` at its default. |
 | `unknown_fields: overlay` | The overlay has a key that this kit does not define. (documented) | Remove the key. |
@@ -182,13 +183,23 @@ Warning: Extension package ".../package.json": Host-provided extension packages 
 peerDependencies with a "*" range, not dependencies: typebox.
 ```
 
-A memory package or the question extension lists a host module under `dependencies`, and the override did not run after the install. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
+An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 lists `typebox` under `dependencies`. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
 ```
 
+The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory.
+
 An update of the package writes the old manifest again. See [host peer overrides](../host-peer-overrides.md) for the `npmCommand` wrapper. That wrapper adds `npmCommand` to `settings.json`, and the next `compare` shows it as drift. List `/npmCommand` in `unmanaged` to accept it. See [accepted drift](../accepted-drift.md).
+
+### `pi install` prints `vulnerabilities` and a hint to run `npm audit fix`
+
+The `pi install` line of the `wiki` package prints an audit summary of npm for the dependency tree of the package: a count of vulnerabilities, a hint to run `npm audit fix`, and an `npm warn install-scripts` line. This output is expected, and the install did not fail. The kit did not review these findings.
+
+Warning: do not run `npm audit fix` in the profile, and do not run `npm audit fix --force`. The command changes the installed packages of the profile. It can undo the peer override, and it can install versions that the kit did not review.
+
+To install without the module, switch `wiki` off before `generate`. See [the audit summary of npm](setup.md#the-audit-summary-of-npm) in Stage 6 of the setup guide.
 
 ## Kit checks
 

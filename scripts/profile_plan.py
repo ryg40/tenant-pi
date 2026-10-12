@@ -66,6 +66,12 @@ def _package_source(source):
     fail("unsupported_package_source", "manifest.components.source")
 
 
+def peer_override_line(target, root=ROOT):
+    """The peer override line for one profile. The script path is absolute, so the line runs from each directory."""
+    return ("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " node "
+            + shlex.quote(str(root / "scripts/patch_extension_peers.mjs")))
+
+
 def source_pin(source):
     """Public pin text of a manifest source; `None` for a blocked module without a source."""
     if source is None:
@@ -288,7 +294,7 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
     if npm_memory or enabled & set(PEER_OVERRIDE_NPM):
         # The peer override corrects host-provided `dependencies` in the installed memory manifests and in
         # the manifest of the question extension; the adapter lists none, so the mcp module alone needs no override.
-        setup.append("PI_CODING_AGENT_DIR=" + shlex.quote(target) + " node scripts/patch_extension_peers.mjs")
+        setup.append(peer_override_line(target))
     if "openviking" in enabled:
         # The one dependency of the vendored package is not in the tree (manifest gap `install_step_required`).
         setup.append("npm --prefix " + shlex.quote(_package_source(components["openviking"]["source"])) + " ci --ignore-scripts")

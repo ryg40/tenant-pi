@@ -112,7 +112,7 @@ export function readCommits(dir: string, range?: string): Commit[] {
 		const date = iso.slice(0, 10);
 		const coauthors = trailers
 			.split("\x1d")
-			.map((t) => t.replace(/<[^>]*>/, "").trim())
+			.map((t) => t.replace(/<[^>]*>/g, "").replace(/[\u0000-\u001f\u007f]/g, "?").trim())
 			.filter(Boolean);
 		const files = body.split("\n").map((f) => f.trim()).filter(Boolean);
 		out.push({ hash, date, time: Number.isFinite(time) ? time : 0, subject, coauthors, files });
@@ -213,6 +213,10 @@ export function scoreRepo(dir: string, cfg: SlopscoreConfig, commits = readCommi
 	};
 }
 
+function escapeCell(value: string): string {
+	return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+}
+
 export function renderProvenance(p: Provenance, contextBundle?: string): string {
 	const L: string[] = [];
 	L.push(`## Provenance: ${p.dir}`);
@@ -235,7 +239,7 @@ export function renderProvenance(p: Provenance, contextBundle?: string): string 
 	else {
 		L.push("| Commit | Date | Model from trailer | Tier | Points |");
 		L.push("| --- | --- | --- | --- | ---: |");
-		for (const r of p.rounds) L.push(`| ${r.hash} ${r.subject} | ${r.date} | ${r.model} | ${r.tier} | ${r.points.toFixed(1)} |`);
+		for (const r of p.rounds) L.push(`| ${r.hash} ${escapeCell(r.subject)} | ${r.date} | ${escapeCell(r.model)} | ${r.tier} | ${r.points.toFixed(1)} |`);
 	}
 	L.push("");
 	L.push("### Reading the provenance");

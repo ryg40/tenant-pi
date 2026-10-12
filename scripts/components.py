@@ -28,7 +28,8 @@ INPUT_SLOTS = {"mcp": "inputs.mcpFile"}
 # Gaps that `render_memory` adds for an npm memory module and that name a step or a build on the host.
 MEMORY_PLAN_GAPS = {"hermes": ("peer_override_required", "native_addon_unverified"),
                     "wiki": ("peer_override_required",)}
-# The setup lines of `prepare`, without the directory of one profile and with the kit-relative package path.
+# The setup lines of `prepare`, without the directory of one profile and with the kit-relative path of a
+# package and of the override script. These are the names of the steps; the plan prints the lines to run.
 # `{source}` is the source string of the package in `settings.json`: the plan installs each declared npm source.
 PACKAGE_STEP = "pi install {source}"
 PEER_STEP = "node scripts/patch_extension_peers.mjs"

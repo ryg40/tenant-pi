@@ -117,6 +117,31 @@ Layouts `v2`, `a`, `b`, and `c` include memory in their shared services row inst
 | `model unknown` | No valid `llm-wiki-model` label; the footer does not guess the configuration |
 | `suggest wiki_retro` | Manual advice after a successful `write` or `edit`, or a wiki capture reminder |
 
+#### Memory label states
+
+The aging rule is **clear failed activity on settle**.
+`agent_settled` calls `MemoryTracker.settle()`, which clears running calls and failed operation records for both memory sources.
+It keeps successful operation records and capture advice.
+A successful tracked operation replaces the last result for its source, so it clears that source's failure.
+It does not clear a failure from the other source.
+
+| State | Labels | Transition |
+| --- | --- | --- |
+| No operation | Published wiki status, or OpenViking connectivity with `idle` | A tool start shows running activity |
+| Running | `<operation> running`; concurrent calls add a count | The last running call ends with a returned or failed result |
+| Returned | `<operation> returned` | A tool start shows running activity; a later result replaces this result |
+| Failed | `<operation> failed`. For published `ok` or `unknown`, wiki shows `tool failed` instead of `active` or `status unknown`. `blocked`, `stale`, and `warning` keep their label. | A successful operation clears the failure; settle removes the failed record |
+| Settled after failure | Published status without the failed operation; OpenViking shows `idle` | A tool start shows running activity |
+
+Running activity hides the previous operation's failure label and alert, including compact and minimal labels.
+A failed call during concurrent activity stays hidden until no call runs for that source.
+A later successful completion replaces it.
+Published service errors, warnings, and stale status remain visible during running activity.
+A wiki operation failure never appears with `active`.
+The status and the action can state the same failure, such as `tool failed` and `search failed`.
+Settle removes the failed record rather than changing it to `returned`.
+Published status still controls service health; clearing activity does not prove connectivity.
+
 A successful `wiki_observe` or `wiki_retro` clears the capture suggestion. Failed captures keep it.
 The suggestion is a simple edit/reminder signal, not a judgment that the work contains a durable insight.
 Ask the agent to run `wiki_retro` when the work warrants it. The footer never starts wiki tasks.

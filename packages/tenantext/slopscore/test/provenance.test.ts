@@ -107,6 +107,22 @@ test("artifacts written after the code get half credit; unknown trailer weighs 0
 	assert.equal(p.iterationPoints, Math.round(3 * 0.4));
 });
 
+test("readCommits removes every angle-bracket pair and replaces control characters", () => {
+	const r = repo();
+	r.commit("code", { "src/a.ts": "1" }, "2026-09-01", "Some\u001b Bot <alias>");
+	assert.deepEqual(readCommits(r.dir)[0].coauthors, ["Some? Bot"]);
+});
+
+test("renderProvenance escapes backslashes and bars in subjects and models", () => {
+	const commits: Commit[] = [
+		{ hash: "abc", date: "2026-09-01", time: 1, subject: "ship", coauthors: [], files: ["src/a.ts"] },
+		{ hash: "def", date: "2026-09-02", time: 86_400_001, subject: String.raw`fix a\|b`, coauthors: [String.raw`Bot a\|b`], files: ["src/a.ts"] },
+	];
+	const output = renderProvenance(scoreRepo("/none", cfg, commits));
+	assert.equal(output.split("\n").find((line) => line.startsWith("| def ")),
+		String.raw`| def fix a\\\|b | 2026-09-02 | Bot a\\\|b | unknown | 1.2 |`);
+});
+
 test("readCommits keeps legacy full-history behavior and accepts an optional range", () => {
 	const r = repo();
 	r.commit("a #7", { "x.ts": "1", "test/x.test.ts": "t" }, "2026-09-01", "Claude Fable 5.1");

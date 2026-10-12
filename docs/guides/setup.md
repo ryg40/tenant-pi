@@ -60,7 +60,7 @@ Requirements of this release (`config/manifest.json`, `runtime`):
 | --- | --- | --- |
 | Linux | the first target | Not verified: a complete live run on Linux. |
 | Python | `>=3.11` | Standard library only. The kit has no Python dependency. |
-| Node | `>=24.0.0 <25` | The same Node installs Pi and builds native addons later. |
+| Node | `>=24.0.0 <25` | The same Node installs Pi and loads native addons later. It also builds one that has no prebuilt binary. |
 | Pi | `runtime.piAcceptedRange` | Stage 6 installs the tested `<pin>` when needed. |
 | Git | any current version | Only to clone the kit. |
 
@@ -79,7 +79,7 @@ for d in "$HOME/.pi/agent" "${PI_CODING_AGENT_DIR:-}"; do
 done
 ```
 
-The `for` loop prints one line for `~/.pi/agent`, and one more line for the directory in `PI_CODING_AGENT_DIR` when the variable is set. Each line says `present` or `absent`. No line is not `absent`.
+The `for` loop prints one line for `~/.pi/agent`, and one more line for the directory in `PI_CODING_AGENT_DIR` when the variable is set. Each line says `present` or `absent`. A missing output line does not mean `absent`. Run the loop again when an expected line is missing.
 
 `PI_CODING_AGENT_DIR` names the live profile. `PI_CODING_AGENT_SESSION_DIR` moves the sessions of every profile to one directory. The launch line of the kit removes it for the generated profile; see [the launcher file](../launcher.md). Do not edit a shell startup file to remove it.
 
@@ -95,7 +95,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 python3 scripts/tenant_pi.py check-runtime
 ```
 
-- The tests print `OK`. The publish check prints `publish set valid`. If one fails, stop: the clone is not the reviewed kit.
+- The last test line starts with `OK`; a skipped-test count is expected and depends on the client. The publish check prints `publish set valid`. If one fails, stop: the clone is not the reviewed kit.
 - `check-runtime` prints one JSON object with a `status` of `match`, `untested_in_range` (Pi only), `mismatch`, `missing` or `unparsed` for `pi`, `node` and `python`. Exit code 1 at this stage is a finding, not a failure. See [the runtime check](../check-runtime.md).
 - Do not move or delete the clone later. A generated profile names `packages/` inside the clone by its absolute path.
 - Use `PYTHONDONTWRITEBYTECODE=1` for the checks. Do not run the tests with `pytest`: its cache directory makes the publish check fail. See [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
@@ -166,6 +166,8 @@ Goal: a private directory with an overlay that names a new target.
 
    The list marks `hermes` and `wiki`. Both store text of your sessions on this machine. With the default setting, `wiki` also adds text from your vault to each prompt in each directory, and that text goes to your model provider. Keep them in your selection only when you agree to that.
 
+   `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider. Keep these components only when you agree to that. The module guide gives their mode and provider conditions.
+
    Then print the `selection` object of your choice. Name each component that you want, as IDs or as numbers of the checklist:
 
    ```sh
@@ -188,7 +190,7 @@ Goal: a private directory with an overlay that names a new target.
    }
    ```
 
-   The block holds all three module keys. The key of a module that is off is `null`. With these values no module makes a model call of its own, and the overlay needs no `roles.memory`. Without the consent key, `validate` stops with `memory_consent_required: overlay.consent.memoryCapture`, and nothing is generated and nothing is captured. See [memory modules](../memory-modules.md), and [POST_INSTALL.md](../../POST_INSTALL.md#switch-a-memory-module-on) for the background model calls.
+   The block holds all three module keys. The key of a module that is off is `null`. With these values no module makes a model call of its own, and the overlay needs no `roles.memory`. `validate` looks for the block first. With a module on and no `memory` block, it stops with `memory_choices_required: overlay.memory`, with each value of the consent key. With the block and `consent.memoryCapture` at `false`, it stops with `memory_consent_required: overlay.consent.memoryCapture`. In each case nothing is generated and nothing is captured. See [memory modules](../memory-modules.md), and [POST_INSTALL.md](../../POST_INSTALL.md#switch-a-memory-module-on) for the background model calls.
 
 6. Look for an LLM Wiki vault, only when you selected `wiki`, before you write `memory.wiki`:
 
@@ -315,7 +317,7 @@ pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["r
 
 Warning: a global install replaces the `pi` command of every profile of the user.
 
-With npm 11, this command and the prefix form below can print two warning lines. The lines start with `npm warn install-scripts` and `npm warn deprecated`. Both lines are expected output and are not a failure. You run no `allowScripts` command for the kit.
+The global command and the prefix form can print several `npm warn deprecated` and `npm warn install-scripts` lines. Observed with npm 11.19.0 and Pi 1.1.0: one deprecated line and six install-scripts lines. These warnings are expected output, not an install failure. The user runs none of the proposed `npm install -g --allow-scripts=...` or `npm config set allow-scripts=...` commands.
 
 `commands.piInstall` always holds this line, with a mark. Without `--runtime-report` the line is also under `commands.setupDisplayOnly`, and its `status` is `installed_version_unknown`. With a saved `check-runtime` report the `status` is `needed` for `missing`, `not_needed` for `match` or `untested_in_range`, `replaces_installed` for `mismatch`, and `installed_version_unknown` for `unparsed`. The line then stays under `commands.setupDisplayOnly` only when the report has `missing` or `unparsed` for Pi. With `replaces_installed`, `change` says whether the line is a `downgrade` or an `upgrade` of the installed Pi. See [the mark of the Pi install line](../profile-plan.md#the-mark-of-the-pi-install-line).
 
@@ -394,14 +396,28 @@ Only when you enabled `hermes`, `wiki` or `questions`, also, after the `pi insta
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
 ```
 
-The plan prints the last line only with a memory module or with `questions`. `pi-mcp-adapter` lists no host module under `dependencies`, so `mcp` alone needs no peer override.
+The plan prints the last line only with a memory module or with `questions`. The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it. `pi-mcp-adapter` lists no host module under `dependencies`, so `mcp` alone needs no peer override.
 
 - Use each source string as the plan prints it. `pi install` leaves `settings.json` unchanged only when the string is identical to the declared string. With a different string, or with a source that the profile does not declare, Pi rewrites `settings.json`.
-- `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. A newer version is not verified. The facts of an existing vault are from `@zosmaai/pi-llm-wiki` 0.12.5. After an install or an update of the `wiki` package, check 7 of Stage 9 is the proof for the installed version. `questions` has the exact version 2.11.0; its line installs that version.
+- `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. A newer version is not verified. The facts of an existing vault are from `@zosmaai/pi-llm-wiki` 0.12.5. After an install or an update of the `wiki` package, check 7 of Stage 9 is the proof for the installed version. The `pi install` line of `wiki` prints an audit summary of npm: read [the audit summary of npm](#the-audit-summary-of-npm) before you run that line. `questions` has the exact version 2.11.0; its line installs that version.
 - `pi update --extensions` is not a setup command. With Pi `<pin>` it does not install or change a source with an exact version. It only moves an installed source without a version to the newest registry version.
 - The last command corrects the host-provided peers in the installed manifests of the memory packages and of the question extension. See [host peer overrides](../host-peer-overrides.md).
-- The packages are installed when `pi list` with the same `PI_CODING_AGENT_DIR` prints a path line that starts with the profile directory and `/npm/node_modules/` below each declared `npm:` source, and a second run of the override script prints nothing. `pi list` prints a declared source also when the package is not installed. With `questions`, `python3 scripts/tenant_pi.py inventory --dir "$HOME/.pi/profiles/main"` also shows `coordination.questionExtension` as `installed`. Limit: no part of this check compares the installed version with the declared version.
-- Hermes builds `better-sqlite3`. That needs a compiler toolchain for the Node that runs Pi.
+- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. With `questions`, the first run prints the line of `@juicesharp/rpiv-ask-user-question`. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
+- The packages are installed when `pi list` with the same `PI_CODING_AGENT_DIR` prints a path line that starts with the profile directory and `/npm/node_modules/` below each declared `npm:` source, the override script ends with exit code 0, and a second run of it prints nothing. A run that prints nothing does not show that a manifest was correct before. The proof for such a package is check 2 of [Stage 9](#stage-9-test): Pi starts with no peer warning. `pi list` prints a declared source also when the package is not installed. With `questions`, `python3 scripts/tenant_pi.py inventory --dir "$HOME/.pi/profiles/main"` also shows `coordination.questionExtension` as `installed`. Limit: no part of this check compares the installed version with the declared version.
+- The package `pi-hermes-memory` uses the native module `better-sqlite3`. Observed with `better-sqlite3` 13.0.3 and npm 11.19.0 on Linux x64: the module holds a prebuilt binary, `prebuilds/linux-x64.node`. npm runs no install script, nothing is compiled, and the module loads from that file. Not verified: a prebuilt binary for macOS and for other platforms. Only when no prebuilt binary fits the platform and the Node version, a build from source needs a compiler toolchain for the Node that runs Pi. On macOS that is the Xcode command line tools. With npm 11, npm does not start that build on its own. Observed with npm 11.19.0: the `npm warn install-scripts` line of the `wiki` install names `better-sqlite3`, and npm runs no install script. If the module does not load, the README of the package names `npm rebuild better-sqlite3` in the npm directory of the profile as the fallback. Not verified: a build from source in a profile.
+
+### The audit summary of npm
+
+Only with `wiki`. The `pi install` line of the `wiki` package prints an audit summary of npm for the dependency tree of the package. The summary has a count of vulnerabilities, a hint to run `npm audit fix`, and an `npm warn install-scripts` line. This output is expected. The install did not fail.
+
+- Observed with `@zosmaai/pi-llm-wiki` 0.12.5 and npm 11.19.0: `8 vulnerabilities (3 high, 5 critical)`. The count changes with the versions in the registry. Do not expect the same numbers.
+- The `npm warn install-scripts` line names the packages whose install scripts npm did not run. Observed with the same versions: 6 packages with `wiki` alone, and 7 packages when `hermes` is in the same profile. You run no `allowScripts` command for the kit. Not verified: a function of the `wiki` package that needs one of these install scripts.
+- The kit did not review these findings. The kit reviewed the package, not its dependency tree. Not verified: which packages the findings name, and the effect of a finding in Pi.
+- Observed with `pi-hermes-memory` 0.9.10 and npm 11.19.0: the `pi install` line of `hermes` prints `found 0 vulnerabilities`. Not verified: the npm output of the `pi install` lines of `mcp` and `questions`.
+
+Warning: do not run `npm audit fix` in the profile, and do not run `npm audit fix --force`. The command changes the installed packages of the profile. It can undo the peer override, and it can install versions that the kit did not review.
+
+You decide. To install without the module, switch `wiki` off in the checklist of [Stage 2](#stage-2-edit-the-local-choices), before `generate`. For a profile that exists, see [add or remove a component](../../POST_INSTALL.md#add-or-remove-a-component).
 
 ### Native Pi operations rewrite the profile
 
@@ -465,6 +481,11 @@ python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.conf
 - With `wiki`, record one more baseline, of the vault that the profile uses: `--dir '<vault>'` and `--out "$HOME/.config/tenant-pi/wiki-vault-baseline.json"`. `<vault>` is `<wikiHome>/.llm-wiki` when the overlay has `memory.wiki.wikiHome`, else the `.llm-wiki` directory in the home directory. Write it as an absolute path, for example `/home/EXAMPLE_USER/.llm-wiki`. Run it also when no vault exists. The action lists the directories of the vault and opens no file. The one write is the new baseline file: keep `--out` in the private directory.
 - The comparison of check 7 names the direct entries of the vault only. For a record of the entries below `meta/`, record a second baseline of an existing vault: `--dir '<vault>/meta'` and `--out "$HOME/.config/tenant-pi/wiki-vault-meta-baseline.json"`.
 
+Observed with Pi 1.1.0: the first launch downloads `fd` and `ripgrep` into `<target>/bin/`. This download needs network access and prints four lines.
+
+Observed with Pi 1.1.0: a launch without a prompt writes no session file, even without `env -u PI_CODING_AGENT_SESSION_DIR`.
+The session-directory comparison proves separation only after a session with a prompt.
+
 Run the launcher file of Stage 5:
 
 ```sh
@@ -493,7 +514,7 @@ Record each check as passed, failed, blocked or not run in `install-log.md` of t
 1. `PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi --version` prints `<pin>` or an accepted version. Record the untested-version gap when needed.
 2. Pi starts with no extension error and no peer warning.
 3. The chosen model replies to the fixed prompt, and the reply holds the expected number: see [check 3](#check-3-the-model-reply).
-4. `ls -la "$HOME/.pi/profiles/main"` shows the generated files plus what Pi wrote: `auth.json`, `models-store.json`, `sessions/`, and `npm/` only with a declared npm package. Pi also adds the key `lastChangelogVersion` to `settings.json`. Observed with Pi 1.1.0 and a core-only profile; not verified: other Pi versions. The live profile did not change: the comparison below prints `"result":"unchanged"`.
+4. `ls -la "$HOME/.pi/profiles/main"` shows the generated files plus what Pi wrote: `auth.json`, `models-store.json`, `sessions/` and `bin/`. Extensions add their state directories. Pi adds `npm/` only with a declared npm package. Pi also adds the key `lastChangelogVersion` to `settings.json`. Observed with Pi 1.1.0 and a core-only profile. Not verified: other Pi versions. The live profile did not change: the comparison below prints `"result":"unchanged"`.
 5. With Hermes: `<target>/pi-hermes-memory/` exists after the first session. With the wiki, `ambientPersonalVault: false` and no vault before the launch: `~/.llm-wiki` was not created.
 6. With `mcp`: `/mcp-adapter status` inside Pi lists only the servers of the input file.
 7. With `wiki`: the content of the vault stayed as it was: see [check 7](#check-7-the-comparison-of-the-vault).
@@ -542,7 +563,7 @@ python3 scripts/tenant_pi.py check-baseline --dir "$HOME/.pi/agent" --baseline "
 | `result` | Meaning | Record check 4 as |
 | --- | --- | --- |
 | `unchanged` | No entry was added, removed or modified after the baseline. A directory that was absent is still absent. | passed |
-| `changed` | The directory differs from the baseline. `added`, `removed` and `modified` name the direct entries that differ. | failed, or not verified |
+| `changed` | The directory differs from the baseline. Read `added`, `removed`, `modified`, `directoryModified`, `was` and `now`. A removed directory can give empty name lists and `directoryModified: false`. | failed, or not verified |
 | `no_baseline` | The baseline file does not exist. The action compared nothing. | not run |
 
 Record check 4 as passed only when `recordedAt` is before the first Pi command that names the target. With a later baseline, record check 4 as not run: that comparison proves nothing about the launch.
@@ -553,10 +574,11 @@ A Pi that ran in the live profile after the baseline also changes the directory:
 - With `changed` and such a Pi: the check is not verified. Record the names and the command. For a proof, close that Pi, record a second baseline in a new file, launch the profile again, and compare with the second baseline.
 
 Run the same comparison for each other baseline of Stage 8, with its own `--dir` and `--baseline`.
+For `PI_CODING_AGENT_SESSION_DIR`, compare after a session with a prompt. Without that session, record session-directory separation as not verified.
 
 ### Check 7: the comparison of the vault
 
-Only with `wiki`, after the first launch. `<vault>` is the directory of the vault baseline of Stage 8:
+Only with `wiki`, after the first launch. This check is check 8 in [INSTALL.md](../../INSTALL.md#check-8-the-comparison-of-the-vault) and check 7 in the setup guide. It is the same comparison. `<vault>` is the directory of the vault baseline of Stage 8:
 
 ```sh
 python3 scripts/tenant_pi.py check-baseline --dir '<vault>' --baseline "$HOME/.config/tenant-pi/wiki-vault-baseline.json"

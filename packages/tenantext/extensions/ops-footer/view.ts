@@ -188,13 +188,14 @@ export function memoryGroups(data: DashboardSnapshot, now: number): MemoryGroup[
     const health = data.integrations.find(s => s.source === "OV");
     const stale = health && freshness(health, now) === "stale";
     const status = health?.state === "error" ? "unavailable" : stale ? "stale" : health?.state === "warning" ? "warning" : health?.state === "ok" ? "connected" : "unknown";
-    const alert = status === "unavailable" || status === "stale" || status === "warning" || Boolean(ov.failed);
-    const glyph = status === "unavailable" || ov.failed ? "✗" : status === "stale" || status === "warning" ? "⚠" : status === "connected" ? "✓" : "?";
+    const failed = !ov.running.length && Boolean(ov.failed);
+    const alert = status === "unavailable" || status === "stale" || status === "warning" || failed;
+    const glyph = status === "unavailable" || failed ? "✗" : status === "stale" || status === "warning" ? "⚠" : status === "connected" ? "✓" : "?";
     const counts = ov.pendingTokens !== undefined ? `pending ${tokens(ov.pendingTokens)}/${tokens(ov.threshold ?? 0)}`
       : ov.added !== undefined ? `synced ${ov.added}` : undefined;
-    rows.push({ key: `memory:ov:${status}:${Boolean(ov.failed)}`, text: [`OpenViking ${glyph} ${status}`, activity(ov), counts].filter(Boolean).join(" · "),
+    rows.push({ key: `memory:ov:${status}:${failed}`, text: [`OpenViking ${glyph} ${status}`, activity(ov), counts].filter(Boolean).join(" · "),
       compact: `OV ${glyph} ${status} · ${activity(ov)}`, minimal: `OV ${glyph} ${status}`, glyph, alert,
-      kind: status === "unavailable" || ov.failed ? "error" : stale || status === "warning" ? "warning" : "accent" });
+      kind: status === "unavailable" || failed ? "error" : stale || status === "warning" ? "warning" : "accent" });
   }
   const wiki = data.memory?.wiki;
   if (wiki) {
@@ -205,17 +206,18 @@ export function memoryGroups(data: DashboardSnapshot, now: number): MemoryGroup[
     const hasPublishedState = published && published.state !== "unknown";
     const state = hasPublishedState ? published.state : wiki.state;
     const stale = hasPublishedState && freshness(published, now) === "stale";
-    const status = state === "error" ? "blocked" : stale ? "stale" : state === "warning" ? "warning" : state === "ok" ? "active" : "status unknown";
+    const failed = !wiki.running.length && Boolean(wiki.failed);
+    const status = state === "error" ? "blocked" : stale ? "stale" : state === "warning" ? "warning" : failed ? "tool failed" : state === "ok" ? "active" : "status unknown";
     const hint = wiki.suggestCapture ? "suggest wiki_retro" : undefined;
     const action = wiki.running.length || wiki.last ? activity(wiki) : published?.index === "building" ? "index building"
       : wiki.recalled !== undefined ? `recalled ${wiki.recalled}` : undefined;
-    const error = state === "error" || Boolean(wiki.failed);
+    const error = state === "error" || failed;
     const alert = error || Boolean(stale) || state === "warning";
     const glyph = error ? "✗" : alert ? "⚠" : "";
     const prefix = `LLM Wiki${glyph ? ` ${glyph}` : ""}`;
-    rows.push({ key: `memory:wiki:${status}:${Boolean(wiki.failed)}`, text: [prefix, status, modelText, action, hint].filter(Boolean).join(" · "),
-      compact: [prefix, shortModel, alert ? (wiki.failed ? "tool failed" : status) : undefined, hint ?? action].filter(Boolean).join(" · "),
-      minimal: [prefix, shortModel, alert ? (wiki.failed ? "tool failed" : status) : undefined, hint].filter(Boolean).join(" · "), glyph, alert, kind: error ? "error" : alert ? "warning" : "accent" });
+    rows.push({ key: `memory:wiki:${status}:${failed}`, text: [prefix, status, modelText, action, hint].filter(Boolean).join(" · "),
+      compact: [prefix, shortModel, alert ? (failed ? "tool failed" : status) : undefined, hint ?? action].filter(Boolean).join(" · "),
+      minimal: [prefix, shortModel, alert ? (failed ? "tool failed" : status) : undefined, hint].filter(Boolean).join(" · "), glyph, alert, kind: error ? "error" : alert ? "warning" : "accent" });
   }
   return rows;
 }

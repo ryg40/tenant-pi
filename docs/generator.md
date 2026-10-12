@@ -137,6 +137,8 @@ python3 scripts/tenant_pi.py compose-plan --account pi --uid 1000 --gid 1000 --p
 
 | Key | Content |
 | --- | --- |
+| `runs` | Always `false`: the action starts no command, including with `--write`. |
+| `files` | Maps `overlay.json`, `registry.json`, `seat.env`, `compose.env` and `authorized_keys` to their destination paths. |
 | `answers` | The validated answers, with `provider`, `model` and `thinking`. `componentsAdded` names each component that a chosen component requires. |
 | `overlay` | The overlay of the seat. `target.agentDir` is `/home/<account>/.pi/profiles/main`. `selection.enable` holds `core`, `model-routing`, `codex-accounts`, the `--enable` IDs and their `requires` of the manifest. `modelRoutes.gateway` is `{"auth":"env"}`. `roles.interactive` holds `provider`, `model`, `thinking` and `"route":"gateway"`, and `modelRoutes.cycle` holds that one choice. |
 | `registry` | The content of `registry.json`: `{"<provider>":{"<model>":["<thinking>"]}}`. `validate`, `plan` and `generate` need it with `--registry` for the role model. |
@@ -197,7 +199,7 @@ The data form is the default: one JSON object with `count`, `marks`, `components
 | `id`, `kind`, `status` | The component ID, the kind of its manifest `source` and its manifest status. |
 | `extensions`, `skills` | The names from `resources` of the manifest. A skill has the name of its directory. An extension has the name of its directory. A path that names no directory of its own, for example `index.ts`, gives the name of the package. A component with no resource has two empty lists. |
 | `requires` | The IDs that the component needs. |
-| `prerequisites` | Plain codes, in a fixed order. `overlay:<key>` is an overlay key that `validate` needs. `env:<NAME>` is a name of the manifest key `env`. `gap:<code>` is a readiness gap that names a step or a tool of the host. `setup:<line>` is a setup line that `plan` prints, without the directory of the profile. |
+| `prerequisites` | Plain codes, in a fixed order. `overlay:<key>` is an overlay key that `validate` needs. `env:<NAME>` is a name of the manifest key `env`. `gap:<code>` is a readiness gap that names a step or a tool of the host. `setup:<line>` is a setup line that `plan` prints, without the directory of the profile and with the path of a kit file relative to the kit. It names the step. `plan` prints the line to run, with the directory of the profile and the absolute path. |
 | `recommended` | `true` for an ID of the recommended set. The set is `RECOMMENDED` in `scripts/components.py`. |
 | `marked` | The state of the checklist. Without `--overlay` it is `recommended`. With `--overlay` it is `true` for each ID in `selection.enable` of that overlay. |
 | `locked` | `true` for `core`: the user cannot switch it off. |

@@ -10,13 +10,14 @@ import { createCodexStatus } from "../extensions/codex-accounts/status.ts";
 import { anthropicStatus, codexStatus, copilotStatus, freshness, HealthAdapter, integrationStatus, publicStatuses, safeText, unknown } from "../extensions/ops-footer/adapters.ts";
 import { collectSession } from "../extensions/ops-footer/collector.ts";
 import { GitAdapter, parseStatus, parseWorktrees } from "../extensions/ops-footer/git.ts";
+import { MemoryTracker } from "../extensions/ops-footer/memory.ts";
 import { ansiPaint, plainPaint, themePaint } from "../extensions/ops-footer/paint.ts";
 import { ALERT_DECAY_MS, dashboardRows, dashboardSections, detailedReport, FooterRenderer } from "../extensions/ops-footer/render.ts";
 import { defaultLayout, layoutNames, layouts } from "../extensions/ops-footer/layouts/index.ts";
 import { installOpsFooter, quotaLifetimeFloor } from "../extensions/ops-footer/runtime.ts";
 import { defaults, ensureSettings, healthUrl, loadLocalSettings, loadSettings, parseSettings, saveSettings, type Settings } from "../extensions/ops-footer/settings.ts";
 import { ANTHROPIC_STATUS, CODEX_REFRESH, CODEX_STATUS, COPILOT_STATUS, INTEGRATION_STATUS, OWNERSHIP, OWNERSHIP_QUERY, type ContextService, type DashboardSnapshot, type GitSnapshot } from "../extensions/ops-footer/types.ts";
-import { cwdLabel, formatRelative, formatWhen, gitFacts, serviceGroups } from "../extensions/ops-footer/view.ts";
+import { cwdLabel, formatRelative, formatWhen, gitFacts, memoryGroups, serviceGroups } from "../extensions/ops-footer/view.ts";
 import { quotaChip } from "../extensions/ops-footer/widgets.ts";
 import { contextStub, contextUnknown, fixtures, healthy, HOUR, integration, limits, NOW } from "./footer-fixtures.ts";
 
@@ -702,6 +703,73 @@ test("runtime tracks memory activity, counter refreshes, capture hints and clear
     await run(1); assert.ok(!h.footer(160).includes("LLM Wiki"));
     await h.emit("session_shutdown"); assert.equal(h.stats().handlers, 0);
   } finally { mock.timers.reset(); }
+});
+test("memory labels: failure then success clears only the same source", () => {
+  const tracker = new MemoryTracker();
+  const data = healthy();
+  const statuses = new Map([["llm-wiki", "ok"], ["openviking", "ok"]]);
+  tracker.start("ov", "viking_search"); tracker.end("ov", "viking_search", true);
+  tracker.start("failed", "wiki_search"); tracker.end("failed", "wiki_search", false, { details: { error: "rejected" } });
+  data.memory = tracker.snapshot(statuses, []);
+  const failed = memoryGroups(data, NOW).find(group => group.key.startsWith("memory:wiki:"))!;
+  assert.match(failed.text, /search failed/);
+  // The old code already clears failure after success; only this active-label assertion fails on the old code.
+  for (const text of [failed.text, failed.compact, failed.minimal]) assert.doesNotMatch(text, /\bactive\b/);
+  tracker.start("success", "wiki_status"); tracker.end("success", "wiki_status", false);
+  data.memory = tracker.snapshot(statuses, []);
+  assert.equal(data.memory.wiki?.failed, false);
+  assert.equal(data.memory.ov?.failed, true, "a wiki success keeps the OpenViking failure");
+  const recovered = memoryGroups(data, NOW).find(group => group.key.startsWith("memory:wiki:"))!;
+  assert.match(recovered.text, /active.*status returned/);
+  assert.equal(recovered.alert, false);
+  for (const text of [recovered.text, recovered.compact, recovered.minimal]) assert.doesNotMatch(text, /failed/);
+});
+test("memory labels: failure expires on settle without claiming success", () => {
+  const tracker = new MemoryTracker();
+  const data = healthy();
+  for (const tool of ["wiki_search", "viking_search"]) {
+    tracker.start(tool, tool); tracker.end(tool, tool, true);
+  }
+  tracker.reminder();
+  tracker.start("unfinished", "wiki_status");
+  tracker.settle();
+  data.memory = tracker.snapshot(new Map([["llm-wiki", "ok"], ["openviking", "ok"]]), []);
+  for (const source of [data.memory.wiki, data.memory.ov]) {
+    assert.equal(source?.failed, undefined, "settle expires a failed operation");
+    assert.equal(source?.last, undefined, "settle does not turn a failure into a returned operation");
+    assert.deepEqual(source?.running, []);
+  }
+  assert.equal(data.memory.wiki?.suggestCapture, true, "settle keeps capture advice");
+  for (const group of memoryGroups(data, NOW)) {
+    assert.equal(group.alert, false);
+    for (const text of [group.text, group.compact, group.minimal]) assert.doesNotMatch(text, /failed|returned|running/);
+  }
+  tracker.start("success", "wiki_status"); tracker.end("success", "wiki_status", false);
+  tracker.settle();
+  assert.equal(tracker.snapshot(new Map(), []).wiki?.last, "status", "settle keeps successful activity");
+});
+test("memory labels: running activity hides a stale failure in every label form", () => {
+  const tracker = new MemoryTracker();
+  const data = healthy();
+  for (const tool of ["wiki_search", "viking_search"]) {
+    tracker.start(tool, tool); tracker.end(tool, tool, true);
+  }
+  tracker.start("wiki-running", "wiki_status"); tracker.start("ov-running", "viking_read");
+  data.memory = tracker.snapshot(new Map([["llm-wiki", "ok"], ["openviking", "ok"]]), []);
+  assert.equal(data.memory.wiki?.failed, true, "the last failure still exists during the retry");
+  assert.equal(data.memory.ov?.failed, true);
+  for (const group of memoryGroups(data, NOW)) {
+    assert.equal(group.alert, false, "running activity suppresses the stale failure alert");
+    assert.equal(group.kind, "accent");
+    assert.match(group.text, /running/);
+    for (const text of [group.text, group.compact, group.minimal]) assert.doesNotMatch(text, /failed|\u2717/);
+  }
+  data.integrations = [integration("Wiki", { state: "error" }), integration("OV", { state: "error" })];
+  for (const group of memoryGroups(data, NOW)) {
+    assert.equal(group.alert, true, "running activity does not hide a published service error");
+    assert.equal(group.kind, "error");
+    assert.match(group.text, /blocked|unavailable/);
+  }
 });
 test("Powerline package provenance warns and replacement releases ownership", async () => {
   const h = harness();

@@ -100,7 +100,7 @@ The modules are `hermes`, `wiki` and `openviking`. Each stores session text. Put
 ```
 
 - The `memory` block holds all three module keys. The key of a module that is off is `null`.
-- `validate` stops with `memory_choices_required: overlay.memory` without the block, and with `required_fields: overlay.memory` when a module key is absent. With the block and the consent `false`, it stops with `memory_consent_required: overlay.consent.memoryCapture`.
+- `validate` looks for the block first. It stops with `memory_choices_required: overlay.memory` without the block, with each value of the consent key, and with `required_fields: overlay.memory` when a module key is absent. With the block and the consent `false`, it stops with `memory_consent_required: overlay.consent.memoryCapture`.
 - `openviking` also needs `consent.remoteMemoryWrites: true` and a server of your own.
 - All candidates of one account share the LLM Wiki vault `~/.llm-wiki/` below the home directory. The Hermes store is below the profile, so a new candidate starts with an empty one.
 
@@ -129,32 +129,40 @@ Then do the loop. Details: [memory modules](docs/memory-modules.md).
 
 ## Install the declared npm packages of a new candidate
 
-Only when the candidate declares an npm source: `hermes`, `wiki`, `mcp` or `questions`. `commands.setupDisplayOnly` of the plan has one `pi install` line for each declared source, and then the peer override line. Run the lines that name `<new target>`, from `<clone>`, in the order of the plan. With `hermes` and `wiki` they are:
+Only when the candidate declares an npm source: `hermes`, `wiki`, `mcp` or `questions`. `commands.setupDisplayOnly` of the plan has one `pi install` line for each declared source, and then the peer override line. Run the lines that name `<new target>`, in the order of the plan. With `hermes` and `wiki` they are:
 
 ```sh
 PI_CODING_AGENT_DIR='<new target>' pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR='<new target>' pi install npm:@zosmaai/pi-llm-wiki
-PI_CODING_AGENT_DIR='<new target>' node scripts/patch_extension_peers.mjs
+PI_CODING_AGENT_DIR='<new target>' node <clone>/scripts/patch_extension_peers.mjs
 ```
 
 - Use each source string as the plan prints it. With another string, Pi rewrites `settings.json`.
 - Do not run the `npm install --global` line of the plan when Pi is installed. That line replaces Pi for each profile.
+- The plan prints the last line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it.
+- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects, and nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: the first run prints nothing for `hermes` and `wiki`. With `questions`, the first run prints the line of that package.
+- With `wiki`, the `pi install` line prints an audit summary of npm, with a count of vulnerabilities and a hint to run `npm audit fix`. This output is expected. See [INSTALL.md](INSTALL.md#the-audit-summary-of-npm).
 
-Done when `PI_CODING_AGENT_DIR='<new target>' pi list` prints a path line that starts with `<new target>/npm/node_modules/` below each declared source, and a second run of the override script prints nothing. Details: [host peer overrides](docs/host-peer-overrides.md).
+Warning: do not run `npm audit fix` in the candidate. The command changes the installed packages, and it can undo the peer override.
+
+Done when `PI_CODING_AGENT_DIR='<new target>' pi list` prints a path line that starts with `<new target>/npm/node_modules/` below each declared source, the override script ends with exit code 0, and a second run of it prints nothing. Where the first run printed nothing, the proof is the next start of the candidate: startup prints no peer warning. Details: [host peer overrides](docs/host-peer-overrides.md).
 
 ## Update the npm packages of one candidate
 
-Run both lines from `<clone>`. Details: [host peer overrides](docs/host-peer-overrides.md#reapply-it-automatically-after-each-extension-update).
+Run both lines. `<clone>` in the second line is the absolute path of the clone, so the line runs from each directory. Details: [host peer overrides](docs/host-peer-overrides.md#reapply-it-automatically-after-each-extension-update).
 
 ```sh
 PI_CODING_AGENT_DIR='<target>' pi update --extensions
-PI_CODING_AGENT_DIR='<target>' node scripts/patch_extension_peers.mjs
+PI_CODING_AGENT_DIR='<target>' node <clone>/scripts/patch_extension_peers.mjs
 ```
 
 - The first line moves only an installed source without a version (`hermes`, `wiki`, `mcp`) to the newest registry version. It is the one task that changes a candidate in place.
 - A source with an exact version (`questions`) does not move. Its version changes with a new kit version and a new candidate.
-- An update writes the upstream manifests again. Run the second line after each update. A second run of it prints nothing.
-- With `wiki`: at `@zosmaai/pi-llm-wiki` 0.12.5 a start changes no existing file of a vault and adds only `meta/qmd/`. Not verified: a newer version. Record a new baseline of the vault before the update, and run the vault check after the next launch: see "Record the baseline of a new candidate". That check is the proof for the installed version.
+- An update writes the upstream manifests again. Run the second line after each update. It prints one line for each manifest that it corrects, and it ends with exit code 0. A second run of it prints nothing. Where the first run printed nothing, the proof is the next start: startup prints no peer warning.
+- With `wiki`, an update can print the same kind of audit summary of npm as the install: a count of vulnerabilities and a hint to run `npm audit fix`. Such output is not a failure of the update. Not verified: the npm output of an update of the `wiki` package. See [INSTALL.md](INSTALL.md#the-audit-summary-of-npm).
+- With `wiki`: at `@zosmaai/pi-llm-wiki` 0.12.5 a start changes no existing file of a vault and adds only `meta/qmd/`. Not verified: a newer version. Record a new baseline of the vault before the update, and compare the vault with it after the next launch: see "Record the baseline of a new candidate". That comparison is check 8 in `INSTALL.md` and check 7 in the setup guide. It is the proof for the installed version.
+
+Warning: do not run `npm audit fix` in the candidate, and do not run `npm audit fix --force`. The command changes the installed packages of the candidate. It can undo the peer override, and it can install versions that the kit did not review.
 
 ## Keep an accepted difference
 
@@ -245,7 +253,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 python3 scripts/tenant_pi.py check-runtime > '<private dir>/runtime.json'
 ```
 
-- The two checks end with `OK` and with `publish set valid`. With another result, stop and keep the old candidate.
+- The last test line starts with `OK`; a skipped-test count is expected and depends on the client. The publish check prints `publish set valid`. With another result, stop and keep the old candidate.
 - The pull changes no file of a profile. A profile loads the in-tree packages from the clone by path, so an existing candidate loads the new package code at its next start.
 - Then do the loop with one overlay edit: a new `target.agentDir`. When `changes` of the `compare` report holds only `/overlay/target/agentDir`, the new kit version gives the same profile, and you can keep the old candidate in use.
 

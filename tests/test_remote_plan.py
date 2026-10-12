@@ -60,6 +60,13 @@ class PlanTests(unittest.TestCase):
                           "curl", "wget", "useradd"):
             self.assertNotIn(forbidden, text)
 
+    def test_no_line_holds_a_path_of_this_machine_or_a_setup_line_of_the_local_plan(self):
+        # The remote plan builds each line from the remote home. It takes no setup line of `plan`, whose
+        # peer override line holds the absolute script path of the local clone.
+        text = json.dumps(remote_plan(TARGET, USER, HOME))
+        self.assertNotIn(str(ROOT), text)
+        self.assertNotIn("patch_extension_peers", text)
+
     def test_static_diagnostics_do_not_echo_the_input(self):
         cases = (
             (("-oProxyCommand=" + CANARY, USER, HOME), "ssh_target: remote-plan.ssh_target"),

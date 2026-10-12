@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -22,8 +23,12 @@ test("suite language status preserves only fixed public fields", () => {
 });
 
 for (const longPath of [false, true]) for (const reverse of [false, true]) test(`real meter, footer and Codex bus compose in ${reverse ? "reverse" : "suite"} order (${longPath ? "long" : "short"} path)`, async () => {
-  const dir = mkdtempSync(join(tmpdir(), `tenantext-suite-${longPath ? "x".repeat(140) : ""}`));
+  // Hexadecimal UUIDs avoid the adapter's credential-name redaction patterns.
+  const dir = join(tmpdir(), `tenantext-suite-${longPath ? "x".repeat(140) : ""}${randomUUID()}`);
+  mkdirSync(dir);
   const directoryWidth = visibleWidth(dir) + 200;
+  // The adapter caps directory values before the renderer applies the row width.
+  const expectedDirectory = dir.slice(0, 256);
   const previous = process.env.PI_CODING_AGENT_DIR;
   process.env.PI_CODING_AGENT_DIR = dir;
   const handlers = new Map<string, Set<(event: any, ctx: any) => any>>();
@@ -87,7 +92,7 @@ for (const longPath of [false, true]) for (const reverse of [false, true]) test(
     assert.ok(!widgets.has("ops-footer-top"), "the default layout v4 sets no widget above the editor");
     const v4 = component!.render(directoryWidth).map(stripTerminalSequences);
     assert.match(v4[0], /^openai-codex\/gpt-6-astra · low/, "v4: the model row is first below the editor");
-    assert.ok(v4[1].includes(`pwd ${dir}`), "v4: the directory row shows the actual session start directory");
+    assert.equal(v4[1].match(/pwd (.+?)(?: ·| {2,}|$)/)?.[1], expectedDirectory, "v4: the directory row shows the session start directory up to the adapter cap");
     assert.match(v4[2], /WARN 75\.0k\/100k 75%/, "v4: the bar is third");
     assert.match(v4[3], /Codex2 .*✗ 5h 0%.*◂ routed/);
     // The assertions below are for the v3 composition, selected by name.
@@ -111,7 +116,7 @@ for (const longPath of [false, true]) for (const reverse of [false, true]) test(
       else if (width >= 40) assert.match(lines[3], /C(odex)?2 .*✗ 5h 0%/, "short or full account names below 80 columns, whichever fits");
       assert.ok(!lines.join("\n").includes("-----") && !lines.join("\n").includes("!1"));
     }
-    assert.ok(text(directoryWidth)[0].includes(`pwd ${dir}`), "v3: the top row shows the actual session start directory");
+    assert.equal(text(directoryWidth)[0].match(/pwd (.+?)(?: ·| {2,}|$)/)?.[1], expectedDirectory, "v3: the top row shows the session start directory up to the adapter cap");
     const wide = text(directoryWidth).join("\n");
     assert.match(wide, /fixture main · 3 worktrees/);
     assert.ok(!wide.includes("STE"), "a passing guard stays out of the footer");

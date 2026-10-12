@@ -19,6 +19,7 @@ from tests.test_model_routes import REGISTRY
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
+PEER_SCRIPT = shlex.quote(str(ROOT / "scripts/patch_extension_peers.mjs"))
 PIN = load(ROOT / "config/manifest.json")["runtime"]["piVersion"]
 CANARY = "CANARY_SECRET"
 MEMORY_ROLE = {"provider": "fake-native", "model": "team/slash-id", "thinking": "high"}
@@ -154,7 +155,7 @@ class MemoryContractTests(unittest.TestCase):
         self.assertIn({"code": "peer_override_required", "subject": "hermes"}, plan["readinessGaps"])
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
         self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
-                          agent + " pi install npm:pi-hermes-memory", agent + " node scripts/patch_extension_peers.mjs",
+                          agent + " pi install npm:pi-hermes-memory", agent + " node " + PEER_SCRIPT,
                           "npm --prefix " + shlex.quote(str(ROOT / OPENVIKING_DIR)) + " ci --ignore-scripts"],
                          plan["commands"]["setup"])
         # The module alone: no npm package to install, no peer override, no file of its own.
@@ -243,7 +244,7 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
                           "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi install npm:pi-hermes-memory",
                           "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi install npm:@zosmaai/pi-llm-wiki",
-                          "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " node scripts/patch_extension_peers.mjs"],
+                          "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " node " + PEER_SCRIPT],
                          plan["commands"]["setup"])
         # The wiki has no `wikiHome`: the line also removes an inherited `WIKI_HOME`.
         self.assertTrue(plan["commands"]["launch"].startswith(

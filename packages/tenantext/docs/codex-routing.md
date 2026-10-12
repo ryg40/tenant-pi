@@ -85,14 +85,37 @@ The wrapper removes top-level `previous_response_id` and `conversation` fields b
 It does not remove matching words inside tool arguments or message text.
 It also preserves the automatic model ID and streaming mode.
 
-HTTP 409 produces a fixed explanation about account-scoped continuations.
-Other recognized HTTP failures retain the status code with a fixed, safe explanation.
+HTTP failures retain the status code and a fixed classification.
 Pi uses these messages to classify failures for its existing retry policy.
-A generic message without the status code prevents classification of upstream HTTP 503 errors.
-HTTP errors, network errors, and stream errors do not expose raw error bodies or credentials.
+The wrapper recognizes `MidStreamFallbackError` and `Response payload is not completed` as interrupted streams.
+It matches these markers without copying upstream text, credentials, or account identities into the message.
+Unknown errors keep the generic message.
+No message copies a raw error body, a credential, or an account identity.
+A request error with no HTTP status keeps the generic message.
+
+| Class | Condition | Message |
+| --- | --- | --- |
+| Interrupted stream | Either interruption marker, without an HTTP failure status | Codex gateway response failed (interrupted stream). The response is incomplete. |
+| Client error | HTTP 400 or 422 | Codex gateway rejected the request (HTTP {status}; client error). Check model parameters. |
+| Authentication | HTTP 401 or 403 | Codex gateway denied access (HTTP {status}; authentication). Check gateway and account authentication. |
+| Client error | HTTP 404 | Codex gateway route not found (HTTP 404; client error). Check the endpoint and model. |
+| Client error | HTTP 408 | Codex gateway request timed out before streaming (HTTP 408; client error). |
+| Client error | HTTP 409 | Codex gateway rejected an account-scoped continuation (HTTP 409; client error). Send full history or use an explicit account route. |
+| Rate limit | HTTP 429 | Codex gateway reports a rate or account limit (HTTP 429; rate limit). Wait for the limit to reset. |
+| Upstream error | HTTP 500, 502, or 503 | Codex gateway or upstream service is unavailable before streaming (HTTP {status}; upstream error). |
+| Upstream error | HTTP 504 | Codex gateway request timed out before streaming (HTTP 504; upstream error). |
+| Client error | Other HTTP 4xx | Codex gateway rejected the request (HTTP {status}; client error). |
+| Upstream error | Other HTTP 5xx | Codex gateway request failed (HTTP {status}; upstream error). |
+| Unknown error | No recognized status or interruption marker | Codex gateway request failed. Check configuration, account limits, and gateway availability. |
+
+Pi classifies HTTP 408, 429, 500, 502, 503, 504, 520, and 524 as retryable because the message contains the status number.
+`{status}` represents the numeric HTTP response status, never a value parsed from upstream text.
+An HTTP failure status takes precedence over interruption markers.
+The wrapper discards rejected HTTP bodies without reading them.
 
 Only rejected HTTP requests receive the retry classification.
-Errors after a successful HTTP response keep the generic message, so partial output does not trigger automatic replay.
+The interrupted-stream message does not trigger Pi's retry policy, even when the raw error mentions a retryable status.
+Unknown stream errors keep the generic message, so partial output does not trigger automatic replay.
 The wrapper adds no retry loop and does not override retry settings, account routing, models, or reasoning levels.
 A disabled retry policy remains disabled; a persistent failure stops when the configured retry budget ends.
 HTTP 429 identifies an account or rate limit without claiming which limit applies.
@@ -173,7 +196,8 @@ Shutdown removes the refresh listener and aborts collection.
 ## Verification
 
 The local tests use Pi's real chat serializer and stream parser with simulated HTTP responses.
-They cover full history, tool arguments/results, reasoning, streaming tools, HTTP 409, header validation, and error suppression.
+They cover full history, tool arguments/results, reasoning, streaming tools, each HTTP error mapping, header validation, and error suppression.
+Interrupted-stream tests check both markers, with and without partial output, and confirm that no request replays.
 Retry tests use Pi's real retry helper with simulated Astra `xhigh` HTTP 503 responses.
 They check recovery, unchanged payloads, the retry budget, cancellation, disabled retries, and no replay after partial output.
 They also cover configuration, model metadata, direct-provider registration, coalescing, and shutdown cancellation.

@@ -59,7 +59,12 @@ export class MemoryTracker {
     if (!failed && (name === "write" || name === "edit")) this.suggestCapture = true;
     if (!failed && (name === "wiki_observe" || name === "wiki_retro")) this.suggestCapture = false;
   }
-  settle(): void { this.running.clear(); }
+  settle(): void {
+    this.running.clear();
+    for (const source of ["ov", "wiki"] as const) {
+      if (this.last[source]?.failed) delete this.last[source];
+    }
+  }
   reminder(): void { this.suggestCapture = true; }
   snapshot(statuses: ReadonlyMap<string, string>, tools: readonly string[]): MemorySnapshot {
     const activity = (source: Source): MemoryActivity => ({

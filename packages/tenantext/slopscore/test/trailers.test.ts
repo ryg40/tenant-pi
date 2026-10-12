@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { parsePrArgs } from "../src/pr.ts";
-import { planTrailers, proposeModel, providerDomain, trailerText } from "../src/trailers.ts";
+import { planTrailers, proposeModel, providerDomain, renderTrailerPlan, trailerText } from "../src/trailers.ts";
 import { loadConfig } from "../src/tiers.ts";
 import type { CallRecord } from "../src/types.ts";
 import { branchRepo, runWithEnv, setRemoteRef, withTraceEnv, writePiTrace } from "./helpers.ts";
@@ -26,6 +26,15 @@ function trailerRepo() {
 	const trailers = (...args: string[]) => runWithEnv(r.dir, env, "--add-trailers", "--base", "main", ...args);
 	return { ...r, piDir, claudeDir, env, trailers };
 }
+
+test("trailer table cells escape every backslash before every bar", () => {
+	const output = renderTrailerPlan({
+		branch: "feature", base: "main", remotes: [], push: { remote: "origin", branch: "feature" },
+		signedAfterRewrite: 0, mergeCommits: 0,
+		rows: [{ commit: "abc123", subject: String.raw`a\|b\|c\\d|e`, existing: [], signed: false }],
+	});
+	assert.equal(output.split("\n")[4], String.raw`| abc123 | a\\\|b\\\|c\\\\d\|e | no proposal |`);
+});
 
 test("provider domains come from the model id prefix, then the provider, then the fallback", () => {
 	assert.equal(providerDomain("gpt-5.6-sol"), "openai.com");

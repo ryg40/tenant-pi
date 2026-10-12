@@ -152,7 +152,7 @@ export function planTrailers(dir: string, options: TrailerOptions, cfg: Slopscor
 	};
 }
 
-const cell = (value: string) => value.replace(/[\u0000-\u001f\u007f]/g, "?").replace(/\|/g, "\\|").slice(0, 120);
+const cell = (value: string) => value.replace(/[\u0000-\u001f\u007f]/g, "?").replace(/\\/g, "\\\\").replace(/\|/g, "\\|").slice(0, 120);
 
 function renderTrailerTable(plan: TrailerPlan): string[] {
 	return [

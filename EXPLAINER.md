@@ -95,7 +95,7 @@ Linux is the first target. The kit steps have offline tests; see the status in [
 | Tenantext extensions | Filtered package entries in `settings.json`; dependencies under the clone's `packages/tenantext/node_modules/`. | The in-tree package and its npm dependencies; a gateway for `codex-accounts`. |
 | Promptr | A package entry; build output in the clone; profile `promptr/` and project `.promptr/` state. | The in-tree package, npm dependencies and a build. |
 | MCP adapter | `mcp-adapter.json` in the target; input definitions in private `inputs/`; runtime caches and spilled output. | `pi-mcp-adapter`, selected servers and the operating-system keyring for tokens. |
-| Hermes | `hermes-memory-config.json` in the target; runtime `pi-hermes-memory/` and memory files. | `pi-hermes-memory`; a compiler toolchain for `better-sqlite3`. |
+| Hermes | `hermes-memory-config.json` in the target; runtime `pi-hermes-memory/` and memory files. | `pi-hermes-memory` with the native module `better-sqlite3`; a compiler toolchain only when no prebuilt binary fits the platform. |
 | LLM Wiki | Settings in the profile; a vault under `~/.llm-wiki/` or a selected wiki home. | `@zosmaai/pi-llm-wiki`. |
 | OpenViking | A package entry; dependencies in the clone; user configuration under `~/.openviking/` and server memory. | `packages/openviking-pi` and a separately configured OpenViking server. |
 | Knowledge and coordinator skills | Filtered skill package entries. External tools can write outside the profile. | The in-tree skills and the external tools that each skill names. |
@@ -286,9 +286,14 @@ You see this output, after the lines of `git clone`:
 ----------------------------------------------------------------------
 Ran <count> tests in <seconds>s
 
-OK (skipped=1)
+OK (skipped=<n>)
 publish set valid: <count> files, <count> explicit (not a release approval)
 ```
+
+The last test line starts with `OK`; a skipped-test count is expected and depends on the client.
+Observed on three client types: root with Docker and Node skips 1 test.
+A non-root client with Node and without Docker skips 4 tests.
+A client without Node skips 7 tests.
 
 Run each later command of this document from the clone directory.
 
@@ -643,7 +648,7 @@ JSON valid
 | `endpoints` | `{}` | An HTTPS address for an enabled component, for example a gateway. |
 | `env` | `{}` | A reference of the form `${NAME}` for an enabled component. Never a value. |
 | `inputs` | both `null` | The fixed names of the input files of optional modules. `null` means no file. |
-| `consent` | each `false` | Three switches: `memoryCapture`, `remoteMemoryWrites` and `telemetry`. |
+| `consent` | each `false` | Three switches: `memoryCapture`, `remoteMemoryWrites` and `telemetry`. Setting `telemetry` to `true` stops CLI `validate` with `telemetry_activation_unavailable: overlay.consent.telemetry`. |
 
 Five more keys are optional: `modelRoutes`, `memory`, `ownerPackages`, `ownerResources` and `unmanaged`. `overlay()` in `scripts/validate.py` has each rule. [The module guide](docs/guides/modules.md) says which keys each module needs.
 
@@ -1133,7 +1138,7 @@ You see `set` or `unset`.
 
 #### Not touched
 
-- The kit reads no credential file or credential value. `init-private`, `baseline`, `validate`, `plan`, `generate`, `check-wiki-vault` and `results` read `HOME`, and `WIKI_HOME` for the place of a wiki vault only. The exception is `plan`: it also tests known provider key variable names, without reading values. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable).
+- The kit reads no credential file or credential value. Its path guards and vault check read `HOME` and `WIKI_HOME`, including the guards of `compose-plan --write`. `plan` also tests known provider key names for presence. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable). `check-runtime` and `check-herdr` pass the caller's environment to their child processes.
 - `check-runtime` reads `PATH` to find the tools, and `TMPDIR` (or `TEMP` or `TMP`) for its temporary directory. It passes the whole environment of the shell to the three `--version` processes, with `PI_CODING_AGENT_DIR` replaced for Pi. So a provider key that the shell exports reaches these three processes.
 - The other actions read no environment value.
 - `auth.json` of the live profile. The kit copies no login from one profile to another, so the new profile starts with no login.
@@ -1165,6 +1170,7 @@ Run the command also when step 1 printed `absent`. The baseline then records tha
 Two more cases:
 
 - When step 1 printed `PI_CODING_AGENT_DIR` or `PI_CODING_AGENT_SESSION_DIR`, record one more baseline for each such directory. Give each its own `--dir` and its own `--out` file.
+- The session-directory comparison proves separation only after a session with a prompt. Observed with Pi 1.1.0: a launch without a prompt writes no session file, even without `env -u PI_CODING_AGENT_SESSION_DIR`.
 - When `~/.pi/agent` or a directory above it is a symbolic link, the action stops with `not_directory: baseline.dir`. Run `realpath "$HOME/.pi/agent"`, and give that path as `--dir` here and in step 14.
 
 See [the setup guide](docs/guides/setup.md#stage-8-launch) for both cases.
@@ -1295,7 +1301,9 @@ Pi can write these entries into the target after a login and a prompt. Not verif
 
 The list is not exhaustive. Pi can create more entries, for example `npm/` and the state directories of extensions; see [INSTALL.md](INSTALL.md#checks).
 
-The purpose of `bin/` comes from a reading of the installed Pi 1.0.2 package (`dist/config.js` and `dist/utils/tools-manager.js`). Not verified: the same in another Pi version, the content of `models-store.json`, and the keys that Pi added to `settings.json`. The kit opens none of these files.
+Observed with Pi 1.1.0: the first launch downloads `fd` and `ripgrep` into `<target>/bin/`. This download needs network access and prints four lines. Pi adds `lastChangelogVersion` to `settings.json`.
+Not verified: this behaviour in other Pi versions and the content of `models-store.json`.
+The kit opens none of these runtime data files during generation.
 
 Pi can change `settings.json` after each command that changes a setting. The kit does not write the file again. To see the difference between two profiles, use the `compare` action; see [the candidate update guide](docs/guides/candidate-update.md#after-a-native-pi-operation).
 
@@ -1529,7 +1537,7 @@ The launcher sets `PI_MCP_CONFIG_MODE=exclusive`. Tokens can use the operating-s
 
 Status: manifest `tested`, runtime `unverified`. Hermes adds `hermes-memory-config.json`, then runtime memory files under the profile.
 Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together. The checklist of the install flow marks `hermes`; the consent key is written only when you keep the mark.
-It needs `pi-hermes-memory` and a compiler toolchain for `better-sqlite3`.
+It needs `pi-hermes-memory`, which uses the native module `better-sqlite3`. A compiler toolchain is necessary only when no prebuilt binary fits the platform and the Node version.
 `backgroundReview: true` also needs `roles.memory` and permits independent model calls.
 
 ### LLM Wiki
@@ -1557,6 +1565,9 @@ The component READMEs list the [knowledge skills](packages/tenantext/skills/know
 and [coordinator skills](packages/tenantext/skills/coordinator-skills/README.md).
 The user command [get-status](packages/tenantext/skills/coordinator-skills/get-status/SKILL.md) gathers a status bundle and hands it to a Herdr coordinator.
 It closes the sending pane only after confirmed `go` delivery. Not verified: a live handoff with the pane close.
+The user command [dummies](packages/tenantext/skills/coordinator-skills/dummies/SKILL.md) turns a report form for a junior developer on or off for one harness.
+When it is on, a coordinator session also adds one entry to a human session log in OpenKnowledge through the `okknow` command.
+Its state file is in the configuration directory of the user. Not verified: the command in a live session, and a write to a live knowledge base.
 Herdr, `slopscore-pr` and `tracker-site` are separate selectable skills. Their external state can stay outside the profile.
 
 ### Herdr and the question tool

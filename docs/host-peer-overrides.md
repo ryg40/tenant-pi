@@ -12,13 +12,15 @@ Warning: Extension package ".../package.json": Host-provided extension packages 
 peerDependencies with a "*" range, not dependencies: typebox.
 ```
 
-An installed copy can bypass the extension loader and create a duplicate runtime module. These published packages have the defect at the versions of the table:
+An installed copy can bypass the extension loader and create a duplicate runtime module. These published packages had the defect at the versions of the table:
 
 | Package | Version checked | Module to move to `peerDependencies` |
 | --- | --- | --- |
 | `pi-hermes-memory` | 0.9.9 | `@earendil-works/pi-tui` |
 | `@juicesharp/rpiv-ask-user-question` | 2.11.0 | `typebox` |
 | `@zosmaai/pi-llm-wiki` | 0.12.4 | `@earendil-works/pi-tui`, `typebox` |
+
+Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, and the script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 lists `typebox` under `dependencies`, and the script corrects it. The script keeps all three packages in its list: a later version of a package can list a host module under `dependencies` again.
 
 `pi-hermes-memory` and `@zosmaai/pi-llm-wiki` are the sources of the optional `hermes` and `wiki` modules of this kit. `@juicesharp/rpiv-ask-user-question` is the source of the optional `questions` component. The script skips a package that is not installed.
 
@@ -27,9 +29,14 @@ An installed copy can bypass the extension loader and create a duplicate runtime
 `scripts/patch_extension_peers.mjs` edits only the installed `package.json` of each listed package. It removes the named module from `dependencies` and sets it to `"*"` in `peerDependencies`. It changes no package code, no lockfile, and no other package. It is offline and safe to run again. When a package author publishes a fix, the script makes no change for that package.
 
 ```sh
+# Run from the kit root.
 node scripts/patch_extension_peers.mjs                 # <agent-dir>/npm; honours PI_CODING_AGENT_DIR
 node scripts/patch_extension_peers.mjs /path/to/npm    # an explicit npm root
 ```
+
+The plan prints the line for one profile with the absolute path of the script, so that line runs from each directory: `PI_CODING_AGENT_DIR=<target> node <kit>/scripts/patch_extension_peers.mjs`. Run the line as the plan prints it.
+
+The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no listed manifest needs a correction: the package is not installed, or its manifest has each named module only under `peerDependencies` with the range `"*"`. The script ends with exit code 0 in both cases, so a run that prints nothing does not show that a manifest was correct before. The proof is a start of Pi that prints no peer warning.
 
 Restart Pi after a change. The script needs Node 18 or later.
 

@@ -268,8 +268,33 @@ test("network, malformed stream and setup errors suppress raw details", async ()
 	assert.equal(result.errorMessage, GATEWAY_ERROR);
 });
 
+// These tests pin current behavior: a thrown request error has no HTTP status, so it gets no class.
+// They pass on the old code too.
+for (const [name, detail] of [
+	["interruption marker", "MidStreamFallbackError: private request detail"],
+	["plain error", "private request detail"],
+]) {
+	test(`thrown request preservation (${name}) keeps the generic message without retries`, async () => {
+		let calls = 0;
+		const result = await retryAssistantCall(() => gatewayStream(model, history, {
+			apiKey: "fixture-only", maxRetries: 0,
+			fetch: async () => { calls++; throw new Error(detail); },
+		}).result(), { enabled: true, maxRetries: 3, baseDelayMs: 0 }, undefined);
+		assert.equal(result.errorMessage, GATEWAY_ERROR);
+		assert.equal(result.stopReason, "error");
+		assert.equal(isRetryableAssistantError(result), false);
+		assert.equal(calls, 1);
+		assert.doesNotMatch(result.errorMessage!, /private request detail|MidStreamFallbackError/);
+	});
+}
+
 test("HTTP failures retain safe status messages and Pi retry classification", async () => {
-	for (const status of [400, 401, 403, 404, 408, 409, 422, 429, 500, 502, 503, 504]) {
+	const cases: Array<[number, boolean]> = [
+		[400, false], [401, false], [403, false], [404, false], [408, true], [409, false],
+		[422, false], [429, true], [500, true], [502, true], [503, true], [504, true],
+		[520, true], [524, true], [501, false], [599, false], [418, false],
+	];
+	for (const [status, retryable] of cases) {
 		const result = await gatewayStream(model, history, {
 			apiKey: "fixture-only", maxRetries: 0,
 			fetch: async () => new Response("private credential or prompt detail", { status }),
@@ -277,9 +302,82 @@ test("HTTP failures retain safe status messages and Pi retry classification", as
 		assert.equal(result.errorMessage, gatewayHttpError(status));
 		assert.match(result.errorMessage!, new RegExp(`HTTP ${status}`));
 		assert.ok(!JSON.stringify(result).includes("private"));
-		assert.equal(isRetryableAssistantError(result), [408, 429, 500, 502, 503, 504].includes(status));
+		assert.equal(isRetryableAssistantError(result), retryable);
 	}
 });
+
+const classifiedHttpErrors: Array<[number, string]> = [
+	[400, "Codex gateway rejected the request (HTTP 400; client error). Check model parameters."],
+	[401, "Codex gateway denied access (HTTP 401; authentication). Check gateway and account authentication."],
+	[403, "Codex gateway denied access (HTTP 403; authentication). Check gateway and account authentication."],
+	[404, "Codex gateway route not found (HTTP 404; client error). Check the endpoint and model."],
+	[408, "Codex gateway request timed out before streaming (HTTP 408; client error)."],
+	[409, "Codex gateway rejected an account-scoped continuation (HTTP 409; client error). Send full history or use an explicit account route."],
+	[422, "Codex gateway rejected the request (HTTP 422; client error). Check model parameters."],
+	[429, "Codex gateway reports a rate or account limit (HTTP 429; rate limit). Wait for the limit to reset."],
+	[500, "Codex gateway or upstream service is unavailable before streaming (HTTP 500; upstream error)."],
+	[502, "Codex gateway or upstream service is unavailable before streaming (HTTP 502; upstream error)."],
+	[503, "Codex gateway or upstream service is unavailable before streaming (HTTP 503; upstream error)."],
+	[504, "Codex gateway request timed out before streaming (HTTP 504; upstream error)."],
+	[418, "Codex gateway rejected the request (HTTP 418; client error)."],
+	[499, "Codex gateway rejected the request (HTTP 499; client error)."],
+	[501, "Codex gateway request failed (HTTP 501; upstream error)."],
+	[599, "Codex gateway request failed (HTTP 599; upstream error)."],
+];
+for (const [status, expected] of classifiedHttpErrors) {
+	test(`gateway classification names HTTP ${status} without upstream details`, async () => {
+		const detail = "MidStreamFallbackError: Bearer fixture-secret; account=private-account; upstream=private.invalid";
+		assert.equal(gatewayHttpError(status, detail), expected);
+		const result = await gatewayStream(model, history, {
+			apiKey: "fixture-only", maxRetries: 0,
+			fetch: async () => new Response(detail, { status }),
+		}).result();
+		assert.equal(result.stopReason, "error");
+		assert.equal(result.errorMessage, expected);
+		assert.doesNotMatch(JSON.stringify(result), /fixture-secret|private-account|private\.invalid|MidStreamFallbackError/);
+	});
+}
+
+for (const detail of [
+	"litellm.MidStreamFallbackError: private-account at private.invalid; Bearer fixture-secret",
+	"Response payload is not completed; private-account at private.invalid; Bearer fixture-secret",
+	"MidStreamFallbackError: Response payload is not completed; HTTP 503 service unavailable; private-account; Bearer fixture-secret",
+]) {
+	for (const partial of [false, true]) {
+		test(`gateway classification names interrupted streams (${detail.split(":")[0].split(";")[0]}, partial=${partial})`, async () => {
+			const expected = "Codex gateway response failed (interrupted stream). The response is incomplete.";
+			assert.equal(gatewayHttpError(200, detail), expected);
+			assert.equal(gatewayHttpError(undefined, detail), expected);
+			for (const status of [undefined, 200, 399, 600, NaN, 401.5]) {
+				assert.equal(gatewayHttpError(status, "unrecognized private-account; Bearer fixture-secret"), GATEWAY_ERROR);
+			}
+			let calls = 0;
+			const errors: string[] = [];
+			const result = await retryAssistantCall(async () => {
+				const stream = gatewayStream(model, history, {
+					apiKey: "fixture-only", maxRetries: 0,
+					fetch: async () => {
+						calls++;
+						const chunk = { choices: [{ index: 0, delta: { content: "Partial output" }, finish_reason: null }] };
+						const prefix = partial ? `data: ${JSON.stringify(chunk)}\n\n` : "";
+						return new Response(`${prefix}data: ${JSON.stringify({ error: { message: detail } })}\n\n`, {
+							headers: { "content-type": "text/event-stream" },
+						});
+					},
+				});
+				for await (const event of stream) if (event.type === "error") errors.push(event.error.errorMessage!);
+				return stream.result();
+			}, { enabled: true, maxRetries: 3, baseDelayMs: 0 }, undefined);
+			assert.equal(result.stopReason, "error");
+			assert.equal(result.errorMessage, expected);
+			assert.deepEqual(errors, [expected]);
+			assert.equal(calls, 1);
+			assert.equal(isRetryableAssistantError(result), false);
+			assert.equal(result.content.some((part) => part.type === "text" && part.text === "Partial output"), partial);
+			assert.doesNotMatch(JSON.stringify(result), /fixture-secret|private-account|private\.invalid|MidStreamFallbackError|Response payload|503/);
+		});
+	}
+}
 
 test("Pi recovers from an Astra xhigh 503 using its existing retry policy", async () => {
 	let calls = 0;

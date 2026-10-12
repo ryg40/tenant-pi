@@ -128,6 +128,13 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(["herdr-relay", "ops-footer"], result["answers"]["components"])
         overlay(result["overlay"], KNOWN)
 
+    def test_no_command_holds_a_path_of_this_machine_or_a_setup_line_of_the_local_plan(self):
+        # The seat makes its own plan inside the container. The compose plan takes no setup line of `plan`,
+        # whose peer override line holds the absolute script path of the local clone.
+        text = json.dumps(plan(components=["questions"]))
+        self.assertNotIn(str(ROOT), text)
+        self.assertNotIn("patch_extension_peers", text)
+
     def test_the_key_name_is_the_same_in_the_three_places(self):
         result = plan()
         self.assertEqual("${" + KEY_VAR + "}", result["overlay"]["env"]["codex-accounts"])

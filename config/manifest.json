@@ -608,6 +608,7 @@
           "skills/coordinator-skills/show-me",
           "skills/coordinator-skills/retro",
           "skills/coordinator-skills/get-status",
+          "skills/coordinator-skills/dummies",
           "skills/coordinator-skills/writing-for-agents"
         ],
         "prompts": [],
@@ -623,7 +624,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research task, a prototype task and get-status need the herdr skill and the herdr CLI; the wayfinder, research, prototype and get-status skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
+          "fact": "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research task, a prototype task and get-status need the herdr skill and the herdr CLI; the wayfinder, research, prototype and get-status skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The dummies skill keeps its log page through the okknow command of OpenKnowledge and reads the role of a pane from the herdr CLI; the kit does not install or check them, and without the okknow command the skill writes no log. The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
         },
         {
           "code": "kit_test_missing",
@@ -679,6 +680,10 @@
           {
             "file": "settings.json",
             "key": "package:packages/tenantext:skills/coordinator-skills/get-status"
+          },
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:skills/coordinator-skills/dummies"
           },
           {
             "file": "settings.json",

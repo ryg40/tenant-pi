@@ -632,7 +632,7 @@ class GuideTests(unittest.TestCase):
     FIRST = 'for d in "$HOME/.pi/agent" "${PI_CODING_AGENT_DIR:-}"; do'
     TEXT = ('tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.config/tenant-pi/live-baseline.json"',
             'tenant_pi.py check-baseline --dir "$HOME/.pi/agent" --baseline "$HOME/.config/tenant-pi/live-baseline.json"',
-            "`unchanged`", "`changed`", "`no_baseline`", "not verified", "No line is not `absent`",
+            "`unchanged`", "`changed`", "`no_baseline`", "not verified", "A missing output line does not mean `absent`.",
             "A Pi", "second baseline", "target_exists: baseline.out")
     # The old command printed nothing for an absent directory.
     ABSENT = ("ls -d ~/.pi/agent", "Nothing new appear", "Nothing appeared in `~/.pi/agent`")

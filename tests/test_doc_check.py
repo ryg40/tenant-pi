@@ -516,6 +516,20 @@ class InstallFlowTests(unittest.TestCase):
             order = [text.index(self.TEXT[index]) for index in (0, 1, 3)]
             self.assertEqual(sorted(order), order, name)
 
+    def test_each_text_shows_the_peer_override_line_with_the_path_of_the_clone(self):
+        # The plan prints the absolute path of the script. A relative path runs only from the kit root.
+        shown = re.compile(r"PI_CODING_AGENT_DIR=\S+ node (\S+)")
+        for name in (*self.DOCS, "docs/guides/setup.md", "POST_INSTALL.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            with self.subTest(name=name):
+                self.assertNotIn("node scripts/patch_extension_peers.mjs", text)
+                paths = shown.findall(text)
+                self.assertTrue(paths)
+                for path in paths:
+                    self.assertIn(path, ("<clone>/scripts/patch_extension_peers.mjs",
+                                         '"$HOME/tenant-pi/scripts/patch_extension_peers.mjs"'))
+                self.assertIn("absolute path of the script of the clone", text)
+
     def test_no_guide_holds_a_copy_of_the_component_list(self):
         ids = [re.compile(r"(?<![\w-])" + re.escape(cid) + r"(?![\w-])") for cid in self.components]
         for name, text in self.texts.items():

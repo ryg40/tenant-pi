@@ -1,0 +1,5 @@
+interface:
+  display_name: "Dummies"
+  short_description: "Junior-developer report and session log switch"
+policy:
+  allow_implicit_invocation: false

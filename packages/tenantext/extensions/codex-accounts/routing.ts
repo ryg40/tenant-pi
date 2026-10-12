@@ -17,18 +17,26 @@ export const FALLBACK_API_PRICES = {
 	sol: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
 	astra: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
 } as const;
-export const CONTINUATION_ERROR = "Codex gateway rejected an account-scoped continuation (HTTP 409). Send full history or use an explicit account route.";
+export const CONTINUATION_ERROR = "Codex gateway rejected an account-scoped continuation (HTTP 409; client error). Send full history or use an explicit account route.";
 export const GATEWAY_ERROR = "Codex gateway request failed. Check configuration, account limits, and gateway availability.";
 
 // Pi classifies retries from errorMessage. Keep status, never upstream bodies.
-export function gatewayHttpError(status: number | undefined): string {
+export function gatewayHttpError(status: number | undefined, detail?: string): string {
 	if (status === 409) return CONTINUATION_ERROR;
-	if (status === 400 || status === 422) return `Codex gateway rejected the request (HTTP ${status}). Check model parameters.`;
-	if (status === 401 || status === 403) return `Codex gateway denied access (HTTP ${status}). Check gateway and account authentication.`;
-	if (status === 404) return "Codex gateway route not found (HTTP 404). Check the endpoint and model.";
-	if (status === 429) return "Codex gateway reports a rate or account limit (HTTP 429). Wait for the limit to reset.";
-	if (status === 408 || status === 504) return `Codex gateway request timed out before streaming (HTTP ${status}).`;
-	if (status === 500 || status === 502 || status === 503) return `Codex gateway or upstream service is unavailable before streaming (HTTP ${status}).`;
+	if (status === 400 || status === 422) return `Codex gateway rejected the request (HTTP ${status}; client error). Check model parameters.`;
+	if (status === 401 || status === 403) return `Codex gateway denied access (HTTP ${status}; authentication). Check gateway and account authentication.`;
+	if (status === 404) return "Codex gateway route not found (HTTP 404; client error). Check the endpoint and model.";
+	if (status === 429) return "Codex gateway reports a rate or account limit (HTTP 429; rate limit). Wait for the limit to reset.";
+	if (status === 408 || status === 504) return `Codex gateway request timed out before streaming (HTTP ${status}; ${status === 408 ? "client" : "upstream"} error).`;
+	if (status === 500 || status === 502 || status === 503) return `Codex gateway or upstream service is unavailable before streaming (HTTP ${status}; upstream error).`;
+	if (status !== undefined && Number.isInteger(status)) {
+		if (status >= 400 && status < 500) return `Codex gateway rejected the request (HTTP ${status}; client error).`;
+		if (status >= 500 && status < 600) return `Codex gateway request failed (HTTP ${status}; upstream error).`;
+	}
+	// Match only known markers. Do not copy details or make partial streams retryable.
+	if (detail && /\bMidStreamFallbackError\b|\bResponse payload is not completed\b/i.test(detail)) {
+		return "Codex gateway response failed (interrupted stream). The response is incomplete.";
+	}
 	return GATEWAY_ERROR;
 }
 
@@ -109,12 +117,13 @@ export const gatewayStream: typeof streamSimple = (model, context, options) => {
 	void (async () => {
 		try {
 			for await (const event of streamSimple({ ...model, samplingParams: safeSampling(model.samplingParams) }, context, safeOptions)) {
-				if (event.type === "error") event.error.errorMessage = gatewayHttpError(status);
+				if (event.type === "error") event.error.errorMessage = gatewayHttpError(status, event.error.errorMessage);
 				output.push(event);
 			}
-		} catch {
+		} catch (cause) {
+			const detail = cause instanceof Error ? `${cause.name}: ${cause.message}` : typeof cause === "string" ? cause : undefined;
 			const error: AssistantMessage = { role: "assistant", content: [], api: model.api, provider: model.provider, model: model.id,
-				stopReason: options?.signal?.aborted ? "aborted" : "error", timestamp: Date.now(), errorMessage: GATEWAY_ERROR,
+				stopReason: options?.signal?.aborted ? "aborted" : "error", timestamp: Date.now(), errorMessage: gatewayHttpError(status, detail),
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
 					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } };
 			output.push({ type: "error", reason: error.stopReason as "error" | "aborted", error });

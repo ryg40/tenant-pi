@@ -88,6 +88,6 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 - `scripts/publish_portable.py` publishes the reviewed publish set as a portable snapshot branch.
 - No install, capture, update or live service command exists. `scripts/capture.py` and `scripts/install.py` stop at once with retirement messages.
 
-Pi warns about extension packages that list host-provided modules under `dependencies`. The warning was observed on Pi 0.99.x. With the kit pin in `config/manifest.json`, key `runtime.piVersion`, it was observed for `typebox` in the question extension. `scripts/patch_extension_peers.mjs` corrects the installed manifests. See [host peer overrides](docs/host-peer-overrides.md) for the packages and for how to reapply it after each extension update.
+Pi warns about extension packages that list host-provided modules under `dependencies`. The warning was observed on Pi 0.99.x. With the kit pin in `config/manifest.json`, key `runtime.piVersion`, it was observed for `typebox` in the question extension. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the script makes no change for them. `scripts/patch_extension_peers.mjs` corrects the installed manifests. See [host peer overrides](docs/host-peer-overrides.md) for the packages and for how to reapply it after each extension update.
 
 Warning: `.local/` may contain private client state. Its Git ignore rule is not a security or publication control.

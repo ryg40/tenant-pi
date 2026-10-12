@@ -1,6 +1,6 @@
 # OpenViking Memory Extension for Pi Coding Agent
 
-> Vendored from a fork of OpenViking's `examples/pi-coding-agent-extension`, at fork commit `e9b05366` (`e9b053666a52fd02975017f0dc56e59719ff5529`), package version 0.4.3. This is not a commit of the public `volcengine/OpenViking` repository. Its upstream merge base is `c9a869cb` (`c9a869cb145aac98f4be1586da32174d220c8800`). The nine fork-edited files and four behaviour changes appear in [Local fork: differences](#local-fork-differences).
+> Vendored from a fork of OpenViking's `examples/pi-coding-agent-extension`, at fork commit `5f25a844` (`5f25a8445fe0c36db4ca72cc5430bd3ed1166914`), package version 0.4.9. This is not a commit of the public `volcengine/OpenViking` repository. Its upstream merge base is `b20f192e` (`b20f192e61393e10fc9945306edf69fc25a58abe`). The 14 fork-edited files and five behaviour changes appear in [Local fork: differences](#local-fork-differences).
 >
 > The upstream `examples/` directory uses Apache-2.0; its `LICENSE` is vendored here. The OpenViking repository root uses AGPL-3.0. The `shared/` directory contains generated copies from `examples/memory-plugin-shared/lib/` at the fork commit, with a generated-file header on each file. Kit changes are this banner, README link and licence corrections, the shortened fork section, and the added `LICENSE`. Update through the kit; see its `docs/memory-modules.md`. The kit profile declares this package, so the upstream installation steps below do not apply to the kit copy.
 >
@@ -156,6 +156,8 @@ All fields below live in `ovcli.conf`'s `plugin` section, or in the `plugin.pi` 
 | `recallLimit`            | `10`       | Legacy quota-scaling input converted to six coding quotas, not a final cap |
 | `scoreThreshold`         | `0.35`     | Min relevance score (0–1)                                                |
 | `minQueryLength`         | `3`        | Skip recall for queries shorter than N characters                        |
+| `recallQueryFilters`     | `[]`       | sed-style rules applied to the prompt before recall (`s///`, `d//`, `k//`) |
+| `recallExcludeUris`      | `[]`       | URIs the recall search must never return (sent as `exclude_uris`)        |
 | `recallLedger`           | `true`     | Persist injected blocks and re-apply them to historical user messages so provider prompt-prefix caches keep hitting |
 
 ### Recall injection ledger
@@ -332,6 +334,8 @@ Against a current server, that is these 15:
 
 That table is a snapshot of one server, not a contract; `/viking` reports how many tools registered against your own.
 
+The extension also ships the `openviking-memory`, `openviking-skills`, and `ov-experience-memory` skills, which tell the model when to use which of these tools. It adds them through pi's `resources_discover` event, and leaves them out when `mcpEnabled` is `false`.
+
 The canonical `/viking` command (type `/viking` in pi's chat) displays connection status, session info, how many tools registered — or the handshake error when none did — and accepts `commit` for manual synchronous commit.
 
 ## Upgrading from 0.3.x
@@ -360,19 +364,24 @@ A failed handshake never fails startup: recall, session sync and takeover keep w
 
 ## Local fork: differences
 
-The fork commit `e9b05366` differs from upstream merge base `c9a869cb` in nine files, relative to `examples/pi-coding-agent-extension/`:
+The fork commit `5f25a844` differs from upstream merge base `b20f192e` in 14 files, relative to `examples/pi-coding-agent-extension/`:
 
 - `README.md`
 - `config.ts`
 - `index.ts`
-- `sync.ts`
 - `lib/capture-adapter.mjs`
 - `lib/capture-utils-local.mjs`
+- `package-lock.json`
+- `package.json`
+- `skills/openviking-memory/SKILL.md`
+- `skills/openviking-skills/SKILL.md`
+- `skills/ov-experience-memory/SKILL.md`
+- `sync.ts`
 - `tests/capture-adapter.test.mjs`
 - `tests/config.test.mjs`
 - `tests/sync-barrier.test.mjs`
 
-The fork changes four behaviours:
+The fork changes five behaviours:
 
 - `takeoverEnabled` defaults to `false` (`loadLocalConfig` in `config.ts`).
   Takeover runs only when a configuration layer or `OPENVIKING_TAKEOVER` turns
@@ -386,6 +395,9 @@ The fork changes four behaviours:
   `ov-sync-watermark` custom entry, so a `pi -c` process does not resend the
   whole branch, and `ensureSession` reads the session with `auto_create` and
   fails closed when the server cannot create or read it (`sync.ts`, `index.ts`).
+- The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
+
+The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.2.0`.
 
 The kit copy of this extension is updated through the kit, not by a copy into
 `~/.pi/agent/extensions/`; see `docs/memory-modules.md` of the kit.
@@ -434,6 +446,7 @@ pi-coding-agent-extension/
 ├── lib/takeover-core.mjs # Pure context-takeover state machine
 ├── lib/recall-ledger.mjs # Injected recall blocks, replayed to keep prompt caches warm
 ├── index.ts             # Extension entry point (event handlers + /viking command)
+├── skills/              # generated by memory-plugin-shared/sync.mjs
 ├── package.json         # Name and version (the User-Agent's, and the release gate's)
 ├── DESIGN.md            # Module-by-module design, including context takeover
 └── README.md
@@ -451,6 +464,7 @@ TypeScript is loaded directly by pi's jiti transpiler. The official MCP client i
 | Extension crashes on load               | Wrong OV server URL or network issue                 | Check `logLevel` and server accessibility                   |
 | No memories extracted                   | Wrong embedding/extraction model in OV config        | Check OV's `embedding` / `vlm` configuration                |
 | Takeover never advances                  | Pending addMessage replay or commit failed, or the archive summary never arrives (Working Memory disabled on the server) | Set `OPENVIKING_DEBUG_LOG=/tmp/ov-pi.log` and retry `/viking commit` |
+| `/viking commit`: `nothing new to archive … (all_within_keep_window)` | The server already archived everything older than the last `takeoverKeepRecentTurns` user turns (an earlier archive whose summary failed, a native-compaction archive, or a 0.3.x commit) | Nothing to fix; the next commit archives once more user turns accumulate. If it follows `archive_NNN failed on the server`, check the server log for the Phase 2 (Working Memory) error |
 
 ## License
 

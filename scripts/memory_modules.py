@@ -208,6 +208,10 @@ def _package(components, cid):
     source = components[cid]["source"]
     # Pi takes a local package as a plain path; a tree package directory is inside this kit.
     name = str(ROOT / source["path"]) if source["kind"] == "tree" else "npm:" + source["spec"]
+    if cid == "openviking":
+        # Pi resolves a local file directly. A filter cannot expose this package's
+        # top-level index.ts without a pi manifest or an extensions directory.
+        name += "/index.ts"
     return {"source": name, **copy.deepcopy(components[cid]["resources"])}
 
 

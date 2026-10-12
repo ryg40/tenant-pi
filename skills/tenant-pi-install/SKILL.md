@@ -133,12 +133,12 @@ Done when it reports `match` or `untested_in_range` for `pi`. Record the gap for
 
 Goal: a private JSON overlay outside the repository that names the target, and an absent target directory.
 
-Ask first: "Where should the new profile live?" It must be an absolute path whose parent exists and is owned by the user; the last segment must not exist. Recommend a directory beside `~/.pi/agent`, not inside it, for example `~/.pi/profiles/<name>`. If the parent does not exist, show `mkdir -p ~/.pi/profiles` and ask before running it.
+Ask first: "Where should the new profile live?" It must be an absolute path whose parent exists and is owned by the user; the last segment must not exist. Recommend a directory beside `~/.pi/agent`, not inside it, for example `~/.pi/profiles/<name>`. If the parent does not exist, show `mkdir -p -m 700 "$HOME/.pi" "$HOME/.pi/profiles"` and ask before running it.
 
 Create the private directory with the `init-private` action, and give it the target with `--target`. Show, then ask before running:
 
 ```sh
-mkdir -p "$HOME/.config"
+mkdir -p -m 700 "$HOME/.config"
 python3 scripts/tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/<name>"
 ```
 

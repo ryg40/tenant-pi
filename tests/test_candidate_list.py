@@ -286,7 +286,8 @@ class ListCliTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="tenant-pi-list-cli-") as temp:
             base = Path(temp).resolve()
             parent = base / "candidates"
-            (parent / "plain").mkdir(parents=True)
+            parent.mkdir(mode=0o700)
+            (parent / "plain").mkdir(mode=0o700)
             (parent / "linked").symlink_to(base, target_is_directory=True)
             generated = parent / "generated"
             overlay = load(ROOT / "config/config.example.json")

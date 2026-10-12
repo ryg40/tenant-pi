@@ -169,7 +169,7 @@ cd "$HOME/tenant-pi"
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 
-mkdir -p "$HOME/.config" "$HOME/.pi/profiles"
+mkdir -p -m 700 "$HOME/.config" "$HOME/.pi" "$HOME/.pi/profiles"
 python3 scripts/tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/main"
 python3 scripts/tenant_pi.py validate --overlay "$HOME/.config/tenant-pi/overlay.json"
 python3 scripts/tenant_pi.py check-runtime > "$HOME/.config/tenant-pi/runtime.json"
@@ -464,7 +464,7 @@ See [the runtime version check](docs/check-runtime.md) for the version grammar a
 The kit creates the directory that holds your choices and your records. With `--target`, the new overlay already names the target, so a core-only profile needs no edit. The parent directory must exist: the kit does not create a parent.
 
 ```sh
-mkdir -p "$HOME/.config"
+mkdir -p -m 700 "$HOME/.config"
 python3 scripts/tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/main"
 ```
 
@@ -528,7 +528,7 @@ An exclusive create prevents replacement of an existing entry. The kit writes th
 
 | Path | Mode | Content | Writer |
 | --- | --- | --- | --- |
-| `~/.config/` | from your umask | Created by `mkdir -p` when it is absent. | you |
+| `~/.config/` | `0700` | Created by `mkdir -p -m 700` when it is absent. | you |
 | `~/.config/tenant-pi/` | `0700` | The private directory. | the kit |
 | `~/.config/tenant-pi/overlay.json` | `0600` | `config/config.example.json`, with your target as `target.agentDir`. One line differs from the example. | the kit; later only you |
 | `~/.config/tenant-pi/registry.json` | `0600` | `{}`. Evidence for model choices. A core-only profile does not use it. | the kit; later only you |
@@ -572,7 +572,7 @@ See [the private directory](docs/private-directory.md) for each refusal.
 The kit creates the target directory in step 9, and only that one directory. You create its parent now. Put the parent beside the live profile, not inside it.
 
 ```sh
-mkdir -p "$HOME/.pi/profiles"
+mkdir -p -m 700 "$HOME/.pi" "$HOME/.pi/profiles"
 ```
 
 You see no output. The command creates the parent when it is absent.
@@ -581,7 +581,7 @@ You see no output. The command creates the parent when it is absent.
 
 | Piece | Detail |
 | --- | --- |
-| Files created | `~/.pi/` when absent, and `~/.pi/profiles/`; modes follow your umask. |
+| Files created | `~/.pi/` and `~/.pi/profiles/`, mode `0700`, created by `mkdir -p -m 700` when absent. |
 | Not touched | Existing parent contents and the live profile. |
 | Reason | The kit creates only the target itself, never its parents. |
 
@@ -589,8 +589,8 @@ You see no output. The command creates the parent when it is absent.
 
 | Path | Mode | Writer |
 | --- | --- | --- |
-| `~/.pi/` | from your umask, when it is absent | you |
-| `~/.pi/profiles/` | from your umask | you |
+| `~/.pi/` | `0700`, created by `mkdir -p -m 700` when it is absent | you |
+| `~/.pi/profiles/` | `0700`, created by `mkdir -p -m 700` | you |
 
 The command does not change an existing `~/.pi` and does not touch `~/.pi/agent`.
 
@@ -602,7 +602,7 @@ The guarded writer creates the target itself with an exclusive create, and no di
 | --- | --- |
 | `unsafe_path: target.parents` | The parent does not exist, or a directory above it is a symbolic link. |
 | `unsafe_parent_owner: target.parent` | The parent is not yours. On some machines root owns `~/.pi`. Use another parent then, for example `~/.pi-profiles`. |
-| `unsafe_owner: target.parents`, `unsafe_permissions: target.parents` | A directory above the target belongs to another user, or others can write to it. |
+| `unsafe_owner: target.parents`, `unsafe_permissions: target.parents` | A directory above the target belongs to another user, or its group or others can write to it. |
 
 </details>
 
@@ -1720,7 +1720,7 @@ The table includes the surrounding files, caches and runtime state of a base ins
 | Path | Kind and mode | Writer | Purpose |
 | --- | --- | --- | --- |
 | `~/tenant-pi/` | directory | Git | The clone. Not changed after the clone. |
-| `~/.config/`, `~/.pi/` | directories, mode from your umask | you (steps 4 and 5) | The parents. Only when they were absent before the install. |
+| `~/.config/`, `~/.pi/` | directories, mode `0700` (`mkdir -p -m 700`) | you (steps 4 and 5) | The parents. Only when they were absent before the install. |
 | `~/.config/tenant-pi/` | directory `0700` | the kit (step 4) | The private directory. |
 | `~/.config/tenant-pi/overlay.json` | file `0600` | the kit, then you | Your choices. |
 | `~/.config/tenant-pi/registry.json` | file `0600` | the kit, then you | Model evidence. `{}` for a core-only profile. |

@@ -30,18 +30,18 @@ Each extension and each skill of the packages is one component in `config/manife
 | `promptr-handoff` | `packages/promptr` | `skills/promptr-handoff` | `core`, `promptr` | `unverified` | `skill_use_unverified`, `kit_test_missing` |
 | `promptr-openknowledge-project-pages` | `packages/promptr` | `skills/openknowledge-project-pages` | `core`, `promptr` | `unverified` | `host_service_required`, `skill_use_unverified`, `kit_test_missing` |
 | `promptr-watch-herdr-agents` | `packages/promptr` | `skills/watch-herdr-agents` | `core`, `promptr` | `unverified` | `host_tool_required`, `skill_use_unverified`, `kit_test_missing` |
-| `openviking` | `packages/openviking-pi` | `index.ts` | `core` | `unverified` | `install_step_required`, `server_required`, `package_runtime_unverified`, `kit_test_missing`, `capture_cost_unmeasured` |
+| `openviking` | `packages/openviking-pi` | Local-file source `index.ts`, not a directory filter | `core` | `unverified` | `install_step_required`, `server_required`, `package_runtime_unverified`, `capture_cost_unmeasured` |
 
 Facts for a selection:
 
 - The `components` action prints one line for each component of the manifest, with the names of its extensions and skills, its required IDs and its prerequisites. See [the CLI contract](generator.md#components-the-checklist-of-the-components).
 - `herdr-relay` is optional and disabled by default. No component requires it. Enable `herdr` too when you select it. A kit without the relay directory remains valid while the relay stays disabled. Enabling an absent relay fails with `tree_resource_missing`.
 - An `unverified` component can be enabled. The plan lists each of its gaps as a readiness gap with the component ID as the subject.
-- `openviking` is a memory module: it also needs `consent.memoryCapture`, `consent.remoteMemoryWrites` and a `memory.openviking` block. Its package declaration comes after the other in-tree packages. See [the memory modules](memory-modules.md).
+- `openviking` is a memory module: it also needs `consent.memoryCapture`, `consent.remoteMemoryWrites` and a `memory.openviking` block. Its local-file package declaration names `packages/openviking-pi/index.ts` and comes after the other in-tree packages. See [the memory modules](memory-modules.md).
 - `herdr` holds the skill only. The Herdr application is a host tool: the kit does not install it, and the `check-herdr` action reports the `herdr` command. See [Herdr and the question tool](herdr-setup.md).
 - `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.11.0` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
 - A `blocked` component cannot be enabled. The validator fails with `blocked_component`.
-- A generated profile declares each package one time in `settings.packages`. The `source` is the absolute path of the package directory in this kit. Each enabled component adds only its own entry to the `extensions` or `skills` filter. An empty filter list loads nothing of that kind.
+- A generated profile declares each package one time in `settings.packages`. The `source` is the absolute package directory path, except OpenViking, whose source is the `index.ts` file. For a directory source, each enabled component adds its own `extensions` or `skills` filter entry. An empty directory filter loads nothing of that kind.
 - The profile depends on the location of the kit. If you move the kit, generate a new profile.
 - `codex-accounts` declares `TENANTEXT_LITELLM_BASE_URL` and `TENANTEXT_LITELLM_API_KEY`: `extensions/codex-accounts/routing.ts` reads both. `doctor` declares `TENANTEXT_LITELLM_BASE_URL`: `extensions/doctor/checks.ts` reads it for one information line. `coordinator-skills` declares `GITEA_TOKEN`: the skills `to-spec` and `to-tickets` send it to the Gitea API of the issue tracker.
 - The gateway keys of the overlay are `endpoints.codex-accounts` and `env.codex-accounts`. The old key `tenantext` fails with `moved_key`.
@@ -165,23 +165,41 @@ A vendored copy of the OpenViking memory extension for Pi. It sends session turn
 
 | Item | Value |
 | --- | --- |
-| Source | `packages/openviking-pi`, vendored from a fork of OpenViking's `examples/pi-coding-agent-extension`; fork commit `e9b05366` (`e9b053666a52fd02975017f0dc56e59719ff5529`); package version 0.4.3 |
-| Upstream base | `c9a869cb` (`c9a869cb145aac98f4be1586da32174d220c8800`), the merge base with upstream. The fork commit is not a commit of the public `volcengine/OpenViking` repository. |
+| Source | `packages/openviking-pi`, vendored from a fork of OpenViking's `examples/pi-coding-agent-extension`; fork commit `5f25a844` (`5f25a8445fe0c36db4ca72cc5430bd3ed1166914`); package version 0.4.9 |
+| Upstream base | `b20f192e` (`b20f192e61393e10fc9945306edf69fc25a58abe`), the merge base with upstream. The fork commit is not a commit of the public `volcengine/OpenViking` repository. |
 | License | Apache-2.0 covers upstream `examples/`; its `examples/LICENSE` is vendored as `packages/openviking-pi/LICENSE`. The OpenViking repository root uses AGPL-3.0. |
-| Node | `>=22.19.0` (`engines` in `packages/openviking-pi/package.json`); the kit range is narrower |
-| Dependency | `@modelcontextprotocol/client` `2.0.0`, from the committed `package-lock.json` |
+| Node | `>=24.0.0` (`engines` in `packages/openviking-pi/package.json`); the kit range is narrower |
+| Dependency | `@modelcontextprotocol/client` `2.2.0`, from the committed `package-lock.json` |
 | `shared/` | Committed source: the output of `examples/memory-plugin-shared/sync.mjs` at the same commit. It is not build output, and no rule of `scripts/publish_check.py` treats it as build output. |
 | Publish rule | `("packages/openviking-pi", ("node_modules/", "LICENSE"))`; `packages/openviking-pi/LICENSE` is explicit in `PUBLISH`. |
 | Kit module | `openviking`; fields, consent, outputs and the refresh steps are in [the memory modules](memory-modules.md#openviking-what-the-vendored-source-does) |
 
-The fork edits nine files relative to `examples/pi-coding-agent-extension/`: `README.md`, `config.ts`, `index.ts`, `sync.ts`, `lib/capture-adapter.mjs`, `lib/capture-utils-local.mjs`, `tests/capture-adapter.test.mjs`, `tests/config.test.mjs`, and `tests/sync-barrier.test.mjs`.
+The fork edits 14 files relative to `examples/pi-coding-agent-extension/`:
 
-Its four behaviour changes are:
+- `README.md`
+- `config.ts`
+- `index.ts`
+- `lib/capture-adapter.mjs`
+- `lib/capture-utils-local.mjs`
+- `package-lock.json`
+- `package.json`
+- `skills/openviking-memory/SKILL.md`
+- `skills/openviking-skills/SKILL.md`
+- `skills/ov-experience-memory/SKILL.md`
+- `sync.ts`
+- `tests/capture-adapter.test.mjs`
+- `tests/config.test.mjs`
+- `tests/sync-barrier.test.mjs`
+
+Its five behaviour changes are:
 
 - Context takeover defaults off and requires explicit activation.
 - Tool-result capture defaults off; tool inputs and outputs receive credential redaction in both states.
 - Keyword capture keeps only turns that match a durable-memory trigger.
 - Additive mode persists the capture watermark across resume. Session creation and reads use `auto_create` and fail closed on errors.
+- The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
+
+The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.2.0`.
 
 The [package banner](../packages/openviking-pi/README.md) separates these fork changes from kit-only README edits, the vendored licence, and generated shared files.
 
@@ -198,4 +216,9 @@ npm ci --ignore-scripts
 
 The package has a test suite under `tests/`; `package.json` has no `test` script, so the command is `node --test tests/*.test.mjs` after the install step. The kit checks do not run it. One file, `tests/recall-deferred.test.mjs`, imports a helper from `examples/memory-plugin-shared/testing/` of the OpenViking repository. That helper is not in the kit copy, so this file fails to load here and passes only in an OpenViking checkout. The files under `scripts/` are not repository checks: `e2e-live.mjs` and `e2e-live.sh` need a live server, a Pi and a model, and `setup.mjs` writes credentials to `~/.openviking/`.
 
-Not verified: a start of a generated profile with this package, and `npm ci` on a clean client.
+Under Pi 1.1.0, the generated local-file `packages` entry resolves and loads the OpenViking extension.
+The kit test checks the installed resolver and rejects the former directory form. A no-model start confirms `/viking` registration.
+The package stays at its kit path for dependency resolution. No vendored file or extra profile file changes.
+Capture, recall and tools against a live server remain unverified.
+
+Not verified: a generated profile connected to a live server, and `npm ci` on a clean client.

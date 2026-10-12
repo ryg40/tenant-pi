@@ -168,7 +168,8 @@ class Fixture(unittest.TestCase):
         self.base = Path(temp.name).resolve()
         self.home = self.base / "home"
         self.live = self.home / ".pi" / "agent"
-        self.live.mkdir(parents=True, mode=0o700)
+        for directory in (self.home, self.home / ".pi", self.live):
+            directory.mkdir(mode=0o700)
         self.private = self.home / "private dir"
         self.private.mkdir(mode=0o700)
         self.out = self.private / "live-baseline.json"
@@ -332,6 +333,20 @@ class WriteTests(Fixture):
         self.assertEqual(f"{rule}: {field}", str(caught.exception))
         self.assertEqual(created, getattr(caught.exception, "candidate_created", False))
         self.assertNotIn(str(self.base), str(caught.exception))
+
+    def test_fixture_and_guarded_write_under_group_writable_umask(self):
+        old = os.umask(0o002)
+        try:
+            fixture = Fixture()
+            self.addCleanup(fixture.doCleanups)
+            fixture.setUp()
+            result = write(str(fixture.out), b"private\n")
+            self.assertTrue(result.complete)
+            self.assertEqual(b"private\n", fixture.out.read_bytes())
+            for directory in (fixture.home, fixture.home / ".pi", fixture.live, fixture.private):
+                self.assertEqual(0o700, stat.S_IMODE(directory.stat().st_mode))
+        finally:
+            os.umask(old)
 
     def test_write_creates_mode_0600_and_never_replaces(self):
         old = os.umask(0)

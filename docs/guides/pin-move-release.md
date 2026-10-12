@@ -90,7 +90,7 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
 1. Run qualification outside the clone and outside the live agent directory.
 
    ```sh
-   mkdir -p /tmp/pi-qualification
+   mkdir -p -m 700 /tmp/pi-qualification
    PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir /tmp/pi-qualification > /tmp/pi-qualify.json
    python3 -m json.tool /tmp/pi-qualify.json
    ```

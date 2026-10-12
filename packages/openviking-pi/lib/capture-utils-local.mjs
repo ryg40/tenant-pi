@@ -11,6 +11,7 @@
 //   redacted before they leave the process.
 import {
   extractPartsFromPayload as sharedExtractPartsFromPayload,
+  shapeCapturePayload as sharedShapeCapturePayload,
   shouldCaptureText as sharedShouldCaptureText,
 } from "../shared/capture-utils.mjs";
 
@@ -65,6 +66,30 @@ export function extractPartsFromPayload(payload, options = {}) {
     if (typeof out.tool_output === "string") out.tool_output = redactSensitiveString(out.tool_output);
     return out;
   });
+}
+
+/** Keep shared conversation filters, then apply the local tool and keyword policy. */
+export function shapeCapturePayload(payload, role, cfg = {}, options = {}) {
+  const shaped = sharedShapeCapturePayload(payload, role, cfg, options);
+  if (shaped.dropped) return shaped;
+  const parts = shaped.parts
+    .filter((part) => cfg.captureToolResults === true ||
+      !(part?.type === "tool" && Object.hasOwn(part, "tool_output")))
+    .map((part) => {
+      if (part?.type !== "tool") return part;
+      const out = { ...part };
+      if (out.tool_input !== undefined) out.tool_input = redactSensitive(out.tool_input);
+      if (typeof out.tool_output === "string") out.tool_output = redactSensitiveString(out.tool_output);
+      return out;
+    });
+  const text = shaped.parts.length && !parts.some((part) => part?.type === "text")
+    ? ""
+    : shaped.text;
+  if (!options.faithful && cfg.captureMode === "keyword" &&
+      !shouldCaptureText(text, role, cfg, { filters: false }).shouldCapture) {
+    return { ...shaped, parts: [], text: "", signalText: "", dropped: true };
+  }
+  return { ...shaped, parts, text };
 }
 
 /** The shared capture decision, plus the keyword gate of `captureMode: "keyword"`. */

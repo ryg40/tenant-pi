@@ -120,6 +120,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 Ask which URL when the user has more than one. The clone must not be the target directory. The user must not move or delete the clone later: the generated profile points at `packages/` inside it.
 
 The last test line starts with `OK`; a skipped-test count is expected and depends on the client.
+The tests and the kit commands work with the usual umask values 0002, 022 and 077. The error `unsafe_permissions` means that a directory on the path is writable by its group or by others and has no sticky bit. Check the directory, then remove the write bit with `chmod go-w <directory>`.
 
 Done when the tests pass and the publish check prints `publish set valid`.
 
@@ -456,7 +457,7 @@ An error is one JSON line with `rule: field`, as in Stage 5. The action refuses 
 `<private dir>` must exist, outside the clone. When it is absent, show and run on yes:
 
 ```sh
-mkdir -p ~/.config/tenant-pi && chmod 700 ~/.config/tenant-pi
+mkdir -p -m 700 "$HOME/.config" "$HOME/.config/tenant-pi" && chmod 700 "$HOME/.config/tenant-pi"
 ```
 
 Ask: "Write these five files into `<private dir>`?" On yes, run the same command with `--write` as the last option. The action creates `overlay.json`, `seat.env`, `compose.env`, `authorized_keys` and `registry.json`, each with mode 600. It refuses when one of the five exists, for example `target_exists: compose-plan.overlay.json`, and then writes none. Do not delete a file of the user to make the action pass: the user moves the file, or names another private directory.
@@ -513,15 +514,16 @@ Ask the user for `<target>` first: the absolute path of the new profile. Its par
 The parent of the target must exist before Stage 6. The recommended parent is `~/.pi/profiles`, a directory beside `~/.pi/agent`, not inside it. Show and run on yes:
 
 ```sh
-mkdir -p ~/.pi/profiles
+mkdir -p -m 700 "$HOME/.pi" "$HOME/.pi/profiles"
 ```
 
+The parent commands give each new directory mode `0700`; they do not change an existing directory.
 If `~/.pi` belongs to another user, use a parent beside it, for example `~/.pi-profiles`.
 
 Create `<private dir>` with the `init-private` action, and give it the target with `--target`. The action needs an absent directory under an existing parent that the user owns. Both paths are expanded paths, not `~`. Write `"$HOME/..."` in double quotes: the shell then expands it.
 
 ```sh
-mkdir -p ~/.config
+mkdir -p -m 700 "$HOME/.config"
 cd ~/tenant-pi && python3 scripts/tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/<profile>" [--overlay <existing overlay>]
 ```
 
@@ -534,7 +536,7 @@ The action creates the directory with mode 700 and, with mode 600, `overlay.json
 Fallback, when `<private dir>` exists already (the action refuses it with `target_exists: init-private.dir`) or the action is not available:
 
 ```sh
-mkdir -p ~/.config/tenant-pi && chmod 700 ~/.config/tenant-pi
+mkdir -p -m 700 "$HOME/.config" "$HOME/.config/tenant-pi" && chmod 700 "$HOME/.config/tenant-pi"
 cp ~/tenant-pi/config/config.example.json ~/.config/tenant-pi/overlay.json
 ```
 

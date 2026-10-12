@@ -1279,7 +1279,7 @@
       "gaps": [
         {
           "code": "install_step_required",
-          "fact": "packages/openviking-pi/package.json lists @modelcontextprotocol/client at 2.0.0 and node_modules is not in the tree, so npm ci --ignore-scripts must run in packages/openviking-pi before the first start."
+          "fact": "packages/openviking-pi/package.json lists @modelcontextprotocol/client at 2.2.0 and node_modules is not in the tree, so npm ci --ignore-scripts must run in packages/openviking-pi before the first start."
         },
         {
           "code": "server_required",
@@ -1287,11 +1287,7 @@
         },
         {
           "code": "package_runtime_unverified",
-          "fact": "No Pi start in this repository loads the extension; the capture, the recall and the tools against a live server are not verified."
-        },
-        {
-          "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "The generated load path has a Pi 1.1.0 resolver test. Capture, recall and tools against a live server remain unverified."
         },
         {
           "code": "capture_cost_unmeasured",
@@ -1306,7 +1302,7 @@
           }
         ],
         "status": "reviewed",
-        "boundary": "One filter entry of the packages/openviking-pi package declaration only; the settings of the extension resolve from OPENVIKING_* variables, the workspace file .openviking/config.json and ~/.openviking/, which the kit does not own"
+        "boundary": "One local-file packages entry for packages/openviking-pi/index.ts; Pi resolves the source file directly, not through a directory filter. Extension settings resolve from OPENVIKING_* variables, .openviking/config.json and ~/.openviking/, which the kit does not own"
       }
     }
   }

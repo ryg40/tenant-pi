@@ -100,6 +100,8 @@ python3 scripts/tenant_pi.py check-runtime
 - Do not move or delete the clone later. A generated profile names `packages/` inside the clone by its absolute path.
 - Use `PYTHONDONTWRITEBYTECODE=1` for the checks. Do not run the tests with `pytest`: its cache directory makes the publish check fail. See [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
 
+The tests and the kit commands work with the usual umask values 0002, 022 and 077. The error `unsafe_permissions` means that a directory on the path is writable by its group or by others and has no sticky bit. Check the directory, then remove the write bit with `chmod go-w <directory>`.
+
 Result: passed when the tests and the publish check pass.
 
 ## Stage 2: edit the local choices
@@ -109,7 +111,7 @@ Goal: a private directory with an overlay that names a new target.
 1. Create the private directory with the kit, and give it the target of the new profile. The parent of the private directory must exist.
 
    ```sh
-   mkdir -p "$HOME/.config"
+   mkdir -p -m 700 "$HOME/.config"
    python3 scripts/tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/main"
    ```
 
@@ -122,9 +124,10 @@ Goal: a private directory with an overlay that names a new target.
 2. Create the parent of the target, beside the live profile and not inside it.
 
    ```sh
-   mkdir -p "$HOME/.pi/profiles"
+   mkdir -p -m 700 "$HOME/.pi" "$HOME/.pi/profiles"
    ```
 
+   These commands give each new parent mode `0700`; they do not change an existing directory.
    If `~/.pi` belongs to another user, for example root, use a parent such as `"$HOME/.pi-profiles"`. The kit refuses a parent that the caller does not own.
 
 3. A core-only profile needs no edit of the overlay: go to Stage 3. Without `--target` in step 1, `overlay.json` has the sample target `/home/EXAMPLE_USER/new-agent`, and Stage 3 stops with `sample_target: overlay.target.agentDir`. Then open `"$HOME/.config/tenant-pi/overlay.json"` with a text editor and change one value: `target.agentDir`. Write the expanded absolute path, for example `/home/EXAMPLE_USER/.pi/profiles/main`. Change nothing else, and do not paste a JSON fragment into the file. Check the syntax after each edit by hand:

@@ -3,6 +3,7 @@ import copy
 import json
 import os
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -122,9 +123,9 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual(before, data)
         settings = plan["files"]["settings.json"]["content"]
         # The in-tree packages first, then the memory packages in their order.
-        self.assertEqual([str(ROOT / "packages/promptr"), "npm:pi-hermes-memory", str(ROOT / OPENVIKING_DIR)],
+        self.assertEqual([str(ROOT / "packages/promptr"), "npm:pi-hermes-memory", str(ROOT / OPENVIKING_DIR / "index.ts")],
                          [package["source"] for package in settings["packages"]])
-        self.assertEqual({"source": str(ROOT / OPENVIKING_DIR), "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
+        self.assertEqual({"source": str(ROOT / OPENVIKING_DIR / "index.ts"), "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
                          settings["packages"][-1])
         self.assertTrue((ROOT / OPENVIKING_DIR / "index.ts").is_file())
         target = "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile"
@@ -150,7 +151,7 @@ class MemoryContractTests(unittest.TestCase):
         gaps = [(g["code"], g["subject"]) for g in plan["readinessGaps"] if g["subject"] == "openviking"]
         self.assertEqual([*((gap["code"], "openviking") for gap in self.components["openviking"]["gaps"]),
                           ("shared_home_state", "openviking")], gaps)
-        self.assertEqual({"install_step_required", "server_required", "package_runtime_unverified", "kit_test_missing",
+        self.assertEqual({"install_step_required", "server_required", "package_runtime_unverified",
                           "capture_cost_unmeasured", "shared_home_state"}, {code for code, _ in gaps})
         self.assertIn({"code": "peer_override_required", "subject": "hermes"}, plan["readinessGaps"])
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
@@ -166,7 +167,7 @@ class MemoryContractTests(unittest.TestCase):
                           "npm --prefix " + shlex.quote(str(ROOT / OPENVIKING_DIR)) + " ci --ignore-scripts"],
                          plan["commands"]["setup"])
         self.assertEqual({"settings.json", ".tenant-pi/choices.json"}, set(plan["files"]))
-        self.assertEqual([str(ROOT / OPENVIKING_DIR)], [p["source"] for p in plan["files"]["settings.json"]["content"]["packages"]])
+        self.assertEqual([str(ROOT / OPENVIKING_DIR / "index.ts")], [p["source"] for p in plan["files"]["settings.json"]["content"]["packages"]])
         # Both states of the switch are written; the optional number is absent when the overlay has none.
         self.assertEqual(["OPENVIKING_CAPTURE_TOOL_RESULTS=false", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", target, "pi",
                           "--no-approve"], shlex.split(plan["commands"]["launch"]))
@@ -178,6 +179,81 @@ class MemoryContractTests(unittest.TestCase):
         rendered = render_memory(data, self.components)
         self.assertEqual(({}, {}), (rendered["settings"], rendered["files"]))
         validate_memory(data, self.components)
+
+    def test_openviking_generated_file_and_regeneration(self):
+        temp = tempfile.TemporaryDirectory(prefix="tenant-pi-ov-")
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        data = self.openviking()
+        generated = []
+        for name in ("first", "regenerated"):
+            data["target"]["agentDir"] = str(root / name)
+            overlay(data, self.components)
+            plan = prepare(self.manifest_data, data)
+            write(plan, str(root / name))
+            settings = json.loads((root / name / "settings.json").read_text())
+            self.assertEqual([{"source": str(ROOT / OPENVIKING_DIR / "index.ts"), "extensions": ["index.ts"],
+                               "skills": [], "prompts": [], "themes": []}], settings["packages"])
+            state = json.loads((root / name / STATE).read_text())
+            self.assertEqual(["settings.json", ".tenant-pi/choices.json", STATE], state["provenance"]["outputs"])
+            self.assertFalse((root / name / "extensions").exists())
+            generated.append((root / name / "settings.json").read_bytes())
+        self.assertEqual(*generated)
+        report = compare(*({name: json.loads((root / side / name).read_text())
+                            for name in FILES if (root / side / name).is_file()}
+                           for side in ("first", "regenerated")))
+        self.assertEqual({"status": "none", "fields": [], "metadata": "unchanged"}, report["right"]["drift"])
+
+    def test_openviking_resolves_with_installed_pi(self):
+        node_name = shutil.which("node")
+        if node_name is None:
+            self.skipTest(f"Node 24 and the installed Pi {PIN} package manager are required")
+        node = Path(node_name).resolve()
+        pi = node.parent.parent / "lib/node_modules/@earendil-works/pi-coding-agent"
+        if not (pi / "dist/core/package-manager.js").is_file():
+            self.skipTest(f"Pi {PIN} is not installed beside Node; no package installation is attempted")
+        found_version = json.loads((pi / "package.json").read_text())["version"]
+        if found_version != PIN:
+            self.skipTest(f"The resolver regression requires pinned Pi {PIN}; found Pi {found_version}")
+        temp = tempfile.TemporaryDirectory(prefix="tenant-pi-ov-")
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        (root / "home").mkdir()
+        (root / "cwd").mkdir()
+        data = self.openviking()
+        data["target"]["agentDir"] = str(root / "agent")
+        env = {"HOME": str(root / "home"), "PATH": str(node.parent) + os.pathsep + os.defpath,
+               "PI_CODING_AGENT_DIR": str(root / "agent"), "PI_OFFLINE": "1"}
+        version = subprocess.run([str(node), "--version"], env=env, capture_output=True, text=True, check=True, timeout=10)
+        if not version.stdout.startswith("v24."):
+            self.skipTest("The resolver regression requires Node 24")
+        write(prepare(self.manifest_data, data), str(root / "agent"))
+        script = root / "resolve-profile.mjs"
+        script.write_text(
+            "import { DefaultPackageManager } from " + json.dumps((pi / "dist/core/package-manager.js").as_uri()) + ";\n"
+            "import { SettingsManager } from " + json.dumps((pi / "dist/core/settings-manager.js").as_uri()) + ";\n"
+            "const cwd = process.cwd(), agentDir = process.env.PI_CODING_AGENT_DIR;\n"
+            "const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });\n"
+            "const manager = new DefaultPackageManager({ cwd, agentDir, settingsManager });\n"
+            "console.log(JSON.stringify(await manager.resolve()));\n")
+
+        def resolve():
+            run = subprocess.run([str(node), str(script)], cwd=root / "cwd", env=env,
+                                 capture_output=True, text=True, timeout=60)
+            self.assertEqual(0, run.returncode, run.stderr)
+            return json.loads(run.stdout)
+
+        resources = resolve()
+        self.assertEqual([str(ROOT / OPENVIKING_DIR / "index.ts")], [e["path"] for e in resources["extensions"]])
+        self.assertTrue(resources["extensions"][0]["enabled"])
+        for kind in ("skills", "prompts", "themes"):
+            self.assertEqual([], [r for r in resources[kind] if r["enabled"]])
+        # Negative control: the former directory source silently discovers no extension.
+        settings_file = root / "agent/settings.json"
+        settings = json.loads(settings_file.read_text())
+        settings["packages"][0]["source"] = str(ROOT / OPENVIKING_DIR)
+        settings_file.write_text(json.dumps(settings))
+        self.assertEqual([], resolve()["extensions"])
 
     def test_openviking_invalid_choice_shapes_and_canaries(self):
         for change, rule in ((lambda o: o.update(captureToolResults="true"), "boolean"),
@@ -807,7 +883,7 @@ class MemoryPublicationTests(unittest.TestCase):
         self.assertEqual({"settings.json", ".tenant-pi", ".tenant-pi/choices.json", STATE},
                          {str(p.relative_to(self.target)) for p in self.target.rglob("*")})
         settings = json.loads((self.target / "settings.json").read_text())
-        self.assertEqual([{"source": str(ROOT / OPENVIKING_DIR), "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}],
+        self.assertEqual([{"source": str(ROOT / OPENVIKING_DIR / "index.ts"), "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}],
                          settings["packages"])
         state = json.loads((self.target / STATE).read_text())
         self.assertEqual("tree:" + OPENVIKING_DIR, state["provenance"]["pins"]["openviking"])

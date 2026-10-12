@@ -124,6 +124,64 @@ class InventoryTests(unittest.TestCase):
                 self.assertEqual({".gitignore", ".local", ".local/log.txt"}, set(inventory(root)))
 
 
+class InstallUmaskTests(unittest.TestCase):
+    def test_guide_parents_private_init_and_generation_under_both_umasks(self):
+        for mask in (0o002, 0o022):
+            for guide in ("INSTALL.md", "docs/guides/setup.md"):
+                with self.subTest(umask=oct(mask), guide=guide), tempfile.TemporaryDirectory() as temp:
+                    home = Path(temp).resolve()
+                    env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1",
+                           "PI_CODING_AGENT_DIR": str(home / "live")}
+                    old = os.umask(mask)
+                    try:
+                        # Execute the parent commands from the guide, not a second copy of them.
+                        lines = (ROOT / guide).read_text().splitlines()
+                        for suffix in ('"$HOME/.config"', '"$HOME/.pi" "$HOME/.pi/profiles"'):
+                            matches = [line.strip() for line in lines if line.strip().startswith("mkdir ")
+                                       and line.strip().endswith(suffix)]
+                            self.assertEqual(1, len(matches), guide)
+                            command, = matches
+                            result = subprocess.run(["/bin/sh", "-c", command], env=env, capture_output=True, text=True)
+                            self.assertEqual((0, ""), (result.returncode, result.stderr))
+
+                        def run(*args, code=0):
+                            result = subprocess.run([sys.executable, str(CLI), *map(str, args)], env=env,
+                                                    capture_output=True, text=True)
+                            self.assertEqual(code, result.returncode, result.stderr)
+                            return json.loads(result.stdout if code == 0 else result.stderr)
+
+                        private = home / ".config/tenant-pi"
+                        target = home / ".pi/profiles/main"
+                        overlay = private / "overlay.json"
+                        launch = private / "launch-main.sh"
+                        run("init-private", "--dir", private, "--target", target)
+                        generated = run("generate", "--overlay", overlay, "--target", target, "--launcher", launch)
+                        self.assertTrue(generated["complete"])
+                        self.assertTrue(generated["launcher"]["complete"])
+                        self.assertTrue(run("validate", "--overlay", overlay)["valid"])
+                        reference = home / "reference"
+                        reference.mkdir(mode=0o700)
+                        (reference / "settings.json").write_text("{}")
+                        run("compare", "--left", reference, "--right", target)
+                        refused = run("generate", "--overlay", overlay, "--target", target, code=2)
+                        self.assertEqual("target_exists: target", refused["error"])
+                        data = json.loads(overlay.read_text())
+                        second = target.with_name("second")
+                        data["target"]["agentDir"] = str(second)
+                        overlay.write_text(json.dumps(data))
+                        self.assertTrue(run("generate", "--overlay", overlay, "--target", second)["complete"])
+                        run("compare", "--left", target, "--right", second)
+                        for directory in (home / ".config", home / ".pi", target.parent, private, private / "inputs",
+                                          target, target / ".tenant-pi", second, second / ".tenant-pi"):
+                            self.assertEqual(0o700, stat.S_IMODE(directory.stat().st_mode), str(directory))
+                        self.assertEqual(0o700, stat.S_IMODE(launch.stat().st_mode))
+                        for profile in (target, second):
+                            for name in ("settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json"):
+                                self.assertEqual(0o600, stat.S_IMODE((profile / name).stat().st_mode))
+                    finally:
+                        os.umask(old)
+
+
 class CliTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="tenant-pi-cli-")
@@ -873,7 +931,8 @@ class CliTests(unittest.TestCase):
         vault = self.home / ".llm-wiki"
         vault.mkdir()
         other = self.base / "wiki home"
-        (other / ".llm-wiki").mkdir(parents=True)
+        other.mkdir(mode=0o700)
+        (other / ".llm-wiki").mkdir(mode=0o700)
         linked = self.base / "linked-vault"
         linked.symlink_to(vault, target_is_directory=True)
         env = {name: value for name, value in self.env.items() if name != "WIKI_HOME"}
@@ -898,8 +957,9 @@ class CliTests(unittest.TestCase):
     def test_target_in_the_vault_of_the_overlay_wiki_home_refused_before_any_write(self):
         # The launch line gives `memory.wiki.wikiHome` to the extension: the vault there is a vault of the user too.
         chosen = self.base / "chosen wiki home"
+        chosen.mkdir(mode=0o700)
         vault = chosen / ".llm-wiki"
-        vault.mkdir(parents=True)
+        vault.mkdir(mode=0o700)
         linked = self.base / "linked-chosen"
         linked.symlink_to(vault, target_is_directory=True)
         env = {name: value for name, value in self.env.items() if name != "WIKI_HOME"}

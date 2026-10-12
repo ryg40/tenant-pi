@@ -504,6 +504,13 @@ class WriteTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def private_directory(self, path):
+        # Path.mkdir(parents=True) applies its mode only to the last directory.
+        directory = self.base
+        for part in path.relative_to(self.base).parts:
+            directory /= part
+            directory.mkdir(mode=0o700, exist_ok=True)
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
@@ -514,7 +521,7 @@ class CliTests(unittest.TestCase):
         self.second = self.home / ".pi" / "profiles" / "second"
         for directory in (self.private, self.main / ".tenant-pi", self.main / "npm/node_modules/pi-hermes-memory",
                           self.second / ".tenant-pi"):
-            directory.mkdir(parents=True, mode=0o700)
+            self.private_directory(directory)
         self.overlay = self.private / "overlay.json"
         self.overlay.write_text(json.dumps(overlay_data(str(self.main))))
         state = {"schemaVersion": 1, "status": "complete",
@@ -698,7 +705,7 @@ class CliTests(unittest.TestCase):
     def test_the_vault_of_the_overlay_wiki_home_is_refused(self):
         chosen = self.base / "chosen wiki home"
         vault = chosen / ".llm-wiki"
-        (vault / "meta").mkdir(parents=True, mode=0o700)
+        self.private_directory(vault / "meta")
         # Without `wikiHome` in the overlay, the place is no vault.
         self.assertEqual(0, self.run_cli("--out-dir", str(vault / "meta")).returncode)
         (vault / "meta" / NAME).unlink()

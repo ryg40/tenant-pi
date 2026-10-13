@@ -71,6 +71,33 @@ A `match` removes the Pi version gap. `untested_in_range` keeps `core_runtime_un
 Not verified: an install of the kit pin by the Stage 6 command on a clean client.
 Not verified: an interactive launch of a generated profile with the kit pin, or a launch with a module.
 
+### Pi 1.2.0 evidence and release changes
+
+The current pin is Pi `1.2.0`, with accepted range `>=1.2.0 <1.3`.
+A private Linux installation reports `1.2.0` through `check-runtime`, alongside Node `24.21.0` and Python `3.11.2`.
+All three report `match`. This proves the version probe, not an interactive launch or an optional module load.
+
+Source: the complete Pi `1.2.0` changelog entries after `1.1.0`, read with `scripts/pi_update.py notes`.
+The changelog has a `Breaking Changes` heading. The release requires these checks:
+
+| Change | Effect on the kit | Evidence limit |
+| --- | --- | --- |
+| Published configuration schemas; startup themes receive schema validation | Generated profiles select no custom theme. Custom themes need the new schema, colors under `vars`, and no unsupported metadata. | No custom-theme launch verified. |
+| `before_agent_start` also runs for idle custom messages with `triggerTurn: true` | The event is a union on `messageType`. Only user events have `prompt` and `images`; custom events have `message`. User-only handlers need an explicit guard. | Candidate SDK tests cover user/custom recall, stable instructions, and custom-first context reporting without real provider requests. |
+| A session is busy while a run starts, including its `before_agent_start` handlers | `ctx.isIdle()` is false there; `sendMessage()` queues; `sendUserMessage()` needs `deliverAs`; an abort applies when the run starts. | Candidate SDK tests cover busy startup and queued messages. Interactive handoff and abort checks remain unverified. |
+| Native `pi mcp list --json` uses `resources: true` instead of counts | The selected MCP module remains the adapter, with `-builtin:mcp`. The kit changes no MCP path. | No native MCP or adapter connection verified. |
+| Editor rows carry fake-cursor markers; `showHardwareCursor` uses the terminal cursor only | Promptr notebook text tests remove the markers without changing production key handlers. | No terminal cursor or interactive key check verified. |
+| `-p` exits 1 when output reaches the model token limit | Qualification checks successful output and a separate truncated reply. | The loopback check preserves partial stdout, requires a stderr warning and exit 1, and verifies one request without retries. |
+| Resource filters expand `~`; symlinked context files load in nested worktrees | The generated resource paths remain absolute kit paths or relative package filters. | No live resource-discovery trial verified. |
+| Herdr images, overlays, shifted-symbol keys, provider retries and OpenRouter lists change | No kit provider, profile or binding default changes. | Herdr, overlay, clipboard and provider behavior remain unverified interactively. |
+| Codemode adds tool reachability and namespace aliases; experimental exports and the chord dependency disappear | No optional codemode optimization or experimental client is adopted. npm regenerates Promptr's dependency lock. | No codemode execution verified. |
+
+Promptr's build, 783 tests, typecheck and offline smoke pass with both exact dependencies at `1.2.0`.
+OpenViking's 295 package tests and its network-blocked resolver and factory-load check pass with Pi `1.2.0` candidate dependencies.
+The earlier interactive no-model start at `1.1.0` remains historical evidence, not a `1.2.0` interactive trial.
+A kit dependency change does not update an installed Promptr copy or resolve its drift.
+A fast-track release retains the clean-user, interactive and live-service gaps in the release record.
+
 ### What the install command fixes
 
 The command `npm install --global -- @earendil-works/pi-coding-agent@"<pin>"` fixes the version of the Pi package only. From Pi 1.0.1, the published package has no `npm-shrinkwrap.json` (Pi changelog 1.0.1). So npm does not fix the versions of the transitive dependencies. The reviewed release declares `@earendil-works/*` dependencies with caret ranges. A later install can then get a newer `pi-ai` or `pi-tui` below `2.0.0`. Two installs of the same pin on different dates can thus hold different dependency versions. `check-runtime` compares only the version of the Pi package and does not see this difference. The Pi changelog names the pi.dev installer as the install that fixes all dependencies. The kit does not use it.
@@ -88,7 +115,7 @@ The changelog marks one change as breaking. Three more changes touch a built-in 
 | --- | --- | --- | --- |
 | The provider `azure-openai-responses` has the new name `azure` (Pi pull request 9714). | Breaking Changes | `settings.json` (`defaultProvider`, `enabledModels`, `modelThinkingLevels`), `models.json`, `auth.json`, and the type `KnownProvider` that an extension can import from `pi-ai` | See the text below the table. |
 | Output files are readable only by the user: the full text of a truncated tool output, a binary MCP resource and a codemode image. | Changed | The built-in MCP extension (`dist/extensions/mcp/tools.js`) and the built-in tools | No effect on a kit file. Pi writes these files to the temporary directory of the system, not to the agent directory. |
-| `Home` and `End` always move the editor cursor. `Ctrl+Home` and `Ctrl+End` go to the top and the bottom of the transcript. | Changed | The default keys of four key binding IDs in `pi-tui`: `tui.editor.cursorLineStart`, `tui.editor.cursorLineEnd`, `tui.altScreen.top` and `tui.altScreen.bottom` | The kit generates no `keybindings.json`. At that review, `packages/promptr` held its own `pi-tui` 1.0.2 with the old default keys. It now pins 1.1.0; see [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). |
+| `Home` and `End` always move the editor cursor. `Ctrl+Home` and `Ctrl+End` go to the top and the bottom of the transcript. | Changed | The default keys of four key binding IDs in `pi-tui`: `tui.editor.cursorLineStart`, `tui.editor.cursorLineEnd`, `tui.altScreen.top` and `tui.altScreen.bottom` | The kit generates no `keybindings.json`. At that review, `packages/promptr` held its own `pi-tui` 1.0.2 with the old default keys. It now pins 1.2.0; see [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). |
 | The codemode function `image()` also saves each image to a temporary file. A correction keeps codemode in operation after an update removed the running install. | New Features, Changed, Fixed | The built-in codemode extension | No effect on a kit file. |
 
 The provider name: the changelog tells the user to change the name in `auth.json` (or to run `/login` again), in `models.json` and in the three keys of `settings.json`. The kit writes these three keys from `roles` and `modelRoutes.cycle` of the overlay. It takes each provider name from the overlay. It compares the name with the `--registry` file of the user, not with the provider list of Pi. The kit holds no such list. So an overlay and a registry file that name `azure-openai-responses` must name `azure` for Pi `<reviewed release>`. No tracked file of the kit names this provider. The `AZURE_OPENAI_*` variables did not change.
@@ -160,6 +187,6 @@ A `match` then removes the gap of that tool. Another status gives a gap that nam
 - No read of the canary files `auth.json`, `models.json`, `settings.json` and `sessions` by the CLI process (file-open audit; this is a list of forbidden names, not a proof that no other file is opened, and the audit does not see the child processes). No canary text in the output, an unchanged manifest, and static diagnostics for a relative path, a missing manifest, a symlink manifest and a changed range.
 
 Not verified: that `pi --version` with `PI_CODING_AGENT_DIR` set writes nothing outside that directory and opens no network connection. The kit sets the variable and removes the directory; the behaviour of Pi is not measured.
-Not verified: the output form of `pi --version` on versions other than `1.0.0`, `1.0.2`, `1.0.3`, `1.0.4` and `1.1.0`, and behaviour on macOS, with a Node version manager shim, or with a `python3` older than 3.4 (which prints its version on standard error).
+Not verified: the output form of `pi --version` on versions other than `1.0.0`, `1.0.2`, `1.0.3`, `1.0.4`, `1.1.0` and `1.2.0`, and behaviour on macOS, with a Node version manager shim, or with a `python3` older than 3.4 (which prints its version on standard error).
 Not verified: that a child process of a tool stops at the timeout. The timeout stops the tool itself.
 Not verified: a real failed removal of the temporary directory. The tests force it with a patched `rmtree`.

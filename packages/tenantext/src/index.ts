@@ -29,7 +29,8 @@ export default function tenantext(pi: ExtensionAPI) {
 	let session: TenantextSettings = { ...settings };
 	let guard: GuardState = createGuardState();
 	let lastTurnChainedChars: number | undefined;
-	let baseSystemPrompt = "";
+	let baseSystemPrompt: string | undefined;
+	let readBaseSystemPrompt: (() => string) | undefined;
 	let lastStatus = "";
 
 	const note = (data: { title: string; body: string }) => pi.appendEntry(ENTRY_TYPE, data);
@@ -70,17 +71,18 @@ export default function tenantext(pi: ExtensionAPI) {
 		session = { ...settings };
 		guard = createGuardState(branchHasHumanMessage(ctx));
 		lastTurnChainedChars = undefined;
-		baseSystemPrompt = "";
+		baseSystemPrompt = undefined;
+		// Keep the session getter: before_agent_start's getter includes earlier handler additions.
+		// Read it on the first turn, after resources_discover can rebuild the base prompt.
+		readBaseSystemPrompt = () => ctx.getSystemPrompt();
 		lastStatus = "";
 		refreshStatus(ctx);
 	});
 
 	// --- startup guard: input path ---
 	pi.on("input", async (event, ctx) => {
-		// Before the first turn, agent.state.systemPrompt is the complete, unmodified base prompt:
-		// resources_discover has run (it fires after session_start) and no extension has appended yet.
-		// After a turn it holds the last chained prompt, so snapshot only while no turn has run.
-		if (lastTurnChainedChars === undefined) baseSystemPrompt = ctx.getSystemPrompt();
+		// User-first input sees the base; a custom-first turn has already measured it.
+		baseSystemPrompt ??= ctx.getSystemPrompt();
 		const decision = onInput(guard, event.source, session.guard);
 		refreshStatus(ctx);
 		if (decision === "block") {
@@ -94,13 +96,14 @@ export default function tenantext(pi: ExtensionAPI) {
 
 	// --- rules injection ---
 	pi.on("before_agent_start", async (event, ctx) => {
+		baseSystemPrompt ??= readBaseSystemPrompt?.();
 		lastTurnChainedChars = event.systemPrompt.length;
 		if (!session.rules) return;
 		return { systemPrompt: `${RULES_BLOCK}\n\n${event.systemPrompt}` };
 	});
 
 	// --- run audit: agent_start fires for every run, including pi.sendMessage({ triggerTurn: true }),
-	// which bypasses both the input event and before_agent_start. Detect-only on that path. ---
+	// which bypasses input but fires before_agent_start as a custom event. Detect-only on that path. ---
 	pi.on("agent_start", async (_event, ctx) => {
 		if (!session.guard) return;
 		if (onAgentStart(guard)) {
@@ -180,7 +183,7 @@ export default function tenantext(pi: ExtensionAPI) {
 					const options = ctx.getSystemPromptOptions() as PromptOptionsLike & { skills?: Skill[] };
 					const skillsChars = options.skills ? formatSkillsForPrompt(options.skills).length : 0;
 					const report = buildContextReport({
-						baseSystemPrompt: lastTurnChainedChars === undefined ? ctx.getSystemPrompt() : baseSystemPrompt,
+						baseSystemPrompt: baseSystemPrompt ?? ctx.getSystemPrompt(),
 						skillsChars,
 						options,
 						lastTurnChainedChars,

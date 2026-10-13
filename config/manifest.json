@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "runtime": {
-    "piVersion": "1.1.0",
-    "piAcceptedRange": ">=1.1.0 <1.2",
+    "piVersion": "1.2.0",
+    "piAcceptedRange": ">=1.2.0 <1.3",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
@@ -10,7 +10,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.1.0"
+        "spec": "@earendil-works/pi-coding-agent@1.2.0"
       },
       "status": "tested",
       "reason": null,
@@ -875,7 +875,7 @@
         },
         {
           "code": "host_module_dependency",
-          "fact": "packages/promptr/package.json pins @earendil-works/pi-tui at 1.1.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.1.0, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.1.0 are not verified."
+          "fact": "packages/promptr/package.json pins @earendil-works/pi-tui at 1.2.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.2.0, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.2.0 are not verified."
         },
         {
           "code": "placeholder_defaults",
@@ -1287,7 +1287,7 @@
         },
         {
           "code": "package_runtime_unverified",
-          "fact": "The generated load path has a Pi 1.1.0 resolver test. Capture, recall and tools against a live server remain unverified."
+          "fact": "Pi 1.2.0 isolated qualification checks the file-source resolver, factory loading and all package tests with candidate dependencies. Capture, recall and tools against a live server remain unverified."
         },
         {
           "code": "capture_cost_unmeasured",

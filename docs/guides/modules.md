@@ -34,7 +34,7 @@ Columns:
 
 | Component | Required inputs | Maintained source (pin) | Credential method | State scope | Consent | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| `core` | `target.agentDir` | npm `@earendil-works/pi-coding-agent@<pin>` | Pi native `/login` after launch; Pi writes `auth.json` | Profile: `auth.json`, `models-store.json`, `sessions/`, `bin/`; `npm/` with a declared npm package. Observed with Pi 1.1.0: the first launch downloads `fd` and `ripgrep` into `<target>/bin/`. The download needs network access. | none | `tested`, `unverified` |
+| `core` | `target.agentDir` | npm `@earendil-works/pi-coding-agent@<pin>` | Pi native `/login` after launch; Pi writes `auth.json` | Profile: `auth.json`, `models-store.json`, `sessions/`, `bin/` (only for a tool download); `npm/` with a declared npm package. | none | `tested`, `unverified` |
 | `model-routing` | `roles`, optional `modelRoutes`; `--registry` file when `modelRoutes` names a model | builtin Pi settings | Native provider `/login` | Profile: `settings.json` keys | none | `tested`, `unverified` |
 | `tenantext` | none | tree `packages/tenantext` | none | Profile. Not verified: other paths. | none | `unverified`, `unverified` |
 | `codex-accounts` | `modelRoutes.gateway` `{"auth": "env"}`, `endpoints.codex-accounts` (HTTPS URL that ends in `/v1`), `env.codex-accounts` `${TENANTEXT_LITELLM_API_KEY}` | tree `packages/tenantext` | `TENANTEXT_LITELLM_API_KEY` in the launching shell; `TENANTEXT_LITELLM_BASE_URL` on the launch line. `auth: "login"` is `blocked`. | Profile | none | `unverified`, `unverified` |
@@ -61,6 +61,10 @@ Columns:
 | `hermes` | `memory.hermes` block; `roles.memory` when `backgroundReview` is `true` | npm `pi-hermes-memory`, no version; reviewed at 0.9.9 | The parent session auth, or a child `pi -p` process | Profile: `pi-hermes-memory/`, memory files | `consent.memoryCapture: true` | `tested`, `unverified` |
 | `wiki` | `memory.wiki` block | npm `@zosmaai/pi-llm-wiki`, no version; reviewed at 0.12.4 | none; the kit writes no key field | HOME: `~/.llm-wiki/`, or `<wikiHome>/.llm-wiki/` | `consent.memoryCapture: true` | `tested`, `unverified` |
 | `openviking` | `memory.openviking` block; `npm ci --ignore-scripts` in `packages/openviking-pi`; an OpenViking server | tree `packages/openviking-pi`, a vendored copy; `settings.json` declares its `index.ts` as a local-file package source | `OPENVIKING_*` variables, `~/.openviking/ovcli.conf` or `~/.openviking/ov.conf`, set up by the user; the kit writes no endpoint and no key | HOME: `~/.openviking/`. Server: the sessions and the memories | `consent.memoryCapture: true` and `consent.remoteMemoryWrites: true` | `unverified`, `unverified` |
+
+Observed with Pi 1.1.0: the first launch downloaded `fd` and `ripgrep` into `<target>/bin/`.
+
+Rule from the Pi 1.1.0 source: Pi checks each tool in `<target>/bin/` first, then on the `PATH`. It checks `fd` locally and `fd` or `fdfind` on the `PATH`. For `ripgrep`, it checks `rg` in both places. At the start of an interactive session, Pi downloads only a missing tool. If both tools are available, Pi downloads neither. With both on the `PATH`, Pi creates no `bin/` in a new profile. The download needs network access. Without network access, Pi warns that the download failed and continues. With offline mode enabled, Pi warns and skips the download.
 
 "Source reading" means a fact read in the source code of the package, not seen at run time.
 

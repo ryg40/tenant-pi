@@ -5,7 +5,27 @@ import { OVClient } from "../client.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { withMockOpenViking, writeJson } from "../../memory-plugin-shared/testing/support.mjs";
+import { createServer } from "node:http";
+
+function writeJson(res, body) {
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify(body));
+}
+
+async function withMockOpenViking(handle, run) {
+  const requests = [];
+  const server = createServer((req, res) => {
+    requests.push({ headers: req.headers });
+    handle(req, res);
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    await run(`http://127.0.0.1:${server.address().port}`, requests);
+  } finally {
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
 
 let testHome;
 const savedHome = process.env.OPENVIKING_STATE_DIR;

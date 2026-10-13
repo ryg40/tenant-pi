@@ -18,7 +18,7 @@ Stages 1 to 5 are offline and the kit runs them. Stages 6 to 9 are the user's. T
 
 The order differs from [INSTALL.md](../../INSTALL.md), the walk-through for an agent. `INSTALL.md` installs Node, Pi and the package dependencies before `plan` and `generate`. This guide does the offline stages of the kit first, and the installs come in Stage 6. Both orders give the same generated files. The difference is in the gaps that `plan` and `generate` print: see [Stage 4](#stage-4-plan). To use the order of `INSTALL.md`, do the parts "Node and Python", "Pi" and "In-tree packages" of Stage 6 before Stage 4.
 
-The plan prints some commands as display text. `commands.setupDisplayOnly` holds the Pi install line, one `pi install` line for each declared npm source when `mcp`, `hermes`, `wiki` or `questions` is enabled, and the peer-override line when `hermes`, `wiki` or `questions` is enabled. With a `--runtime-report` that has `match`, `untested_in_range` or `mismatch` for Pi, the Pi install line is not there; `commands.piInstall` always holds it, with a mark. `commands.launchDisplayOnly` holds the launch line. The plan does not print the Node and Python installs or the `npm ci` of the in-tree packages. Those commands are in Stage 6 of this guide only.
+The plan prints some commands as display text. `commands.setupDisplayOnly` holds the Pi install line, one `pi install` line for each declared npm source when `mcp`, `hermes`, `wiki` or `questions` is enabled, and the peer-override line when `hermes`, `wiki` or `questions` is enabled. With a `--runtime-report` that has `match`, `untested_in_range` or `mismatch` for Pi, the Pi install line is not there; `commands.piInstall` always holds it, with a mark. `commands.launchDisplayOnly` holds the launch line. The plan does not print the Node and Python installs. Stage 6 supplies those installs. The `npm ci` commands for Tenantext and Promptr come from Stage 6 of this guide, not from the plan. When `openviking` is enabled, the plan adds its `npm ci` line to `commands.setupDisplayOnly`. [The memory modules document](../memory-modules.md#generated-outputs) describes this line.
 
 Status: Linux is the first target. Not verified: a complete run of stages 6 to 9 on a clean client.
 
@@ -292,7 +292,7 @@ Result: passed when `filesComplete` is `true`. The runtime stays `unverified`.
 
 ## Stage 6: install the dependencies by hand
 
-The kit installs nothing. This stage lists reviewed commands for you to copy, read and run yourself. Run only the commands for the modules you enabled. The plan prints the declared-package lines under `commands.setupDisplayOnly`. It prints the Pi line there too, unless a `--runtime-report` with `match`, `untested_in_range` or `mismatch` for Pi takes it out; `commands.piInstall` always holds the Pi line. The Node, Python and in-tree package commands come from this guide only.
+The kit installs nothing. This stage lists reviewed commands for you to copy, read and run yourself. Run only the commands for the modules you enabled. The plan prints the declared-package lines under `commands.setupDisplayOnly`. It prints the Pi line there too, unless a `--runtime-report` with `match`, `untested_in_range` or `mismatch` for Pi takes it out; `commands.piInstall` always holds the Pi line. This guide supplies the Node and Python installs. It also supplies the `npm ci` commands for Tenantext and Promptr, which the plan does not print.
 
 Warning: each command below changes the machine. Read it before you run it.
 
@@ -363,6 +363,8 @@ The global install command is not the default for a `mismatch`: it replaces the 
 Do not use `npm config set prefix`. It changes the npm configuration for every later global install.
 
 ### In-tree packages
+
+When `openviking` is enabled, run `npm --prefix "$HOME/tenant-pi/packages/openviking-pi" ci --ignore-scripts`. The plan prints the same line under `commands.setupDisplayOnly`, and [the memory modules document](../memory-modules.md#generated-outputs) describes it. The kit prints this line but does not run it.
 
 Only when you enabled a Tenantext component (`tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `coordinator-skills`, `knowledge-skills`, `slopscore-pr`):
 
@@ -484,7 +486,9 @@ python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.conf
 - With `wiki`, record one more baseline, of the vault that the profile uses: `--dir '<vault>'` and `--out "$HOME/.config/tenant-pi/wiki-vault-baseline.json"`. `<vault>` is `<wikiHome>/.llm-wiki` when the overlay has `memory.wiki.wikiHome`, else the `.llm-wiki` directory in the home directory. Write it as an absolute path, for example `/home/EXAMPLE_USER/.llm-wiki`. Run it also when no vault exists. The action lists the directories of the vault and opens no file. The one write is the new baseline file: keep `--out` in the private directory.
 - The comparison of check 7 names the direct entries of the vault only. For a record of the entries below `meta/`, record a second baseline of an existing vault: `--dir '<vault>/meta'` and `--out "$HOME/.config/tenant-pi/wiki-vault-meta-baseline.json"`.
 
-Observed with Pi 1.1.0: the first launch downloads `fd` and `ripgrep` into `<target>/bin/`. This download needs network access and prints four lines.
+Observed with Pi 1.1.0: the first launch downloaded `fd` and `ripgrep` into `<target>/bin/` and printed four lines.
+
+Rule from the Pi 1.1.0 source: Pi checks each tool in `<target>/bin/` first, then on the `PATH`. It checks `fd` locally and `fd` or `fdfind` on the `PATH`. For `ripgrep`, it checks `rg` in both places. At the start of an interactive session, Pi downloads only a missing tool. If both tools are available, Pi downloads neither. With both on the `PATH`, Pi creates no `bin/` in a new profile. The download needs network access. Without network access, Pi warns that the download failed and continues. With offline mode enabled, Pi warns and skips the download.
 
 Observed with Pi 1.1.0: a launch without a prompt writes no session file, even without `env -u PI_CODING_AGENT_SESSION_DIR`.
 The session-directory comparison proves separation only after a session with a prompt.
@@ -517,7 +521,7 @@ Record each check as passed, failed, blocked or not run in `install-log.md` of t
 1. `PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi --version` prints `<pin>` or an accepted version. Record the untested-version gap when needed.
 2. Pi starts with no extension error and no peer warning.
 3. The chosen model replies to the fixed prompt, and the reply holds the expected number: see [check 3](#check-3-the-model-reply).
-4. `ls -la "$HOME/.pi/profiles/main"` shows the generated files plus what Pi wrote: `auth.json`, `models-store.json`, `sessions/` and `bin/`. Extensions add their state directories. Pi adds `npm/` only with a declared npm package. Pi also adds the key `lastChangelogVersion` to `settings.json`. Observed with Pi 1.1.0 and a core-only profile. Not verified: other Pi versions. The live profile did not change: the comparison below prints `"result":"unchanged"`.
+4. `ls -la "$HOME/.pi/profiles/main"` shows the generated files plus what Pi wrote: `auth.json`, `models-store.json`, `sessions/` and `bin/` (only for a tool download in Stage 8). Extensions add their state directories. Pi adds `npm/` only with a declared npm package. Pi also adds the key `lastChangelogVersion` to `settings.json`. Observed with Pi 1.1.0 and a core-only profile. Not verified: other Pi versions. The live profile did not change: the comparison below prints `"result":"unchanged"`.
 5. With Hermes: `<target>/pi-hermes-memory/` exists after the first session. With the wiki, `ambientPersonalVault: false` and no vault before the launch: `~/.llm-wiki` was not created.
 6. With `mcp`: `/mcp-adapter status` inside Pi lists only the servers of the input file.
 7. With `wiki`: the content of the vault stayed as it was: see [check 7](#check-7-the-comparison-of-the-vault).

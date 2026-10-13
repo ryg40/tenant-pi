@@ -1296,12 +1296,14 @@ Pi can write these entries into the target after a login and a prompt. Not verif
 | `~/.pi/profiles/main/auth.json` | `0600` | The login of `/login`. Keep it private. | Pi |
 | `~/.pi/profiles/main/sessions/` | `0755` | The session files, in one directory for each working directory. | Pi |
 | `~/.pi/profiles/main/models-store.json` | `0600` | Model data that Pi keeps. | Pi |
-| `~/.pi/profiles/main/bin/` | `0755` | Helper tools that Pi downloads when the machine does not have them, for example `fd` and `ripgrep`. | Pi |
+| `~/.pi/profiles/main/bin/` | `0755` | Helper tools `fd` and `ripgrep`. Pi creates this directory only to download a tool. | Pi |
 | `~/.pi/profiles/main/settings.json` | `0600` | Pi can change the generated settings. | Pi |
 
 The list is not exhaustive. Pi can create more entries, for example `npm/` and the state directories of extensions; see [INSTALL.md](INSTALL.md#checks).
 
-Observed with Pi 1.1.0: the first launch downloads `fd` and `ripgrep` into `<target>/bin/`. This download needs network access and prints four lines. Pi adds `lastChangelogVersion` to `settings.json`.
+Observed with Pi 1.1.0: the first launch downloaded `fd` and `ripgrep` into `<target>/bin/` and printed four lines. Pi adds `lastChangelogVersion` to `settings.json`.
+
+Rule from the Pi 1.1.0 source: Pi checks each tool in `<target>/bin/` first, then on the `PATH`. It checks `fd` locally and `fd` or `fdfind` on the `PATH`. For `ripgrep`, it checks `rg` in both places. At the start of an interactive session, Pi downloads only a missing tool. If both tools are available, Pi downloads neither. With both on the `PATH`, Pi creates no `bin/` in a new profile. The download needs network access. Without network access, Pi warns that the download failed and continues. With offline mode enabled, Pi warns and skips the download.
 Not verified: this behaviour in other Pi versions and the content of `models-store.json`.
 The kit opens none of these runtime data files during generation.
 
@@ -1741,7 +1743,7 @@ The table includes the surrounding files, caches and runtime state of a base ins
 | `~/.pi/profiles/main/auth.json` | file `0600` | Pi (step 13) | The login. |
 | `~/.pi/profiles/main/sessions/` | directory | Pi | The sessions. |
 | `~/.pi/profiles/main/models-store.json` | file `0600` | Pi | Model data of Pi. |
-| `~/.pi/profiles/main/bin/` | directory | Pi | Helper tools of Pi. |
+| `~/.pi/profiles/main/bin/` | directory | Pi | Helper tools of Pi. Only for a tool download (step 13). |
 | `<npm prefix>/lib/node_modules/@earendil-works/pi-coding-agent/`, `<npm prefix>/bin/pi` | package and link | npm (step 10) | Pi itself. Only when you installed it. |
 | `~/.npm-global/` | directory | npm (step 10) | Pi under a directory that you own. Only when you used the `--prefix` form. |
 | `~/.npm/` | directory | npm | The cache and the logs of npm. |

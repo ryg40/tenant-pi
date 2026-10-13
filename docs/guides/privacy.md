@@ -29,7 +29,7 @@ For a real boundary, run each profile as a separate OS user, in a container, or 
 | The kit clone | Reviewed source, the manifest, the synthetic example overlay, the in-tree packages. No user value. | Yes |
 | `.local/` in the clone | Optional. The default `--local-dir`, and the optional local deny list of the scanner. It can hold private state. | No. The Git ignore rule is not a security control. |
 | The private directory | `overlay.json`, `registry.json`, `install-log.md`, `accepted-drift.md`, `.gitignore`, `inputs/` (for example `inputs/mcp-adapter.json`), launcher files, baseline files, saved `compare` reports, the facts file `results-facts.json` and the results file `INSTALLER_KIT_RESULTS.md`. | Only if you run `git init` there. The kit prints that line and never runs it. |
-| A generated profile | `settings.json`, `.tenant-pi/choices.json`, `.tenant-pi/state.json`, optional module files. After launch, Pi adds `auth.json`, `models-store.json`, `sessions/`, `bin/` and module state. Pi adds `npm/` with a declared npm package. | No |
+| A generated profile | `settings.json`, `.tenant-pi/choices.json`, `.tenant-pi/state.json`, optional module files. After launch, Pi adds `auth.json`, `models-store.json`, `sessions/`, `bin/` (only for a tool download) and module state. Pi adds `npm/` with a declared npm package. | No |
 | The live profile `~/.pi/agent` | Your existing Pi setup. | The kit never writes it. It reads it only when you name it with `--dir`: `baseline` and `check-baseline` read the name, kind, size and modification time of each entry and open no file; `inventory` reads `settings.json` and lists three directories. |
 
 Keep the private directory outside the clone. `init-private` refuses a path inside the clone, inside `~/.pi/agent` and inside a known overlay target. See [the private directory](../private-directory.md).
@@ -107,7 +107,9 @@ The kit limits above do not apply to components after launch. The [module table]
 
 The checklist marks `copilot-usage`, `anthropic-usage` and `doctor`. Their login reads and token requests need the user's agreement before selection, alongside the memory consent text.
 
-Observed with Pi 1.1.0: the first launch downloads `fd` and `ripgrep` into `<target>/bin/`. This download needs network access.
+Observed with Pi 1.1.0: the first launch downloaded `fd` and `ripgrep` into `<target>/bin/`.
+
+Rule from the Pi 1.1.0 source: Pi checks each tool in `<target>/bin/` first, then on the `PATH`. It checks `fd` locally and `fd` or `fdfind` on the `PATH`. For `ripgrep`, it checks `rg` in both places. At the start of an interactive session, Pi downloads only a missing tool. If both tools are available, Pi downloads neither. With both on the `PATH`, Pi creates no `bin/` in a new profile. The download needs network access. Without network access, Pi warns that the download failed and continues. With offline mode enabled, Pi warns and skips the download.
 
 ## What the scanner checks
 

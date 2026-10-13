@@ -5,7 +5,7 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 import json
 import os
 from pathlib import Path
@@ -27,6 +27,7 @@ from scripts.validate import Invalid, absolute, fail, in_range, manifest, npm_pa
 
 PACKAGE = "@earendil-works/pi-coding-agent"
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
+PRINT_OUTPUT_LIMIT = 16
 PI_KEYS = ("PATH", "HOME", "TMPDIR", "LANG", "PI_CODING_AGENT_DIR",
            "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY")
 OFFLINE = (
@@ -113,12 +114,12 @@ def environment(run):
             "PI_OFFLINE": "1", "PI_SKIP_VERSION_CHECK": "1", "PI_TELEMETRY": "0"}
 
 
-def execute(command, *, cwd, env, log, timeout=600):
-    """Keep output in a log and stop the process group on a timeout (Linux/POSIX)."""
-    with log.open("wb") as output:
+def execute(command, *, cwd, env, log, timeout=600, stderr_log=None):
+    """Keep output in logs and stop the process group on a timeout (Linux/POSIX)."""
+    with log.open("wb") as output, (stderr_log.open("wb") if stderr_log else nullcontext(subprocess.STDOUT)) as errors:
         try:
             with subprocess.Popen(command, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
-                                  stdout=output, stderr=subprocess.STDOUT,
+                                  stdout=output, stderr=errors,
                                   start_new_session=True) as process:
                 try:
                     return process.wait(timeout=timeout)
@@ -137,12 +138,19 @@ class Steps:
         self.run, self.env, self.runner = run, env, runner
         self.rows = []
 
-    def command(self, name, command, *, cwd=None, env=None, timeout=600):
+    def command(self, name, command, *, cwd=None, env=None, timeout=600, expected_exit=0, stderr_log=None):
         log = self.run / "logs" / (name + ".log")
+        options = {"stderr_log": stderr_log} if stderr_log else {}
         code = self.runner(command, cwd=cwd or self.run / "cwd", env=env or self.env,
-                           log=log, timeout=timeout)
-        self.rows.append({"name": name, "exitCode": code, "log": str(log)})
-        return code == 0
+                           log=log, timeout=timeout, **options)
+        status = 0 if code == expected_exit else (code or 1)
+        row = {"name": name, "exitCode": status, "log": str(log)}
+        if expected_exit:
+            row.update(processExitCode=code, expectedExitCode=expected_exit)
+        if stderr_log:
+            row["stderrLog"] = str(stderr_log)
+        self.rows.append(row)
+        return status == 0
 
     def record(self, name, value, code=0):
         log = self.run / "logs" / (name + ".log")
@@ -199,6 +207,65 @@ def link_packages(run, package):
         destination.symlink_to(source, target_is_directory=True)
         versions[name] = json.loads((source / "package.json").read_text())["version"]
     return versions
+
+
+def openviking_check(steps, package, env):
+    """Use copied tests and the candidate resolver/loader without starting a session."""
+    scope = package / "node_modules/@earendil-works"
+    pi = (scope / "pi-coding-agent").resolve()
+    session = pi / "dist/core/session-manager.js"
+    transcript = (scope / "pi-ai").resolve() / "dist/utils/transcript.js"
+    tests = sorted(package.glob("tests/*.test.mjs"))
+    steps.record("openviking-test-inventory", {"tests": [test.name for test in tests]})
+    if not session.is_file() or not transcript.is_file() or not tests:
+        steps.record("openviking-test", {"error": "candidate_test_dependency_missing"}, 1)
+    else:
+        test_env = {**steps.env, "PI_SESSION_MANAGER": str(session), "PI_PI_AI_TRANSCRIPT": str(transcript)}
+        steps.command("openviking-test", ["node", "--test", *map(str, tests)], cwd=package, env=test_env)
+    agent = steps.run / "openviking-agent"
+    agent.mkdir(mode=0o700)
+    entry = str(package / "index.ts")
+    (agent / "settings.json").write_text(json.dumps({"packages": [{"source": entry, "extensions": ["index.ts"],
+                                                "skills": [], "prompts": [], "themes": []}]}) + "\n")
+    probe = steps.run / "openviking-load.mjs"
+    probe.write_text(
+        'import assert from "node:assert/strict";\n'
+        'import { readFileSync, writeFileSync } from "node:fs";\n'
+        'import net from "node:net";\n'
+        'let networkAttempts = 0;\n'
+        'const deny = () => { networkAttempts++; throw new Error("network forbidden during extension load"); };\n'
+        'globalThis.fetch = deny; net.Socket.prototype.connect = deny;\n'
+        'const { DefaultPackageManager } = await import(' + json.dumps((pi / "dist/core/package-manager.js").as_uri()) + ');\n'
+        'const { SettingsManager } = await import(' + json.dumps((pi / "dist/core/settings-manager.js").as_uri()) + ');\n'
+        'const { loadExtensions } = await import(' + json.dumps((pi / "dist/core/extensions/loader.js").as_uri()) + ');\n'
+        'const entry = ' + json.dumps(entry) + ';\n'
+        'const cwd = process.cwd(), agentDir = process.env.PI_CODING_AGENT_DIR;\n'
+        'const settingsFile = agentDir + "/settings.json";\n'
+        'const settings = JSON.parse(readFileSync(settingsFile, "utf8"));\n'
+        'async function resolve() {\n'
+        '  const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });\n'
+        '  return new DefaultPackageManager({ cwd, agentDir, settingsManager }).resolve();\n'
+        '}\n'
+        'const resources = await resolve();\n'
+        'assert.deepEqual(resources.extensions.map(e => [e.path, e.enabled]), [[entry, true]]);\n'
+        'for (const kind of ["skills", "prompts", "themes"]) {\n'
+        '  assert.deepEqual(resources[kind].filter(r => r.enabled), []);\n'
+        '}\n'
+        'settings.packages[0].source = ' + json.dumps(str(package)) + ';\n'
+        'writeFileSync(settingsFile, JSON.stringify(settings));\n'
+        'assert.deepEqual((await resolve()).extensions, []);\n'
+        'settings.packages[0].source = entry;\n'
+        'writeFileSync(settingsFile, JSON.stringify(settings));\n'
+        'const loaded = await loadExtensions(resources.extensions.map(e => e.path), cwd);\n'
+        'assert.deepEqual(loaded.errors, []);\n'
+        'assert.equal(loaded.extensions.length, 1);\n'
+        'assert.ok(loaded.extensions[0].commands.has("viking"));\n'
+        'assert.ok(loaded.extensions[0].handlers.has("before_agent_start"));\n'
+        'assert.equal(networkAttempts, 0);\n'
+        'console.log("OpenViking candidate resolver and factory load passed; no session started");\n')
+    load_env = {**env, "PI_CODING_AGENT_DIR": str(agent)}
+    steps.command("openviking-load", ["/usr/bin/env", "-i", *(key + "=" + load_env[key] for key in PI_KEYS),
+                                    "node", str(probe)], timeout=90)
 
 
 def pin_contents(manifest_text, validator_text, requested, *, accepted_range=None):
@@ -289,7 +356,7 @@ def isolation_result(before, after):
 
 
 @contextmanager
-def endpoint():
+def endpoint(*, finish_reason="stop", text="43"):
     """A fixed chat-completion response; no body, key or prompt is logged."""
     calls = []
 
@@ -298,12 +365,13 @@ def endpoint():
             pass
 
         def do_POST(self):
+            self.connection.settimeout(5)
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if self.path != "/v1/chat/completions" or not 0 < length <= 1024 * 1024:
                     raise ValueError
                 body = json.loads(self.rfile.read(length))
-            except (ValueError, UnicodeError):
+            except (ValueError, UnicodeError, OSError):
                 self.send_error(400)
                 return
             if not isinstance(body, dict) or body.get("model") != "sum-model" or body.get("stream") is not True:
@@ -313,9 +381,13 @@ def endpoint():
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
-            for delta, finish in (({"role": "assistant", "content": "43"}, None), ({}, "stop")):
+            for delta, finish in (({"role": "assistant", "content": text}, None), ({}, finish_reason)):
                 chunk = {"id": "local-test", "object": "chat.completion.chunk", "created": 1,
                          "model": "sum-model", "choices": [{"index": 0, "delta": delta, "finish_reason": finish}]}
+                if finish == "length":
+                    # Report the intended output limit, not a below-limit context-recovery case.
+                    chunk["usage"] = {"prompt_tokens": 10, "completion_tokens": PRINT_OUTPUT_LIMIT,
+                                      "total_tokens": 10 + PRINT_OUTPUT_LIMIT}
                 self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
             self.wfile.write(b"data: [DONE]\n\n")
 
@@ -330,10 +402,13 @@ def endpoint():
         thread.join()
 
 
-def print_check(steps, env, generated):
+def print_check(steps, env, generated, requested):
     if not generated:
         steps.skip("print-mode")
         steps.skip("print-response")
+        if tuple(map(int, requested.split("-", 1)[0].split("."))) >= (1, 2, 0):
+            steps.skip("print-length")
+            steps.skip("print-length-response")
         return
     run = steps.run
     with endpoint() as (port, calls):
@@ -350,6 +425,22 @@ def print_check(steps, env, generated):
         reply = (run / "logs/print-mode.log").read_bytes()
         steps.record("print-response", {"requests": len(calls), "exactReply": reply == b"43\n"},
                      0 if passed and len(calls) == 1 and reply == b"43\n" else 1)
+    if tuple(map(int, requested.split("-", 1)[0].split("."))) < (1, 2, 0):
+        steps.record("print-length-response", {"contract": "not_applicable_before_1.2.0"})
+        return
+    with endpoint(finish_reason="length", text="partial reply") as (port, calls):
+        models["providers"]["local-test"]["baseUrl"] = f"http://127.0.0.1:{port}/v1"
+        models["providers"]["local-test"]["models"][0]["maxTokens"] = PRINT_OUTPUT_LIMIT
+        (run / "profile/models.json").write_text(json.dumps(models) + "\n")
+        stderr_log = run / "logs/print-length.stderr.log"
+        passed = steps.command("print-length", command, env=pi_env, timeout=90,
+                               expected_exit=1, stderr_log=stderr_log)
+        reply = (run / "logs/print-length.log").read_bytes()
+        warning = stderr_log.read_bytes()
+        result = {"requests": len(calls), "exactPartialReply": reply == b"partial reply\n",
+                  "warningOnStderr": warning == b"Response was truncated: the model reached its output token limit.\n"}
+        steps.record("print-length-response", result,
+                     0 if passed and len(calls) == 1 and result["exactPartialReply"] and result["warningOnStderr"] else 1)
 
 
 def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
@@ -372,9 +463,10 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
             steps.skip("check-runtime")
         for name, args in OFFLINE:
             steps.command(name, [sys.executable, "-B", *args], cwd=candidate)
-        for name in ("tenantext", "promptr"):
-            package = run / "packages" / name
-            shutil.copytree(candidate / "packages" / name, package,
+        for name in ("tenantext", "promptr", "openviking"):
+            directory = "openviking-pi" if name == "openviking" else name
+            package = run / "packages" / directory
+            shutil.copytree(candidate / "packages" / directory, package,
                             ignore=shutil.ignore_patterns("node_modules", "dist", ".git", ".local", "__pycache__"))
             ready = steps.command(name + "-install", npm_command(run, "ci", "--ignore-scripts"), cwd=package)
             linked = False
@@ -386,6 +478,13 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
                     steps.record(name + "-links", {"error": "dependency_link_failed"}, 1)
             else:
                 steps.skip(name + "-links")
+            if name == "openviking":
+                if linked:
+                    openviking_check(steps, package, env)
+                else:
+                    steps.skip("openviking-test")
+                    steps.skip("openviking-load")
+                continue
             for task in (("build", "test") if name == "promptr" else ("typecheck", "test")):
                 if linked:
                     steps.command(name + "-" + task, npm_command(run, "run", task), cwd=package)
@@ -398,7 +497,7 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
         generated = steps.command("generate", [sys.executable, "-B", str(candidate / "scripts/tenant_pi.py"),
                                   "generate", "--overlay", str(run / "overlay.json"),
                                   "--target", str(run / "profile")], cwd=candidate)
-        print_check(steps, env, generated and installed)
+        print_check(steps, env, generated and installed, requested)
     except CandidateCopyError as exc:
         steps.record("candidate-copy", {"error": str(exc)}, exc.code)
     except (OSError, ValueError, Invalid, subprocess.SubprocessError):

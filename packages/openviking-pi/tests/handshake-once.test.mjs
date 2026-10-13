@@ -161,7 +161,7 @@ async function withExtension(t, fn) {
     ctx: fakeCtx(notified, statuses),
     configPath: join(dir, "ovcli.conf"),
     turn: (prompt) => handlers.get("before_agent_start")(
-      { type: "before_agent_start", prompt, systemPrompt: "BASE" },
+      { type: "before_agent_start", messageType: "user", prompt, systemPrompt: "BASE" },
       fakeCtx(notified, statuses),
     ),
     shutdown: () => handlers.get("session_shutdown")(
@@ -254,7 +254,7 @@ for (const plugin of [{ mcpEnabled: false }, { bypassSession: true }]) {
       const { default: extension } = await import(join(EXTENSION_DIR, "index.ts"));
       const { pi, handlers } = fakePi();
       await extension(pi);
-      await handlers.get("before_agent_start")({ prompt: "hello", systemPrompt: "BASE" }, fakeCtx());
+      await handlers.get("before_agent_start")({ type: "before_agent_start", messageType: "user", prompt: "hello", systemPrompt: "BASE" }, fakeCtx());
       assert.equal(server.initializes.length, 0);
       await handlers.get("session_shutdown")({}, fakeCtx());
     });

@@ -32,7 +32,12 @@ else:
     url = models["providers"]["local-test"]["baseUrl"] + "/chat/completions"
     request = urllib.request.Request(url, data=json.dumps({"model":"sum-model", "stream":True}).encode())
     with urllib.request.urlopen(request) as response:
-        assert b'43' in response.read()
+        body = response.read()
+    if b'"finish_reason": "length"' in body:
+        print("partial reply")
+        print("Response was truncated: the model reached its output token limit.", file=sys.stderr)
+        sys.exit(1)
+    assert b'43' in body
     print("43")
 '''
 
@@ -51,15 +56,44 @@ if "install" in args:
         path = scope / name
         path.mkdir(parents=True)
         (path / "package.json").write_text(json.dumps({"version": VERSION}))
+    for name in ("pi-coding-agent/dist/core/session-manager.js", "pi-ai/dist/utils/transcript.js"):
+        path = scope / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.touch()
     (scope / "pi-coding-agent/CHANGELOG.md").write_text("## [" + VERSION + "] - example\\n### Fixed\\nA fix.\\n### Breaking Changes\\nAn API changed.\\n## [1.0.2] - example\\nOlder.\\n")
     binary = modules / ".bin/pi"
     binary.parent.mkdir()
     binary.write_text(PI_SCRIPT)
     binary.chmod(0o700)
 elif "ci" in args:
+    if pathlib.Path.cwd().name == "openviking-pi" and (control / "fail-openviking-install").exists():
+        sys.exit(8)
     pathlib.Path("node_modules").mkdir(exist_ok=True)
 elif "test" in args and (control / "fail-test").exists():
     sys.exit(7)
+'''
+
+
+FAKE_NODE = '''import json, os, pathlib, sys
+args = sys.argv[1:]
+control = pathlib.Path(__file__).parent
+if args == ["--version"]:
+    print("v24.21.0")
+elif args[0] == "--test":
+    assert "PI_SESSION_MANAGER" in os.environ and "PI_PI_AI_TRANSCRIPT" in os.environ
+    for key in ("PI_SESSION_MANAGER", "PI_PI_AI_TRANSCRIPT"):
+        assert pathlib.Path(os.environ[key]).is_file()
+        assert "/prefix/node_modules/" in os.environ[key]
+    if (control / "fail-test").exists():
+        sys.exit(7)
+else:
+    assert pathlib.Path(args[0]).name == "openviking-load.mjs"
+    assert set(os.environ) == set(PI_KEYS)
+    assert "/prefix/node_modules/" in pathlib.Path(args[0]).read_text()
+    if (control / "fail-openviking-load").exists():
+        sys.exit(6)
+with (pathlib.Path(os.environ["HOME"]) / "node-env.jsonl").open("a") as out:
+    out.write(json.dumps({"args": args, "env": dict(os.environ)}) + "\\n")
 '''
 
 
@@ -80,7 +114,7 @@ class UpdateTests(unittest.TestCase):
         (self.bin / "npm").write_text(npm_script)
         (self.bin / "npm").chmod(0o700)
         # check-runtime tests the real Python, but does not need the caller's Node version.
-        (self.bin / "node").write_text("#!/bin/sh\nprintf '24.21.0\\n'\n")
+        (self.bin / "node").write_text("#!" + sys.executable + "\nPI_KEYS = " + repr(update.PI_KEYS) + "\n" + FAKE_NODE)
         (self.bin / "node").chmod(0o700)
         self.env = patch.dict(os.environ, {"HOME": str(self.home), "PATH": str(self.bin) + ":/usr/bin:/bin",
                              "OPENAI_API_KEY": "synthetic-canary", "NODE_OPTIONS": "synthetic-canary",
@@ -234,7 +268,7 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue(report["passed"], report)
         run = Path(report["workdir"])
         rows = [json.loads(line) for line in (run / "home/pi-env.jsonl").read_text().splitlines()]
-        self.assertEqual(len(rows), 2)
+        self.assertEqual(len(rows), 3 if tuple(map(int, PIN.split("-", 1)[0].split("."))) >= (1, 2, 0) else 2)
         for child in rows:
             self.assertEqual(set(child), set(update.PI_KEYS))
             self.assertTrue(Path(child["HOME"]).is_relative_to(run))
@@ -243,16 +277,30 @@ class UpdateTests(unittest.TestCase):
             self.assertNotIn("synthetic-canary", json.dumps(child))
         self.assertFalse(Path(rows[0]["PI_CODING_AGENT_DIR"]).exists())
         self.assertEqual(before, update._dir_state(str(self.live), "test"))
-        for package in ("tenantext", "promptr"):
+        for package in ("tenantext", "promptr", "openviking-pi"):
             link = run / "packages" / package / "node_modules/@earendil-works/pi-coding-agent"
             self.assertEqual(link.resolve(), run / "prefix/node_modules" / update.PACKAGE)
         for step in report["steps"]:
             self.assertTrue(Path(step["log"]).is_file())
         self.assertEqual((run / "logs/print-mode.log").read_text(), "43\n")
         calls = [json.loads(line) for line in (self.bin / "calls.jsonl").read_text().splitlines()]
-        self.assertEqual(sum("ci" in call for call in calls), 2)
+        self.assertEqual(sum("ci" in call for call in calls), 3)
         self.assertTrue(all("--ignore-scripts" in call for call in calls if "ci" in call or "install" in call))
         self.assertTrue(all("--global" not in call for call in calls))
+        steps = {row["name"]: row for row in report["steps"]}
+        for name in ("openviking-install", "openviking-links", "openviking-test", "openviking-load"):
+            self.assertEqual(steps[name]["exitCode"], 0)
+        nodes = [json.loads(line) for line in (run / "home/node-env.jsonl").read_text().splitlines()]
+        for row in nodes:
+            self.assertNotIn("synthetic-canary", json.dumps(row))
+        load = next(row for row in nodes if row["args"][0] != "--version" and row["args"][0] != "--test")
+        self.assertEqual(set(load["env"]), set(update.PI_KEYS))
+        tests = next(row for row in nodes if row["args"][0] == "--test")
+        test_files = {path.name for path in (ROOT / "packages/openviking-pi/tests").glob("*.test.mjs")}
+        self.assertEqual({Path(path).name for path in tests["args"][1:]}, test_files)
+        inventory = json.loads((run / "logs/openviking-test-inventory.log").read_text())
+        self.assertEqual(inventory, {"tests": sorted(test_files)})
+        self.assertTrue(all(Path(name).is_relative_to(run / "packages/openviking-pi") for name in tests["args"][1:]))
 
     def test_candidate_uses_new_pin_without_changing_checkout(self):
         requested = "99.0.0"
@@ -303,6 +351,21 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(calls, [])
         self.assertEqual(errors.getvalue(), "")
 
+    def test_length_endpoint_reports_the_output_limit_and_no_second_request(self):
+        with update.endpoint(finish_reason="length", text="partial reply") as (port, calls):
+            connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            connection.request("POST", "/v1/chat/completions",
+                               body=json.dumps({"model": "sum-model", "stream": True}))
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            chunks = [json.loads(line[6:]) for line in response.read().decode().splitlines()
+                      if line.startswith("data: {")]
+            self.assertEqual(chunks[0]["choices"][0]["delta"]["content"], "partial reply")
+            self.assertEqual(chunks[-1]["choices"][0]["finish_reason"], "length")
+            self.assertEqual(chunks[-1]["usage"]["completion_tokens"], update.PRINT_OUTPUT_LIMIT)
+            connection.close()
+            self.assertEqual(len(calls), 1)
+
     def test_failed_install_continues_independent_steps(self):
         (self.bin / "fail-install").touch()
         report = self.qualify()
@@ -313,6 +376,9 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(codes["offline-fixture"], 0)
         self.assertEqual(codes["generate"], 0)
         self.assertEqual(codes["print-mode"], 125)
+        for name in ("openviking-links", "openviking-test", "openviking-load"):
+            self.assertEqual(codes[name], 125)
+        self.assertEqual(codes["openviking-install"], 0)
         self.assertEqual(codes["baseline-compare"], 0)
 
     def test_failed_test_continues_print_mode(self):
@@ -322,7 +388,143 @@ class UpdateTests(unittest.TestCase):
         codes = {step["name"]: step["exitCode"] for step in report["steps"]}
         self.assertEqual(codes["tenantext-test"], 7)
         self.assertEqual(codes["promptr-test"], 7)
+        self.assertEqual(codes["openviking-test"], 7)
+        self.assertEqual(codes["openviking-load"], 0)
         self.assertEqual(codes["print-response"], 0)
+
+    def test_failed_openviking_install_skips_only_its_dependent_checks(self):
+        (self.bin / "fail-openviking-install").touch()
+        report = self.qualify()
+        self.assertFalse(report["passed"])
+        codes = {step["name"]: step["exitCode"] for step in report["steps"]}
+        self.assertEqual(codes["openviking-install"], 8)
+        for name in ("openviking-links", "openviking-test", "openviking-load"):
+            self.assertEqual(codes[name], 125)
+        self.assertEqual(codes["print-response"], 0)
+        self.assertEqual(codes["baseline-compare"], 0)
+
+    def test_failed_openviking_load_fails_qualification_and_keeps_print_checks(self):
+        (self.bin / "fail-openviking-load").touch()
+        report = self.qualify()
+        self.assertFalse(report["passed"])
+        codes = {step["name"]: step["exitCode"] for step in report["steps"]}
+        self.assertEqual(codes["openviking-test"], 0)
+        self.assertEqual(codes["openviking-load"], 6)
+        self.assertEqual(codes["print-response"], 0)
+        self.assertEqual(codes["baseline-compare"], 0)
+
+    def test_false_success_on_truncation_fails_qualification(self):
+        npm = self.bin / "npm"
+        npm.write_text(npm.read_text().replace(PIN, "1.2.0").replace('sys.exit(1)', 'sys.exit(0)'))
+        report = self.qualify("1.2.0")
+        self.assertFalse(report["passed"])
+        codes = {step["name"]: step["exitCode"] for step in report["steps"]}
+        self.assertEqual(codes["print-response"], 0)
+        self.assertEqual(codes["print-length"], 1)
+        self.assertEqual(codes["print-length-response"], 1)
+        self.assertEqual(codes["baseline-compare"], 0)
+
+    def print_steps(self, requested="1.2.0", transform=lambda script: script, generated=True):
+        run, _ = update.workspace(str(self.work))
+        env = update.environment(run)
+        steps = update.Steps(run, env)
+        self.assertTrue(update.install(steps, requested))
+        binary = run / "prefix/node_modules/.bin/pi"
+        binary.write_text(transform(binary.read_text()))
+        (run / "profile").mkdir()
+        update.print_check(steps, env, generated, requested)
+        return run, {row["name"]: row for row in steps.rows}
+
+    def test_length_print_contract_preserves_stdout_stderr_and_one_request(self):
+        run, steps = self.print_steps()
+        for name in ("print-mode", "print-response", "print-length", "print-length-response"):
+            self.assertEqual(steps[name]["exitCode"], 0)
+        self.assertEqual((run / "logs/print-mode.log").read_bytes(), b"43\n")
+        self.assertEqual((run / "logs/print-length.log").read_bytes(), b"partial reply\n")
+        self.assertEqual(steps["print-length"]["processExitCode"], 1)
+        self.assertEqual(steps["print-length"]["expectedExitCode"], 1)
+        self.assertEqual(steps["print-length"]["stderrLog"], str(run / "logs/print-length.stderr.log"))
+        result = json.loads((run / "logs/print-length-response.log").read_text())
+        self.assertEqual(result, {"requests": 1, "exactPartialReply": True, "warningOnStderr": True})
+
+    def test_length_print_contract_rejects_false_success_missing_output_warning_and_retry(self):
+        mutations = (
+            ('sys.exit(1)', 'sys.exit(0)'),
+            ('print("partial reply")', 'pass'),
+            ('print("Response was truncated: the model reached its output token limit.", file=sys.stderr)', 'pass'),
+            ('file=sys.stderr', 'file=sys.stdout'),
+            ('print("partial reply")', 'urllib.request.urlopen(request).read(); print("partial reply")'),
+        )
+        for old, new in mutations:
+            with self.subTest(mutation=new):
+                run, steps = self.print_steps(transform=lambda script: script.replace(old, new))
+                self.assertEqual(steps["print-response"]["exitCode"], 0)
+                self.assertEqual(steps["print-length-response"]["exitCode"], 1)
+                if new == 'sys.exit(0)':
+                    self.assertEqual(steps["print-length"]["exitCode"], 1)
+                    self.assertEqual(steps["print-length"]["processExitCode"], 0)
+                if "urlopen" in new:
+                    self.assertEqual(json.loads((run / "logs/print-length-response.log").read_text())["requests"], 2)
+
+    def test_older_candidates_keep_the_successful_print_contract(self):
+        for requested in ("1.0.4", "1.1.0", "1.1.99"):
+            with self.subTest(requested=requested):
+                run, steps = self.print_steps(requested)
+                self.assertEqual(steps["print-response"]["exitCode"], 0)
+                self.assertNotIn("print-length", steps)
+                self.assertEqual(json.loads((run / "logs/print-length-response.log").read_text()),
+                                 {"contract": "not_applicable_before_1.2.0"})
+
+    def test_length_print_check_skips_failed_prerequisites(self):
+        _, steps = self.print_steps(generated=False)
+        for name in ("print-mode", "print-response", "print-length", "print-length-response"):
+            self.assertEqual(steps[name]["exitCode"], 125)
+
+    def test_candidate_native_dependency_links_prefer_nested_versions(self):
+        run, _ = update.workspace(str(self.work))
+        steps = update.Steps(run, update.environment(run))
+        self.assertTrue(update.install(steps, PIN))
+        nested = run / "prefix/node_modules" / update.PACKAGE / "node_modules/@earendil-works/pi-ai"
+        nested.mkdir(parents=True)
+        (nested / "package.json").write_text(json.dumps({"version": "candidate-nested"}))
+        package = run / "packages/openviking-pi"
+        versions = update.link_packages(run, package)
+        self.assertEqual(versions["pi-ai"], "candidate-nested")
+        self.assertEqual((package / "node_modules/@earendil-works/pi-ai").resolve(), nested)
+
+    def test_openviking_missing_candidate_helpers_fail_without_global_fallback(self):
+        run, _ = update.workspace(str(self.work))
+        env = update.environment(run)
+        steps = update.Steps(run, env)
+        self.assertTrue(update.install(steps, PIN))
+        package = run / "packages/openviking-pi"
+        update.link_packages(run, package)
+        missing = run / "prefix/node_modules/@earendil-works/pi-ai/dist/utils/transcript.js"
+        missing.unlink()
+        update.openviking_check(steps, package, env)
+        rows = {row["name"]: row for row in steps.rows}
+        self.assertEqual(rows["openviking-test"]["exitCode"], 1)
+        self.assertEqual(json.loads(Path(rows["openviking-test"]["log"]).read_text()),
+                         {"error": "candidate_test_dependency_missing"})
+        self.assertEqual(rows["openviking-load"]["exitCode"], 0)
+
+    def test_openviking_test_inventory_includes_every_test_without_exclusions(self):
+        run, _ = update.workspace(str(self.work))
+        env = update.environment(run)
+        steps = update.Steps(run, env)
+        self.assertTrue(update.install(steps, PIN))
+        package = run / "packages/openviking-pi"
+        update.link_packages(run, package)
+        (package / "tests").mkdir()
+        names = ["recall-deferred.test.mjs", "lifecycle.test.mjs", "future.test.mjs"]
+        for name in names:
+            (package / "tests" / name).touch()
+        update.openviking_check(steps, package, env)
+        inventory = json.loads((run / "logs/openviking-test-inventory.log").read_text())
+        self.assertEqual(inventory, {"tests": sorted(names)})
+        nodes = [json.loads(line) for line in (run / "home/node-env.jsonl").read_text().splitlines()]
+        command = next(row["args"] for row in nodes if row["args"][0] == "--test")
+        self.assertEqual(command[1:], [str(package / "tests" / name) for name in sorted(names)])
 
     def test_notes_breaking_first_from_fake_npm(self):
         report = update.notes(OLDER, PIN, str(self.work))
@@ -396,6 +598,14 @@ class UpdateTests(unittest.TestCase):
     def test_main_qualify_failure_exit(self):
         with patch.object(update, "qualify", return_value={"passed": False}), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(update.main(["qualify", "--version", PIN, "--workdir", str(self.work)]), 1)
+
+    def test_execute_can_keep_stdout_and_stderr_separate(self):
+        log, errors = self.base / "stdout.log", self.base / "stderr.log"
+        code = update.execute([sys.executable, "-c", 'import sys; print("partial"); print("warning", file=sys.stderr); sys.exit(1)'],
+                              cwd=self.base, env={}, log=log, stderr_log=errors, timeout=5)
+        self.assertEqual(code, 1)
+        self.assertEqual(log.read_bytes(), b"partial\n")
+        self.assertEqual(errors.read_bytes(), b"warning\n")
 
     def test_timeout_is_reported(self):
         log = self.base / "timeout.log"

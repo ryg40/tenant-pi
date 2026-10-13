@@ -843,7 +843,9 @@ Done when the output has `"complete":true` under `baseline`.
 
 ### Launch
 
-Observed with Pi 1.1.0: the first launch downloads `fd` and `ripgrep` into `<target>/bin/`. This download needs network access and prints four lines.
+Observed with Pi 1.1.0: the first launch downloaded `fd` and `ripgrep` into `<target>/bin/` and printed four lines.
+
+Rule from the Pi 1.1.0 source: Pi checks each tool in `<target>/bin/` first, then on the `PATH`. It checks `fd` locally and `fd` or `fdfind` on the `PATH`. For `ripgrep`, it checks `rg` in both places. At the start of an interactive session, Pi downloads only a missing tool. If both tools are available, Pi downloads neither. With both on the `PATH`, Pi creates no `bin/` in a new profile. The download needs network access. Without network access, Pi warns that the download failed and continues. With offline mode enabled, Pi warns and skips the download.
 
 Observed with Pi 1.1.0: a launch without a prompt writes no session file, even without `env -u PI_CODING_AGENT_SESSION_DIR`.
 The session-directory comparison proves separation only after a session with a prompt.
@@ -859,7 +861,7 @@ Rule: the profile keeps its sessions in `<target>/sessions`. The launch line hol
 1. `pi --version` in that environment prints `<pin>` or an accepted version. Record the untested-version gap when needed.
 2. Startup prints no extension error and no peer warning.
 3. The chosen model replies to the fixed prompt, and the reply holds the expected number: see "Check 3: the model reply" below. An auth error with the gateway means the key did not reach the process.
-4. The profile stayed inside its directory. `ls -la '<target>'` shows the generated files plus what Pi wrote: `auth.json`, `models-store.json`, `sessions/` and `bin/`. Extensions add their state directories. Pi adds `npm/` only with a declared npm package. Pi also adds the key `lastChangelogVersion` to `settings.json`. Observed with Pi 1.1.0 and a core-only profile. The comparison of the live agent directory with its baseline gives `unchanged`: see "Check 4: the comparison with the baseline" below.
+4. The profile stayed inside its directory. `ls -la '<target>'` shows the generated files plus what Pi wrote: `auth.json`, `models-store.json`, `sessions/` and `bin/` (only for a tool download in Stage 9). Extensions add their state directories. Pi adds `npm/` only with a declared npm package. Pi also adds the key `lastChangelogVersion` to `settings.json`. Observed with Pi 1.1.0 and a core-only profile. The comparison of the live agent directory with its baseline gives `unchanged`: see "Check 4: the comparison with the baseline" below.
 5. With Hermes: `<target>/pi-hermes-memory/` exists after the first session. With the wiki, `ambientPersonalVault: false` and no vault before the launch: `~/.llm-wiki` was not created.
 6. With the MCP module: `/mcp-adapter status` inside Pi lists only the servers from the input file.
 7. With `herdr` or `questions`: five separate results, each recorded on its own line. `python3 scripts/tenant_pi.py check-herdr` gives the Herdr command. `python3 scripts/tenant_pi.py inventory --dir '<target>'` gives `coordination.herdrSkill` and `coordination.questionExtension`. The question dialog and a temporary Herdr session are live checks that the user approves first; without them, record "not run". A present command and a readable skill file do not prove a session or a question dialog. `docs/herdr-setup.md` has the steps and the values.

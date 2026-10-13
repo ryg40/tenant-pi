@@ -276,9 +276,12 @@ export default async function (pi: ExtensionAPI) {
       await takeover.resumePending(() => ctx.sessionManager.getBranch(), { deadline });
     }
 
-    // Queue recall for the context hook. Pi renders the user message before
-    // that hook, so recall latency does not delay the message appearing.
-    recall.queueSearch(event.prompt);
+    // Only user-started runs carry a prompt. Custom completions still need
+    // the static additions below, but must not start a prompt recall search.
+    if (event.messageType === "user") {
+      // Pi renders the user message before context, so recall does not delay it.
+      recall.queueSearch(event.prompt);
+    }
 
     // Compose system prompt additions
     const parts: string[] = [];

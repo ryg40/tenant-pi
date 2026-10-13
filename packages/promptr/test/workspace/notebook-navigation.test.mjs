@@ -11,7 +11,8 @@ const NOTE = [
   '-- Note 2030-09-08 10:05Z --', 'note body', '',
 ].join('\n');
 const INVERSE = '\x1b[7m';
-const plain = (rows) => rows.map((row) => row.replace(/\x1b\[[0-9;]*m/g, ''));
+// Pi 1.2.0 adds fake-cursor markers; text assertions keep the cursor cell itself.
+const plain = (rows) => rows.map((row) => row.replace(/\x1b_pi:\/?fc\x07/g, '').replace(/\x1b\[[0-9;]*m/g, ''));
 const tui = () => ({ requestRender() {}, terminal: { rows: 40, columns: 100 } });
 function view({ hosted = true, noteText = NOTE } = {}) {
   const v = new CompanionSpikeView(tui(), { noteText, hosted, overviewNavigation: hosted, trackingNavigation: false });
@@ -24,6 +25,10 @@ function highlighted(v) {
   const start = rows.findIndex((row) => row.includes('NOTEBOOK'));
   return plain(rows.slice(start + 1).filter((row) => row.startsWith(INVERSE) && row.endsWith('\x1b[0m'))).map((row) => row.trimEnd());
 }
+
+test('plain rows remove fake-cursor markers and styling without removing text', () => {
+  assert.deepEqual(plain(['\x1b[7m\x1b_pi:fc\x07f\x1b_pi:/fc\x07ree\x1b[0m']), ['free']);
+});
 
 test('[ and ] walk whole entries, the notebook paints exactly those lines, and the notice names the entry', () => {
   const v = view();

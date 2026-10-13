@@ -123,7 +123,7 @@ Promptr is a Pi extension: a prompt queue, progress checkpoints, staged handoffs
 | License | MIT, `packages/promptr/LICENSE`; declared in `packages/promptr/package.json`. |
 | Skills | `packages/promptr/skills/`: `promptr-generate-task-prompt`, `promptr-handoff`, `openknowledge-project-pages` and `watch-herdr-agents` |
 | Publish rule | `("packages/promptr", ("node_modules/", "dist/", "LICENSE"))`; `packages/promptr/LICENSE` is explicit in `PUBLISH`. |
-| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.1.0`. The build, the 778 tests, the typecheck and `npm run smoke` pass with both dependencies at 1.1.0. Not verified on 1.1.0: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
+| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.2.0`. The build, the 783 tests, the typecheck and `npm run smoke` pass with both dependencies at 1.2.0. Not verified on 1.2.0: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
 
 ### Build and test
 
@@ -141,8 +141,9 @@ npm run typecheck
 
 Warning: `npm run install:local` and `npm run doctor` read or change the Pi directory of the host. Do not run them as a repository check. `npm run smoke:installed` installs into a new directory under the temporary directory and starts `pi` there without a prompt.
 
-A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now pins 1.1.0, matching the kit pin. Pi's caret dependency can still select a later `pi-tui`.
-The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on 1.1.0.
+A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now pins 1.2.0, matching the kit pin. Pi's caret dependency can still select a later `pi-tui`.
+The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on 1.2.0.
+The kit pin move does not change an installed Promptr copy or resolve its dependency drift. A live reinstall needs separate approval.
 
 ### Placeholder defaults
 
@@ -201,7 +202,8 @@ Its five behaviour changes are:
 
 The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.2.0`.
 
-The [package banner](../packages/openviking-pi/README.md) separates these fork changes from kit-only README edits, the vendored licence, and generated shared files.
+The [package banner](../packages/openviking-pi/README.md) separates these fork changes from kit changes, the vendored licence, and generated shared files.
+The kit also guards user-only recall for Pi 1.2.0 and carries lifecycle tests, updated handshake fixtures, and a local recall-test helper.
 
 `PATTERN_ALLOW` in `scripts/publish_check.py` holds the exact text of three reviewed lines of the package that match `PATTERNS` and hold no secret: one line in `shared/credentials.mjs` and the same line in `shared/plugin-config.mjs` copy a property that says whether a key is set, and one line of `tests/config.test.mjs` names an environment variable.
 
@@ -214,11 +216,22 @@ cd packages/openviking-pi
 npm ci --ignore-scripts
 ```
 
-The package has a test suite under `tests/`; `package.json` has no `test` script, so the command is `node --test tests/*.test.mjs` after the install step. The kit checks do not run it. One file, `tests/recall-deferred.test.mjs`, imports a helper from `examples/memory-plugin-shared/testing/` of the OpenViking repository. That helper is not in the kit copy, so this file fails to load here and passes only in an OpenViking checkout. The files under `scripts/` are not repository checks: `e2e-live.mjs` and `e2e-live.sh` need a live server, a Pi and a model, and `setup.mjs` writes credentials to `~/.openviking/`.
+The package has a test suite under `tests/`; `package.json` has no `test` script.
+Use `scripts/pi_update.py qualify` from the kit root to install isolated candidate dependencies and run every package test.
+The lifecycle tests need the candidate Pi SDK, beyond the one runtime dependency installed above.
+The qualifier selects candidate session and transcript helpers explicitly. It excludes no test file.
+The recall test includes its own loopback helper and needs no external checkout.
 
-Under Pi 1.1.0, the generated local-file `packages` entry resolves and loads the OpenViking extension.
-The kit test checks the installed resolver and rejects the former directory form. A no-model start confirms `/viking` registration.
-The package stays at its kit path for dependency resolution. No vendored file or extra profile file changes.
+The files under `scripts/` are not repository checks: `e2e-live.mjs` and `e2e-live.sh` need a live server, a Pi and a model.
+`setup.mjs` writes credentials to `~/.openviking/`.
+
+Historical evidence from Pi 1.1.0: the generated local-file `packages` entry resolves and loads the OpenViking extension.
+At that version, the kit test checks the installed resolver and rejects the former directory form. A no-model start confirms `/viking` registration.
+With Pi 1.2.0, isolated qualification passes all 295 package tests and a network-blocked resolver and factory-load check.
+It checks the selected file source, rejects the directory source, and confirms registration without starting a live session.
+The package stays at its kit path for dependency resolution. The generated profile needs no wrapper or extra file.
+Full strict OpenViking typing still reports four baseline diagnostics: two missing JavaScript declarations, recall-option typing, and MCP schema typing.
+The lifecycle callback passes strict typing against Pi 1.2.0; the unchanged baseline diagnostics remain outside that proof.
 Capture, recall and tools against a live server remain unverified.
 
 Not verified: a generated profile connected to a live server, and `npm ci` on a clean client.

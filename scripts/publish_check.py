@@ -89,6 +89,8 @@ PUBLISH = (
     "deploy/compose/compose.yaml", "deploy/compose/compose.projects.yaml",
     "deploy/compose/seat.env.example", "deploy/compose/compose.env.example", "deploy/compose/profile.sh",
     "docs/guides/compose-seat.md",
+    "docs/architecture.html", "docs/architecture.md", "docs/architecture/model.json",
+    "scripts/architecture_build.py", "tests/test_architecture_build.py",
 )
 # Package directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.

@@ -1,0 +1,6089 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="scripts/architecture_build.py">
+<title>tenant-pi architecture</title>
+<style>
+:root{--bg:#090d14;--canvas:#0b1019;--panel:#0e1520;--panel2:#121b29;--line:#1c2738;--line2:#283650;--text:#e6edf7;--muted:#8d9ab0;--faint:#5b687e;--accent:#f2b84b;--sky:#5fa8ff;--danger:#ff6b6b;
+--sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--sans);display:flex;flex-direction:column;overflow:hidden}
+button{font:inherit;color:inherit}
+code,.mono{font-family:var(--mono);font-size:12px}
+a{color:var(--sky);text-decoration:none}
+a:hover{text-decoration:underline}
+header.top{display:flex;align-items:center;gap:20px;padding:10px 18px;border-bottom:1px solid var(--line);background:linear-gradient(180deg,#0f1622,#0a0f17);flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;min-width:220px}
+.brand .mark{width:26px;height:26px;fill:none;stroke:var(--accent);stroke-width:1.6}
+.brand h1{font-size:15px;line-height:1.2;margin:0 0 3px;font-weight:650;letter-spacing:.01em}
+.badge{display:inline-block;padding:0 8px;border-radius:999px;border:1px solid var(--line2);font:600 10px/18px var(--sans);letter-spacing:.08em;text-transform:uppercase;color:var(--sky);background:#0f1a2b}
+.badge.local{color:#ffb38a;border-color:#6b3b2a;background:#25140d}
+#tabs{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:12px;background:#0b111b;flex-wrap:wrap}
+#tabs button{border:0;background:transparent;padding:6px 12px;border-radius:9px;cursor:pointer;color:var(--muted);font-size:13px;white-space:nowrap}
+#tabs button:hover{color:var(--text);background:#141d2c}
+#tabs button[aria-pressed="true"]{color:var(--text);background:#1a2538;box-shadow:inset 0 0 0 1px var(--line2)}
+#tabs button kbd{font:10px var(--mono);color:var(--faint);margin-right:6px}
+.tools{display:flex;align-items:center;gap:8px;margin-left:auto}
+.searchbox{position:relative}
+#search{width:260px;padding:7px 12px;border-radius:10px;border:1px solid var(--line2);background:#0b111b;color:var(--text);outline:none}
+#search:focus{border-color:var(--sky);box-shadow:0 0 0 3px #5fa8ff22}
+#results{position:absolute;right:0;top:calc(100% + 6px);width:360px;max-height:420px;overflow:auto;margin:0;padding:6px;list-style:none;background:var(--panel2);border:1px solid var(--line2);border-radius:12px;box-shadow:0 18px 40px #000a;z-index:20}
+#results li{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:8px;cursor:pointer}
+#results li[aria-selected="true"],#results li:hover{background:#1a2538}
+#results .r-main{flex:1;min-width:0}
+#results .r-label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#results .r-sub{display:block;font:11px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#results .r-view{font-size:11px;color:var(--faint);white-space:nowrap}
+#results .empty{color:var(--muted);cursor:default}
+.btn{border:1px solid var(--line2);background:#111a28;border-radius:9px;padding:6px 12px;cursor:pointer;font-size:13px}
+.btn:hover{background:#18233a}
+.btn.primary{background:#2a2110;border-color:#6b5320;color:#ffd58a}
+.btn.primary:hover{background:#352a14}
+.btn[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.link{border:0;background:none;color:var(--muted);cursor:pointer;padding:0;font-size:12px}
+.link:hover{color:var(--text)}
+main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 390px;min-height:0}
+#stage{position:relative;overflow:hidden;background:radial-gradient(1200px 700px at 30% 20%,#0f1828 0%,var(--canvas) 60%)}
+#canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none;user-select:none}
+#canvas.dragging{cursor:grabbing}
+#viewport{transform-origin:0 0}
+#viewport.anim{transition:transform .38s cubic-bezier(.2,.7,.2,1)}
+.grp .glabel{font:700 11px var(--sans);letter-spacing:.14em}
+.grp .gsub{font:11px var(--mono);fill:var(--muted)}
+.edge .eline{fill:none;stroke-width:1.5;stroke:#5d6d8a;marker-end:url(#m-flow)}
+.edge .ehit{fill:none;stroke:transparent;stroke-width:14;pointer-events:stroke}
+.edge.st-writes .eline{stroke:#4fae72;marker-end:url(#m-writes)}
+.edge.st-reads .eline{stroke:#5f86bd;stroke-dasharray:5 4;marker-end:url(#m-reads)}
+.edge.st-optional .eline{stroke:#56627a;stroke-dasharray:7 5;marker-end:url(#m-optional)}
+.edge.st-requires .eline{stroke:#c9a24b;stroke-dasharray:2 4;marker-end:url(#m-requires)}
+.edge.st-refuses .eline{stroke:#ff6b6b;stroke-dasharray:7 4;marker-end:url(#m-refuses)}
+.edge .elabel{font:600 11px var(--sans);fill:#dfe7f3;paint-order:stroke;stroke:#0b1019;stroke-width:5px;stroke-linejoin:round;opacity:0;pointer-events:none;transition:opacity .15s}
+.edge:hover .elabel,.edge.on .elabel{opacity:1}
+.edge:hover .eline{stroke-width:2.4}
+.edge.on .eline{stroke:var(--accent);stroke-width:2.2;marker-end:url(#m-hl)}
+.pathing .edge.on .eline{stroke-dasharray:9 6;animation:flow 1s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-15}}
+.node{cursor:pointer;outline:none}
+.node .nbox{fill:#121a28;stroke:#27344b;stroke-width:1.2;transition:stroke .15s,fill .15s}
+.node:hover .nbox,.node:focus-visible .nbox{stroke:var(--kc);fill:#162133}
+.node .nbar{fill:var(--kc)}
+.node .nlabel{font:600 13px var(--sans);fill:var(--text)}
+.node .nsub{font:10.5px var(--mono);fill:var(--muted)}
+.node .ndrill{font:700 13px var(--sans);fill:var(--faint)}
+.node .ndot{stroke:#0b1019;stroke-width:2}
+.node .ndot.s-tested{fill:#6cd47e}
+.node .ndot.s-unverified{fill:#f2b84b}
+.node .ndot.s-blocked{fill:#ff6b6b}
+.node.sel .nbox{stroke:var(--kc);stroke-width:2.2;fill:#18243a;filter:drop-shadow(0 0 10px color-mix(in srgb,var(--kc) 55%,transparent))}
+.focus .node,.focus .edge{transition:opacity .2s}
+.focus .node:not(.on){opacity:.22}
+.focus .edge:not(.on){opacity:.12}
+.focus .grp{opacity:.55}
+.float{position:absolute;z-index:5}
+#crumbs{position:absolute;left:16px;top:12px;z-index:5;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);background:#0b1019cc;border:1px solid var(--line);border-radius:10px;padding:5px 10px;backdrop-filter:blur(6px)}
+#crumbs b{color:var(--text);font-weight:600}
+#zoom{right:14px;top:12px;display:flex;gap:4px}
+#zoom button{border:1px solid var(--line2);background:#0f1724e6;border-radius:8px;min-width:32px;height:30px;cursor:pointer;font-size:13px}
+#zoom button:hover{background:#18233a}
+#legend{left:14px;bottom:14px;max-width:min(560px,70%);display:flex;flex-wrap:wrap;gap:6px 14px;padding:9px 12px;background:#0b1019d9;border:1px solid var(--line);border-radius:12px;font-size:11.5px;color:var(--muted);backdrop-filter:blur(6px)}
+#legend .li{display:flex;align-items:center;gap:6px;white-space:nowrap}
+#legend .sw{width:10px;height:10px;border-radius:3px}
+#legend svg{width:26px;height:8px}
+#legend .sep{flex-basis:100%;height:0}
+#tour{left:50%;bottom:18px;transform:translateX(-50%);width:min(520px,calc(100% - 40px));background:#121b29f2;border:1px solid #6b5320;border-radius:14px;padding:12px 16px 14px;box-shadow:0 20px 50px #000b;backdrop-filter:blur(8px)}
+#tour .tour-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+#tour h3{margin:6px 0 4px;font-size:16px}
+#tour p{margin:0 0 10px;color:#c9d3e2}
+#tour .tour-nav{display:flex;justify-content:flex-end;gap:8px}
+.noscript{position:absolute;inset:40% 0 auto;text-align:center;color:var(--muted)}
+#panel{border-left:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column;min-height:0}
+#pathfinder{border-bottom:1px solid var(--line);padding:0 18px}
+#pathfinder summary{cursor:pointer;padding:12px 0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);list-style:none}
+#pathfinder summary::-webkit-details-marker{display:none}
+#pathfinder summary::before{content:"\25B8";display:inline-block;margin-right:8px;transition:transform .15s}
+#pathfinder[open] summary::before{transform:rotate(90deg)}
+#pathfinder[open] summary{color:var(--accent)}
+.pf{display:grid;gap:8px;padding-bottom:14px}
+.pf label{display:grid;grid-template-columns:44px 1fr;align-items:center;font-size:12px;color:var(--muted)}
+.pf select{width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--line2);background:#0b111b;color:var(--text)}
+.pf-actions{display:flex;gap:6px}
+#pf-result ol{margin:6px 0 0;padding-left:20px}
+#pf-result li{margin:3px 0}
+#pf-result .via{display:block;font-size:11px;color:var(--faint)}
+#pf-result .note{font-size:12px;color:var(--muted);margin:6px 0 0}
+#pf-result .note.none{color:#ffb38a;padding:7px 10px;border:1px solid #6b3b2a;border-radius:9px;background:#25140d}
+#panel-body{padding:16px 18px 10px;flex:1}
+#panel-body h2{margin:4px 0 2px;font-size:20px;line-height:1.25}
+#panel-body h3{margin:18px 0 6px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600}
+#panel-body .sub{color:var(--muted);word-break:break-all}
+#panel-body .summary{color:#d4dcea;margin:10px 0}
+.kindrow{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;flex:none}
+.tags{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}
+.tag{font-size:11px;padding:1px 8px;border-radius:999px;background:#162033;border:1px solid var(--line2);color:#b9c5d8}
+dl.fields{display:grid;grid-template-columns:96px 1fr;gap:5px 10px;margin:0;font-size:12.5px}
+dl.fields dt{color:var(--muted)}
+dl.fields dd{margin:0;word-break:break-word}
+ul.files,ul.links,ul.gaps{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+ul.files li{display:flex;align-items:center;gap:6px;min-width:0}
+ul.files a,ul.files code{font:12px var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+ul.files .copy{margin-left:auto;flex:none;font-size:11px}
+ul.gaps li{font-size:12.5px;padding:7px 9px;background:#121b29;border:1px solid var(--line);border-radius:9px}
+ul.gaps code{color:var(--accent)}
+ul.links button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid transparent;background:none;border-radius:8px;padding:5px 7px;cursor:pointer;font-size:13px}
+ul.links button:hover{background:#152034;border-color:var(--line)}
+ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:right}
+.actions{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 4px}
+.stats{font-size:12px;color:var(--muted)}
+.howto{margin:0;padding-left:18px;color:#c3cddc;font-size:13px}
+.howto kbd,.foot kbd{font:11px var(--mono);border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:0 5px;color:var(--text);background:#121a28}
+.groupcard{margin:10px 0;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:#0f1725}
+.groupcard .gh{display:flex;align-items:baseline;gap:8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.groupcard .gh span{font:11px var(--mono);color:var(--muted);text-transform:none;letter-spacing:0;font-weight:400;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);background:#121b29;border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer}
+.chip:hover{border-color:var(--sky)}
+.foot{padding:12px 18px 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--faint)}
+.foot code{font-size:11px;color:var(--muted)}
+.ed-local header.top{box-shadow:inset 0 -2px 0 #6b3b2a}
+@media (max-width:980px){body{overflow:auto}main{grid-template-columns:1fr;grid-template-rows:62vh auto}#panel{border-left:0;border-top:1px solid var(--line)}#search{width:180px}#results{width:300px}}
+@media (prefers-reduced-motion:reduce){#viewport.anim{transition:none}.pathing .edge.on .eline{animation:none}}
+</style>
+</head>
+<body class="ed-public">
+<header class="top">
+ <div class="brand">
+  <svg class="mark" viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="3" width="24" height="7" rx="3"/><rect x="5" y="12" width="18" height="6" rx="3"/><rect x="8" y="20" width="12" height="5" rx="2.5"/></svg>
+  <div><h1 id="title">tenant-pi architecture</h1><span class="badge">Public edition</span></div>
+ </div>
+ <nav id="tabs" aria-label="Views"></nav>
+ <div class="tools">
+  <div class="searchbox">
+   <input id="search" type="search" placeholder="Search nodes  /" autocomplete="off" spellcheck="false" aria-label="Search nodes" aria-controls="results">
+   <ul id="results" role="listbox" hidden></ul>
+  </div>
+  <button id="tour-start" class="btn" type="button" title="Start the guided tour">Tour</button>
+  <button id="path-open" class="btn" type="button" title="Find a path between two nodes">Path</button>
+ </div>
+</header>
+<main>
+ <section id="stage" aria-label="Diagram">
+  <div id="crumbs"></div>
+  <svg id="canvas" role="group" aria-label="Architecture diagram">
+   <defs>
+    <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#1b2433"/></pattern>
+    <marker id="m-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#5d6d8a"/></marker>
+    <marker id="m-writes" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#4fae72"/></marker>
+    <marker id="m-reads" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#5f86bd"/></marker>
+    <marker id="m-optional" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#56627a"/></marker>
+    <marker id="m-requires" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#c9a24b"/></marker>
+    <marker id="m-refuses" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#ff6b6b"/></marker>
+    <marker id="m-hl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z" fill="#f2b84b"/></marker>
+   </defs>
+   <rect class="grid" width="100%" height="100%" fill="url(#dots)"/>
+   <g id="viewport"><g id="layer-groups"></g><g id="layer-edges"></g><g id="layer-nodes"></g></g>
+  </svg>
+  <div id="zoom" class="float"><button type="button" data-zoom="in" title="Zoom in (+)">+</button><button type="button" data-zoom="out" title="Zoom out (-)">&minus;</button><button type="button" data-zoom="fit" title="Fit the view (f)">Fit</button></div>
+  <div id="legend" class="float"></div>
+  <div id="tour" class="float" hidden>
+   <div class="tour-head"><span id="tour-count"></span><button type="button" id="tour-end" class="link" title="End the tour (Esc)">End tour</button></div>
+   <h3 id="tour-title"></h3>
+   <p id="tour-text"></p>
+   <div class="tour-nav"><button type="button" id="tour-prev" class="btn">Back</button><button type="button" id="tour-next" class="btn primary">Next</button></div>
+  </div>
+  <noscript><p class="noscript">This diagram needs JavaScript. EXPLAINER.md has the same diagrams as text.</p></noscript>
+ </section>
+ <aside id="panel" aria-label="Details">
+  <details id="pathfinder">
+   <summary>Path finder</summary>
+   <div class="pf">
+    <label>From <select id="pf-from"></select></label>
+    <label>To <select id="pf-to"></select></label>
+    <div class="pf-actions"><button type="button" id="pf-go" class="btn primary">Find path</button><button type="button" id="pf-swap" class="btn">Swap</button><button type="button" id="pf-clear" class="btn">Clear</button></div>
+    <div id="pf-result"></div>
+   </div>
+  </details>
+  <div id="panel-body"></div>
+  <footer class="foot" id="foot"></footer>
+ </aside>
+</main>
+<script type="application/json" id="graph-data">{
+ "kinds": {
+  "action": {
+   "color": "#3fc1c9",
+   "label": "Kit action"
+  },
+  "agent": {
+   "color": "#ffd166",
+   "label": "Herdr pane"
+  },
+  "comp-core": {
+   "color": "#d6dde8",
+   "label": "Core component"
+  },
+  "comp-deploy": {
+   "color": "#5fa8ff",
+   "label": "Deploy"
+  },
+  "comp-herdr": {
+   "color": "#ffd166",
+   "label": "Herdr and questions"
+  },
+  "comp-mcp": {
+   "color": "#ff8fc7",
+   "label": "MCP module"
+  },
+  "comp-memory": {
+   "color": "#b39dff",
+   "label": "Memory module"
+  },
+  "comp-promptr": {
+   "color": "#f78c6b",
+   "label": "Promptr"
+  },
+  "comp-skills": {
+   "color": "#7fdc8f",
+   "label": "Skill set"
+  },
+  "comp-tenantext": {
+   "color": "#4dd0e1",
+   "label": "Tenantext extension"
+  },
+  "file": {
+   "color": "#8b98ad",
+   "label": "File"
+  },
+  "guard": {
+   "color": "#ff6b6b",
+   "label": "Guard or check"
+  },
+  "host": {
+   "color": "#ffb38a",
+   "label": "Host fact"
+  },
+  "input": {
+   "color": "#f2b84b",
+   "label": "Input file"
+  },
+  "output": {
+   "color": "#6cd47e",
+   "label": "Generated file"
+  },
+  "release": {
+   "color": "#5fa8ff",
+   "label": "Release step"
+  },
+  "runtime": {
+   "color": "#a98bff",
+   "label": "Pi runtime"
+  },
+  "service": {
+   "color": "#ff8fc7",
+   "label": "External service"
+  }
+ },
+ "meta": {
+  "base": "../",
+  "build": "python3 scripts/architecture_build.py",
+  "edition": "public",
+  "intro": "The kit checks your private choices and generates a separate Pi profile. It writes new files, but installs no package, starts no service and stores no credential.",
+  "model": "docs/architecture/model.json",
+  "title": "tenant-pi architecture"
+ },
+ "tones": {
+  "actions": "#3fc1c9",
+  "clone": "#5fa8ff",
+  "live": "#ff6b6b",
+  "neutral": "#8b98ad",
+  "private": "#f2b84b",
+  "profile": "#6cd47e",
+  "release": "#5fa8ff",
+  "runtime": "#a98bff",
+  "service": "#ff8fc7"
+ },
+ "tour": [
+  {
+   "node": "manifest",
+   "text": "The manifest in the clone is public and reviewed. It names each component, its source, its pin and its status.",
+   "title": "Two inputs: the manifest",
+   "view": "overview"
+  },
+  {
+   "node": "overlay",
+   "text": "Your overlay in the private directory holds your choices. A kit update changes the manifest and never your overlay.",
+   "title": "Two inputs: your overlay",
+   "view": "overview"
+  },
+  {
+   "node": "plan",
+   "text": "The plan follows from the manifest and the overlay only. It writes nothing and prints each command that changes the machine as display text.",
+   "title": "A pure plan",
+   "view": "overview"
+  },
+  {
+   "node": "generate",
+   "text": "The writer creates a new, absent target or stops. The kit has no code that edits an existing profile.",
+   "title": "New directories only",
+   "view": "overview"
+  },
+  {
+   "node": "launcher",
+   "text": "The launcher starts Pi with PI_CODING_AGENT_DIR set to the target. A profile is a directory, not a sandbox.",
+   "title": "The launcher file",
+   "view": "overview"
+  },
+  {
+   "node": "live",
+   "text": "The kit refuses a target in the live profile. baseline and check-baseline show any change of it.",
+   "title": "The live profile is refused",
+   "view": "overview"
+  },
+  {
+   "node": "p-validate",
+   "text": "validate checks the overlay against the manifest offline. A refusal prints rule: field and never a value.",
+   "title": "Validate",
+   "view": "pipeline"
+  },
+  {
+   "node": "p-gaps",
+   "text": "The kit cannot prove offline that Pi loads a package or that a model replies. It lists each such fact as a readiness gap.",
+   "title": "Gaps, not promises",
+   "view": "pipeline"
+  },
+  {
+   "node": "p-install",
+   "text": "You install Node, Pi and the packages, you log in, and you launch. The kit runs none of these commands.",
+   "title": "Your stages",
+   "view": "pipeline"
+  },
+  {
+   "node": "p-compare",
+   "text": "An update is a new candidate from the same overlay. compare shows the drift, and carry prints the overlay patches.",
+   "title": "Update by comparison",
+   "view": "pipeline"
+  },
+  {
+   "node": "core",
+   "text": "Each other component is optional. You move its id from selection.disable to selection.enable in the overlay.",
+   "title": "Core is always on",
+   "view": "components"
+  },
+  {
+   "node": "codex-accounts",
+   "text": "codex-accounts sends model requests to an HTTPS gateway. The key stays in the launching shell.",
+   "title": "The gateway route",
+   "view": "components"
+  },
+  {
+   "node": "hermes",
+   "text": "Hermes, LLM Wiki and OpenViking need consent.memoryCapture. OpenViking also needs consent.remoteMemoryWrites.",
+   "title": "Memory needs consent",
+   "view": "components"
+  },
+  {
+   "node": "d-publish-check",
+   "text": "Each tracked file is published, excluded or development-only. The public reader rules keep private content out of the snapshot.",
+   "title": "The publish check",
+   "view": "devrel"
+  },
+  {
+   "node": "d-publisher",
+   "text": "publish_portable.py builds the snapshot from a clean HEAD, with only the publish set, and tags it portable/\u003cyyyymmdd\u003e-\u003csha\u003e.",
+   "title": "A reviewed snapshot",
+   "view": "devrel"
+  },
+  {
+   "node": "r-gateway",
+   "text": "The gateway, the memory servers and the host tools are services of your host. The kit writes references, never a key.",
+   "title": "Services stay outside the kit",
+   "view": "runtime"
+  },
+  {
+   "node": "r-seat",
+   "text": "The same profile in a container that you reach over SSH. Not qualified.",
+   "title": "The Compose seat",
+   "view": "runtime"
+  }
+ ],
+ "views": [
+  {
+   "edges": [
+    {
+     "from": "example",
+     "label": "the sample overlay",
+     "to": "init-private"
+    },
+    {
+     "from": "templates",
+     "label": "the templates",
+     "to": "init-private"
+    },
+    {
+     "from": "init-private",
+     "label": "creates",
+     "style": "writes",
+     "to": "overlay"
+    },
+    {
+     "from": "init-private",
+     "label": "creates",
+     "style": "writes",
+     "to": "install-log"
+    },
+    {
+     "from": "manifest",
+     "label": "the manifest",
+     "to": "validate"
+    },
+    {
+     "from": "overlay",
+     "label": "the overlay",
+     "to": "validate"
+    },
+    {
+     "from": "registry",
+     "label": "--registry",
+     "style": "optional",
+     "to": "validate"
+    },
+    {
+     "from": "inputs",
+     "label": "--local-dir",
+     "style": "optional",
+     "to": "validate"
+    },
+    {
+     "from": "cli",
+     "label": "runs each action",
+     "to": "validate"
+    },
+    {
+     "from": "checks",
+     "label": "tests each action",
+     "style": "optional",
+     "to": "cli"
+    },
+    {
+     "from": "check-runtime",
+     "label": "saved report",
+     "style": "writes",
+     "to": "runtime-report"
+    },
+    {
+     "from": "runtime-report",
+     "label": "--runtime-report",
+     "style": "optional",
+     "to": "plan"
+    },
+    {
+     "from": "validate",
+     "label": "valid input",
+     "to": "plan"
+    },
+    {
+     "from": "plan",
+     "label": "the plan",
+     "to": "generate"
+    },
+    {
+     "from": "generate",
+     "label": "creates, one time",
+     "style": "writes",
+     "to": "settings"
+    },
+    {
+     "from": "generate",
+     "label": "creates",
+     "style": "writes",
+     "to": "choices"
+    },
+    {
+     "from": "generate",
+     "label": "creates",
+     "style": "writes",
+     "to": "state"
+    },
+    {
+     "from": "generate",
+     "label": "--launcher",
+     "style": "writes",
+     "to": "launcher"
+    },
+    {
+     "from": "generate",
+     "label": "refuses a target here",
+     "style": "refuses",
+     "to": "live"
+    },
+    {
+     "from": "packages",
+     "label": "tree package entries",
+     "style": "optional",
+     "to": "settings"
+    },
+    {
+     "from": "launcher",
+     "label": "starts with PI_CODING_AGENT_DIR",
+     "to": "pi"
+    },
+    {
+     "from": "pi",
+     "label": "reads",
+     "style": "reads",
+     "to": "settings"
+    },
+    {
+     "from": "pi",
+     "label": "reads and writes",
+     "style": "writes",
+     "to": "pi-state"
+    },
+    {
+     "from": "pi",
+     "label": "model requests",
+     "to": "provider"
+    },
+    {
+     "from": "baseline",
+     "label": "scans names only",
+     "style": "reads",
+     "to": "live"
+    },
+    {
+     "from": "baseline",
+     "label": "records",
+     "style": "writes",
+     "to": "live-baseline"
+    }
+   ],
+   "groups": [
+    {
+     "cols": 2,
+     "h": 278,
+     "id": "g-clone",
+     "label": "The clone",
+     "sub": "$HOME/tenant-pi",
+     "tone": "clone",
+     "w": 420,
+     "x": 40,
+     "y": 40
+    },
+    {
+     "cols": 2,
+     "h": 352,
+     "id": "g-private",
+     "label": "The private directory",
+     "sub": "$HOME/.config/tenant-pi",
+     "tone": "private",
+     "w": 420,
+     "x": 920,
+     "y": 40
+    },
+    {
+     "cols": 2,
+     "h": 278,
+     "id": "g-actions",
+     "label": "The kit actions",
+     "sub": "scripts/tenant_pi.py",
+     "tone": "actions",
+     "w": 420,
+     "x": 480,
+     "y": 420
+    },
+    {
+     "cols": 2,
+     "h": 204,
+     "id": "g-profile",
+     "label": "The generated profile",
+     "sub": "$HOME/.pi/profiles/main",
+     "tone": "profile",
+     "w": 420,
+     "x": 40,
+     "y": 780
+    },
+    {
+     "cols": 2,
+     "h": 130,
+     "id": "g-runtime",
+     "label": "The Pi runtime",
+     "sub": "one npm package for the user",
+     "tone": "runtime",
+     "w": 420,
+     "x": 480,
+     "y": 780
+    },
+    {
+     "cols": 1,
+     "h": 130,
+     "id": "g-live",
+     "label": "The live profile",
+     "sub": "~/.pi/agent",
+     "tone": "live",
+     "w": 220,
+     "x": 920,
+     "y": 780
+    }
+   ],
+   "height": 1024,
+   "id": "overview",
+   "label": "System overview",
+   "nodes": [
+    {
+     "doc": "docs/guides/modules.md",
+     "drill": "components",
+     "files": [
+      "config/manifest.json"
+     ],
+     "group": "g-clone",
+     "h": 52,
+     "id": "manifest",
+     "kind": "input",
+     "label": "The manifest",
+     "sub": "config/manifest.json",
+     "summary": "Each component with its source, pin and status, and the runtime requirements. The public input of the plan. A kit update changes the manifest and never your choices.",
+     "tags": [
+      "public input",
+      "reviewed"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 98
+    },
+    {
+     "doc": "docs/private-directory.md",
+     "files": [
+      "config/config.example.json"
+     ],
+     "group": "g-clone",
+     "h": 52,
+     "id": "example",
+     "kind": "input",
+     "label": "Sample overlay",
+     "sub": "config/config.example.json",
+     "summary": "A synthetic core-only overlay. init-private adapts it to your target.",
+     "tags": [
+      "synthetic"
+     ],
+     "w": 180,
+     "x": 260,
+     "y": 98
+    },
+    {
+     "doc": "docs/private-directory.md",
+     "files": [
+      "config/private/registry.json",
+      "config/private/install-log.md",
+      "config/private/accepted-drift.md",
+      "config/private/gitignore"
+     ],
+     "group": "g-clone",
+     "h": 52,
+     "id": "templates",
+     "kind": "input",
+     "label": "Private templates",
+     "sub": "config/private/",
+     "summary": "The templates of the registry, the install log, the accepted-drift list and the Git ignore file of the private directory.",
+     "tags": [
+      "template"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 172
+    },
+    {
+     "doc": "docs/packages.md",
+     "drill": "components",
+     "files": [
+      "packages/tenantext/package.json",
+      "packages/promptr/package.json",
+      "packages/openviking-pi/package.json"
+     ],
+     "group": "g-clone",
+     "h": 52,
+     "id": "packages",
+     "kind": "input",
+     "label": "In-tree packages",
+     "sub": "packages/",
+     "summary": "The optional modules: packages/tenantext, packages/promptr and packages/openviking-pi. A profile points at them by absolute path, so the clone must stay in its place.",
+     "tags": [
+      "optional",
+      "tree source"
+     ],
+     "w": 180,
+     "x": 260,
+     "y": 172
+    },
+    {
+     "doc": "docs/generator.md",
+     "drill": "pipeline",
+     "files": [
+      "scripts/tenant_pi.py"
+     ],
+     "group": "g-clone",
+     "h": 52,
+     "id": "cli",
+     "kind": "action",
+     "label": "The command line",
+     "script": "scripts/tenant_pi.py",
+     "sub": "scripts/tenant_pi.py",
+     "summary": "The options, the bounded file loader and each action. python3 scripts/tenant_pi.py --help lists the actions.",
+     "tags": [
+      "entry point"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 246
+    },
+    {
+     "doc": "docs/guides/setup.md",
+     "drill": "devrel",
+     "files": [
+      "scripts/publish_check.py",
+      "scripts/examples.py",
+      "scripts/validate.py"
+     ],
+     "group": "g-clone",
+     "h": 52,
+     "id": "checks",
+     "kind": "guard",
+     "label": "Offline checks",
+     "script": "scripts/publish_check.py",
+     "sub": "tests/, publish_check.py",
+     "summary": "You run the unit tests and the publish check after the clone. They need no network and change nothing.",
+     "tags": [
+      "offline"
+     ],
+     "w": 180,
+     "x": 260,
+     "y": 246
+    },
+    {
+     "doc": "docs/private-directory.md",
+     "files": [
+      "$HOME/.config/tenant-pi/overlay.json"
+     ],
+     "group": "g-private",
+     "h": 52,
+     "id": "overlay",
+     "kind": "input",
+     "label": "Your overlay",
+     "sub": "overlay.json",
+     "summary": "Your choices: the target, the component selection, the models, the references and the consent. The private input of the plan.",
+     "tags": [
+      "private input",
+      "mode 0600"
+     ],
+     "w": 180,
+     "x": 940,
+     "y": 98
+    },
+    {
+     "doc": "docs/model-routes.md",
+     "files": [
+      "$HOME/.config/tenant-pi/registry.json"
+     ],
+     "group": "g-private",
+     "h": 52,
+     "id": "registry",
+     "kind": "input",
+     "label": "Model registry",
+     "sub": "registry.json",
+     "summary": "Your evidence that a provider has a model. Only model routes need it. You pass it with --registry.",
+     "tags": [
+      "private input",
+      "optional"
+     ],
+     "w": 180,
+     "x": 1140,
+     "y": 98
+    },
+    {
+     "doc": "docs/private-directory.md",
+     "files": [
+      "$HOME/.config/tenant-pi/inputs/"
+     ],
+     "group": "g-private",
+     "h": 52,
+     "id": "inputs",
+     "kind": "input",
+     "label": "Module inputs",
+     "sub": "inputs/",
+     "summary": "The input files of optional modules, for example inputs/mcp-adapter.json. validate, plan and generate read them with --local-dir.",
+     "tags": [
+      "private input",
+      "optional"
+     ],
+     "w": 180,
+     "x": 940,
+     "y": 172
+    },
+    {
+     "doc": "docs/check-runtime.md",
+     "files": [
+      "$HOME/.config/tenant-pi/runtime.json"
+     ],
+     "group": "g-private",
+     "h": 52,
+     "id": "runtime-report",
+     "kind": "output",
+     "label": "Runtime report",
+     "sub": "runtime.json",
+     "summary": "The saved output of check-runtime: the installed Pi, Node and Python, compared with the pins of the manifest.",
+     "tags": [
+      "record"
+     ],
+     "w": 180,
+     "x": 1140,
+     "y": 172
+    },
+    {
+     "doc": "docs/launcher.md",
+     "files": [
+      "$HOME/.config/tenant-pi/launch-main.sh",
+      "scripts/launcher.py"
+     ],
+     "group": "g-private",
+     "h": 52,
+     "id": "launcher",
+     "kind": "output",
+     "label": "Launcher file",
+     "script": "scripts/launcher.py",
+     "sub": "launch-main.sh",
+     "summary": "Two lines that start Pi with the target as its profile. generate writes it with --launcher. Mode 0700.",
+     "tags": [
+      "mode 0700"
+     ],
+     "w": 180,
+     "x": 940,
+     "y": 246
+    },
+    {
+     "doc": "docs/directory-baseline.md",
+     "files": [
+      "$HOME/.config/tenant-pi/live-baseline.json"
+     ],
+     "group": "g-private",
+     "h": 52,
+     "id": "live-baseline",
+     "kind": "output",
+     "label": "Live baseline",
+     "sub": "live-baseline.json",
+     "summary": "The entry names, sizes and modification times of the live profile. check-baseline compares the live profile with it.",
+     "tags": [
+      "record",
+      "mode 0600"
+     ],
+     "w": 180,
+     "x": 1140,
+     "y": 246
+    },
+    {
+     "doc": "docs/accepted-drift.md",
+     "files": [
+      "$HOME/.config/tenant-pi/install-log.md",
+      "$HOME/.config/tenant-pi/accepted-drift.md"
+     ],
+     "group": "g-private",
+     "h": 52,
+     "id": "install-log",
+     "kind": "input",
+     "label": "Install log",
+     "sub": "install-log.md",
+     "summary": "Your record of each install. accepted-drift.md beside it lists the differences that you keep on purpose.",
+     "tags": [
+      "record"
+     ],
+     "w": 180,
+     "x": 940,
+     "y": 320
+    },
+    {
+     "doc": "docs/private-directory.md",
+     "files": [
+      "scripts/private_init.py"
+     ],
+     "group": "g-actions",
+     "h": 52,
+     "id": "init-private",
+     "kind": "action",
+     "label": "init-private",
+     "script": "scripts/private_init.py",
+     "sub": "scripts/private_init.py",
+     "summary": "Creates the private directory from the templates, mode 0700, with five files and an empty inputs/ directory.",
+     "tags": [
+      "writes once"
+     ],
+     "w": 180,
+     "x": 500,
+     "y": 478
+    },
+    {
+     "doc": "docs/check-runtime.md",
+     "files": [
+      "scripts/check_runtime.py"
+     ],
+     "group": "g-actions",
+     "h": 52,
+     "id": "check-runtime",
+     "kind": "action",
+     "label": "check-runtime",
+     "script": "scripts/check_runtime.py",
+     "sub": "scripts/check_runtime.py",
+     "summary": "Starts three --version processes and compares Pi, Node and Python with the pins of the manifest. The Pi probe uses an empty temporary profile.",
+     "tags": [
+      "starts processes"
+     ],
+     "w": 180,
+     "x": 700,
+     "y": 478
+    },
+    {
+     "doc": "docs/generator.md",
+     "files": [
+      "scripts/validate.py"
+     ],
+     "group": "g-actions",
+     "h": 52,
+     "id": "validate",
+     "kind": "action",
+     "label": "validate",
+     "script": "scripts/validate.py",
+     "sub": "scripts/validate.py",
+     "summary": "Checks the overlay against the manifest, offline. A refusal prints rule: field on standard error and exits with code 2. It never prints a path or a value.",
+     "tags": [
+      "offline",
+      "read-only"
+     ],
+     "w": 180,
+     "x": 500,
+     "y": 552
+    },
+    {
+     "doc": "docs/profile-plan.md",
+     "files": [
+      "scripts/profile_plan.py"
+     ],
+     "group": "g-actions",
+     "h": 52,
+     "id": "plan",
+     "kind": "action",
+     "label": "plan (pure)",
+     "script": "scripts/profile_plan.py",
+     "sub": "scripts/profile_plan.py",
+     "summary": "Builds the files, the launch line and the readiness gaps in memory. It writes nothing. A command that changes the machine is display text only.",
+     "tags": [
+      "pure",
+      "in memory"
+     ],
+     "w": 180,
+     "x": 700,
+     "y": 552
+    },
+    {
+     "doc": "docs/profile-write.md",
+     "files": [
+      "scripts/profile_write.py"
+     ],
+     "group": "g-actions",
+     "h": 52,
+     "id": "generate",
+     "kind": "guard",
+     "label": "generate (the writer)",
+     "script": "scripts/profile_write.py",
+     "sub": "scripts/profile_write.py",
+     "summary": "The one function that creates a profile. It creates a new, absent directory or stops. It builds the plan a second time from the record and refuses a difference.",
+     "tags": [
+      "new directories only",
+      "guarded"
+     ],
+     "w": 180,
+     "x": 500,
+     "y": 626
+    },
+    {
+     "doc": "docs/directory-baseline.md",
+     "files": [
+      "scripts/baseline.py"
+     ],
+     "group": "g-actions",
+     "h": 52,
+     "id": "baseline",
+     "kind": "guard",
+     "label": "baseline",
+     "script": "scripts/baseline.py",
+     "sub": "scripts/baseline.py",
+     "summary": "baseline records the entry names, sizes and times of one directory. check-baseline then reports unchanged, changed or no_baseline. It opens no file of the directory.",
+     "tags": [
+      "read-only",
+      "names only"
+     ],
+     "w": 180,
+     "x": 700,
+     "y": 626
+    },
+    {
+     "doc": "docs/profile-write.md",
+     "files": [
+      "$HOME/.pi/profiles/main/settings.json"
+     ],
+     "group": "g-profile",
+     "h": 52,
+     "id": "settings",
+     "kind": "output",
+     "label": "settings.json",
+     "sub": "for Pi",
+     "summary": "The Pi settings: the core keys, the package entries with filters and the model defaults. Pi can change it later, and compare shows the drift.",
+     "tags": [
+      "mode 0600"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 838
+    },
+    {
+     "doc": "docs/profile-write.md",
+     "files": [
+      "$HOME/.pi/profiles/main/.tenant-pi/choices.json"
+     ],
+     "group": "g-profile",
+     "h": 52,
+     "id": "choices",
+     "kind": "output",
+     "label": "choices.json",
+     "sub": ".tenant-pi/choices.json",
+     "summary": "The inputs of this profile. They explain each byte of settings.json.",
+     "tags": [
+      "record"
+     ],
+     "w": 180,
+     "x": 260,
+     "y": 838
+    },
+    {
+     "doc": "docs/candidate-list.md",
+     "files": [
+      "$HOME/.pi/profiles/main/.tenant-pi/state.json"
+     ],
+     "group": "g-profile",
+     "h": 52,
+     "id": "state",
+     "kind": "output",
+     "label": "state.json",
+     "sub": ".tenant-pi/state.json",
+     "summary": "The marker and the record of the generation. The list action reads it.",
+     "tags": [
+      "marker"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 912
+    },
+    {
+     "doc": "docs/profile-lifecycle.md",
+     "files": [
+      "$HOME/.pi/profiles/main/auth.json",
+      "$HOME/.pi/profiles/main/sessions/"
+     ],
+     "group": "g-profile",
+     "h": 52,
+     "id": "pi-state",
+     "kind": "runtime",
+     "label": "Pi state",
+     "sub": "auth.json, sessions/",
+     "summary": "The login, the sessions, the model data and the helper tools. Pi writes them at run time. The kit does not read auth.json.",
+     "tags": [
+      "host-only",
+      "written by Pi"
+     ],
+     "w": 180,
+     "x": 260,
+     "y": 912
+    },
+    {
+     "doc": "docs/launcher.md",
+     "drill": "runtime",
+     "files": [
+      "the pi command of your npm prefix"
+     ],
+     "group": "g-runtime",
+     "h": 52,
+     "id": "pi",
+     "kind": "runtime",
+     "label": "Pi",
+     "sub": "pi --no-approve",
+     "summary": "The pi program: one npm package for the user, shared by each profile. The launcher starts it with PI_CODING_AGENT_DIR set to the target.",
+     "tags": [
+      "npm package",
+      "you install it"
+     ],
+     "w": 180,
+     "x": 500,
+     "y": 838
+    },
+    {
+     "doc": "docs/guides/providers.md",
+     "drill": "runtime",
+     "group": "g-runtime",
+     "h": 52,
+     "id": "provider",
+     "kind": "service",
+     "label": "Model provider",
+     "sub": "your provider",
+     "summary": "Pi gets a credential from /login or from a key in the launching shell, never from a file of the kit. The provider answers the model requests.",
+     "tags": [
+      "credential outside the kit"
+     ],
+     "w": 180,
+     "x": 700,
+     "y": 838
+    },
+    {
+     "doc": "docs/profile-lifecycle.md",
+     "files": [
+      "~/.pi/agent"
+     ],
+     "group": "g-live",
+     "h": 52,
+     "id": "live",
+     "kind": "guard",
+     "label": "Live profile",
+     "sub": "~/.pi/agent",
+     "summary": "The profile that a bare pi command opens. The kit refuses a target in it or under it, with the rule under_pi_agent. It stays the fallback until a candidate replaces it.",
+     "tags": [
+      "refused",
+      "fallback"
+     ],
+     "w": 180,
+     "x": 940,
+     "y": 838
+    }
+   ],
+   "summary": "The four places of the kit: the clone, the private directory, the generated profile and the Pi runtime. The kit refuses a target in the live profile.",
+   "width": 1380
+  },
+  {
+   "edges": [
+    {
+     "from": "p-init",
+     "label": "creates",
+     "style": "writes",
+     "to": "p-overlay"
+    },
+    {
+     "from": "p-manifest",
+     "label": "the manifest",
+     "to": "p-validate"
+    },
+    {
+     "from": "p-overlay",
+     "label": "the overlay",
+     "to": "p-validate"
+    },
+    {
+     "from": "p-registry",
+     "label": "--registry",
+     "style": "optional",
+     "to": "p-validate"
+    },
+    {
+     "from": "p-inputs",
+     "label": "--local-dir",
+     "style": "optional",
+     "to": "p-validate"
+    },
+    {
+     "from": "p-manifest",
+     "label": "the checklist",
+     "style": "reads",
+     "to": "p-components"
+    },
+    {
+     "from": "p-components",
+     "label": "a selection that you copy",
+     "style": "optional",
+     "to": "p-overlay"
+    },
+    {
+     "from": "p-validate",
+     "label": "valid input",
+     "to": "p-plan"
+    },
+    {
+     "from": "p-check-runtime",
+     "label": "--runtime-report",
+     "style": "optional",
+     "to": "p-plan"
+    },
+    {
+     "from": "p-routes",
+     "label": "routes",
+     "to": "p-plan"
+    },
+    {
+     "from": "p-memory",
+     "label": "memory configuration",
+     "to": "p-plan"
+    },
+    {
+     "from": "p-workflow",
+     "label": "workflow configuration",
+     "to": "p-plan"
+    },
+    {
+     "from": "p-plan",
+     "label": "prints",
+     "to": "p-gaps"
+    },
+    {
+     "from": "p-plan",
+     "label": "the same plan, built again",
+     "to": "p-generate"
+    },
+    {
+     "from": "p-generate",
+     "label": "creates a new directory",
+     "style": "writes",
+     "to": "p-target"
+    },
+    {
+     "from": "p-generate",
+     "label": "--launcher",
+     "style": "writes",
+     "to": "p-launcher"
+    },
+    {
+     "from": "p-gaps",
+     "label": "you run the display lines",
+     "to": "p-install"
+    },
+    {
+     "from": "p-install",
+     "label": "then",
+     "to": "p-launch"
+    },
+    {
+     "from": "p-launcher",
+     "label": "starts Pi",
+     "to": "p-launch"
+    },
+    {
+     "from": "p-baseline",
+     "label": "before and after",
+     "style": "reads",
+     "to": "p-launch"
+    },
+    {
+     "from": "p-launch",
+     "label": "facts of the install",
+     "to": "p-results"
+    },
+    {
+     "from": "p-check-herdr",
+     "label": "reports the herdr command",
+     "style": "optional",
+     "to": "p-install"
+    },
+    {
+     "from": "p-pi-update",
+     "label": "a new pin, after review",
+     "to": "p-candidate"
+    },
+    {
+     "from": "p-candidate",
+     "label": "state.json",
+     "to": "p-list"
+    },
+    {
+     "from": "p-list",
+     "label": "old and new candidate",
+     "to": "p-compare"
+    },
+    {
+     "from": "p-inventory",
+     "label": "names only",
+     "style": "optional",
+     "to": "p-compare"
+    },
+    {
+     "from": "p-compare",
+     "label": "the report",
+     "to": "p-carry"
+    },
+    {
+     "from": "p-carry",
+     "label": "patches that you apply",
+     "style": "optional",
+     "to": "p-overlay"
+    },
+    {
+     "from": "p-target",
+     "label": "reads",
+     "style": "reads",
+     "to": "p-inventory"
+    }
+   ],
+   "groups": [
+    {
+     "cols": 1,
+     "h": 426,
+     "id": "g-p-in",
+     "label": "1. Inputs",
+     "sub": "manifest + overlay",
+     "tone": "private",
+     "w": 220,
+     "x": 40,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 426,
+     "id": "g-p-check",
+     "label": "2. Check",
+     "sub": "offline, read-only",
+     "tone": "actions",
+     "w": 220,
+     "x": 300,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 426,
+     "id": "g-p-plan",
+     "label": "3. Plan",
+     "sub": "pure, in memory",
+     "tone": "actions",
+     "w": 220,
+     "x": 560,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 278,
+     "id": "g-p-write",
+     "label": "4. Generate",
+     "sub": "the guarded writer",
+     "tone": "profile",
+     "w": 220,
+     "x": 820,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 352,
+     "id": "g-p-run",
+     "label": "5. Install and launch",
+     "nodeW": 220,
+     "sub": "your stages",
+     "tone": "runtime",
+     "w": 260,
+     "x": 1080,
+     "y": 40
+    },
+    {
+     "cols": 6,
+     "h": 130,
+     "id": "g-p-update",
+     "label": "6. Update a profile",
+     "sub": "regenerate, compare, carry, switch",
+     "tone": "neutral",
+     "w": 1220,
+     "x": 40,
+     "y": 600
+    }
+   ],
+   "height": 770,
+   "id": "pipeline",
+   "label": "Pipeline",
+   "nodes": [
+    {
+     "doc": "docs/guides/modules.md",
+     "drill": "components",
+     "files": [
+      "config/manifest.json"
+     ],
+     "group": "g-p-in",
+     "h": 52,
+     "id": "p-manifest",
+     "kind": "input",
+     "label": "The manifest",
+     "sub": "config/manifest.json",
+     "summary": "The public, reviewed input: components, pins, statuses and the runtime ranges.",
+     "tags": [
+      "public input"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 98
+    },
+    {
+     "doc": "docs/private-directory.md",
+     "files": [
+      "scripts/private_init.py",
+      "config/config.example.json"
+     ],
+     "group": "g-p-in",
+     "h": 52,
+     "id": "p-init",
+     "kind": "action",
+     "label": "init-private",
+     "script": "scripts/private_init.py",
+     "sub": "scripts/private_init.py",
+     "summary": "Creates the private directory from the templates of config/private/ and adapts the sample overlay to the target.",
+     "tags": [
+      "writes once"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 172
+    },
+    {
+     "doc": "docs/private-directory.md",
+     "files": [
+      "$HOME/.config/tenant-pi/overlay.json"
+     ],
+     "group": "g-p-in",
+     "h": 52,
+     "id": "p-overlay",
+     "kind": "input",
+     "label": "Your overlay",
+     "sub": "overlay.json",
+     "summary": "The private input: your target, the selection, the routes, the references and the consent.",
+     "tags": [
+      "private input"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 246
+    },
+    {
+     "doc": "docs/model-routes.md",
+     "files": [
+      "$HOME/.config/tenant-pi/registry.json"
+     ],
+     "group": "g-p-in",
+     "h": 52,
+     "id": "p-registry",
+     "kind": "input",
+     "label": "Model registry",
+     "sub": "registry.json",
+     "summary": "The evidence for a model choice. validate needs it with --registry when modelRoutes names a model.",
+     "tags": [
+      "optional"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 320
+    },
+    {
+     "doc": "docs/workflow-modules.md",
+     "files": [
+      "$HOME/.config/tenant-pi/inputs/mcp-adapter.json"
+     ],
+     "group": "g-p-in",
+     "h": 52,
+     "id": "p-inputs",
+     "kind": "input",
+     "label": "Module inputs",
+     "sub": "inputs/mcp-adapter.json",
+     "summary": "The input file of the MCP module. validate, plan and generate need --local-dir for it.",
+     "tags": [
+      "optional"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 394
+    },
+    {
+     "doc": "docs/generator.md",
+     "files": [
+      "scripts/validate.py",
+      "scripts/tenant_pi.py"
+     ],
+     "group": "g-p-check",
+     "h": 52,
+     "id": "p-validate",
+     "kind": "action",
+     "label": "validate",
+     "script": "scripts/validate.py",
+     "sub": "scripts/validate.py",
+     "summary": "The rules of the manifest and of the overlay. A refusal prints rule: field and exits with code 2.",
+     "tags": [
+      "offline"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 98
+    },
+    {
+     "doc": "docs/generator.md",
+     "files": [
+      "scripts/components.py"
+     ],
+     "group": "g-p-check",
+     "h": 52,
+     "id": "p-components",
+     "kind": "action",
+     "label": "components",
+     "script": "scripts/components.py",
+     "sub": "scripts/components.py",
+     "summary": "Prints the checklist of all components with the recommended set marked. It enables nothing.",
+     "tags": [
+      "read-only"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 172
+    },
+    {
+     "doc": "docs/check-runtime.md",
+     "files": [
+      "scripts/check_runtime.py"
+     ],
+     "group": "g-p-check",
+     "h": 52,
+     "id": "p-check-runtime",
+     "kind": "action",
+     "label": "check-runtime",
+     "script": "scripts/check_runtime.py",
+     "sub": "scripts/check_runtime.py",
+     "summary": "Compares the installed Pi, Node and Python with the pins. Its report goes into the plan with --runtime-report.",
+     "tags": [
+      "starts processes"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 246
+    },
+    {
+     "doc": "docs/herdr-setup.md",
+     "files": [
+      "scripts/check_runtime.py"
+     ],
+     "group": "g-p-check",
+     "h": 52,
+     "id": "p-check-herdr",
+     "kind": "action",
+     "label": "check-herdr",
+     "script": "scripts/check_runtime.py",
+     "sub": "scripts/check_runtime.py",
+     "summary": "Runs one herdr --version and reports present, missing or unparsed. It installs nothing.",
+     "tags": [
+      "starts one process"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 320
+    },
+    {
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "scripts/wiki_vault.py"
+     ],
+     "group": "g-p-check",
+     "h": 52,
+     "id": "p-wiki-vault",
+     "kind": "action",
+     "label": "check-wiki-vault",
+     "script": "scripts/wiki_vault.py",
+     "sub": "scripts/wiki_vault.py",
+     "summary": "Reports the personal LLM Wiki vault from lstat calls: present, absent, or a second vault through WIKI_HOME. It opens no file.",
+     "tags": [
+      "read-only"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 394
+    },
+    {
+     "doc": "docs/profile-plan.md",
+     "files": [
+      "scripts/profile_plan.py"
+     ],
+     "group": "g-p-plan",
+     "h": 52,
+     "id": "p-plan",
+     "kind": "action",
+     "label": "plan",
+     "script": "scripts/profile_plan.py",
+     "sub": "prepare() in profile_plan.py",
+     "summary": "prepare() builds the files, the launch line and the gaps. The plan does not depend on the machine. It writes nothing.",
+     "tags": [
+      "pure"
+     ],
+     "w": 180,
+     "x": 580,
+     "y": 98
+    },
+    {
+     "doc": "docs/model-routes.md",
+     "files": [
+      "scripts/model_routes.py"
+     ],
+     "group": "g-p-plan",
+     "h": 52,
+     "id": "p-routes",
+     "kind": "action",
+     "label": "Model routes",
+     "script": "scripts/model_routes.py",
+     "sub": "scripts/model_routes.py",
+     "summary": "Adds the model roles and routes to the plan: defaultProvider, defaultModel and defaultThinkingLevel.",
+     "tags": [
+      "plan part"
+     ],
+     "w": 180,
+     "x": 580,
+     "y": 172
+    },
+    {
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "scripts/memory_modules.py"
+     ],
+     "group": "g-p-plan",
+     "h": 52,
+     "id": "p-memory",
+     "kind": "action",
+     "label": "Memory modules",
+     "script": "scripts/memory_modules.py",
+     "sub": "scripts/memory_modules.py",
+     "summary": "Adds the Hermes, LLM Wiki and OpenViking configuration to the plan. Each needs consent in the overlay.",
+     "tags": [
+      "plan part",
+      "consent"
+     ],
+     "w": 180,
+     "x": 580,
+     "y": 246
+    },
+    {
+     "doc": "docs/workflow-modules.md",
+     "files": [
+      "scripts/workflow_modules.py"
+     ],
+     "group": "g-p-plan",
+     "h": 52,
+     "id": "p-workflow",
+     "kind": "action",
+     "label": "Workflow modules",
+     "script": "scripts/workflow_modules.py",
+     "sub": "scripts/workflow_modules.py",
+     "summary": "Adds the MCP adapter and the question extension to the plan.",
+     "tags": [
+      "plan part"
+     ],
+     "w": 180,
+     "x": 580,
+     "y": 320
+    },
+    {
+     "doc": "docs/profile-plan.md",
+     "files": [
+      "scripts/profile_plan.py"
+     ],
+     "group": "g-p-plan",
+     "h": 52,
+     "id": "p-gaps",
+     "kind": "output",
+     "label": "Gaps and display lines",
+     "sub": "readinessGaps, *DisplayOnly",
+     "summary": "The plan output: each readiness gap, the files, and the commands that change the machine as display text. You read them and run them.",
+     "tags": [
+      "display only"
+     ],
+     "w": 180,
+     "x": 580,
+     "y": 394
+    },
+    {
+     "doc": "docs/profile-write.md",
+     "files": [
+      "scripts/profile_write.py"
+     ],
+     "group": "g-p-write",
+     "h": 52,
+     "id": "p-generate",
+     "kind": "guard",
+     "label": "generate",
+     "script": "scripts/profile_write.py",
+     "sub": "write() in profile_write.py",
+     "summary": "Writes a new profile into an absent target. It refuses a target under the live profile, inside the clone or inside a wiki vault.",
+     "tags": [
+      "new directories only"
+     ],
+     "w": 180,
+     "x": 840,
+     "y": 98
+    },
+    {
+     "doc": "docs/profile-write.md",
+     "drill": "overview",
+     "files": [
+      "$HOME/.pi/profiles/main/settings.json",
+      "$HOME/.pi/profiles/main/.tenant-pi/choices.json",
+      "$HOME/.pi/profiles/main/.tenant-pi/state.json"
+     ],
+     "group": "g-p-write",
+     "h": 52,
+     "id": "p-target",
+     "kind": "output",
+     "label": "The target",
+     "sub": "$HOME/.pi/profiles/main",
+     "summary": "The new profile: settings.json and the .tenant-pi/ records. Mode 0700 for the directory, 0600 for each file.",
+     "tags": [
+      "new"
+     ],
+     "w": 180,
+     "x": 840,
+     "y": 172
+    },
+    {
+     "doc": "docs/launcher.md",
+     "files": [
+      "scripts/launcher.py",
+      "$HOME/.config/tenant-pi/launch-main.sh"
+     ],
+     "group": "g-p-write",
+     "h": 52,
+     "id": "p-launcher",
+     "kind": "output",
+     "label": "Launcher file",
+     "script": "scripts/launcher.py",
+     "sub": "scripts/launcher.py",
+     "summary": "With --launcher, generate also writes the launcher file into the private directory.",
+     "tags": [
+      "mode 0700"
+     ],
+     "w": 180,
+     "x": 840,
+     "y": 246
+    },
+    {
+     "doc": "docs/guides/setup.md",
+     "group": "g-p-run",
+     "h": 52,
+     "id": "p-install",
+     "kind": "runtime",
+     "label": "Install by hand",
+     "sub": "Node, Pi, npm ci, pi install",
+     "summary": "You install Node 24, Pi at the pin and the packages of the enabled modules. The kit runs none of these commands.",
+     "tags": [
+      "your stage"
+     ],
+     "w": 220,
+     "x": 1100,
+     "y": 98
+    },
+    {
+     "doc": "docs/launcher.md",
+     "drill": "runtime",
+     "files": [
+      "$HOME/.config/tenant-pi/launch-main.sh"
+     ],
+     "group": "g-p-run",
+     "h": 52,
+     "id": "p-launch",
+     "kind": "runtime",
+     "label": "Launch Pi",
+     "sub": "launch-main.sh",
+     "summary": "The launcher starts Pi with the target as its profile. You log in with /login inside Pi, or with a key in the shell.",
+     "tags": [
+      "your stage"
+     ],
+     "w": 220,
+     "x": 1100,
+     "y": 172
+    },
+    {
+     "doc": "docs/directory-baseline.md",
+     "files": [
+      "scripts/baseline.py"
+     ],
+     "group": "g-p-run",
+     "h": 52,
+     "id": "p-baseline",
+     "kind": "guard",
+     "label": "baseline, check-baseline",
+     "script": "scripts/baseline.py",
+     "sub": "scripts/baseline.py",
+     "summary": "Before the launch, record the live profile. After the session, check-baseline shows whether the live profile changed.",
+     "tags": [
+      "read-only"
+     ],
+     "w": 220,
+     "x": 1100,
+     "y": 246
+    },
+    {
+     "doc": "docs/install-results.md",
+     "files": [
+      "scripts/install_results.py"
+     ],
+     "group": "g-p-run",
+     "h": 52,
+     "id": "p-results",
+     "kind": "output",
+     "label": "results",
+     "script": "scripts/install_results.py",
+     "sub": "scripts/install_results.py",
+     "summary": "Writes INSTALLER_KIT_RESULTS.md at the end of an install, from the overlay, the candidates and a facts file.",
+     "tags": [
+      "record"
+     ],
+     "w": 220,
+     "x": 1100,
+     "y": 320
+    },
+    {
+     "doc": "docs/pi-update.md",
+     "files": [
+      "scripts/pi_update.py"
+     ],
+     "group": "g-p-update",
+     "h": 52,
+     "id": "p-pi-update",
+     "kind": "action",
+     "label": "pi-update",
+     "script": "scripts/pi_update.py",
+     "sub": "scripts/pi_update.py",
+     "summary": "detect finds a new npm release. qualify tests an isolated candidate. notes reads the breaking changes. It changes no pin and no profile.",
+     "tags": [
+      "network: npm registry"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 658
+    },
+    {
+     "doc": "docs/guides/candidate-update.md",
+     "files": [
+      "scripts/profile_write.py"
+     ],
+     "group": "g-p-update",
+     "h": 52,
+     "id": "p-candidate",
+     "kind": "guard",
+     "label": "New candidate",
+     "sub": "generate into a new target",
+     "summary": "An update is a new target from the same overlay. The old profile stays as the way back.",
+     "tags": [
+      "new directory"
+     ],
+     "w": 180,
+     "x": 260,
+     "y": 658
+    },
+    {
+     "doc": "docs/candidate-list.md",
+     "files": [
+      "scripts/candidate_list.py"
+     ],
+     "group": "g-p-update",
+     "h": 52,
+     "id": "p-list",
+     "kind": "action",
+     "label": "list",
+     "script": "scripts/candidate_list.py",
+     "sub": "scripts/candidate_list.py",
+     "summary": "Lists the candidates under one parent directory from their state.json files. Read-only.",
+     "tags": [
+      "read-only"
+     ],
+     "w": 180,
+     "x": 460,
+     "y": 658
+    },
+    {
+     "doc": "docs/profile-inventory.md",
+     "files": [
+      "scripts/profile_inventory.py"
+     ],
+     "group": "g-p-update",
+     "h": 52,
+     "id": "p-inventory",
+     "kind": "action",
+     "label": "inventory",
+     "script": "scripts/profile_inventory.py",
+     "sub": "scripts/profile_inventory.py",
+     "summary": "Names the packages, extensions, skills and prompts of one profile. Read-only.",
+     "tags": [
+      "read-only"
+     ],
+     "w": 180,
+     "x": 660,
+     "y": 658
+    },
+    {
+     "doc": "docs/candidate-compare.md",
+     "files": [
+      "scripts/candidate_compare.py"
+     ],
+     "group": "g-p-update",
+     "h": 52,
+     "id": "p-compare",
+     "kind": "action",
+     "label": "compare",
+     "script": "scripts/candidate_compare.py",
+     "sub": "scripts/candidate_compare.py",
+     "summary": "A redacted comparison of two profile directories. It shows the drift that Pi wrote.",
+     "tags": [
+      "read-only",
+      "redacted"
+     ],
+     "w": 180,
+     "x": 860,
+     "y": 658
+    },
+    {
+     "doc": "docs/carry.md",
+     "files": [
+      "scripts/carry.py"
+     ],
+     "group": "g-p-update",
+     "h": 52,
+     "id": "p-carry",
+     "kind": "action",
+     "label": "carry",
+     "script": "scripts/carry.py",
+     "sub": "scripts/carry.py",
+     "summary": "Prints overlay patches from a compare report. You apply the wanted patches. It writes nothing.",
+     "tags": [
+      "prints only"
+     ],
+     "w": 180,
+     "x": 1060,
+     "y": 658
+    }
+   ],
+   "summary": "From two inputs to a running profile. Validate and plan are pure. Only the guarded writer creates files. You run each install command yourself.",
+   "width": 1380
+  },
+  {
+   "edges": [
+    {
+     "from": "ops-footer",
+     "label": "requires",
+     "style": "requires",
+     "to": "context-meter"
+    },
+    {
+     "from": "herdr-relay",
+     "label": "requires",
+     "style": "requires",
+     "to": "herdr"
+    },
+    {
+     "from": "promptr-generate-task-prompt",
+     "label": "requires",
+     "style": "requires",
+     "to": "promptr"
+    },
+    {
+     "from": "promptr-handoff",
+     "label": "requires",
+     "style": "requires",
+     "to": "promptr"
+    },
+    {
+     "from": "promptr-openknowledge-project-pages",
+     "label": "requires",
+     "style": "requires",
+     "to": "promptr"
+    },
+    {
+     "from": "promptr-watch-herdr-agents",
+     "label": "requires",
+     "style": "requires",
+     "to": "promptr"
+    },
+    {
+     "from": "model-routing",
+     "label": "the gateway route needs it",
+     "style": "optional",
+     "to": "codex-accounts"
+    },
+    {
+     "from": "copilot-usage",
+     "label": "usage readings",
+     "style": "optional",
+     "to": "ops-footer"
+    },
+    {
+     "from": "anthropic-usage",
+     "label": "usage readings",
+     "style": "optional",
+     "to": "ops-footer"
+    },
+    {
+     "from": "doctor",
+     "label": "imports its files",
+     "style": "optional",
+     "to": "codex-accounts"
+    },
+    {
+     "from": "coordinator-skills",
+     "label": "asks through ask_user_question",
+     "style": "optional",
+     "to": "questions"
+    },
+    {
+     "from": "coordinator-skills",
+     "label": "fan-out",
+     "style": "optional",
+     "to": "herdr"
+    },
+    {
+     "from": "compose-plan",
+     "label": "the private files of the seat",
+     "style": "writes",
+     "to": "compose-seat"
+    },
+    {
+     "from": "compose-seat",
+     "label": "holds one profile",
+     "to": "core"
+    },
+    {
+     "from": "compose-seat",
+     "label": "the gateway route",
+     "to": "codex-accounts"
+    }
+   ],
+   "groups": [
+    {
+     "cols": 1,
+     "h": 204,
+     "id": "g-c-core",
+     "label": "Core",
+     "sub": "always on",
+     "tone": "neutral",
+     "w": 220,
+     "x": 40,
+     "y": 40
+    },
+    {
+     "cols": 3,
+     "h": 278,
+     "id": "g-c-tenantext",
+     "label": "Tenantext extensions",
+     "sub": "packages/tenantext/extensions",
+     "tone": "actions",
+     "w": 620,
+     "x": 300,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 426,
+     "id": "g-c-promptr",
+     "label": "Promptr",
+     "nodeW": 270,
+     "sub": "packages/promptr",
+     "tone": "private",
+     "w": 310,
+     "x": 1000,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 278,
+     "id": "g-c-memory",
+     "label": "Memory",
+     "sub": "consent needed",
+     "tone": "runtime",
+     "w": 220,
+     "x": 40,
+     "y": 340
+    },
+    {
+     "cols": 2,
+     "h": 204,
+     "id": "g-c-skills",
+     "label": "Skills",
+     "sub": "packages/tenantext/skills",
+     "tone": "profile",
+     "w": 420,
+     "x": 300,
+     "y": 380
+    },
+    {
+     "cols": 1,
+     "h": 278,
+     "id": "g-c-herdr",
+     "label": "Herdr and questions",
+     "sub": "coordination",
+     "tone": "private",
+     "w": 220,
+     "x": 760,
+     "y": 380
+    },
+    {
+     "cols": 1,
+     "h": 130,
+     "id": "g-c-mcp",
+     "label": "MCP",
+     "sub": "npm pi-mcp-adapter",
+     "tone": "service",
+     "w": 220,
+     "x": 40,
+     "y": 680
+    },
+    {
+     "cols": 2,
+     "h": 130,
+     "id": "g-c-deploy",
+     "label": "Deploy",
+     "sub": "deploy/compose",
+     "tone": "release",
+     "w": 420,
+     "x": 300,
+     "y": 640
+    }
+   ],
+   "height": 850,
+   "id": "components",
+   "label": "Components",
+   "nodes": [
+    {
+     "component": "core",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "core"
+      ],
+      [
+       "Status",
+       "manifest tested; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "npm @earendil-works/pi-coding-agent@1.2.0"
+      ],
+      [
+       "Owner",
+       "pi"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "none"
+      ],
+      [
+       "Inputs",
+       "target.agentDir"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "Only the listed Pi settings fields"
+      ]
+     ],
+     "files": [
+      "config/manifest.json"
+     ],
+     "gaps": [],
+     "group": "g-c-core",
+     "h": 52,
+     "id": "core",
+     "kind": "comp-core",
+     "label": "core",
+     "status": "tested",
+     "sub": "npm source, tested",
+     "summary": "Pi itself at the pin. The only component that is always on. Each other component requires it.",
+     "tags": [
+      "manifest tested",
+      "npm source",
+      "owner pi"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 98
+    },
+    {
+     "component": "model-routing",
+     "doc": "docs/model-routes.md",
+     "fields": [
+      [
+       "Component",
+       "model-routing"
+      ],
+      [
+       "Status",
+       "manifest tested; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "builtin"
+      ],
+      [
+       "Owner",
+       "pi"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "roles, optional modelRoutes; --registry when modelRoutes names a model"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "Only the listed Pi settings fields"
+      ]
+     ],
+     "files": [
+      "config/manifest.json"
+     ],
+     "gaps": [],
+     "group": "g-c-core",
+     "h": 52,
+     "id": "model-routing",
+     "kind": "comp-core",
+     "label": "model-routing",
+     "status": "tested",
+     "sub": "builtin source, tested",
+     "summary": "Builtin Pi settings for the default provider, model and thinking level, and the model cycle.",
+     "tags": [
+      "manifest tested",
+      "builtin source",
+      "owner pi"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 172
+    },
+    {
+     "component": "tenantext",
+     "doc": "docs/packages.md",
+     "fields": [
+      [
+       "Component",
+       "tenantext"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/tenantext/index.ts",
+      "packages/tenantext/README.md"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "tenantext",
+     "kind": "comp-tenantext",
+     "label": "tenantext",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "The base Tenantext extension of the in-tree package.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 98
+    },
+    {
+     "component": "codex-accounts",
+     "doc": "docs/model-routes.md",
+     "fields": [
+      [
+       "Component",
+       "codex-accounts"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "modelRoutes.gateway {auth: env}, endpoints.codex-accounts, env.codex-accounts"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "TENANTEXT_LITELLM_BASE_URL, TENANTEXT_LITELLM_API_KEY"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/codex-accounts/index.ts",
+      "packages/tenantext/extensions/codex-accounts/routing.ts",
+      "packages/tenantext/extensions/codex-accounts/settings.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "gateway_upstream_unverified",
+       "The gateway behind TENANTEXT_LITELLM_BASE_URL is a host service; the kit does not check it."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "codex-accounts",
+     "kind": "comp-tenantext",
+     "label": "codex-accounts",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "The routing client of the gateway route. It sends model requests to an HTTPS gateway that ends in /v1. Its login route is blocked.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 98
+    },
+    {
+     "component": "slopscore",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "slopscore"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/slopscore/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "slopscore",
+     "kind": "comp-tenantext",
+     "label": "slopscore",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A spend readout by model, role and tool.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 720,
+     "y": 98
+    },
+    {
+     "component": "context-meter",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "context-meter"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/context-meter/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "context-meter",
+     "kind": "comp-tenantext",
+     "label": "context-meter",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Shows the context use of the session. ops-footer needs it.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 172
+    },
+    {
+     "component": "ops-footer",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "ops-footer"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core, context-meter"
+      ],
+      [
+       "Inputs",
+       "context-meter enabled"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/ops-footer/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "sibling_extension_imports",
+       "The only runtime import is a file import of context-meter/service.ts. The imports of codex-accounts, copilot-usage and anthropic-usage files are type imports. The two extensions ops-footer and context-meter exchange ownership events. The requirement of context-meter is a safe choice, not a proven need."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "ops-footer",
+     "kind": "comp-tenantext",
+     "label": "ops-footer",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A footer with usage readings and health checks. It receives the readings of the usage components.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext",
+      "requires context-meter"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 172
+    },
+    {
+     "component": "copilot-usage",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "copilot-usage"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/copilot-usage/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "copilot-usage",
+     "kind": "comp-tenantext",
+     "label": "copilot-usage",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Reads the Copilot quota. It reads login files and environment tokens of the account and sends one to the usage endpoint.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 720,
+     "y": 172
+    },
+    {
+     "component": "anthropic-usage",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "anthropic-usage"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/anthropic-usage/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "usage_endpoint_unverified",
+       "Fixture tests with an injected fetch cover the extension. No live request from the extension is on record. The extension reads the Claude Code credential file under HOME and the Pi anthropic OAuth credential, read-only, and sends one GET request to api.anthropic.com."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "anthropic-usage",
+     "kind": "comp-tenantext",
+     "label": "anthropic-usage",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Reads the Claude quota with an active login, read-only. Mode off sends nothing.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 246
+    },
+    {
+     "component": "doctor",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "doctor"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "TENANTEXT_LITELLM_BASE_URL"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/doctor/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "sibling_extension_imports",
+       "The checks import files of codex-accounts, copilot-usage and anthropic-usage and report on extensions that are not enabled."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "doctor",
+     "kind": "comp-tenantext",
+     "label": "doctor",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Checks the setup of the Tenantext extensions and reports on the extensions that are not enabled.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 246
+    },
+    {
+     "component": "resources",
+     "doc": "docs/resources.md",
+     "fields": [
+      [
+       "Component",
+       "resources"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/resources/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "The component uses the resource settings syntax of the reviewed Pi release (see docs/resources.md). No test in this repository loads it with the kit pin."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-tenantext",
+     "h": 52,
+     "id": "resources",
+     "kind": "comp-tenantext",
+     "label": "resources",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Manages the resource selections of the profile: toggles in settings.json.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 720,
+     "y": 246
+    },
+    {
+     "component": "promptr",
+     "doc": "docs/packages.md",
+     "fields": [
+      [
+       "Component",
+       "promptr"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/promptr"
+      ],
+      [
+       "Owner",
+       "promptr"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "npm ci --ignore-scripts and npm run build in packages/promptr"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/promptr package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/promptr/index.ts",
+      "packages/promptr/README.md",
+      "packages/promptr/package.json"
+     ],
+     "gaps": [
+      [
+       "build_step_required",
+       "packages/promptr/index.ts re-exports dist/src/extension/index.mjs; dist/ is not in the tree, so npm ci and npm run build must run in packages/promptr before the first start."
+      ],
+      [
+       "host_module_dependency",
+       "packages/promptr/package.json pins @earendil-works/pi-tui at 1.2.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.2.0, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.2.0 are not verified."
+      ],
+      [
+       "placeholder_defaults",
+       "The kit copy has neutral placeholder defaults for the tracker host, the tracker owner and the OpenKnowledge origin; set GITEA_HOST, GITEA_OWNER and OPENKNOWLEDGE_ORIGIN in the shell that starts Pi, or the tracker dialog offers a repository that does not exist."
+      ],
+      [
+       "private_renderer_adapters",
+       "The sidebar uses private Pi renderer adapters. Not verified: a session with a model."
+      ],
+      [
+       "automatic_dispatch_path_unverified",
+       "packages/promptr/src/extension/index.mts calls requestHandoff with automatic set; the kit has not verified its switch."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile with the kit pin."
+      ]
+     ],
+     "group": "g-c-promptr",
+     "h": 52,
+     "id": "promptr",
+     "kind": "comp-promptr",
+     "label": "promptr",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "The Promptr extension. It needs npm ci and npm run build in packages/promptr before the first start. It keeps state in the profile and in the project.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner promptr"
+     ],
+     "w": 270,
+     "x": 1020,
+     "y": 98
+    },
+    {
+     "component": "promptr-generate-task-prompt",
+     "doc": "docs/packages.md",
+     "fields": [
+      [
+       "Component",
+       "promptr-generate-task-prompt"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/promptr"
+      ],
+      [
+       "Owner",
+       "promptr"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core, promptr"
+      ],
+      [
+       "Inputs",
+       "promptr"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/promptr/skills/promptr-generate-task-prompt/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "skill_use_unverified",
+       "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile with the kit pin."
+      ]
+     ],
+     "group": "g-c-promptr",
+     "h": 52,
+     "id": "promptr-generate-task-prompt",
+     "kind": "comp-promptr",
+     "label": "generate-task-prompt",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A Promptr skill that writes a task prompt from a packet.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner promptr",
+      "requires promptr"
+     ],
+     "w": 270,
+     "x": 1020,
+     "y": 172
+    },
+    {
+     "component": "promptr-handoff",
+     "doc": "docs/packages.md",
+     "fields": [
+      [
+       "Component",
+       "promptr-handoff"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/promptr"
+      ],
+      [
+       "Owner",
+       "promptr"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core, promptr"
+      ],
+      [
+       "Inputs",
+       "promptr"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/promptr/skills/promptr-handoff/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "skill_use_unverified",
+       "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile with the kit pin."
+      ]
+     ],
+     "group": "g-c-promptr",
+     "h": 52,
+     "id": "promptr-handoff",
+     "kind": "comp-promptr",
+     "label": "handoff",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A Promptr skill that writes a handoff file from evidence.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner promptr",
+      "requires promptr"
+     ],
+     "w": 270,
+     "x": 1020,
+     "y": 246
+    },
+    {
+     "component": "promptr-openknowledge-project-pages",
+     "doc": "docs/packages.md",
+     "fields": [
+      [
+       "Component",
+       "promptr-openknowledge-project-pages"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/promptr"
+      ],
+      [
+       "Owner",
+       "promptr"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core, promptr"
+      ],
+      [
+       "Inputs",
+       "promptr, an OpenKnowledge service"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/promptr/skills/openknowledge-project-pages/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "host_service_required",
+       "The skill calls an OpenKnowledge HTTP API of the host; the kit does not provide or check it."
+      ],
+      [
+       "skill_use_unverified",
+       "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile with the kit pin."
+      ]
+     ],
+     "group": "g-c-promptr",
+     "h": 52,
+     "id": "promptr-openknowledge-project-pages",
+     "kind": "comp-promptr",
+     "label": "openknowledge-project-pages",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A Promptr skill that reads and writes shared project pages through the OpenKnowledge API.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner promptr",
+      "requires promptr"
+     ],
+     "w": 270,
+     "x": 1020,
+     "y": 320
+    },
+    {
+     "component": "promptr-watch-herdr-agents",
+     "doc": "docs/packages.md",
+     "fields": [
+      [
+       "Component",
+       "promptr-watch-herdr-agents"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/promptr"
+      ],
+      [
+       "Owner",
+       "promptr"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core, promptr"
+      ],
+      [
+       "Inputs",
+       "promptr, the herdr tool"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/promptr package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/promptr/skills/watch-herdr-agents/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "host_tool_required",
+       "The skill needs the herdr CLI on the host; the kit does not install or check it."
+      ],
+      [
+       "skill_use_unverified",
+       "Observed with Pi 1.0.2: the skill is discoverable in a generated profile. Not verified: use in a model session."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile with the kit pin."
+      ]
+     ],
+     "group": "g-c-promptr",
+     "h": 52,
+     "id": "promptr-watch-herdr-agents",
+     "kind": "comp-promptr",
+     "label": "watch-herdr-agents",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A Promptr skill that watches Herdr agent panes. It needs the herdr command.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner promptr",
+      "requires promptr"
+     ],
+     "w": 270,
+     "x": 1020,
+     "y": 394
+    },
+    {
+     "component": "hermes",
+     "doc": "docs/memory-modules.md",
+     "fields": [
+      [
+       "Component",
+       "hermes"
+      ],
+      [
+       "Status",
+       "manifest tested; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "npm pi-hermes-memory"
+      ],
+      [
+       "Owner",
+       "pi-hermes-memory"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "memory.hermes; roles.memory when backgroundReview is true"
+      ],
+      [
+       "Consent",
+       "consent.memoryCapture: true"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "Pi package declaration plus the whole hermes-memory-config.json file; runtime stores stay under the agent directory"
+      ]
+     ],
+     "files": [
+      "config/manifest.json"
+     ],
+     "gaps": [],
+     "group": "g-c-memory",
+     "h": 52,
+     "id": "hermes",
+     "kind": "comp-memory",
+     "label": "hermes",
+     "status": "tested",
+     "sub": "npm source, tested",
+     "summary": "Local memory in the profile: hermes-memory-config.json and runtime memory files. It uses the native module better-sqlite3.",
+     "tags": [
+      "manifest tested",
+      "npm source",
+      "owner pi-hermes-memory"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 398
+    },
+    {
+     "component": "wiki",
+     "doc": "docs/memory-modules.md",
+     "fields": [
+      [
+       "Component",
+       "wiki"
+      ],
+      [
+       "Status",
+       "manifest tested; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "npm @zosmaai/pi-llm-wiki"
+      ],
+      [
+       "Owner",
+       "pi-llm-wiki"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "memory.wiki"
+      ],
+      [
+       "Consent",
+       "consent.memoryCapture: true"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "Pi package declaration and the llm-wiki settings section only; the personal vault lives under HOME or WIKI_HOME"
+      ]
+     ],
+     "files": [
+      "config/manifest.json"
+     ],
+     "gaps": [],
+     "group": "g-c-memory",
+     "h": 52,
+     "id": "wiki",
+     "kind": "comp-memory",
+     "label": "wiki",
+     "status": "tested",
+     "sub": "npm source, tested",
+     "summary": "LLM Wiki: profile settings and a personal vault outside the target. An existing vault is used as it is.",
+     "tags": [
+      "manifest tested",
+      "npm source",
+      "owner pi-llm-wiki"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 472
+    },
+    {
+     "component": "openviking",
+     "doc": "docs/memory-modules.md",
+     "fields": [
+      [
+       "Component",
+       "openviking"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/openviking-pi"
+      ],
+      [
+       "Owner",
+       "openviking"
+      ],
+      [
+       "License",
+       "Apache-2.0"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "memory.openviking; npm ci --ignore-scripts in packages/openviking-pi; a server"
+      ],
+      [
+       "Consent",
+       "consent.memoryCapture and consent.remoteMemoryWrites: true"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One local-file packages entry for packages/openviking-pi/index.ts; Pi resolves the source file directly, not through a directory filter. Extension settings resolve from OPENVIKING_* variables, .openviking/config.json and ~/.openviking/, which the kit does not own"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/openviking-pi/index.ts",
+      "packages/openviking-pi/README.md",
+      "packages/openviking-pi/package.json"
+     ],
+     "gaps": [
+      [
+       "install_step_required",
+       "packages/openviking-pi/package.json lists @modelcontextprotocol/client at 2.2.0 and node_modules is not in the tree, so npm ci --ignore-scripts must run in packages/openviking-pi before the first start."
+      ],
+      [
+       "server_required",
+       "The extension needs an OpenViking server with viking://~ home alias support. The endpoint and the key resolve from OPENVIKING_* variables, ~/.openviking/ovcli.conf or ~/.openviking/ov.conf; the kit writes none of them and has no field for them."
+      ],
+      [
+       "package_runtime_unverified",
+       "Pi 1.2.0 isolated qualification checks the file-source resolver, factory loading and all package tests with candidate dependencies. Capture, recall and tools against a live server remain unverified."
+      ],
+      [
+       "capture_cost_unmeasured",
+       "The extension captures no tool result output unless captureToolResults is true. With it on, each tool part is capped by captureToolMaxChars and the server externalizes larger output. Not measured: the growth of session storage and the effect on memory extraction."
+      ]
+     ],
+     "group": "g-c-memory",
+     "h": 52,
+     "id": "openviking",
+     "kind": "comp-memory",
+     "label": "openviking",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "The vendored OpenViking extension. It writes sessions and memories to a separately configured OpenViking server.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner openviking"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 546
+    },
+    {
+     "component": "coordinator-skills",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "coordinator-skills"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "a Gitea tracker for to-spec, to-tickets and wayfinder"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "GITEA_TOKEN"
+      ],
+      [
+       "Boundary",
+       "One filter entry for each skill of the component in the packages/tenantext package declaration only; native settings of the skills stay owned by them"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/skills/coordinator-skills/grilling/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/grill-me/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/wayfinder/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/research/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/prototype/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/domain-modeling/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/to-spec/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/to-tickets/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/pr/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/show-me/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/retro/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/get-status/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/dummies/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/writing-for-agents/SKILL.md",
+      "packages/tenantext/skills/coordinator-skills/README.md"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "host_tool_required",
+       "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research task, a prototype task and get-status need the herdr skill and the herdr CLI; the wayfinder, research, prototype and get-status skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The dummies skill keeps its log page through the okknow command of OpenKnowledge and reads the role of a pane from the herdr CLI; the kit does not install or check them, and without the okknow command the skill writes no log. The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-skills",
+     "h": 52,
+     "id": "coordinator-skills",
+     "kind": "comp-skills",
+     "label": "coordinator-skills",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Skills for a coordinator: grilling, wayfinder, research, prototype, specs and tickets, review, status. They name host tools that the kit does not install.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 438
+    },
+    {
+     "component": "knowledge-skills",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "knowledge-skills"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "the OpenKnowledge MCP server and the ok command"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry for each skill of the component in the packages/tenantext package declaration only; native settings of the skills stay owned by them"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/skills/knowledge-skills/okf-knowledge-base/SKILL.md",
+      "packages/tenantext/skills/knowledge-skills/open-knowledge-write-skill/SKILL.md",
+      "packages/tenantext/skills/knowledge-skills/open-knowledge-discovery/SKILL.md",
+      "packages/tenantext/skills/knowledge-skills/open-knowledge/SKILL.md",
+      "packages/tenantext/skills/knowledge-skills/README.md"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "host_tool_required",
+       "The OpenKnowledge MCP server and the ok CLI are external tools that the kit does not install or check. The kit ships the MIT open-knowledge skill; ok init also writes a project-local copy."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-skills",
+     "h": 52,
+     "id": "knowledge-skills",
+     "kind": "comp-skills",
+     "label": "knowledge-skills",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Skills for OpenKnowledge and the Open Knowledge Format. The MCP server and the ok command are external tools.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 438
+    },
+    {
+     "component": "slopscore-pr",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "slopscore-pr"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "the host tools of the skill"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/skills/slopscore-pr/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "host_tool_required",
+       "The skill runs the slopscore CLI and gh or the Gitea API; the kit does not install or check them."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-skills",
+     "h": 52,
+     "id": "slopscore-pr",
+     "kind": "comp-skills",
+     "label": "slopscore-pr",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A skill that puts the slopscore block into a pull request.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 512
+    },
+    {
+     "component": "tracker-site",
+     "doc": "docs/guides/modules.md",
+     "fields": [
+      [
+       "Component",
+       "tracker-site"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "Python 3.11 and Git on PATH; PYTHONPATH set to packages/tenantext"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/skills/tracker-site/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "host_tool_required",
+       "The skill runs python3 -m tracker with PYTHONPATH set to packages/tenantext. It needs Python 3.11 or later and Git on PATH, with no third-party Python package. check-runtime verifies python3 but does not check Git on the client."
+      ],
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-skills",
+     "h": 52,
+     "id": "tracker-site",
+     "kind": "comp-skills",
+     "label": "tracker-site",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "A skill that builds a tracker brief and site from the repository and its issue tracker.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 512
+    },
+    {
+     "component": "herdr",
+     "doc": "docs/herdr-setup.md",
+     "fields": [
+      [
+       "Component",
+       "herdr"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "the herdr tool on PATH"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/skills/herdr/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "host_tool_required",
+       "The skill needs the herdr CLI and Python 3 on the host; the kit does not install them. The check-herdr action reports the herdr CLI as present with its version, or as missing."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-herdr",
+     "h": 52,
+     "id": "herdr",
+     "kind": "comp-herdr",
+     "label": "herdr",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "The Herdr skill. Agent fan-out goes through it. It does not install the Herdr application.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext"
+     ],
+     "w": 180,
+     "x": 780,
+     "y": 438
+    },
+    {
+     "component": "herdr-relay",
+     "doc": "docs/herdr-setup.md",
+     "fields": [
+      [
+       "Component",
+       "herdr-relay"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core, herdr"
+      ],
+      [
+       "Inputs",
+       "herdr enabled, the herdr tool, Python 3"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/skills/herdr-relay/SKILL.md"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "host_tool_required",
+       "The optional skill needs the herdr CLI, Python 3 and the installed herdr skill (default ~/.agents/skills/herdr). The kit does not install or check them."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-herdr",
+     "h": 52,
+     "id": "herdr-relay",
+     "kind": "comp-herdr",
+     "label": "herdr-relay",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Runs a shell command through a standing worker pane. Optional and off by default.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext",
+      "requires herdr"
+     ],
+     "w": 180,
+     "x": 780,
+     "y": 512
+    },
+    {
+     "component": "questions",
+     "doc": "docs/herdr-setup.md",
+     "fields": [
+      [
+       "Component",
+       "questions"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "npm @juicesharp/rpiv-ask-user-question@2.11.0"
+      ],
+      [
+       "Owner",
+       "rpiv-ask-user-question"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "none"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "Pi package declaration only; the guidance file of the extension stays owned by the user"
+      ]
+     ],
+     "files": [
+      "config/manifest.json"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "package_source_unreviewed",
+       "The registry metadata of version 2.11.0 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
+      ],
+      [
+       "peer_package_unverified",
+       "The package lists typebox under dependencies and names the peer package @juicesharp/rpiv-i18n; no install of version 2.11.0 with the kit pin was observed."
+      ],
+      [
+       "question_ui_unverified",
+       "The ask_user_question tool needs an interactive Pi session. A loaded extension does not prove that the question dialog works."
+      ],
+      [
+       "shared_config_outside_profile",
+       "The extension reads its guidance file below the config directory of the user, outside the profile; the kit does not write or check that file."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-herdr",
+     "h": 52,
+     "id": "questions",
+     "kind": "comp-herdr",
+     "label": "questions",
+     "status": "unverified",
+     "sub": "npm source, unverified",
+     "summary": "The Pi question extension at an exact version. It gives Pi the ask_user_question tool.",
+     "tags": [
+      "manifest unverified",
+      "npm source",
+      "owner rpiv-ask-user-question"
+     ],
+     "w": 180,
+     "x": 780,
+     "y": 586
+    },
+    {
+     "component": "mcp",
+     "doc": "docs/workflow-modules.md",
+     "fields": [
+      [
+       "Component",
+       "mcp"
+      ],
+      [
+       "Status",
+       "manifest tested; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "npm pi-mcp-adapter"
+      ],
+      [
+       "Owner",
+       "pi-mcp-adapter"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "inputs.mcpFile and that file under --local-dir"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "Pi package declaration, the extensions list entry that disables builtin:mcp, and the whole adapter config file"
+      ]
+     ],
+     "files": [
+      "config/manifest.json"
+     ],
+     "gaps": [],
+     "group": "g-c-mcp",
+     "h": 52,
+     "id": "mcp",
+     "kind": "comp-mcp",
+     "label": "mcp",
+     "status": "tested",
+     "sub": "npm source, tested",
+     "summary": "The MCP adapter with definitions from a private input file. It disables the native Pi MCP and runs in exclusive mode.",
+     "tags": [
+      "manifest tested",
+      "npm source",
+      "owner pi-mcp-adapter"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 738
+    },
+    {
+     "doc": "docs/guides/compose-seat.md",
+     "drill": "runtime",
+     "files": [
+      "deploy/compose/Dockerfile",
+      "deploy/compose/compose.yaml",
+      "deploy/compose/entrypoint.sh",
+      "deploy/compose/sshd_config",
+      "deploy/compose/profile.sh",
+      "deploy/compose/README.md"
+     ],
+     "group": "g-c-deploy",
+     "h": 52,
+     "id": "compose-seat",
+     "kind": "comp-deploy",
+     "label": "Compose seat",
+     "sub": "not a manifest component",
+     "summary": "A container, started by Compose, that holds one generated Pi profile for one user and is reached over SSH. Not qualified.",
+     "tags": [
+      "not qualified",
+      "deploy"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 698
+    },
+    {
+     "doc": "docs/generator.md",
+     "files": [
+      "scripts/compose_plan.py"
+     ],
+     "group": "g-c-deploy",
+     "h": 52,
+     "id": "compose-plan",
+     "kind": "action",
+     "label": "compose-plan",
+     "script": "scripts/compose_plan.py",
+     "sub": "scripts/compose_plan.py",
+     "summary": "Turns the answers of the container destination into the overlay, the registry, the two env files and the Compose command lines. Without --write it writes nothing.",
+     "tags": [
+      "pure module"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 698
+    }
+   ],
+   "summary": "The components of config/manifest.json, grouped by kind. Core is always on. Each other component is optional and requires core.",
+   "width": 1350
+  },
+  {
+   "edges": [
+    {
+     "from": "d-branch",
+     "label": "each commit",
+     "to": "d-hooks"
+    },
+    {
+     "from": "d-hooks",
+     "label": "runs",
+     "to": "d-scan"
+    },
+    {
+     "from": "d-lists",
+     "label": "patterns",
+     "to": "d-scan"
+    },
+    {
+     "from": "d-lists",
+     "label": "the deny lists",
+     "to": "d-public"
+    },
+    {
+     "from": "d-branch",
+     "label": "merge after the checks",
+     "to": "d-repo"
+    },
+    {
+     "from": "d-tests",
+     "label": "required",
+     "style": "optional",
+     "to": "d-branch"
+    },
+    {
+     "from": "d-doc-check",
+     "label": "runs inside",
+     "style": "optional",
+     "to": "d-tests"
+    },
+    {
+     "from": "d-public",
+     "label": "part of",
+     "to": "d-publish-check"
+    },
+    {
+     "from": "d-publish-check",
+     "label": "checks",
+     "to": "d-publish-set"
+    },
+    {
+     "from": "d-dev-only",
+     "label": "excludes",
+     "style": "refuses",
+     "to": "d-publish-set"
+    },
+    {
+     "from": "d-local",
+     "label": "the local deny list",
+     "style": "optional",
+     "to": "d-lists"
+    },
+    {
+     "from": "d-repo",
+     "label": "committed HEAD",
+     "to": "d-publisher"
+    },
+    {
+     "from": "d-publisher",
+     "label": "runs the four checks",
+     "to": "d-tests"
+    },
+    {
+     "from": "d-publisher",
+     "label": "runs",
+     "to": "d-examples"
+    },
+    {
+     "from": "d-publisher",
+     "label": "runs",
+     "to": "d-overlay"
+    },
+    {
+     "from": "d-publisher",
+     "label": "runs",
+     "to": "d-publish-check"
+    },
+    {
+     "from": "d-publish-set",
+     "label": "only these files",
+     "to": "d-publisher"
+    },
+    {
+     "from": "d-publisher",
+     "label": "snapshot commit",
+     "style": "writes",
+     "to": "d-portable"
+    },
+    {
+     "from": "d-publisher",
+     "label": "annotated tag",
+     "style": "writes",
+     "to": "d-tags"
+    },
+    {
+     "from": "d-portable",
+     "label": "push, scanned at level fail",
+     "to": "d-mirror"
+    },
+    {
+     "from": "d-tags",
+     "label": "push",
+     "to": "d-mirror"
+    },
+    {
+     "from": "d-tags",
+     "label": "release notes",
+     "style": "optional",
+     "to": "d-release"
+    },
+    {
+     "from": "d-hooks",
+     "label": "pre-push scan",
+     "style": "reads",
+     "to": "d-portable"
+    },
+    {
+     "from": "d-repo",
+     "label": "each push",
+     "to": "d-ci-checks"
+    },
+    {
+     "from": "d-mirror",
+     "label": "each push",
+     "to": "d-ci-checks"
+    },
+    {
+     "from": "d-ci-update",
+     "label": "proposes",
+     "to": "d-update-pr"
+    },
+    {
+     "from": "d-update-pr",
+     "label": "review and merge",
+     "to": "d-repo"
+    }
+   ],
+   "groups": [
+    {
+     "cols": 1,
+     "h": 352,
+     "id": "g-d-dev",
+     "label": "Development repository",
+     "sub": "the development repository",
+     "tone": "clone",
+     "w": 220,
+     "x": 40,
+     "y": 40
+    },
+    {
+     "cols": 2,
+     "h": 278,
+     "id": "g-d-checks",
+     "label": "Checks",
+     "sub": "offline, no network",
+     "tone": "actions",
+     "w": 420,
+     "x": 300,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 278,
+     "id": "g-d-scan",
+     "label": "Scans and hooks",
+     "sub": "scripts/scan.sh",
+     "tone": "live",
+     "w": 220,
+     "x": 760,
+     "y": 40
+    },
+    {
+     "cols": 1,
+     "h": 278,
+     "id": "g-d-ci",
+     "label": "Continuous integration",
+     "sub": "workflows",
+     "tone": "neutral",
+     "w": 220,
+     "x": 1020,
+     "y": 40
+    },
+    {
+     "cols": 6,
+     "h": 130,
+     "id": "g-d-publish",
+     "label": "Publication",
+     "sub": "scripts/publish_portable.py",
+     "tone": "release",
+     "w": 1220,
+     "x": 40,
+     "y": 440
+    }
+   ],
+   "height": 610,
+   "id": "devrel",
+   "label": "Development and release",
+   "nodes": [
+    {
+     "doc": "docs/publishing.md",
+     "group": "g-d-dev",
+     "h": 52,
+     "id": "d-repo",
+     "kind": "release",
+     "label": "main",
+     "sub": "the development repository",
+     "summary": "The development history of the kit. It can hold development-only files and notes that never publish.",
+     "tags": [
+      "private copy"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 98
+    },
+    {
+     "doc": "docs/secret-handling.md",
+     "group": "g-d-dev",
+     "h": 52,
+     "id": "d-branch",
+     "kind": "release",
+     "label": "A change branch",
+     "sub": "one change, one merge",
+     "summary": "A change goes on its own branch. The pre-commit hook scans each staged change. The branch merges into main after the checks pass.",
+     "tags": [
+      "level warn"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 172
+    },
+    {
+     "doc": "docs/publishing.md",
+     "group": "g-d-dev",
+     "h": 52,
+     "id": "d-dev-only",
+     "kind": "guard",
+     "label": "Dev-only list",
+     "sub": "scripts/dev-only-files.txt",
+     "summary": "The optional list of development-only files and directories. It excludes itself. A portable snapshot has neither the list nor its files.",
+     "tags": [
+      "never published"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 246
+    },
+    {
+     "doc": "docs/secret-handling.md",
+     "group": "g-d-dev",
+     "h": 52,
+     "id": "d-local",
+     "kind": "guard",
+     "label": "Ignored .local/",
+     "sub": ".local/ in the clone",
+     "summary": "Private client state and the local deny list. Git ignores it, but the ignore rule is not a security or publication control.",
+     "tags": [
+      "ignored"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 320
+    },
+    {
+     "doc": "docs/guides/release-checklist.md",
+     "files": [
+      "tests/test_contract.py",
+      "tests/test_publish_rules.py",
+      "tests/test_architecture_build.py"
+     ],
+     "group": "g-d-checks",
+     "h": 52,
+     "id": "d-tests",
+     "kind": "guard",
+     "label": "Unit tests",
+     "sub": "python3 -m unittest",
+     "summary": "The unit tests of the kit. They include the documentation check and the build check of this architecture file.",
+     "tags": [
+      "required check"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 98
+    },
+    {
+     "doc": "docs/guides/release-checklist.md",
+     "files": [
+      "scripts/examples.py"
+     ],
+     "group": "g-d-checks",
+     "h": 52,
+     "id": "d-examples",
+     "kind": "guard",
+     "label": "Examples",
+     "script": "scripts/examples.py",
+     "sub": "scripts/examples.py",
+     "summary": "Checks or regenerates the synthetic examples.",
+     "tags": [
+      "required check"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 98
+    },
+    {
+     "doc": "docs/guides/release-checklist.md",
+     "files": [
+      "scripts/validate.py",
+      "config/config.example.json"
+     ],
+     "group": "g-d-checks",
+     "h": 52,
+     "id": "d-overlay",
+     "kind": "guard",
+     "label": "Sample overlay",
+     "script": "scripts/validate.py",
+     "sub": "validate.py --overlay",
+     "summary": "Validates config/config.example.json against the manifest.",
+     "tags": [
+      "required check"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 172
+    },
+    {
+     "doc": "docs/publishing.md",
+     "files": [
+      "scripts/publish_check.py"
+     ],
+     "group": "g-d-checks",
+     "h": 52,
+     "id": "d-publish-check",
+     "kind": "guard",
+     "label": "Publish check",
+     "script": "scripts/publish_check.py",
+     "sub": "scripts/publish_check.py",
+     "summary": "Checks the reviewed publish set: each tracked file is published, excluded or dev-only; no secret pattern; the public reader rules; the examples.",
+     "tags": [
+      "required check"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 172
+    },
+    {
+     "doc": "docs/publishing.md",
+     "files": [
+      "scripts/publish_check.py"
+     ],
+     "group": "g-d-checks",
+     "h": 52,
+     "id": "d-public",
+     "kind": "guard",
+     "label": "Public reader rules",
+     "script": "scripts/publish_check.py",
+     "sub": "publish_check.py --public",
+     "summary": "Finds content that a stranger must not get: a tracker reference, a machine path, a host record, a deny-list pattern. A finding never prints the text.",
+     "tags": [
+      "PUBLIC_RULES"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 246
+    },
+    {
+     "doc": "docs/guides/release-checklist.md",
+     "files": [
+      "scripts/doc_check.py"
+     ],
+     "group": "g-d-checks",
+     "h": 52,
+     "id": "d-doc-check",
+     "kind": "guard",
+     "label": "Doc check",
+     "script": "scripts/doc_check.py",
+     "sub": "scripts/doc_check.py",
+     "summary": "Checks the links, the JSON examples and the CLI names of the published documents. The unit tests run it too.",
+     "tags": [
+      "offline"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 246
+    },
+    {
+     "doc": "docs/secret-handling.md",
+     "files": [
+      "scripts/scan.sh",
+      ".gitleaks.toml"
+     ],
+     "group": "g-d-scan",
+     "h": 52,
+     "id": "d-scan",
+     "kind": "guard",
+     "label": "scan.sh",
+     "script": "scripts/scan.sh",
+     "sub": "gitleaks + host values",
+     "summary": "Stops a secret or a host value before it goes to a remote. It runs gitleaks with no network and a redacted output. Level fail on portable refs, warn elsewhere.",
+     "tags": [
+      "no network"
+     ],
+     "w": 180,
+     "x": 780,
+     "y": 98
+    },
+    {
+     "doc": "docs/secret-handling.md",
+     "files": [
+      "scripts/host-values.deny",
+      "scripts/host-values.regex",
+      "scripts/host-values.allow",
+      "scripts/host-values.allow-lines"
+     ],
+     "group": "g-d-scan",
+     "h": 52,
+     "id": "d-lists",
+     "kind": "input",
+     "label": "Host-value lists",
+     "sub": "scripts/host-values.*",
+     "summary": "The tracked deny list, the untracked local deny list, the private-address rules, the allow list and the accepted lines.",
+     "tags": [
+      "patterns"
+     ],
+     "w": 180,
+     "x": 780,
+     "y": 172
+    },
+    {
+     "doc": "docs/secret-handling.md",
+     "files": [
+      "scripts/install-hooks.sh",
+      "scripts/git-hooks/dispatch",
+      "scripts/git-hooks/pre-commit",
+      "scripts/git-hooks/pre-merge-commit",
+      "scripts/git-hooks/pre-push"
+     ],
+     "group": "g-d-scan",
+     "h": 52,
+     "id": "d-hooks",
+     "kind": "guard",
+     "label": "Git hooks",
+     "script": "scripts/install-hooks.sh",
+     "sub": "pre-commit, pre-push",
+     "summary": "pre-commit and pre-merge-commit scan the staged change. pre-push scans the commits that the push sends. A hook fails closed.",
+     "tags": [
+      "fail closed"
+     ],
+     "w": 180,
+     "x": 780,
+     "y": 246
+    },
+    {
+     "doc": "docs/ci.md",
+     "files": [
+      ".gitea/workflows/checks.yml",
+      ".github/workflows/checks.yml"
+     ],
+     "group": "g-d-ci",
+     "h": 52,
+     "id": "d-ci-checks",
+     "kind": "guard",
+     "label": "Checks workflow",
+     "sub": "checks.yml",
+     "summary": "Runs the offline commands on each push and pull request, with no secret and no package install.",
+     "tags": [
+      "each push"
+     ],
+     "w": 180,
+     "x": 1040,
+     "y": 98
+    },
+    {
+     "doc": "docs/ci.md",
+     "files": [
+      ".gitea/workflows/pi-update.yml",
+      "scripts/ci_update.py",
+      "scripts/pi_update.py"
+     ],
+     "group": "g-d-ci",
+     "h": 52,
+     "id": "d-ci-update",
+     "kind": "action",
+     "label": "Pi update workflow",
+     "script": "scripts/ci_update.py",
+     "sub": "pi-update.yml",
+     "summary": "Daily: detects a new Pi release, qualifies it, reads its notes and proposes a pull request.",
+     "tags": [
+      "scheduled"
+     ],
+     "w": 180,
+     "x": 1040,
+     "y": 172
+    },
+    {
+     "doc": "docs/guides/pin-move-release.md",
+     "group": "g-d-ci",
+     "h": 52,
+     "id": "d-update-pr",
+     "kind": "release",
+     "label": "Update pull request",
+     "sub": "a new pin to review",
+     "summary": "A proposed pin move. A person reviews it before it merges. See the pin move guide.",
+     "tags": [
+      "review"
+     ],
+     "w": 180,
+     "x": 1040,
+     "y": 246
+    },
+    {
+     "doc": "docs/publishing.md",
+     "files": [
+      "scripts/publish_check.py"
+     ],
+     "group": "g-d-publish",
+     "h": 52,
+     "id": "d-publish-set",
+     "kind": "release",
+     "label": "Publish set",
+     "sub": "PUBLISH + PUBLISH_DIRS",
+     "summary": "Exact reviewed paths and one directory rule for each in-tree package. Only these files reach the snapshot.",
+     "tags": [
+      "explicit list"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 498
+    },
+    {
+     "doc": "docs/publishing.md",
+     "files": [
+      "scripts/publish_portable.py"
+     ],
+     "group": "g-d-publish",
+     "h": 52,
+     "id": "d-publisher",
+     "kind": "action",
+     "label": "publish_portable.py",
+     "script": "scripts/publish_portable.py",
+     "sub": "from a clean HEAD",
+     "summary": "Refuses a dirty tree, runs the four offline checks, builds a tree of the publish set through a temporary index and makes the snapshot commit and tag.",
+     "tags": [
+      "no working-tree change"
+     ],
+     "w": 180,
+     "x": 260,
+     "y": 498
+    },
+    {
+     "doc": "docs/publishing.md",
+     "group": "g-d-publish",
+     "h": 52,
+     "id": "d-portable",
+     "kind": "release",
+     "label": "portable branch",
+     "sub": "snapshot history",
+     "summary": "Each snapshot has the previous snapshot as its parent. The history holds snapshots, not the source history.",
+     "tags": [
+      "level fail"
+     ],
+     "w": 180,
+     "x": 460,
+     "y": 498
+    },
+    {
+     "doc": "docs/publishing.md",
+     "group": "g-d-publish",
+     "h": 52,
+     "id": "d-tags",
+     "kind": "release",
+     "label": "Snapshot tags",
+     "sub": "portable/\u003cyyyymmdd\u003e-\u003csha\u003e",
+     "summary": "An annotated tag for each snapshot, with a neutral identity and no signature. The branch and the tag move in one transaction.",
+     "tags": [
+      "annotated"
+     ],
+     "w": 180,
+     "x": 660,
+     "y": 498
+    },
+    {
+     "doc": "docs/publishing.md",
+     "group": "g-d-publish",
+     "h": 52,
+     "id": "d-mirror",
+     "kind": "service",
+     "label": "Public mirror",
+     "sub": "the public mirror",
+     "summary": "The published copy on the publication service. It is a snapshot mirror and takes no issues.",
+     "tags": [
+      "public"
+     ],
+     "w": 180,
+     "x": 860,
+     "y": 498
+    },
+    {
+     "doc": "docs/guides/release-checklist.md",
+     "group": "g-d-publish",
+     "h": 52,
+     "id": "d-release",
+     "kind": "release",
+     "label": "Release entry",
+     "sub": "release notes of a tag",
+     "summary": "A tag can have a release entry with the release notes: the result of each gate and the open gaps.",
+     "tags": [
+      "optional"
+     ],
+     "w": 180,
+     "x": 1060,
+     "y": 498
+    }
+   ],
+   "summary": "The kit is developed in the development repository. A reviewed snapshot of the publish set goes to the public mirror on the publication service.",
+   "width": 1300
+  },
+  {
+   "edges": [
+    {
+     "from": "r-pi",
+     "label": "reads",
+     "style": "reads",
+     "to": "r-settings"
+    },
+    {
+     "from": "r-pi",
+     "label": "writes",
+     "style": "writes",
+     "to": "r-state"
+    },
+    {
+     "from": "r-pi",
+     "label": "loads",
+     "to": "r-codex"
+    },
+    {
+     "from": "r-env",
+     "label": "base URL and key",
+     "to": "r-codex"
+    },
+    {
+     "from": "r-codex",
+     "label": "HTTPS /v1",
+     "to": "r-gateway"
+    },
+    {
+     "from": "r-gateway",
+     "label": "resolves the alias",
+     "to": "r-aliases"
+    },
+    {
+     "from": "r-aliases",
+     "label": "upstream request",
+     "to": "r-provider"
+    },
+    {
+     "from": "r-pi",
+     "label": "loads",
+     "to": "r-hermes"
+    },
+    {
+     "from": "r-hermes",
+     "label": "memory files",
+     "style": "writes",
+     "to": "r-state"
+    },
+    {
+     "from": "r-pi",
+     "label": "loads",
+     "to": "r-wiki"
+    },
+    {
+     "from": "r-wiki",
+     "label": "writes pages",
+     "style": "writes",
+     "to": "r-vault"
+    },
+    {
+     "from": "r-pi",
+     "label": "loads",
+     "to": "r-openviking"
+    },
+    {
+     "from": "r-openviking",
+     "label": "remote memory writes",
+     "to": "r-ov-server"
+    },
+    {
+     "from": "r-pi",
+     "label": "loads",
+     "to": "r-mcp"
+    },
+    {
+     "from": "r-mcp",
+     "label": "tool calls",
+     "to": "r-mcp-servers"
+    },
+    {
+     "from": "r-pi",
+     "label": "loads",
+     "to": "r-knowledge"
+    },
+    {
+     "from": "r-knowledge",
+     "label": "ok command, MCP",
+     "to": "r-ok"
+    },
+    {
+     "from": "r-pi",
+     "label": "loads",
+     "to": "r-herdr-skill"
+    },
+    {
+     "from": "r-herdr-skill",
+     "label": "herdr command",
+     "to": "r-herdr"
+    },
+    {
+     "from": "r-seat",
+     "label": "holds one profile",
+     "to": "r-pi"
+    },
+    {
+     "from": "r-ssh",
+     "label": "login",
+     "to": "r-seat"
+    },
+    {
+     "from": "r-seat",
+     "label": "one key, tmpfs file",
+     "to": "r-gateway"
+    },
+    {
+     "from": "r-lab",
+     "label": "trial host",
+     "style": "optional",
+     "to": "r-seat"
+    }
+   ],
+   "groups": [
+    {
+     "cols": 1,
+     "h": 278,
+     "id": "g-r-profile",
+     "label": "The generated profile",
+     "sub": "$HOME/.pi/profiles/main",
+     "tone": "profile",
+     "w": 220,
+     "x": 40,
+     "y": 40
+    },
+    {
+     "cols": 2,
+     "h": 278,
+     "id": "g-r-gateway",
+     "label": "The gateway route",
+     "sub": "codex-accounts",
+     "tone": "service",
+     "w": 420,
+     "x": 300,
+     "y": 40
+    },
+    {
+     "cols": 2,
+     "h": 278,
+     "id": "g-r-memory",
+     "label": "Memory",
+     "nodeW": 200,
+     "sub": "consent in the overlay",
+     "tone": "runtime",
+     "w": 460,
+     "x": 760,
+     "y": 40
+    },
+    {
+     "cols": 3,
+     "h": 204,
+     "id": "g-r-tools",
+     "label": "Tools and knowledge",
+     "sub": "host tools",
+     "tone": "actions",
+     "w": 620,
+     "x": 300,
+     "y": 400
+    },
+    {
+     "cols": 1,
+     "h": 278,
+     "id": "g-r-seat",
+     "label": "Seats and trials",
+     "sub": "not qualified",
+     "tone": "release",
+     "w": 220,
+     "x": 980,
+     "y": 400
+    }
+   ],
+   "height": 718,
+   "id": "runtime",
+   "label": "Runtime and services",
+   "nodes": [
+    {
+     "doc": "docs/launcher.md",
+     "group": "g-r-profile",
+     "h": 52,
+     "id": "r-pi",
+     "kind": "runtime",
+     "label": "Pi",
+     "sub": "the pi command of your npm prefix",
+     "summary": "The Pi process of the profile. It loads each enabled component as a normal extension or skill through one package entry with a filter.",
+     "tags": [
+      "one process, one profile"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 98
+    },
+    {
+     "doc": "docs/profile-write.md",
+     "files": [
+      "$HOME/.pi/profiles/main/settings.json"
+     ],
+     "group": "g-r-profile",
+     "h": 52,
+     "id": "r-settings",
+     "kind": "output",
+     "label": "settings.json",
+     "sub": "packages, models",
+     "summary": "The package entries and the model defaults that the kit generated.",
+     "tags": [
+      "generated"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 172
+    },
+    {
+     "doc": "docs/profile-lifecycle.md",
+     "files": [
+      "$HOME/.pi/profiles/main/auth.json",
+      "$HOME/.pi/profiles/main/sessions/"
+     ],
+     "group": "g-r-profile",
+     "h": 52,
+     "id": "r-state",
+     "kind": "runtime",
+     "label": "Profile state",
+     "sub": "auth.json, sessions/, stores",
+     "summary": "The login, the sessions and the local memory stores. Host-only: Pi writes them at run time.",
+     "tags": [
+      "host-only"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 246
+    },
+    {
+     "doc": "docs/model-routes.md",
+     "files": [
+      "packages/tenantext/extensions/codex-accounts/routing.ts"
+     ],
+     "group": "g-r-gateway",
+     "h": 52,
+     "id": "r-codex",
+     "kind": "comp-tenantext",
+     "label": "Routing client",
+     "sub": "codex-accounts extension",
+     "summary": "The Tenantext routing client. It sends the model requests of the profile to the gateway.",
+     "tags": [
+      "unverified"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 98
+    },
+    {
+     "doc": "docs/model-routes.md",
+     "group": "g-r-gateway",
+     "h": 52,
+     "id": "r-env",
+     "kind": "input",
+     "label": "Launch line and key",
+     "sub": "TENANTEXT_LITELLM_*",
+     "summary": "TENANTEXT_LITELLM_BASE_URL goes in front of the launch line. TENANTEXT_LITELLM_API_KEY stays in the launching shell. The kit never stores the key.",
+     "tags": [
+      "no stored key"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 98
+    },
+    {
+     "doc": "docs/model-routes.md",
+     "group": "g-r-gateway",
+     "h": 52,
+     "id": "r-gateway",
+     "kind": "service",
+     "label": "The gateway",
+     "sub": "https://gateway.example.invalid/v1",
+     "summary": "The gateway route ends at the gateway. The endpoint is HTTPS and ends in /v1. It is a host service, and the kit does not check it.",
+     "tags": [
+      "host service",
+      "HTTPS"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 172
+    },
+    {
+     "doc": "docs/model-routes.md",
+     "group": "g-r-gateway",
+     "h": 52,
+     "id": "r-aliases",
+     "kind": "service",
+     "label": "Model aliases",
+     "sub": "provider + model id",
+     "summary": "The models that the gateway offers: the model aliases of the gateway. The overlay names one for each role, and the registry holds the evidence.",
+     "tags": [
+      "roles"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 172
+    },
+    {
+     "doc": "docs/guides/providers.md",
+     "group": "g-r-gateway",
+     "h": 52,
+     "id": "r-provider",
+     "kind": "service",
+     "label": "Model provider",
+     "sub": "your provider",
+     "summary": "The upstream of the gateway. It answers the model requests.",
+     "tags": [
+      "upstream"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 246
+    },
+    {
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "$HOME/.pi/profiles/main/hermes-memory-config.json"
+     ],
+     "group": "g-r-memory",
+     "h": 52,
+     "id": "r-hermes",
+     "kind": "comp-memory",
+     "label": "Hermes memory",
+     "sub": "hermes-memory-config.json",
+     "summary": "Local memory in the profile. backgroundReview permits independent model calls and needs roles.memory.",
+     "tags": [
+      "consent"
+     ],
+     "w": 200,
+     "x": 780,
+     "y": 98
+    },
+    {
+     "doc": "docs/memory-modules.md",
+     "group": "g-r-memory",
+     "h": 52,
+     "id": "r-wiki",
+     "kind": "comp-memory",
+     "label": "LLM Wiki",
+     "sub": "@zosmaai/pi-llm-wiki",
+     "summary": "A personal wiki of pages that the agent writes and recalls.",
+     "tags": [
+      "consent"
+     ],
+     "w": 200,
+     "x": 1000,
+     "y": 98
+    },
+    {
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "~/.llm-wiki/"
+     ],
+     "group": "g-r-memory",
+     "h": 52,
+     "id": "r-vault",
+     "kind": "output",
+     "label": "Wiki vault",
+     "sub": "~/.llm-wiki/",
+     "summary": "The vault of the account, outside the target. WIKI_HOME selects another wiki home. The kit refuses a target inside a vault.",
+     "tags": [
+      "HOME state"
+     ],
+     "w": 200,
+     "x": 780,
+     "y": 172
+    },
+    {
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "packages/openviking-pi/README.md"
+     ],
+     "group": "g-r-memory",
+     "h": 52,
+     "id": "r-openviking",
+     "kind": "comp-memory",
+     "label": "OpenViking extension",
+     "sub": "packages/openviking-pi",
+     "summary": "The vendored extension. It reads its endpoint and key from OPENVIKING_* variables or ~/.openviking/, never from the kit.",
+     "tags": [
+      "consent",
+      "remote writes"
+     ],
+     "w": 200,
+     "x": 1000,
+     "y": 172
+    },
+    {
+     "doc": "docs/memory-modules.md",
+     "group": "g-r-memory",
+     "h": 52,
+     "id": "r-ov-server",
+     "kind": "service",
+     "label": "OpenViking server",
+     "sub": "your OpenViking server",
+     "summary": "The server keeps the sessions and the memories: your OpenViking server. It needs viking:// home alias support.",
+     "tags": [
+      "server"
+     ],
+     "w": 200,
+     "x": 780,
+     "y": 246
+    },
+    {
+     "doc": "docs/workflow-modules.md",
+     "files": [
+      "$HOME/.pi/profiles/main/mcp-adapter.json"
+     ],
+     "group": "g-r-tools",
+     "h": 52,
+     "id": "r-mcp",
+     "kind": "comp-mcp",
+     "label": "MCP adapter",
+     "sub": "mcp-adapter.json",
+     "summary": "pi-mcp-adapter with the definitions of the private input file. PI_MCP_CONFIG_MODE=exclusive on the launch line.",
+     "tags": [
+      "exclusive mode"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 458
+    },
+    {
+     "doc": "docs/guides/modules.md",
+     "files": [
+      "packages/tenantext/skills/knowledge-skills/README.md"
+     ],
+     "group": "g-r-tools",
+     "h": 52,
+     "id": "r-knowledge",
+     "kind": "comp-skills",
+     "label": "Knowledge skills",
+     "sub": "knowledge-skills",
+     "summary": "Skills that read and write OpenKnowledge projects.",
+     "tags": [
+      "skills"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 458
+    },
+    {
+     "doc": "docs/herdr-setup.md",
+     "files": [
+      "packages/tenantext/skills/herdr/SKILL.md"
+     ],
+     "group": "g-r-tools",
+     "h": 52,
+     "id": "r-herdr-skill",
+     "kind": "comp-herdr",
+     "label": "Herdr skill",
+     "sub": "skills/herdr",
+     "summary": "Finds, reads and prompts agent panes, and starts new ones.",
+     "tags": [
+      "skill"
+     ],
+     "w": 180,
+     "x": 720,
+     "y": 458
+    },
+    {
+     "doc": "docs/workflow-modules.md",
+     "group": "g-r-tools",
+     "h": 52,
+     "id": "r-mcp-servers",
+     "kind": "service",
+     "label": "MCP servers",
+     "sub": "the MCP servers that you define",
+     "summary": "The adapter calls the MCP servers that you define. Tokens can use the keyring of the operating system.",
+     "tags": [
+      "host services"
+     ],
+     "w": 180,
+     "x": 320,
+     "y": 532
+    },
+    {
+     "doc": "docs/guides/modules.md",
+     "group": "g-r-tools",
+     "h": 52,
+     "id": "r-ok",
+     "kind": "service",
+     "label": "OpenKnowledge",
+     "sub": "your OpenKnowledge service",
+     "summary": "A markdown knowledge base with an MCP server and the ok command: your OpenKnowledge service. The kit installs neither.",
+     "tags": [
+      "host tool"
+     ],
+     "w": 180,
+     "x": 520,
+     "y": 532
+    },
+    {
+     "doc": "docs/herdr-setup.md",
+     "group": "g-r-tools",
+     "h": 52,
+     "id": "r-herdr",
+     "kind": "service",
+     "label": "Herdr application",
+     "sub": "the herdr command on PATH",
+     "summary": "A terminal workspace manager for coding agents. A host tool: check-herdr reports it, and the kit does not install it.",
+     "tags": [
+      "host tool"
+     ],
+     "w": 180,
+     "x": 720,
+     "y": 532
+    },
+    {
+     "doc": "docs/guides/compose-seat.md",
+     "files": [
+      "deploy/compose/compose.yaml",
+      "deploy/compose/entrypoint.sh"
+     ],
+     "group": "g-r-seat",
+     "h": 52,
+     "id": "r-seat",
+     "kind": "comp-deploy",
+     "label": "Compose seat",
+     "sub": "deploy/compose",
+     "summary": "One generated profile in a container. The gateway key reaches the seat account through a file in a tmpfs, never through the image.",
+     "tags": [
+      "not qualified"
+     ],
+     "w": 180,
+     "x": 1000,
+     "y": 458
+    },
+    {
+     "doc": "docs/guides/compose-seat.md",
+     "files": [
+      "deploy/compose/sshd_config"
+     ],
+     "group": "g-r-seat",
+     "h": 52,
+     "id": "r-ssh",
+     "kind": "runtime",
+     "label": "SSH login",
+     "sub": "ssh -p \u003cport\u003e \u003caccount\u003e@\u003chost\u003e",
+     "summary": "Key-only sshd for the one seat account. The login opens a tmux shell with Pi and Herdr.",
+     "tags": [
+      "key only"
+     ],
+     "w": 180,
+     "x": 1000,
+     "y": 532
+    },
+    {
+     "doc": "docs/guides/release-checklist.md",
+     "group": "g-r-seat",
+     "h": 52,
+     "id": "r-lab",
+     "kind": "host",
+     "label": "Test machine",
+     "sub": "a separate test machine",
+     "summary": "Optional. You can run a hands-on trial on a separate test machine with a clean account. Never run a trial on the profile of your daily work.",
+     "tags": [
+      "optional",
+      "trial"
+     ],
+     "w": 180,
+     "x": 1000,
+     "y": 606
+    }
+   ],
+   "summary": "What a generated profile talks to at run time. The kit configures references only. It starts no service and writes no endpoint key.",
+   "width": 1260
+  }
+ ]
+}</script>
+<script>
+(() => {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("graph-data").textContent);
+  const NS = "http://www.w3.org/2000/svg";
+  const VIEWS = new Map(DATA.views.map((v) => [v.id, v]));
+  const ORDER = DATA.views.map((v) => v.id);
+  const STYLE_LABEL = { flow: "flow", writes: "writes or creates", reads: "reads", optional: "optional or by hand", requires: "requires", refuses: "refuses or excludes" };
+  const STYLE_COLOR = { flow: "#5d6d8a", writes: "#4fae72", reads: "#5f86bd", optional: "#56627a", requires: "#c9a24b", refuses: "#ff6b6b" };
+  const STYLE_DASH = { flow: "", writes: "", reads: "5 4", optional: "7 5", requires: "2 4", refuses: "7 4" };
+  const state = { view: ORDER[0], selected: null, drill: null, path: null, tour: -1, k: 1, tx: 0, ty: 0, hit: -1, found: [] };
+  const byId = (id) => document.getElementById(id);
+  const svgRoot = byId("canvas"), viewport = byId("viewport");
+  const layers = { groups: byId("layer-groups"), edges: byId("layer-edges"), nodes: byId("layer-nodes") };
+  const panel = byId("panel-body"), search = byId("search"), results = byId("results");
+
+  function h(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v === null || v === undefined || v === false) continue;
+      if (k === "class") e.className = v;
+      else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+      else e.setAttribute(k, v === true ? "" : String(v));
+    }
+    for (const kid of kids.flat(Infinity)) if (kid !== null && kid !== undefined && kid !== false) e.append(kid instanceof Node ? kid : String(kid));
+    return e;
+  }
+  function s(tag, attrs, ...kids) {
+    const e = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) if (v !== null && v !== undefined) e.setAttribute(k, String(v));
+    for (const kid of kids.flat(Infinity)) if (kid !== null && kid !== undefined) e.append(kid instanceof Node ? kid : String(kid));
+    return e;
+  }
+  const clip = (text, max) => (text && text.length > max ? text.slice(0, max - 1) + "…" : text || "");
+  const kindOf = (id) => DATA.kinds[id] || { label: id, color: "#8b98ad" };
+
+  /* Text fitting: measure the rendered text, never guess from the number of characters. */
+  const meters = { glabel: s("text", { class: "glabel" }), nlabel: s("text", { class: "nlabel" }), nsub: s("text", { class: "nsub" }) };
+  svgRoot.append(s("g", { visibility: "hidden", "aria-hidden": "true" },
+    s("g", { class: "grp" }, meters.glabel), s("g", { class: "node" }, meters.nlabel, meters.nsub)));
+  const fitted = new Map();
+  function textWidth(cls, text) { meters[cls].textContent = text; return meters[cls].getComputedTextLength(); }
+  function fitText(el, text, max) {
+    // A label that is too wide ends with an ellipsis. The title of its node holds the full text.
+    const key = el.getAttribute("class") + "\u0001" + max + "\u0001" + text;
+    if (fitted.has(key)) { el.textContent = fitted.get(key); return; }
+    el.textContent = text;
+    const width = el.getComputedTextLength();
+    if (!width) { el.textContent = clip(text, Math.floor(max / 7.5)); return; }
+    if (width > max) {
+      let lo = 0, hi = text.length - 1;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        el.textContent = text.slice(0, mid).trimEnd() + "…";
+        if (el.getComputedTextLength() <= max) lo = mid; else hi = mid - 1;
+      }
+      el.textContent = text.slice(0, lo).trimEnd() + "…";
+    }
+    fitted.set(key, el.textContent);
+  }
+  function fitTitle(el, text, max) {
+    // A group title keeps each character: first tighter letter spacing, then a condensed font.
+    el.textContent = text;
+    if (el.getComputedTextLength() <= max) return;
+    el.style.letterSpacing = ".03em";
+    if (el.getComputedTextLength() > max) { el.setAttribute("textLength", max); el.setAttribute("lengthAdjust", "spacingAndGlyphs"); }
+  }
+  const graph = () => (state.drill ? state.drill.graph : VIEWS.get(state.view));
+  const nodeIn = (g, id) => g.nodes.find((n) => n.id === id) || null;
+
+  /* Drill-down: the context and the files of one node, built from its view. */
+  function drillGraph(view, node) {
+    const W = 180, H = 52, GAP = 24, TOP = 100;
+    const ins = [], outs = [], used = new Set([node.id]);
+    for (const e of view.edges) {
+      if (e.to === node.id && !used.has(e.from)) { used.add(e.from); ins.push(nodeIn(view, e.from)); }
+    }
+    for (const e of view.edges) {
+      if (e.from === node.id && !used.has(e.to)) { used.add(e.to); outs.push(nodeIn(view, e.to)); }
+    }
+    // A context column is as wide as its longest measured label, up to a limit.
+    const CW = Math.min(280, Math.max(W, ...[node, ...ins, ...outs].map((n) => Math.ceil(textWidth("nlabel", n.label) + (n.status ? 41 : 29)))));
+    const xs = [40, CW + 200, 2 * CW + 360];
+    const cols = [["Comes from", ins, "clone"], ["Selected", [node], "actions"], ["Goes to", outs, "profile"]];
+    const rows = Math.max(1, ...cols.map((c) => c[1].length));
+    const nodes = [], groups = [], edges = [];
+    cols.forEach(([title, items, tone], ci) => {
+      if (!items.length) return;
+      const top = TOP + ((rows - items.length) * (H + GAP)) / 2;
+      items.forEach((n, i) => nodes.push(Object.assign({}, n, { x: xs[ci] + 20, y: top + i * (H + GAP), w: CW, h: H })));
+      groups.push({ id: "drill-" + ci, label: title, sub: ci === 1 ? kindOf(node.kind).label : items.length + (items.length === 1 ? " node" : " nodes"),
+        x: xs[ci], y: top - 58, w: CW + 40, h: items.length * (H + GAP) - GAP + 78, tone });
+    });
+    for (const e of view.edges) if ((e.to === node.id) !== (e.from === node.id)) edges.push(Object.assign({}, e));
+    let bottom = TOP + rows * (H + GAP) - GAP + 20, width = xs[2] + CW + 80;
+    const files = node.files || [];
+    if (files.length) {
+      const items = files.map((path) => {
+        const parts = path.replace(/\/$/, "").split("/"), base = parts.pop() + (path.endsWith("/") ? "/" : "");
+        const generic = /^(SKILL\.md|README\.md|index\.ts|package\.json)$/.test(base) && parts.length;
+        const label = generic ? parts.pop() + "/" + base : base, dir = parts.join("/");
+        return { path, label, sub: dir.length > 25 ? "\u2026/" + parts.slice(-1)[0] : dir };
+      });
+      // A file box is as wide as its longest measured line, up to a limit.
+      const FW = Math.min(340, Math.max(W, ...items.map((f) => Math.ceil(Math.max(textWidth("nlabel", f.label), textWidth("nsub", f.sub)) + 29))));
+      const per = Math.max(1, Math.min(4, files.length, Math.floor(1040 / (FW + 20)))), frows = Math.ceil(files.length / per), fy = bottom + 40 + 58;
+      items.forEach((f, i) => nodes.push({ id: "file-" + i, kind: "file", label: f.label, sub: f.sub, summary: "A file of " + node.label + ".", files: [f.path], tags: [],
+        x: 60 + (i % per) * (FW + 20), y: fy + Math.floor(i / per) * (H + 22), w: FW, h: H }));
+      const title = "Files of " + node.label, gw = Math.max(per * FW + (per - 1) * 20 + 40, Math.ceil(textWidth("glabel", title.toUpperCase())) + 36);
+      groups.push({ id: "drill-files", label: title, sub: files.length + (files.length === 1 ? " file" : " files"),
+        x: 40, y: fy - 58, w: gw, h: 58 + frows * H + (frows - 1) * 22 + 20, tone: "neutral" });
+      bottom = fy + frows * (H + 22);
+      width = Math.max(width, 40 + gw + 40);
+    }
+    return { id: view.id + "/" + node.id, label: node.label, summary: "The context and the files of " + node.label + ". Double-click another node to move the focus.",
+      groups, nodes, edges, width, height: bottom + 60 };
+  }
+
+  /* Edge geometry: a cubic curve between the nearest sides of two boxes. */
+  function curve(a, b) {
+    const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2, dx = bx - ax, dy = by - ay;
+    let x1, y1, x2, y2, c1x, c1y, c2x, c2y;
+    if (Math.abs(dx) > Math.abs(dy) * 1.6 || Math.abs(dy) < a.h) {
+      const sx = dx >= 0 ? 1 : -1;
+      x1 = sx > 0 ? a.x + a.w : a.x; y1 = ay; x2 = sx > 0 ? b.x : b.x + b.w; y2 = by;
+      const off = Math.max(40, Math.abs(x2 - x1) / 2) * sx;
+      c1x = x1 + off; c1y = y1; c2x = x2 - off; c2y = y2;
+    } else {
+      const sy = dy >= 0 ? 1 : -1;
+      x1 = ax; y1 = sy > 0 ? a.y + a.h : a.y; x2 = bx; y2 = sy > 0 ? b.y : b.y + b.h;
+      const off = Math.max(34, Math.abs(y2 - y1) / 2) * sy;
+      c1x = x1; c1y = y1 + off; c2x = x2; c2y = y2 - off;
+    }
+    return { d: `M${x1},${y1} C${c1x},${c1y} ${c2x},${c2y} ${x2},${y2}`,
+      mx: (x1 + 3 * c1x + 3 * c2x + x2) / 8, my: (y1 + 3 * c1y + 3 * c2y + y2) / 8 };
+  }
+
+  function render() {
+    const g = graph();
+    for (const layer of Object.values(layers)) layer.replaceChildren();
+    for (const grp of g.groups) {
+      const tone = DATA.tones[grp.tone] || DATA.tones.neutral;
+      const title = s("text", { class: "glabel", x: grp.x + 18, y: grp.y + 25, fill: tone }), sub = grp.sub ? s("text", { class: "gsub", x: grp.x + 18, y: grp.y + 43 }) : null;
+      layers.groups.append(s("g", { class: "grp" },
+        s("rect", { x: grp.x, y: grp.y, width: grp.w, height: grp.h, rx: 18, fill: tone, "fill-opacity": 0.055, stroke: tone, "stroke-opacity": 0.4 }),
+        title, sub, s("title", null, grp.label + (grp.sub ? "\n" + grp.sub : ""))));
+      fitTitle(title, grp.label.toUpperCase(), grp.w - 36);
+      if (sub) fitText(sub, grp.sub, grp.w - 36);
+    }
+    const nodes = new Map(g.nodes.map((n) => [n.id, n]));
+    g.edges.forEach((e, i) => {
+      const a = nodes.get(e.from), b = nodes.get(e.to);
+      if (!a || !b) return;
+      const c = curve(a, b), style = e.style || "flow";
+      layers.edges.append(s("g", { class: "edge st-" + style, "data-i": i },
+        s("path", { class: "ehit", d: c.d }), s("path", { class: "eline", d: c.d }),
+        e.label ? s("text", { class: "elabel", x: c.mx, y: c.my - 5, "text-anchor": "middle" }, e.label) : null,
+        s("title", null, a.label + " → " + b.label + (e.label ? ": " + e.label : ""))));
+    });
+    for (const n of g.nodes) {
+      const k = kindOf(n.kind);
+      const canDrill = !state.drill && ((n.files && n.files.length) || n.drill || g.edges.some((e) => e.from === n.id || e.to === n.id));
+      const label = s("text", { class: "nlabel", x: 19, y: 23 }), sub = n.sub ? s("text", { class: "nsub", x: 19, y: 40 }) : null;
+      const el = s("g", { class: "node", transform: `translate(${n.x},${n.y})`, tabindex: 0, role: "button", "data-id": n.id,
+        "aria-label": n.label + (n.sub ? ", " + n.sub : "") + ", " + k.label },
+        s("rect", { class: "nbox", width: n.w, height: n.h, rx: 10 }),
+        s("rect", { class: "nbar", x: 7, y: 10, width: 3, height: n.h - 20, rx: 1.5 }),
+        label, sub,
+        n.status ? s("circle", { class: "ndot s-" + n.status, cx: n.w - 13, cy: 13, r: 4.5 }) : null,
+        canDrill ? s("text", { class: "ndrill", x: n.w - 15, y: n.h - 11 }, "›") : null,
+        s("title", null, n.label + (n.sub ? "\n" + n.sub : "")));
+      el.style.setProperty("--kc", k.color);
+      layers.nodes.append(el);
+      // The label ends before the status dot, the sub line before the drill mark.
+      fitText(label, n.label, n.w - 19 - (n.status ? 22 : 10));
+      if (sub) fitText(sub, n.sub, n.w - 19 - (canDrill ? 20 : 10));
+    }
+    applyFocus(); renderTabs(); renderCrumbs(); renderLegend(); renderPanel(); fillPathOptions();
+  }
+
+  function applyFocus() {
+    const g = graph(), on = new Set(), onEdges = new Set();
+    let focus = false;
+    if (state.path) {
+      focus = true; state.path.nodes.forEach((id) => on.add(id)); state.path.edges.forEach((i) => onEdges.add(i));
+    } else if (state.drill && state.selected === state.drill.from) {
+      focus = true; g.nodes.forEach((n) => on.add(n.id)); g.edges.forEach((e, i) => onEdges.add(i));
+    } else if (state.selected && nodeIn(g, state.selected)) {
+      focus = true; on.add(state.selected);
+      g.edges.forEach((e, i) => { if (e.from === state.selected || e.to === state.selected) { onEdges.add(i); on.add(e.from); on.add(e.to); } });
+    }
+    svgRoot.classList.toggle("focus", focus);
+    svgRoot.classList.toggle("pathing", !!state.path);
+    for (const el of layers.nodes.children) { el.classList.toggle("on", on.has(el.dataset.id)); el.classList.toggle("sel", el.dataset.id === state.selected); }
+    for (const el of layers.edges.children) el.classList.toggle("on", onEdges.has(Number(el.dataset.i)));
+  }
+
+  /* Pan and zoom. */
+  function applyTransform(animate) {
+    viewport.classList.toggle("anim", !!animate);
+    viewport.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.k})`;
+  }
+  function fit(animate) {
+    const g = graph(), r = svgRoot.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    const pad = 28, bottom = state.tour >= 0 ? 150 : 70;
+    state.k = Math.min((r.width - pad * 2) / g.width, (r.height - pad - bottom) / g.height, 1.3);
+    state.tx = (r.width - g.width * state.k) / 2; state.ty = pad + (r.height - pad - bottom - g.height * state.k) / 2;
+    applyTransform(animate);
+  }
+  function centerOn(id, animate, zoom) {
+    const n = nodeIn(graph(), id), r = svgRoot.getBoundingClientRect();
+    if (!n || !r.width) return;
+    state.k = Math.min(Math.max(zoom || state.k, 0.75), 2.2);
+    state.tx = r.width / 2 - (n.x + n.w / 2) * state.k;
+    state.ty = (state.tour >= 0 ? r.height * 0.38 : r.height / 2) - (n.y + n.h / 2) * state.k;
+    applyTransform(animate);
+  }
+  function zoomBy(factor, px, py) {
+    const r = svgRoot.getBoundingClientRect();
+    px = px === undefined ? r.width / 2 : px; py = py === undefined ? r.height / 2 : py;
+    const k = Math.min(3, Math.max(0.15, state.k * factor));
+    state.tx = px - (px - state.tx) * (k / state.k); state.ty = py - (py - state.ty) * (k / state.k); state.k = k;
+    applyTransform(false);
+  }
+  svgRoot.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    const r = svgRoot.getBoundingClientRect();
+    zoomBy(Math.exp(-ev.deltaY * 0.0016), ev.clientX - r.left, ev.clientY - r.top);
+  }, { passive: false });
+  let drag = null, suppress = false;
+  svgRoot.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    suppress = false; drag = { x: ev.clientX, y: ev.clientY, tx: state.tx, ty: state.ty, moved: false };
+  });
+  window.addEventListener("pointermove", (ev) => {
+    if (!drag) return;
+    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    drag.moved = true; svgRoot.classList.add("dragging");
+    state.tx = drag.tx + dx; state.ty = drag.ty + dy; applyTransform(false);
+  });
+  window.addEventListener("pointerup", () => {
+    if (!drag) return;
+    suppress = drag.moved; drag = null; svgRoot.classList.remove("dragging");
+  });
+  svgRoot.addEventListener("click", (ev) => {
+    if (suppress) { suppress = false; return; }
+    const n = ev.target.closest(".node");
+    if (n) select(n.dataset.id);
+    else if (state.selected || state.path) { state.path = null; showPathResult(); select(null); }
+  });
+  svgRoot.addEventListener("dblclick", (ev) => { const n = ev.target.closest(".node"); if (n) drill(n.dataset.id); });
+  layers.nodes.addEventListener("keydown", (ev) => {
+    const n = ev.target.closest(".node");
+    if (!n) return;
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); if (state.selected === n.dataset.id && ev.key === "Enter") drill(n.dataset.id); else select(n.dataset.id); }
+  });
+  byId("zoom").addEventListener("click", (ev) => {
+    const b = ev.target.closest("button");
+    if (!b) return;
+    if (b.dataset.zoom === "fit") fit(true); else zoomBy(b.dataset.zoom === "in" ? 1.25 : 0.8);
+  });
+
+  /* Selection, views and drill-down. */
+  function select(id, opts) {
+    opts = opts || {};
+    state.selected = id;
+    if (!opts.keepPath) { state.path = null; showPathResult(); }
+    applyFocus(); renderPanel(); syncHash();
+    if (opts.center && id) centerOn(id, true);
+  }
+  function setView(id, node) {
+    if (!VIEWS.has(id)) return;
+    endTour();
+    state.view = id; state.drill = null; state.path = null; state.selected = node || null;
+    showPathResult(); render();
+    if (node) centerOn(node, true, 1.05); else fit(true);
+    syncHash();
+  }
+  function drill(id) {
+    const base = VIEWS.get(state.view), n = nodeIn(base, id);
+    if (!n) return;
+    state.drill = { graph: drillGraph(base, n), from: id };
+    state.selected = id; state.path = null; showPathResult(); render(); fit(true); syncHash();
+  }
+  function undrill() {
+    const id = state.drill ? state.drill.from : null;
+    state.drill = null; state.path = null; state.selected = id; showPathResult(); render();
+    if (id) centerOn(id, true); else fit(true);
+    syncHash();
+  }
+
+  function renderTabs() {
+    const nav = byId("tabs");
+    nav.replaceChildren(...DATA.views.map((v, i) => h("button", { type: "button", "aria-pressed": String(v.id === state.view), title: v.summary,
+      onclick: () => setView(v.id) }, h("kbd", null, String(i + 1)), v.label)));
+  }
+  function renderCrumbs() {
+    const box = byId("crumbs"), view = VIEWS.get(state.view);
+    if (state.drill) box.replaceChildren(h("button", { type: "button", class: "link", onclick: undrill, title: "Back to the view (Esc)" }, "← " + view.label),
+      h("span", null, "/"), h("b", null, state.drill.graph.label), h("span", null, "context and files"));
+    else box.replaceChildren(h("b", null, view.label), h("span", null, view.nodes.length + " nodes, " + view.edges.length + " edges"));
+  }
+  function renderLegend() {
+    const g = graph(), kinds = new Set(g.nodes.map((n) => n.kind)), styles = new Set(g.edges.map((e) => e.style || "flow"));
+    const items = Object.keys(DATA.kinds).filter((k) => kinds.has(k)).map((k) =>
+      h("span", { class: "li" }, h("span", { class: "sw", style: "background:" + DATA.kinds[k].color }), DATA.kinds[k].label));
+    const lines = Object.keys(STYLE_LABEL).filter((k) => styles.has(k)).map((k) => {
+      const icon = s("svg", { viewBox: "0 0 26 8" }, s("line", { x1: 1, y1: 4, x2: 25, y2: 4, stroke: STYLE_COLOR[k], "stroke-width": 2, "stroke-dasharray": STYLE_DASH[k] || null }));
+      return h("span", { class: "li" }, icon, STYLE_LABEL[k]);
+    });
+    byId("legend").replaceChildren(...items, h("span", { class: "sep" }), ...lines);
+  }
+
+  /* The panel. */
+  function fileLink(path) {
+    const repo = !/^[\/~$<]/.test(path) && !/\s/.test(path);
+    if (repo) return h("a", { href: DATA.meta.base + path, target: "_blank", rel: "noopener", title: "Open " + path }, path);
+    if (DATA.meta.edition === "local" && path.startsWith("/")) return h("a", { href: "file://" + path, target: "_blank", rel: "noopener", title: "Open " + path }, path);
+    return h("code", { title: path }, path);
+  }
+  function copyButton(text) {
+    return h("button", { type: "button", class: "link copy", title: "Copy the path", onclick: (ev) => {
+      const b = ev.currentTarget, done = () => { b.textContent = "copied"; setTimeout(() => { b.textContent = "copy"; }, 1200); };
+      try { navigator.clipboard.writeText(text).then(done, () => { b.textContent = "select it"; }); } catch (err) { b.textContent = "select it"; }
+    } }, "copy");
+  }
+  function nodeButton(g, id, via) {
+    const n = nodeIn(g, id);
+    if (!n) return null;
+    return h("li", null, h("button", { type: "button", onclick: () => select(id, { center: true }) },
+      h("span", { class: "dot", style: "background:" + kindOf(n.kind).color }), n.label, via ? h("span", { class: "via" }, via) : null));
+  }
+  function renderPanel() {
+    const g = graph(), n = state.selected ? nodeIn(g, state.selected) : null;
+    panel.replaceChildren();
+    if (n) renderNode(g, n); else renderOverview(g);
+    panel.scrollTop = 0;
+  }
+  function renderOverview(g) {
+    const view = VIEWS.get(state.view);
+    panel.append(h("div", { class: "kindrow" }, state.drill ? "Drill-down" : "View " + (ORDER.indexOf(state.view) + 1) + " of " + ORDER.length),
+      h("h2", null, state.drill ? g.label : view.label), h("p", { class: "summary" }, g.summary || ""),
+      h("div", { class: "stats" }, g.nodes.length + " nodes, " + g.edges.length + " edges"));
+    for (const grp of g.groups) {
+      const members = g.nodes.filter((n) => (n.group || "") === grp.id || (state.drill && sameColumn(g, grp, n)));
+      panel.append(h("div", { class: "groupcard" },
+        h("div", { class: "gh", style: "color:" + (DATA.tones[grp.tone] || DATA.tones.neutral) }, grp.label, grp.sub ? h("span", { title: grp.sub }, grp.sub) : null),
+        h("div", { class: "chips" }, members.map((m) => h("button", { type: "button", class: "chip", onclick: () => select(m.id, { center: true }) },
+          h("span", { class: "dot", style: "background:" + kindOf(m.kind).color }), m.label)))));
+    }
+    panel.append(h("h3", null, "How to use"), h("ul", { class: "howto" },
+      h("li", null, "Click a node to see its summary, tags, files and connections."),
+      h("li", null, "Double-click a node, or press ", h("kbd", null, "Enter"), " on a selected node, to see its context and files."),
+      h("li", null, "Press ", h("kbd", null, "/"), " to search all views. Press ", h("kbd", null, "1"), " to ", h("kbd", null, String(ORDER.length)), " to change the view."),
+      h("li", null, "Drag to pan. Scroll to zoom. Press ", h("kbd", null, "f"), " to fit and ", h("kbd", null, "Esc"), " to go back."),
+      h("li", null, "Hover an edge to read its label.")));
+  }
+  function sameColumn(g, grp, n) { return n.x >= grp.x && n.x < grp.x + grp.w && n.y >= grp.y && n.y < grp.y + grp.h; }
+  function renderNode(g, n) {
+    const k = kindOf(n.kind), grp = g.groups.find((x) => x.id === n.group);
+    panel.append(h("div", { class: "kindrow" }, h("span", { class: "dot", style: "background:" + k.color }), k.label, grp ? " · " + grp.label : ""),
+      h("h2", null, n.label), n.sub ? h("div", { class: "mono sub" }, n.sub) : null, h("p", { class: "summary" }, n.summary || ""));
+    if (n.tags && n.tags.length) panel.append(h("div", { class: "tags" }, n.tags.map((t) => h("span", { class: "tag" }, t))));
+    const rows = (n.fields || []).slice();
+    if (n.script) rows.push(["Script", fileLink(n.script)]);
+    if (n.doc) rows.push(["Doc", fileLink(n.doc)]);
+    if (rows.length) panel.append(h("h3", null, "Facts"), h("dl", { class: "fields" }, rows.map(([a, b]) => [h("dt", null, a), h("dd", null, b)])));
+    if (n.gaps && n.gaps.length) panel.append(h("h3", null, "Readiness gaps (" + n.gaps.length + ")"),
+      h("ul", { class: "gaps" }, n.gaps.map(([code, fact]) => h("li", null, h("code", null, code), h("div", null, fact)))));
+    if (n.files && n.files.length) panel.append(h("h3", null, "Files (" + n.files.length + ")"),
+      h("ul", { class: "files" }, n.files.map((f) => h("li", null, fileLink(f), copyButton(f)))));
+    const outs = g.edges.filter((e) => e.from === n.id), ins = g.edges.filter((e) => e.to === n.id);
+    if (outs.length) panel.append(h("h3", null, "Goes to"), h("ul", { class: "links" }, outs.map((e) => nodeButton(g, e.to, e.label))));
+    if (ins.length) panel.append(h("h3", null, "Comes from"), h("ul", { class: "links" }, ins.map((e) => nodeButton(g, e.from, e.label))));
+    const acts = [];
+    if (!state.drill && n.kind !== "file") acts.push(h("button", { type: "button", class: "btn primary", onclick: () => drill(n.id) }, "Drill in"));
+    if (n.drill && n.drill !== state.view) acts.push(h("button", { type: "button", class: "btn", onclick: () => setView(n.drill) }, "Open view: " + VIEWS.get(n.drill).label));
+    if (state.drill) acts.push(h("button", { type: "button", class: "btn", onclick: undrill }, "Back to the view"));
+    acts.push(h("button", { type: "button", class: "btn", onclick: () => pathEnd("from", n.id) }, "Path from here"));
+    acts.push(h("button", { type: "button", class: "btn", onclick: () => pathEnd("to", n.id) }, "Path to here"));
+    panel.append(h("div", { class: "actions" }, acts));
+  }
+
+  /* The path finder: the shortest path along the edges of the current graph. */
+  const pf = { box: byId("pathfinder"), from: byId("pf-from"), to: byId("pf-to"), out: byId("pf-result") };
+  function fillPathOptions() {
+    const g = graph(), keep = [pf.from.value, pf.to.value];
+    const sorted = g.nodes.slice().sort((a, b) => a.label.localeCompare(b.label));
+    [pf.from, pf.to].forEach((sel, i) => {
+      sel.replaceChildren(h("option", { value: "" }, "choose a node"), ...sorted.map((n) => h("option", { value: n.id }, n.label + (n.sub ? "  (" + clip(n.sub, 30) + ")" : ""))));
+      if (nodeIn(g, keep[i])) sel.value = keep[i];
+    });
+  }
+  function pathEnd(which, id) {
+    pf.box.open = true;
+    (which === "from" ? pf.from : pf.to).value = id;
+    if (pf.from.value && pf.to.value) runPath(); else (which === "from" ? pf.to : pf.from).focus();
+  }
+  function shortest(g, from, to, directed) {
+    const prev = new Map([[from, null]]), queue = [from];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur === to) break;
+      g.edges.forEach((e, i) => {
+        const next = e.from === cur ? e.to : !directed && e.to === cur ? e.from : null;
+        if (next !== null && !prev.has(next)) { prev.set(next, [cur, i]); queue.push(next); }
+      });
+    }
+    if (!prev.has(to)) return null;
+    const nodes = [to], edges = [];
+    for (let cur = to; prev.get(cur); cur = prev.get(cur)[0]) { edges.unshift(prev.get(cur)[1]); nodes.unshift(prev.get(cur)[0]); }
+    return { nodes, edges, directed };
+  }
+  function runPath() {
+    const g = graph(), from = pf.from.value, to = pf.to.value;
+    if (!from || !to) { pf.out.replaceChildren(h("p", { class: "note" }, "Choose two nodes of this view.")); return; }
+    state.path = from === to ? { nodes: [from], edges: [], directed: true } : shortest(g, from, to, true) || shortest(g, from, to, false);
+    state.selected = null; applyFocus(); renderPanel(); showPathResult(); syncHash();
+    if (!state.path) {
+      const name = (id) => (nodeIn(g, id) || { label: id }).label;
+      pf.out.replaceChildren(h("p", { class: "note none", role: "status" }, "No path from " + name(from) + " to " + name(to) + " in this view."));
+    }
+  }
+  function showPathResult() {
+    const g = graph(), p = state.path;
+    if (!p) { pf.out.replaceChildren(); return; }
+    const items = p.nodes.map((id, i) => {
+      const n = nodeIn(g, id), e = i > 0 ? g.edges[p.edges[i - 1]] : null;
+      return h("li", null, e ? h("span", { class: "via" }, (e.from === id ? "← " : "→ ") + (e.label || "")) : null,
+        h("a", { href: "#", onclick: (ev) => { ev.preventDefault(); centerOn(id, true); } }, n ? n.label : id));
+    });
+    pf.out.replaceChildren(h("p", { class: "note" }, (p.edges.length ? p.edges.length + " steps" : "The same node") + (p.directed ? ", along the edge direction." : ", in either direction: no directed path exists.")), h("ol", null, items));
+  }
+  byId("pf-go").addEventListener("click", runPath);
+  byId("pf-swap").addEventListener("click", () => { const a = pf.from.value; pf.from.value = pf.to.value; pf.to.value = a; if (pf.out.firstChild) runPath(); });
+  byId("pf-clear").addEventListener("click", () => { pf.from.value = ""; pf.to.value = ""; state.path = null; showPathResult(); applyFocus(); });
+  byId("path-open").addEventListener("click", () => { pf.box.open = !pf.box.open; if (pf.box.open) pf.from.focus(); });
+
+  /* Search over every view. */
+  const INDEX = [];
+  for (const v of DATA.views) for (const n of v.nodes)
+    INDEX.push({ v, n, hay: [n.label, n.sub, n.id, n.summary, (n.tags || []).join(" "), (n.files || []).join(" ")].join(" \u0001 ").toLowerCase() });
+  function find(text) {
+    const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    const scored = [];
+    for (const item of INDEX) {
+      if (!words.every((w) => item.hay.includes(w))) continue;
+      const label = item.n.label.toLowerCase(), first = words.join(" ");
+      const score = label === first ? 0 : label.startsWith(first) ? 1 : label.includes(first) ? 2 : (item.n.sub || "").toLowerCase().includes(first) ? 3 : 4;
+      scored.push([score, ORDER.indexOf(item.v.id), item]);
+    }
+    scored.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2].n.label.localeCompare(b[2].n.label));
+    return scored.slice(0, 14).map((x) => x[2]);
+  }
+  function showResults() {
+    const found = state.found;
+    results.hidden = !search.value.trim();
+    if (results.hidden) return;
+    if (!found.length) { results.replaceChildren(h("li", { class: "empty" }, "No node matches.")); return; }
+    results.replaceChildren(...found.map((item, i) => h("li", { role: "option", "aria-selected": String(i === state.hit),
+      onmousedown: (ev) => { ev.preventDefault(); pick(i); } },
+      h("span", { class: "dot", style: "background:" + kindOf(item.n.kind).color }),
+      h("span", { class: "r-main" }, h("span", { class: "r-label" }, item.n.label), item.n.sub ? h("span", { class: "r-sub" }, item.n.sub) : null),
+      h("span", { class: "r-view" }, item.v.label))));
+  }
+  function pick(i) {
+    const item = state.found[i];
+    if (!item) return;
+    search.value = ""; state.found = []; state.hit = -1; results.hidden = true; search.blur();
+    endTour();
+    if (state.view !== item.v.id || state.drill) setView(item.v.id, item.n.id);
+    else { select(item.n.id); centerOn(item.n.id, true, 1.05); }
+  }
+  search.addEventListener("input", () => { state.found = find(search.value); state.hit = state.found.length ? 0 : -1; showResults(); });
+  search.addEventListener("blur", () => { results.hidden = true; });
+  search.addEventListener("focus", () => { if (search.value.trim()) showResults(); });
+  search.addEventListener("keydown", (ev) => {
+    if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (state.found.length) state.hit = (state.hit + (ev.key === "ArrowDown" ? 1 : -1) + state.found.length) % state.found.length;
+      showResults();
+    } else if (ev.key === "Enter") { ev.preventDefault(); pick(Math.max(state.hit, 0)); }
+    else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); if (search.value) { search.value = ""; state.found = []; showResults(); } else search.blur(); }
+  });
+
+  /* The guided tour. */
+  const tour = { card: byId("tour"), count: byId("tour-count"), title: byId("tour-title"), text: byId("tour-text"), prev: byId("tour-prev"), next: byId("tour-next") };
+  function tourGo(i) {
+    const steps = DATA.tour;
+    if (!steps.length) return;
+    state.tour = Math.max(0, Math.min(steps.length - 1, i));
+    const step = steps[state.tour];
+    tour.card.hidden = false;
+    if (state.view !== step.view || state.drill) { state.view = step.view; state.drill = null; render(); }
+    state.path = null; showPathResult(); state.selected = step.node; applyFocus(); renderPanel(); syncHash();
+    tour.count.textContent = "Step " + (state.tour + 1) + " of " + steps.length + " · " + VIEWS.get(step.view).label;
+    tour.title.textContent = step.title; tour.text.textContent = step.text;
+    tour.prev.disabled = state.tour === 0;
+    tour.next.textContent = state.tour === steps.length - 1 ? "Finish" : "Next";
+    byId("tour-start").setAttribute("aria-pressed", "true");
+    centerOn(step.node, true, 1.1);
+  }
+  function endTour() {
+    if (state.tour < 0) return;
+    state.tour = -1; tour.card.hidden = true; byId("tour-start").setAttribute("aria-pressed", "false");
+  }
+  byId("tour-start").addEventListener("click", () => (state.tour >= 0 ? endTour() : tourGo(0)));
+  tour.prev.addEventListener("click", () => tourGo(state.tour - 1));
+  tour.next.addEventListener("click", () => (state.tour >= DATA.tour.length - 1 ? endTour() : tourGo(state.tour + 1)));
+  byId("tour-end").addEventListener("click", endTour);
+
+  /* Keyboard. */
+  document.addEventListener("keydown", (ev) => {
+    const typing = /^(INPUT|SELECT|TEXTAREA)$/.test((ev.target && ev.target.tagName) || "");
+    if (ev.key === "Escape") {
+      if (typing) { ev.target.blur(); return; }
+      if (state.tour >= 0) endTour();
+      else if (state.path) { state.path = null; showPathResult(); applyFocus(); }
+      else if (state.drill) undrill();
+      else if (state.selected) select(null);
+      return;
+    }
+    if (typing || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (ev.key === "/") { ev.preventDefault(); search.focus(); search.select(); }
+    else if (state.tour >= 0 && ev.key === "ArrowRight") tourGo(state.tour + 1);
+    else if (state.tour >= 0 && ev.key === "ArrowLeft") tourGo(state.tour - 1);
+    else if (ev.key === "f") fit(true);
+    else if (ev.key === "+" || ev.key === "=") zoomBy(1.25);
+    else if (ev.key === "-") zoomBy(0.8);
+    else if (/^[1-9]$/.test(ev.key) && Number(ev.key) <= ORDER.length) setView(ORDER[Number(ev.key) - 1]);
+  });
+
+  /* The address: #view=<id>&node=<id>&drill=1 */
+  function currentHash() {
+    const parts = ["view=" + encodeURIComponent(state.view)];
+    if (state.drill) parts.push("node=" + encodeURIComponent(state.drill.from), "drill=1");
+    else if (state.selected) parts.push("node=" + encodeURIComponent(state.selected));
+    return parts.join("&");
+  }
+  function syncHash() {
+    const next = "#" + currentHash();
+    try { if (location.hash !== next) history.replaceState(null, "", next); } catch (err) { /* a file URL can refuse it */ }
+  }
+  function fromHash() {
+    const p = new URLSearchParams(location.hash.slice(1)), view = p.get("view"), node = p.get("node");
+    if (!view || !VIEWS.has(view)) return false;
+    state.view = view; state.drill = null; state.selected = null; render();
+    if (node && nodeIn(VIEWS.get(view), node)) { if (p.get("drill") === "1") drill(node); else { select(node); centerOn(node, false, 1.05); } }
+    else fit(false);
+    return true;
+  }
+  window.addEventListener("hashchange", () => { if (location.hash !== "#" + currentHash()) fromHash(); });
+  let resizeTimer = 0;
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => (state.selected ? centerOn(state.selected, false) : fit(false)), 120); });
+
+  byId("foot").append("Built by ", h("code", null, DATA.meta.build), " from ", h("code", null, DATA.meta.model), " and ", h("code", null, "config/manifest.json"), ". ",
+    DATA.meta.edition === "local" ? "This local edition holds the values of one host. It is development-only." : "This public edition uses placeholders: replace them with your values.");
+  if (!fromHash()) { render(); fit(false); }
+})();
+</script>
+</body>
+</html>

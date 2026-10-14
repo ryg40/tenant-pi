@@ -62,6 +62,8 @@ private directory                  kit clone
        +--> Pi runtime <-- reads and writes the generated profile
 ```
 
+[docs/architecture.html](docs/architecture.html) shows this diagram as an interactive page, with drill-down, search and a guided tour.
+
 A **core-only** profile is Pi with no optional module. This procedure installs a core-only profile.
 The **target** is its new directory, `~/.pi/profiles/main` in the examples.
 The **overlay** holds your choices in the **private directory**, `~/.config/tenant-pi`.
@@ -1650,6 +1652,8 @@ Warning: the compatibility `PATH` changes every `docker` command in that shell. 
  The kit refuses a target in it. baseline and check-baseline show a change of it.
 ```
 
+[docs/architecture.html](docs/architecture.html) shows this structure, each component of the manifest and its files as interactive diagrams.
+
 | Component | Where | Who writes it | What it is |
 | --- | --- | --- | --- |
 | The clone | `~/tenant-pi` | Git | The reviewed kit. It holds no value of yours. |
@@ -1697,6 +1701,7 @@ The reasons for this structure:
 | `scripts/profile_inventory.py` | Lists one profile's resources by name. |
 | `scripts/publish_check.py` | Checks the publish inventory and public text. |
 | `scripts/doc_check.py` | Checks Markdown links, JSON examples and CLI names. |
+| `scripts/architecture_build.py` | Builds the interactive architecture page `docs/architecture.html` from its model. |
 | `scripts/examples.py` | Checks or regenerates the synthetic examples. |
 | `scripts/patch_extension_peers.mjs` | Corrects host-provided peers in installed extension manifests. |
 | `scripts/pi_npm_wrapper.sh` | Runs the package manager, then reapplies peer overrides. |

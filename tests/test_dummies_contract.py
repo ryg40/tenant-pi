@@ -3,15 +3,17 @@
 `contract_findings` reads the four text files of a skill directory and returns the name of each
 rule that is absent. The shipped skill has no finding. A second test makes one broken copy for
 each part of each rule in a temporary directory and expects exactly that finding.
-The report and the outcome block are one grid: a label column, a text column, and a `Done` table.
+The report and the outcome block use three bordered tables: summary, completed work and likely next steps.
 `grid_rows` reads that grid from an example.
 Two more tests read the sections of the component README about the skill: the facts that a
 reader needs, and the arithmetic of the token estimate.
 These checks do not prove that an agent obeys the text.
 """
 import importlib.util
+import os
 import re
 import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,12 +21,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "packages/tenantext/skills/coordinator-skills/dummies"
 README = SKILL.parent / "README.md"
-# The labels of the report and of the outcome block. An entry of the page has the first four, and a `Done` table.
-LABELS = ["Important", "Open", "Next", "Goal", "Done"]
+# Chat order differs from the stored page format, which remains backward compatible.
+LABELS = ["Goal", "Open", "Next", "Important"]
+PAGE_LABELS = ["Important", "Open", "Next", "Goal"]
+TABLE_HEADINGS = ["What was done:", "What's next:"]
 OLD_LABELS = ["Goal", "Executed", "Relevance", "Effects", "Next"]
-# The text of a label starts in column 12, and the text of a `Done` row in column 23.
-TEXT, ROW_TEXT = 11, 22
-ROW = re.compile(r"([0-9]+) ([A-Za-z]{1,7}) +(?=\S)")
+FRAME = "┌┬┐├┼┤└┴┘─│"
 FILES = ("SKILL.md", "REPORT.md", "LOG.md", "page-template.md")
 HEADING_FORM = "### <Mon D, YYYY, H:MM AM|PM> <zone> | Agent: <agent> | Model: <model> | <summary>"
 
@@ -59,72 +61,140 @@ def block_below(text, heading):
 
 
 def items(text):
-    """The items of a grid block: [lines of one label, count of the empty lines below it]. None for a text
-    line above the first label or below an empty line."""
+    """Summary rows without borders; tolerate geometry faults for independent contract findings."""
+    summary = text.split("\n\n")[1] if "\n\n" in text else ""
     found = []
-    for line in text.split("\n"):
-        if line[:1].strip():
-            found.append([[line], 0])
-        elif found and not line.strip():
-            found[-1][1] += 1
-        elif found and not found[-1][1]:
-            found[-1][0].append(line)
-        else:
-            return None
+    for line in summary.splitlines():
+        cells = line.split("│")
+        if len(cells) != 4:
+            continue
+        label, detail = (cell.strip() for cell in cells[1:-1])
+        if label == "Field":
+            continue
+        if label:
+            found.append((label, [detail]))
+        elif found:
+            found[-1][1].append(detail)
     return found
 
 
 def labels_of(text):
-    """The first word of each line that starts in column 1, below the first line."""
-    return [line.split()[0] for line in text.split("\n")[1:] if line[:1].strip()]
+    return [label for label, _ in items(text)]
+
+
+def table_headings(text):
+    return [group.partition("\n")[0] for group in text.split("\n\n")[2:]]
 
 
 def label_text(text, label):
-    """The text of one label of a grid block, as one line."""
-    return " ".join(line[TEXT:].strip() for lines, _ in items(text) or [] if lines[0].split()[0] == label
-                    for line in lines)
+    return " ".join(line for name, lines in items(text) if name == label for line in lines)
+
+
+def table_rows(text):
+    """Read a closed box table with centered headers, padded cells and separated logical rows."""
+    lines = text.splitlines()
+    if len(lines) < 5 or not re.fullmatch(r"┌─+(?:┬─+)+┐", lines[0]):
+        return None
+    widths = [len(cell) for cell in lines[0][1:-1].split("┬")]
+    if min(widths) < 3:
+        return None
+
+    def border(left, middle, right):
+        return left + middle.join("─" * width for width in widths) + right
+
+    separator, bottom = border("├", "┼", "┤"), border("└", "┴", "┘")
+    if lines[2] != separator or lines[-1] != bottom:
+        return None
+
+    def cells(line, header=False):
+        if not line.startswith("│") or not line.endswith("│"):
+            return None
+        raw = line[1:-1].split("│")
+        if len(raw) != len(widths):
+            return None
+        for cell, width in zip(raw, widths):
+            if len(cell) != width or not cell.startswith(" ") or not cell.endswith(" "):
+                return None
+            value = cell.strip()
+            if header:
+                if not value or abs(len(cell) - len(cell.lstrip()) - (len(cell) - len(cell.rstrip()))) > 1:
+                    return None
+            elif cell != " " + value.ljust(width - 2) + " ":
+                return None
+        return [cell.strip() for cell in raw]
+
+    headers = cells(lines[1], header=True)
+    if headers is None:
+        return None
+    rows, current = [], []
+    for index, line in enumerate(lines[3:], 3):
+        if line in (separator, bottom):
+            if not current or (line == bottom and index != len(lines) - 1):
+                return None
+            rows.append(current)
+            current = []
+        else:
+            row = cells(line)
+            if row is None:
+                return None
+            current.append(row)
+    return (headers, rows) if not current else None
 
 
 def grid_rows(text, row_lines, label_lines):
-    """The count of the `Done` rows of a report or of an outcome block that holds the grid, else None.
+    """Count completed actions when all three tables obey the shared geometry rules."""
+    groups = text.split("\n\n")
+    if len(groups) != 4 or "\n" in groups[0] or not groups[0].strip():
+        return None
+    tables = [groups[1], *(group.partition("\n")[2] for group in groups[2:])]
+    summary, done, upcoming = (table_rows(table) for table in tables)
+    if summary is None or done is None or upcoming is None:
+        return None
+    if (summary[0] != ["Field", "Detail"] or done[0] != ["#", "Action", "Resource and result"]
+            or upcoming[0] != ["#", "Owner", "Next step"]):
+        return None
+    table_lines = [line for table in tables for line in table.splitlines()]
+    if len({len(line) for line in table_lines}) != 1 or max(map(len, text.splitlines())) > 78:
+        return None
+    # Only the frame is Unicode; reject controls because character count must equal cell width.
+    if any(not (" " <= char <= "~" or char == "\n" or char in FRAME) for char in text):
+        return None
+    for row in summary[1]:
+        if len(row) > label_lines or not all(row[0]) or any(left or not right for left, right in row[1:]):
+            return None
+    for table in (done, upcoming):
+        for number, row in enumerate(table[1], 1):
+            first = row[0]
+            if len(row) > row_lines or first[0] != str(number) or not first[1] or not first[2]:
+                return None
+            if table is done and not re.fullmatch(r"[A-Za-z]{1,9}", first[1]):
+                return None
+            if any(number or action or not detail for number, action, detail in row[1:]):
+                return None
+    return len(done[1])
 
-    The grid: a first line and five labels in column 1, each with its text in column 12. One empty line
-    stands below the first line, below the second item and below the fourth item, and nowhere else. A next
-    line of an item starts below its text. The last item is the table: each row has a number from 1, a verb
-    of 7 letters or less in a column of 9 characters, and its text in column 23.
-    """
-    found = items(text)
-    if not found or [gap for _, gap in found] != [1, 1, 0, 1, 0, 0]:
-        return None
-    if not text.isascii() or max(map(len, text.split("\n"))) > 78:
-        return None
-    indent = lambda line: len(line) - len(line.lstrip())  # noqa: E731
-    # `REPORT <n>` is the label of a report.
-    starts = [re.match(r"(?:[A-Z]+ [0-9]+|\S+) +(?=\S)" if number == 0 else r"\S+ +(?=\S)", lines[0])
-              for number, (lines, _) in enumerate(found)]
-    if len(found[0][0]) != 1 or any(not start or start.end() != TEXT for start in starts):
-        return None
-    for lines, _ in found[1:-1]:
-        if len(lines) > label_lines or any(indent(line) != TEXT for line in lines[1:]):
-            return None
-    numbers, used = [], 0
-    for number, line in enumerate(found[-1][0]):
-        row = ROW.match(line[TEXT:]) if number == 0 or indent(line) == TEXT else None
-        if row and row.end() == ROW_TEXT - TEXT:
-            numbers.append(int(row.group(1)))
-            used = 1
-        elif number and indent(line) == ROW_TEXT and used < row_lines:
-            used += 1
-        else:
-            return None
-    return len(numbers) if numbers == list(range(1, len(numbers) + 1)) else None
+
+def future_rows(text):
+    groups = text.split("\n\n")
+    parsed = table_rows(groups[3].partition("\n")[2]) if len(groups) == 4 else None
+    return parsed[1] if parsed else None
+
+
+def content_lines(text):
+    """Content without labels, headers, borders or step numbers; step verbs still count."""
+    title = re.sub(r"^(?:REPORT [0-9]+|OUTCOME) +", "", text.splitlines()[0])
+    yield title
+    for _, lines in items(text):
+        yield from lines
+    for group in text.split("\n\n")[2:]:
+        for line in group.splitlines():
+            cells = line.split("│")
+            if len(cells) == 5 and cells[1].strip() != "#":
+                yield " ".join(cell.strip() for cell in cells[2:-1]).strip()
 
 
 def words(text):
-    """The count of the words of a grid block, without the labels and the step numbers."""
-    found = items(text)
-    return (len(text.split()) - len(found) - text.startswith("REPORT ")
-            - sum(bool(ROW.match(line[TEXT:])) for line in found[-1][0]))
+    return sum(len(line.split()) for line in content_lines(text))
 
 
 def contract_findings(directory):
@@ -138,19 +208,23 @@ def contract_findings(directory):
         if not all(conditions):
             found.add(rule)
 
-    # The five labels of the user, in the order of the user, with what each one holds. The report, the
-    # outcome block and the entry of the page have the same labels.
-    need("five_labels",
+    # Chat labels and section headings are distinct from the stable stored page labels.
+    need("chat_labels",
          report.startswith("REPORT "),
          labels_of(report) == LABELS,
          labels_of(block) == LABELS,
+         table_headings(report) == TABLE_HEADINGS,
+         table_headings(block) == TABLE_HEADINGS,
+         "Summary order: `Goal`, `Open`, `Next`, `Important`." in rules,
          "`Important`: the most important item for a human reader." in rules,
          "`Open`: what is not done or not proven, and who must act, or `None.`" in rules,
-         "`Next`: your next step." in rules,
+         "`Next`: the immediate next action, matching the first row of `What's next`." in rules,
          "`Goal`: what you tried to do or to learn." in rules,
-         "`Done`: one numbered row for each action" in rules,
+         "`What was done`: one numbered row for each completed action." in rules,
+         "Use past tense in `Action`, up to 9 letters, then the resource and its verified result." in rules,
+         "Keep attempted work and failed checks explicit; never present planned work as completed." in rules,
          "Teach a junior developer: short full sentences in Simplified English" in rules,
-         re.findall(r"(?m)^\*\*(\w+):\*\* <", log) == LABELS[:4],
+         re.findall(r"(?m)^\*\*(\w+):\*\* <", log) == PAGE_LABELS,
          "#### Done\n\n| # | Step | Resource and result |\n" in log,
          "An entry has the labels Important, Open, Next and Goal" in template)
     # One item in capital letters for each report, each outcome block and each entry: the `Important` text.
@@ -164,17 +238,34 @@ def contract_findings(directory):
          "One item of the four labels is in CAPITAL LETTERS: the Important text, the most important item for a "
          "human reader." in template,
          "**Important:** <ONE ITEM IN CAPITAL LETTERS>" in log)
-    # One grid for the report and for the outcome block: the two columns, the groups, the `Done` table.
+    need("stored_mapping",
+         "The stored label order remains `Important`, `Open`, `Next`, `Goal`." in log,
+         "Map `What was done` to `#### Done`; summarize `What's next` in `**Next:**`." in log)
+    # Both harnesses share the summary, completed actions and likely next steps.
     rows = grid_rows(block, 2, 3)
     need("grid",
-         "The text starts in column 12, and the text of a `Done` row in column 23." in rules,
-         "A second line starts below the text of the first line." in rules,
-         "a verb of 7 letters or less in a column of 9 characters" in rules,
-         "One empty line stands after the first line, after `Important` and after `Next`." in rules,
-         grid_rows(report, 1, 2) is not None,
-         "The second line starts below the text of the first line, in column 23." in log,
-         "One empty line stands after the first line, after `Important` and after `Next`." in log,
+         "In Claude Code and Pi, use three box-drawing tables in one fenced block with no language tag:" in rules,
+         "Keep the headers, borders and row separators shown." in rules,
+         "Center headers; left-align cell text with one space of padding." in rules,
+         "Wrap inside cells; leave the label, number, action and owner empty on continuation lines." in rules,
+         "All three tables have the same width: target 70 columns, maximum 78, or less to fit the pane." in rules,
+         "Narrow the detail columns first." in rules,
+         "Preserve full resource names; split a long path across lines without adding characters." in rules,
+         "Narrow panes may use more lines, not more words." in rules,
+         "One empty line separates the title and the tables. Keep `What was done:` above the second table and `What's next:` above the third." in rules,
+         grid_rows(report, 2, 2) is not None,
+         "Use the three box-drawing tables of `REPORT.md` in Claude Code and Pi" in log,
+         "Follow the report's padding, continuation and width rules." in log,
+         "Narrow panes may use more lines, not more words." in log,
+         "Box-drawing borders belong only in the chat output; keep the Markdown labels and tables shown in the entry template." in log,
          rows is not None)
+    need("future_steps",
+         "`What's next`: 1 to 3 likely next steps in order, with an owner and any condition or approval needed." in rules,
+         "These are proposals, not authorization." in rules,
+         "When none remain, use one row: `1`, `None`, `No further steps.`" in rules,
+         "`What's next` follows the report's owner, condition and no-further-steps rules." in log,
+         "Keep likely future work separate from completed actions." in log,
+         all(future_rows(text) is None or 1 <= len(future_rows(text)) <= 3 for text in (report, block)))
     # The outcome block at the end of the work: it replaces the last report, and it has five steps, the
     # outcome, the goal and real resources.
     need("outcome_block",
@@ -285,93 +376,108 @@ def contract_findings(directory):
     return sorted(found)
 
 
+def example_geometry_mutations():
+    for name, heading in (("REPORT.md", "## 3. The report"), ("LOG.md", "## The outcome block")):
+        example = block_below((SKILL / name).read_text(encoding="utf-8"), heading)
+        for old, new in (("┌", "+"), ("┼", "┬"), ("┘", "┐"),
+                         ("│   Field   │", "│ Field     │"), ("│ Open      │", "│ Open     │"),
+                         ("│ 1 │", "│ 2 │"), ("│ 2 │", "│   │"), ("│ 2 │", "│ 2│ "),
+                         ("│ # │", "│ N │"), ("│   Action  │", "│   Steps   │"),
+                         ("Resource and result", "Resource or result "),
+                         ("│ Open      │ ", "│ Open      │  ")):
+            assert old in example, (name, old)
+            yield "grid", name, example, example.replace(old, new, 1)
+        lines = example.splitlines()
+        at = next(index for index, line in enumerate(lines) if line.startswith("├"))
+        for changed in (lines[:at] + lines[at + 1:], lines[:-1], lines[:at] + [lines[at]] + lines[at:],
+                        lines[:at + 3] + [lines[at]] + lines[at + 3:]):
+            yield "grid", name, example, "\n".join(changed)
+        resource = "config.yaml" if name == "LOG.md" else "with credsync"
+        yield "grid", name, example, example.replace(resource, resource[:-1] + "\u754c")
+
+
+def future_count_mutations():
+    example = block_below((SKILL / "LOG.md").read_text(encoding="utf-8"), "## The outcome block")
+    last_row = "\n".join(example.splitlines()[-3:-1])
+    assert last_row.startswith("├") and "│ 3 │" in last_row
+    extra = last_row.replace("│ 3 │", "│ 4 │")
+    yield "future_steps", "LOG.md", example, example.replace(last_row, last_row + "\n" + extra)
+
+
+def outcome_count_mutations():
+    example = block_below((SKILL / "LOG.md").read_text(encoding="utf-8"), "## The outcome block")
+    groups = example.split("\n\n")
+    lines = groups[2].splitlines()
+    last_row = "\n".join(lines[-4:-1])
+    assert last_row.startswith("├") and "│ 5 │" in last_row
+    yield "outcome_block", "LOG.md", example, "\n\n".join(
+        [*groups[:2], "\n".join(lines[:-4] + lines[-1:]), groups[3]])
+    extra = last_row.replace("│ 5 │", "│ 6 │")
+    yield "outcome_block", "LOG.md", example, example.replace(last_row, last_row + "\n" + extra)
+
+
 # One broken copy for each part of a rule: (rule, file, text of the shipped skill, text of the broken copy).
 BROKEN = (
-    ("five_labels", "REPORT.md", "REPORT 2   Key stored", "RESULT 2   Key stored"),
-    ("five_labels", "REPORT.md", "Open       Pi must restart", "Effects    Pi must restart"),
-    ("five_labels", "REPORT.md", "Goal       Store the", "Aim        Store the"),
-    ("five_labels", "REPORT.md", "Done       1 Save", "Executed   1 Save"),
-    ("five_labels", "REPORT.md", "`Important`: the most important item for a human reader.", "`Important`: optional."),
-    ("five_labels", "REPORT.md", "and who must act, or `None.`", "when you like."),
-    ("five_labels", "REPORT.md", "`Next`: your next step.", "`Next`: optional."),
-    ("five_labels", "REPORT.md", "`Goal`: what you tried to do or to learn.", "`Goal`: optional."),
-    ("five_labels", "REPORT.md", "`Done`: one numbered row for each action", "`Done`: what you did"),
-    ("five_labels", "REPORT.md", "Teach a junior developer: short full sentences", "Write short notes"),
-    ("five_labels", "LOG.md", "Next       The Strata restart", "Then       The Strata restart"),
-    ("five_labels", "LOG.md", "**Open:** <what is not done", "**Effects:** <what is not done"),
-    ("five_labels", "LOG.md", "**Goal:** <the goal of the session>\n", ""),
-    ("five_labels", "LOG.md", "| # | Step | Resource and result |", "| Step |"),
-    ("five_labels", "page-template.md", "the labels Important, Open, Next and Goal,", "five labels,"),
+    ("chat_labels", "REPORT.md", "`Important`: the most important item for a human reader.", "`Important`: optional."),
+    ("chat_labels", "REPORT.md", "and who must act, or `None.`", "when you like."),
+    ("chat_labels", "REPORT.md", "`Next`: the immediate next action, matching the first row of `What's next`.", "`Next`: optional."),
+    ("chat_labels", "REPORT.md", "`Goal`: what you tried to do or to learn.", "`Goal`: optional."),
+    ("chat_labels", "REPORT.md", "`What was done`: one numbered row for each completed action.", "`Done`: what you did"),
+    ("chat_labels", "REPORT.md", "Teach a junior developer: short full sentences", "Write short notes"),
+    ("chat_labels", "LOG.md", "**Open:** <what is not done", "**Effects:** <what is not done"),
+    ("chat_labels", "LOG.md", "**Goal:** <the goal of the session>\n", ""),
+    ("chat_labels", "LOG.md", "| # | Step | Resource and result |", "| Step |"),
+    ("chat_labels", "page-template.md", "the labels Important, Open, Next and Goal,", "five labels,"),
     ("capitals", "REPORT.md", "Exactly one item of the report is in CAPITAL LETTERS", "Mark one item of the report"),
     ("capitals", "REPORT.md", "is in CAPITAL LETTERS: the `Important` text.", "is in CAPITAL LETTERS."),
-    ("capitals", "REPORT.md", "STRATA RESTARTS WITH 8 SLOTS; NO CLIENT HAS A CACHE\n           UNTIL THE COPY ENDS IN ABOUT 5 "
-     "MINUTES.", "Strata restarts with 8 slots; no client has a cache\n           until the copy ends in about 5 minutes."),
-    ("capitals", "REPORT.md", "Goal       Store the Strata key and start the settled plan.",
-     "Goal       STORE THE STRATA KEY AND START THE SETTLED PLAN."),
-    # One item in capital letters, but it is not the `Important` text.
-    ("capitals", "REPORT.md", "STRATA RESTARTS WITH 8 SLOTS; NO CLIENT HAS A CACHE\n           UNTIL THE COPY ENDS IN ABOUT 5 "
-     "MINUTES.\n\nOpen       Pi must restart its shell to read the new key.",
-     "Strata restarts with 8 slots; no client has a cache\n           until the copy ends in about 5 minutes.\n\n"
-     "Open       PI MUST RESTART ITS SHELL TO READ THE NEW KEY."),
     ("capitals", "LOG.md", "One item of the block is in CAPITAL LETTERS", "Mark one item of the block"),
-    ("capitals", "LOG.md", "PI DIRECT PROVIDER, 8 SLOTS, ROUTE FLAG, LITELLM FIX WORKER,\n           PILOCAL SERVICE",
-     "Pi direct provider, 8 slots, route flag, LiteLLM fix worker,\n           pilocal service"),
-    ("capitals", "LOG.md", "Open       The plan waits for the owner's confirmation.",
-     "Open       THE PLAN WAITS FOR THE CONFIRMATION OF THE OWNER."),
-    ("capitals", "LOG.md", "PI DIRECT PROVIDER, 8 SLOTS, ROUTE FLAG, LITELLM FIX WORKER,\n           PILOCAL SERVICE\n\n"
-     "Open       The plan waits for the owner's confirmation.",
-     "Pi direct provider, 8 slots, route flag, LiteLLM fix worker,\n           pilocal service\n\n"
-     "Open       THE PLAN WAITS FOR THE CONFIRMATION OF THE OWNER."),
     ("capitals", "page-template.md", "is in CAPITAL LETTERS", "is in bold letters"),
     ("capitals", "page-template.md", "the Important text, the most important item", "the most important item"),
     ("capitals", "LOG.md", "<ONE ITEM IN CAPITAL LETTERS>", "<what the result means>"),
-    ("grid", "REPORT.md", "The text starts in column 12, and the text of a `Done` row in column 23.",
-     "The text starts after the label."),
-    ("grid", "REPORT.md", "A second line starts below the text of the first line.", ""),
-    ("grid", "REPORT.md", "a verb of 7 letters or less in a column of 9 characters", "a verb"),
-    ("grid", "REPORT.md", "One empty line stands after the first line", "No empty line stands after the first line"),
-    # The groups of the report: one empty line below the first line, below `Important` and below `Next` only.
-    ("grid", "REPORT.md", "workers run\n\nImportant", "workers run\nImportant"),
-    ("grid", "REPORT.md", "MINUTES.\n\nOpen", "MINUTES.\nOpen"),
-    ("grid", "REPORT.md", "run the checks.\n\nGoal", "run the checks.\nGoal"),
-    ("grid", "REPORT.md", "run the checks.\n\nGoal", "run the checks.\n\n\nGoal"),
-    ("grid", "REPORT.md", "the new key.\nNext", "the new key.\n\nNext"),
-    ("grid", "REPORT.md", "settled plan.\nDone", "settled plan.\n\nDone"),
-    # The two columns of the report, and its table.
-    ("grid", "REPORT.md", "Open       Pi must restart", "Open      Pi must restart"),
-    ("grid", "REPORT.md", "REPORT 2   Key stored", "REPORT 2  Key stored"),
-    ("grid", "REPORT.md", "           UNTIL THE COPY ENDS", "          UNTIL THE COPY ENDS"),
-    ("grid", "REPORT.md", "UNTIL THE COPY ENDS IN ABOUT 5 MINUTES.", "UNTIL THE COPY ENDS\n           IN ABOUT 5 MINUTES."),
-    ("grid", "REPORT.md", "workers run\n", "workers run\n           in two panes\n"),
-    ("grid", "REPORT.md", "2 Edit     the profile", "2 Edit    the profile"),
-    ("grid", "REPORT.md", "2 Edit     the profile", "2 Edit      the profile"),
-    ("grid", "REPORT.md", "3 Start    Strata", "4 Start    Strata"),
-    ("grid", "REPORT.md", "1 Save     STRATA_API_KEY", "1 Preserve STRATA_API_KEY"),
-    ("grid", "REPORT.md", "1 Save     STRATA_API_KEY", "Save       STRATA_API_KEY"),
-    ("grid", "REPORT.md", "1 Save     STRATA_API_KEY with credsync", "1 Save     STRATA_API_KEY\n"
-     "                      with credsync"),
-    ("grid", "REPORT.md", "Strata, the Pi provider, two workers", "Strata, the Pi provider, two workers \u2192 done"),
-    ("grid", "REPORT.md", "Strata, the Pi provider, two workers", "Strata, the Pi provider, two workers, in two panes of "
-     "the workspace"),
-    ("grid", "LOG.md", "The second line starts below the text of the first line, in column 23.", ""),
-    ("grid", "LOG.md", "One empty line stands after the first line", "No empty line stands after the first line"),
-    ("grid", "LOG.md", "with the owner\nDone", "with the owner\n\nDone"),
-    ("grid", "LOG.md", "changed live.\n\nImportant", "changed live.\nImportant"),
-    ("grid", "LOG.md", "                      has two Strata routes", "                     has two Strata routes"),
-    ("grid", "LOG.md", "with the AskUserQuestion tool", "with the\n                      AskUserQuestion tool"),
-    ("grid", "LOG.md", "the four live checks.", "the four\n           live checks."),
-    ("grid", "LOG.md", "           3 Read     strata-profile", "           4 Read     strata-profile"),
+    ('chat_labels', 'REPORT.md', 'REPORT 2  Key stored', 'RESULT 2  Key stored'),
+    ('chat_labels', 'REPORT.md', '│ Open      │', '│ Effects   │'),
+    ('chat_labels', 'REPORT.md', '│ Goal      │', '│ Aim       │'),
+    ('chat_labels', 'REPORT.md', '\nWhat was done:\n', '\nCompleted:\n'),
+    ('chat_labels', 'LOG.md', '│ Next      │', '│ Then      │'),
+    ('capitals', 'REPORT.md', 'THE SERVICE NOW HAS 8 SLOTS.', 'the service now has 8 slots.'),
+    ('capitals', 'REPORT.md', 'CLIENTS WAIT UNTIL THE CACHE COPY ENDS.', 'clients wait until the cache copy ends.'),
+    ('capitals', 'REPORT.md', 'Pi needs a new shell to read the key.', 'PI NEEDS A NEW SHELL TO READ THE KEY.'),
+    ('capitals', 'LOG.md', 'THE PLAN IS READY; LIVE CHANGES STILL NEED APPROVAL.', 'the plan is ready; live changes still need approval.'),
+    ('capitals', 'LOG.md', 'The owner must approve the plan.', 'THE OWNER MUST APPROVE THE PLAN.'),
+    ('grid', 'REPORT.md', 'In Claude Code and Pi, use three box-drawing tables in one fenced block with no language tag:', ''),
+    ('grid', 'REPORT.md', 'Keep the headers, borders and row separators shown.', ''),
+    ('grid', 'REPORT.md', 'Center headers; left-align cell text with one space of padding.', ''),
+    ('grid', 'REPORT.md', 'Wrap inside cells; leave the label, number, action and owner empty on continuation lines.', ''),
+    ('grid', 'REPORT.md', 'All three tables have the same width: target 70 columns, maximum 78, or less to fit the pane.', ''),
+    ('grid', 'REPORT.md', 'Narrow the detail columns first.', ''),
+    ('grid', 'REPORT.md', 'Preserve full resource names; split a long path across lines without adding characters.', ''),
+    ('grid', 'REPORT.md', 'Narrow panes may use more lines, not more words.', ''),
+    ("grid", "REPORT.md", "One empty line separates the title and the tables. Keep `What was done:` above the second table and `What's next:` above the third.", ""),
+    ('grid', 'LOG.md', 'Use the three box-drawing tables of `REPORT.md` in Claude Code and Pi', ''),
+    ('grid', 'LOG.md', "Follow the report's padding, continuation and width rules.", ''),
+    ('grid', 'LOG.md', 'Narrow panes may use more lines, not more words.', ''),
+    ('grid', 'LOG.md', 'Box-drawing borders belong only in the chat output; keep the Markdown labels and tables shown in the entry template.', ''),
+    ("chat_labels", "REPORT.md", "Summary order: `Goal`, `Open`, `Next`, `Important`.", ""),
+    ("chat_labels", "REPORT.md", "Use past tense in `Action`, up to 9 letters, then the resource and its verified result.", ""),
+    ("chat_labels", "REPORT.md", "Keep attempted work and failed checks explicit; never present planned work as completed.", ""),
+    ("chat_labels", "LOG.md", "\nWhat's next:\n", "\nFuture:\n"),
+    ("future_steps", "REPORT.md", "`What's next`: 1 to 3 likely next steps in order, with an owner and any condition or approval needed.", ""),
+    ("future_steps", "REPORT.md", "These are proposals, not authorization.", ""),
+    ("future_steps", "REPORT.md", "When none remain, use one row: `1`, `None`, `No further steps.`", ""),
+    ("future_steps", "LOG.md", "`What's next` follows the report's owner, condition and no-further-steps rules.", ""),
+    ("future_steps", "LOG.md", "Keep likely future work separate from completed actions.", ""),
+    ("stored_mapping", "LOG.md", "The stored label order remains `Important`, `Open`, `Next`, `Goal`.", ""),
+    ("stored_mapping", "LOG.md", "Map `What was done` to `#### Done`; summarize `What's next` in `**Next:**`.", ""),
+    *future_count_mutations(),
+    *outcome_count_mutations(),
+    *example_geometry_mutations(),
     ("outcome_block", "REPORT.md", "ends its work with an outcome block, and", "and"),
     ("outcome_block", "REPORT.md", "Then end your last message with the outcome block of `LOG.md`; it replaces the "
      "report of that turn.", "Then end your last message with the last report."),
     ("outcome_block", "LOG.md", "end your last message with one outcome block. It replaces the report",
      "add one outcome block. It stands below the report"),
     ("outcome_block", "LOG.md", "Compress them to exactly five rows.", "List the steps."),
-    ("outcome_block", "LOG.md", "\n           5 Record   OpenViking preference, memory file,\n"
-     "                      DUMMIES page projects/strata/DUMMIES", ""),
-    ("outcome_block", "LOG.md", "DUMMIES page projects/strata/DUMMIES\n", "DUMMIES page projects/strata/DUMMIES\n"
-     "           6 Close    the session\n"),
-    ("outcome_block", "LOG.md", "OUTCOME    The plan is settled.", "RESULT     The plan is settled."),
+    ("outcome_block", "LOG.md", "OUTCOME  The plan is settled.", "RESULT   The plan is settled."),
     ("outcome_block", "LOG.md", "It is also the `--summary` text of the page entry.", ""),
     ("outcome_block", "LOG.md", "<the OUTCOME line: the result in 12 words or less>", "<the result in 12 words or less>"),
     ("outcome_block", "LOG.md", "`Goal` is the goal at the start of the session.", ""),
@@ -432,8 +538,9 @@ BROKEN = (
     ("script_results", "LOG.md", "make one new unique text for this session", "use the word `unknown`"),
     ("script_results", "LOG.md", "Outside a Git repository, `--project <slug>` is necessary.", ""),
 )
-RULES = ("capitals", "coordinator_only", "end_of_work", "entry_heading", "five_labels", "grid", "grouping",
-         "log_summary", "newest_first", "no_credential", "old_entries", "on_off", "outcome_block", "script_results")
+RULES = ("capitals", "coordinator_only", "end_of_work", "entry_heading", "chat_labels", "grid", "grouping",
+         "log_summary", "newest_first", "no_credential", "old_entries", "on_off", "outcome_block", "script_results",
+         "future_steps", "stored_mapping")
 
 
 class DummiesContractTests(unittest.TestCase):
@@ -458,59 +565,151 @@ class DummiesContractTests(unittest.TestCase):
 
     def test_example_report_and_outcome_block_obey_their_own_limits(self):
         rules, log = ((SKILL / name).read_text(encoding="utf-8") for name in ("REPORT.md", "LOG.md"))
-        self.assertIn("Limits: 12 words and 78 characters for each line, 2 lines for each label, 75 words for the "
-                      "report without the labels and the step numbers. `Done` has 4 rows or less, each with 1 line.", rules)
-        self.assertIn("- A `Done` row has 2 lines or less.", log)
-        self.assertIn("- Limits: 12 words and 78 characters for each line, 3 lines for each label above `Done`, 140 "
-                      "words for the block without the labels and the step numbers.", log)
+        self.assertIn("Limits: 12 content words per line, 2 lines per label or row, 100 words excluding labels, "
+                      "headers, borders and step numbers. `What was done` has 4 rows or less.", rules)
+        self.assertIn("- An action row has 2 lines or less.", log)
+        self.assertIn("- Limits: 12 content words per line, 3 lines per summary label, 180 words excluding "
+                      "labels, headers, borders and step numbers.", log)
         report, block = block_below(rules, "## 3. The report"), block_below(log, "## The outcome block")
-        # The first line: the result in 8 words, and the outcome in the words of a summary.
         self.assertLessEqual(len(report.split("\n")[0].split()) - 2, 8)
         self.assertEqual(12, page.SUMMARY_WORDS)
         self.assertLessEqual(len(block.split("\n")[0].split()) - 1, page.SUMMARY_WORDS)
-        for text, row_lines, label_lines, rows, limit in ((report, 1, 2, (1, 2, 3, 4), 75), (block, 2, 3, (5,), 140)):
-            with self.subTest(block=text.split()[0]):
-                self.assertIn(grid_rows(text, row_lines, label_lines), rows)
-                self.assertLessEqual(max(len(line.split()) - bool(line[:1].strip()) for line in text.split("\n")), 12)
+        for text, label_lines, rows, limit in ((report, 2, (1, 2, 3, 4), 100), (block, 3, (5,), 180)):
+            with self.subTest(block=text.splitlines()[0]):
+                self.assertIn(grid_rows(text, 2, label_lines), rows)
+                self.assertLessEqual(max(len(line.split()) for line in content_lines(text)), 12)
                 self.assertLessEqual(words(text), limit)
-                # Plain text: no Markdown mark, no long line, no character outside ASCII, no space at a line end.
-                self.assertFalse(re.search(r"[*`]|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])", text))
-                self.assertLessEqual(max(map(len, text.split("\n"))), 78)
-                self.assertTrue(text.isascii())
+                self.assertLessEqual(max(map(len, text.splitlines())), 70)
                 self.assertFalse(re.search(r"(?m)[ \t]$", text))
-        # The count of the words: each word that is no label and no step number.
-        self.assertEqual(len(report.split()) - 7 - 3, words(report))
-        self.assertEqual(len(block.split()) - 6 - 5, words(block))
+                self.assertFalse(re.search(r"[*`]|(?<![A-Za-z0-9])_|_(?![A-Za-z0-9])", text))
 
-    def test_grid_rows_reads_the_two_columns_and_the_table(self):
-        report = ("REPORT 12  The check passes\n\nImportant  THE RELEASE IS READY.\n\nOpen       None.\n"
-                  "Next       I write the result.\n\nGoal       Check the release.\nDone       1 Run      just test")
-        self.assertEqual(1, grid_rows(report, 1, 2))
-        self.assertEqual(4, grid_rows(report + "".join(f"\n           {number} Read     a file" for number in (2, 3, 4)), 1, 2))
-        self.assertEqual(18, words(report))
-        self.assertEqual("THE RELEASE IS READY.", label_text(report, "Important"))
+    def test_grid_rows_reads_borders_and_wrapped_cells(self):
+        report = block_below((SKILL / "REPORT.md").read_text(), "## 3. The report")
+        outcome = block_below((SKILL / "LOG.md").read_text(), "## The outcome block")
+        self.assertEqual(3, grid_rows(report, 2, 2))
+        self.assertEqual(5, grid_rows(outcome, 2, 3))
+        self.assertIsNone(grid_rows(report, 2, 1))
+        self.assertIsNone(grid_rows(outcome, 1, 3))
         self.assertEqual(LABELS, labels_of(report))
-        # A second line of a row is for the outcome block only, and a row has its lines below its text.
-        long = report + "\n                      1,833 tests passed"
-        self.assertIsNone(grid_rows(long, 1, 2))
-        self.assertEqual(1, grid_rows(long, 2, 3))
-        self.assertIsNone(grid_rows(long + "\n                      in 40 seconds", 2, 3))
-        for broken in (report.replace("Open       None.", "Open        None."),
-                       report.replace("Done       1 Run      just", "Done       1 Run     just"),
-                       report.replace("Done       1 Run      just", "Done       2 Run      just"),
-                       report.replace("\n\nOpen", "\nOpen"), report.replace("\nNext", "\n\nNext"),
-                       report.replace("\nDone       1 Run      just test", ""),
-                       report.replace("REPORT 12  The", "The"), "  " + report,
-                       report.replace("READY.", "READY.\n\n           IT HAS NO OPEN FAULT."),
-                       report.replace("just test", "just test \u2192 pass"), report.replace("just test", "just test " * 7)):
-            with self.subTest(broken=broken[:60]):
-                self.assertIsNone(grid_rows(broken, 1, 2))
+        self.assertEqual("THE SERVICE NOW HAS 8 SLOTS. CLIENTS WAIT UNTIL THE CACHE COPY ENDS.",
+                         label_text(report, "Important"))
+        self.assertEqual(71, words(report))
+        self.assertEqual(105, words(outcome))
+        # A continuation carries no repeated label, step or number.
+        for old, new in (("│           │ CLIENTS", "│ Important │ CLIENTS"),
+                         ("│   │           │ Two routes", "│ 1 │           │ Two routes"),
+                         ("│   │           │ Two routes", "│   │ Read      │ Two routes")):
+            source = report if "CLIENTS" in old else outcome
+            self.assertIsNone(grid_rows(source.replace(old, new), 2, 3))
+
+    def test_grid_accepts_narrow_tables_and_rejects_overflow(self):
+        def fixture(width):
+            def table(headers, widths, rows):
+                def border(left, middle, right):
+                    return left + middle.join("─" * (size + 2) for size in widths) + right
+
+                def row(values, header=False):
+                    return "│" + "│".join(" " + (value.center(size) if header else value.ljust(size)) + " "
+                                          for value, size in zip(values, widths)) + "│"
+
+                lines = [border("┌", "┬", "┐"), row(headers, True), border("├", "┼", "┤")]
+                for index, values in enumerate(rows):
+                    lines.append(row(values))
+                    lines.append(border("└", "┴", "┘") if index == len(rows) - 1 else border("├", "┼", "┤"))
+                return "\n".join(lines)
+
+            summary = table(["Field", "Detail"], [9, width - 16],
+                            [["Goal", "Check the change."], ["Open", "None."],
+                             ["Next", "Read the result."], ["Important", "ALL CHECKS PASS."]])
+            steps = table(["#", "Action", "Resource and result"], [1, 9, width - 20],
+                          [["1", "Ran", "The offline tests"]])
+            upcoming = table(["#", "Owner", "Next step"], [1, 7, width - 18],
+                             [["1", "User", "Read the result."]])
+            return ("REPORT 1  Checks pass\n\n" + summary + "\n\nWhat was done:\n" + steps
+                    + "\n\nWhat's next:\n" + upcoming)
+
+        for width in (48, 60, 70, 78):
+            with self.subTest(width=width):
+                self.assertEqual(1, grid_rows(fixture(width), 2, 2))
+        self.assertIsNone(grid_rows(fixture(79), 2, 2))
+        self.assertIsNone(grid_rows(fixture(70).replace("│ Open      │", "│\tOpen     │"), 2, 2))
+        self.assertIsNone(grid_rows(fixture(70).replace("│ Open      │", "│ Open       │"), 2, 2))
+        self.assertIsNone(grid_rows(fixture(70).replace("─", "─ ", 1), 2, 2))
+
+    def test_future_table_is_required_numbered_and_separate(self):
+        for name, heading in (("REPORT.md", "## 3. The report"), ("LOG.md", "## The outcome block")):
+            example = block_below((SKILL / name).read_text(encoding="utf-8"), heading)
+            groups = example.split("\n\n")
+            with self.subTest(name=name):
+                self.assertEqual(TABLE_HEADINGS, table_headings(example))
+                self.assertEqual(LABELS, labels_of(example))
+                self.assertIn(len(future_rows(example)), (1, 2, 3))
+                self.assertIsNone(grid_rows("\n\n".join(groups[:3]), 2, 3))
+                completed = table_rows(groups[2].partition("\n")[2])[1]
+                self.assertTrue(all(row[0][1] == "Read" or row[0][1].endswith("ed") for row in completed))
+                self.assertEqual([str(number) for number in range(1, len(future_rows(example)) + 1)],
+                                 [row[0][0] for row in future_rows(example)])
+                for old, new in (("│ 1 │", "│ 2 │"), ("│ Agent   │", "│         │"),
+                                 ("│ Owner   │", "│         │"), ("Next step", "Next task"), ("┼", "┬")):
+                    if old in groups[3]:
+                        changed = "\n\n".join([*groups[:3], groups[3].replace(old, new, 1)])
+                        self.assertIsNone(grid_rows(changed, 2, 3), (name, old))
+
+    def test_no_future_steps_keeps_an_explicit_third_table(self):
+        example = block_below((SKILL / "REPORT.md").read_text(encoding="utf-8"), "## 3. The report")
+        groups = example.split("\n\n")
+        lines = groups[3].splitlines()
+        self.assertEqual("What's next:", lines[0])
+        no_steps = "│ 1 │ None    │ " + "No further steps.".ljust(52) + " │"
+        groups[3] = "\n".join([*lines[:4], no_steps, lines[-1]])
+        changed = "\n\n".join(groups)
+        self.assertEqual(3, grid_rows(changed, 2, 2))
+        self.assertEqual([[["1", "None", "No further steps."]]], future_rows(changed))
+
+    def test_summary_order_is_separate_from_storage_order(self):
+        example = block_below((SKILL / "LOG.md").read_text(encoding="utf-8"), "## The outcome block")
+        groups = example.split("\n\n")
+        lines = groups[1].splitlines()
+        # Swap Goal and Important without changing the grid or either cell's padding.
+        lines[3], lines[9] = lines[9], lines[3]
+        groups[1] = "\n".join(lines)
+        changed = "\n\n".join(groups)
+        self.assertEqual(5, grid_rows(changed, 2, 3))
+        self.assertNotEqual(LABELS, labels_of(changed))
+        self.assertEqual(tuple(PAGE_LABELS), page.LABELS)
+
+    def test_both_harnesses_install_the_same_table_instructions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            roots = [home / ".claude", home / ".pi/agent"]
+            for root in roots:
+                root.mkdir(parents=True)
+            environment = {**os.environ, "COORDINATOR_SKILLS_HOME": str(home)}
+            for _ in range(2):
+                result = subprocess.run(["bash", str(SKILL.parent / "install.sh")],
+                                        env=environment, capture_output=True, text=True, timeout=10)
+                self.assertEqual(0, result.returncode, result.stderr)
+                for root in roots:
+                    installed = root / "skills/dummies"
+                    self.assertTrue(installed.is_symlink())
+                    self.assertEqual(SKILL.resolve(), installed.resolve())
+                    for name in ("REPORT.md", "LOG.md"):
+                        self.assertEqual((SKILL / name).read_bytes(), (installed / name).read_bytes())
+
+    def test_readout_documentation_matches_the_chat_only_change(self):
+        readme = README.read_text(encoding="utf-8")
+        self.assertIn("Claude Code and Pi use the same bordered tables", readme)
+        self.assertIn("`#`, `Action` and `Resource and result` columns", readme)
+        self.assertIn("`Goal`, `Open`, `Next`, `Important`", readme)
+        self.assertIn("`What's next`, has `#`, `Owner` and `Next step` columns", readme)
+        self.assertIn("The OpenKnowledge log keeps its Markdown labels and tables.", readme)
+        self.assertIn("Not verified: model compliance and live terminal rendering in either harness.", readme)
 
     def test_page_script_has_the_labels_of_the_two_forms(self):
-        # An entry of the page has the first four labels: its `Done` is a table. The old form stays readable.
-        self.assertEqual(tuple(LABELS[:4]), page.LABELS)
+        # Stored entries keep their original label order and Done table.
+        self.assertEqual(tuple(PAGE_LABELS), page.LABELS)
         self.assertEqual(tuple(OLD_LABELS), page.OLD_LABELS)
-        for label in (*LABELS[:4], *OLD_LABELS):
+        for label in (*PAGE_LABELS, *OLD_LABELS):
             self.assertTrue(page.LABEL_LINE.match(f"**{label}:** text"), label)
         self.assertFalse(page.LABEL_LINE.match("**Done:** text"))
 
@@ -518,7 +717,7 @@ class DummiesContractTests(unittest.TestCase):
         skill, rules = ((SKILL / name).read_text(encoding="utf-8") for name in ("SKILL.md", "REPORT.md"))
         # Each later request of a session reads the report file again: a size limit keeps that cost known.
         # The token section of the component README gives the cost for these sizes.
-        self.assertLess(len(rules), 3800)
+        self.assertLess(len(rules), 6500)
         self.assertLess(len(skill), 1500)
         for name in ("LOG.md", "scripts/state.py", "scripts/page.py", "page-template.md", "CREDITS.md",
                      "agents/openai.yaml"):

@@ -16,7 +16,7 @@
 | `show-me` | Visual forms for conversation and Gitea comments: pseudocode, trees, Mermaid, diff, and an HTML artifact. |
 | `retro` | The user command for a retrospective: findings from the last OpenViking sessions of both harnesses, each mapped to the file that enforces it. |
 | `get-status` | Gather the work status into a bundle and start a Herdr coordinator. After `PLAN`, record the handoff when OpenKnowledge is present, then send `go`. Close the sending pane only when `go` is delivered; otherwise keep it open. The new coordinator reports the round in its own pane. |
-| `dummies` | The user command that turns the junior-developer report on or off for one harness: `on`, `off`, `status`. When it is on, a coordinator session reports in five fixed labels, ends its work with an outcome block that has the same labels and five steps, and adds one entry to the human session log `DUMMIES` of the project in OpenKnowledge. |
+| `dummies` | The user command that turns the junior-developer report on or off for one harness: `on`, `off`, `status`. When it is on, a coordinator session reports in three tables: summary, completed work and likely next steps. It ends with the same three tables and five completed actions, and adds one entry to the human session log `DUMMIES` of the project in OpenKnowledge. |
 | `writing-for-agents` | The style reference for a document that an agent reads: a skill, a steering file, a doc behind a pointer. |
 
 The separate [knowledge-skills component](../knowledge-skills/README.md) ships OpenKnowledge discovery, skill authoring and OKF guidance.
@@ -48,6 +48,24 @@ Start a new session, or run `/reload` in Pi, to load the skills.
 `pr` names `pidesktop` for a screenshot. `show-me` names the `walkr` skill and `pidesktop` for the review of an HTML artifact. The kit does not install them. Without them, use the text forms and Mermaid.
 
 `dummies` keeps its log page through the `okknow` command of OpenKnowledge, and it reads the role of a pane from the `herdr` CLI. The kit installs neither. Without the `okknow` command the report and the outcome block still work, and no log is written. The `okknow` command is a host tool, a command-line path to OpenKnowledge that the kit does not ship: `dummies/scripts/page.py` needs three forms of it (`okknow --json read <page>`, `okknow write <page> - --summary <text>` with and without `--append`, and `okknow call edit -`), and without it the option `--file <path>` keeps the log in a local file that the user names. A fourth form, `okknow call exec`, only looks for the zone of another `DUMMIES` page: when it fails, the script asks for the zone. The two scripts of `dummies` need Python 3.11 or later and no package. [The `dummies` switch](#the-dummies-switch) says how to turn it on.
+
+## The `dummies` readout
+
+Claude Code and Pi use the same bordered tables from `dummies/REPORT.md` and `dummies/LOG.md`.
+The first table pairs `Field` with `Detail`, in this order: `Goal`, `Open`, `Next`, `Important`.
+The second table, `What was done`, has `#`, `Action` and `Resource and result` columns.
+Its actions use past tense and describe completed work, not instructions.
+The third table, `What's next`, has `#`, `Owner` and `Next step` columns.
+It lists up to three likely steps with conditions or approvals. It does not authorize those steps.
+When no steps remain, its one row says `No further steps.`
+Headers are centered, cells are left-aligned, and each logical row has a separator.
+Text wraps inside cells. All three tables target 70 columns and shrink for narrow panes.
+Reports keep up to four completed actions; outcomes keep five. The title and all tables share one untagged code fence.
+The OpenKnowledge log keeps its Markdown labels and tables. Its label order remains `Important`, `Open`, `Next`, `Goal`.
+Completed actions map to `Done`; likely next steps map to `Next`. Existing entries and the switch behavior do not change.
+
+The offline tests check borders, alignment, continuation lines, limits and both harness installation links.
+Not verified: model compliance and live terminal rendering in either harness.
 
 ## The `dummies` switch
 
@@ -81,42 +99,42 @@ A session can know the state at its start, without a load of the skill text, in 
 
 ## Token cost of `dummies`
 
-This section holds one estimate, made one time. `dummies` never measures and never prints a token count when it runs. Make the estimate again after a change of the skill text or of the report form. Divide characters by 4, rounding to the nearest whole token (a half rounds up). The estimate holds while `dummies/REPORT.md` has fewer than 3 800 characters: `tests/test_dummies_contract.py` of the kit fails at that size.
+This section holds one estimate, made one time. `dummies` never measures and never prints a token count when it runs. Make the estimate again after a change of the skill text or of the report form. Divide characters by 4, rounding to the nearest whole token (a half rounds up). This character-based estimate is not a tokenizer measurement; box-drawing symbols can have different costs. The estimate holds while `dummies/REPORT.md` has fewer than 6 500 characters: `tests/test_dummies_contract.py` of the kit fails at that size.
 
 | State | Cost |
 | --- | --- |
 | Off | 0 tokens in both harnesses: no description in the context, no block in an instruction file, no command. For Pi, the absent description is not verified: see the section above. |
-| On, with no autostart block | 0 tokens until the user starts `dummies` in a session. Then `SKILL.md` (341 tokens) and `REPORT.md` (931 tokens) stay in that session. |
-| On, with the autostart block | The block, about 93 tokens, in each session of that harness, also in a task session. A coordinator session then reads `REPORT.md` (931 tokens) and runs the state check (about 81 tokens). |
+| On, with no autostart block | 0 tokens until the user starts `dummies` in a session. Then `SKILL.md` (341 tokens) and `REPORT.md` (1 522 tokens) stay in that session. |
+| On, with the autostart block | The block, about 93 tokens, in each session of that harness, also in a task session. A coordinator session then reads `REPORT.md` (1 522 tokens) and runs the state check (about 81 tokens). |
 
 The base is one measured coordinator session that used pasted rules, with no grouping and no script: 84 model requests, 17 778 output tokens, and 9.5 million input tokens with cache reads. Its reports and trees were about 3 000 output tokens. The same tokens, read again in later requests, were about 120 000 input tokens. Without them the session has 14 778 output tokens and 9.38 million input tokens.
 
 | Part of the same session with `dummies` on | Calculation | Tokens |
 | --- | --- | --- |
-| `REPORT.md`, read again in each later request | 931 x 83 | 77 273 input |
+| `REPORT.md`, read again in each later request | 1522 x 83 | 126 326 input |
 | The autostart block | 93 x 84 | 7 812 input |
 | The state check with its output line | 81 x 83 | 6 723 input |
-| 9 reports of 130 tokens, each read again in half of the requests | 9 x 130 x 42 | 49 140 input |
-| The end of the work, read again in 3 requests: `LOG.md` (1 905), the outcome block (278), the entry command (330), the script output (60) | 2 573 x 3 | 7 719 input |
-| 9 reports | 9 x 130 | 1 170 output |
-| The outcome block | 1 x 278 | 278 output |
+| 9 reports of 520 tokens, each read again in half of the requests | 9 x 520 x 42 | 196 560 input |
+| The end of the work, read again in 3 requests: `LOG.md` (2 416), the outcome block (698), the entry command (330), the script output (60) | 3 504 x 3 | 10 512 input |
+| 9 reports | 9 x 520 | 4 680 output |
+| The outcome block | 1 x 698 | 698 output |
 | The entry: the body and the `add` command. An entry written by hand was about 800. | 1 x 330 | 330 output |
 | Three tool calls of the skill | 3 x 40 | 120 output |
-| Sum | | 148 667 input and 1 898 output |
+| Sum | | 347 933 input and 5 828 output |
 
 | Measure | Estimate | Calculation |
 | --- | --- | --- |
-| All tokens of a session | About 1.6 % more (range 1.4 % to 1.8 %) | 150 565 / 9 394 778 = 1.6 %. With 6 reports: 133 795 / 9 394 778 = 1.4 %. With 12 reports: 167 335 / 9 394 778 = 1.8 %. The share is higher in a session with a small context: `REPORT.md` is 931 tokens in each request. |
-| Output tokens of a session | About 12.8 % more (range 10.2 % to 15.5 %) | 1 898 / 14 778 = 12.8 %. With 6 reports: (6 x 130 + 278 + 330 + 120) / 14 778 = 1 508 / 14 778 = 10.2 %. With 12 reports: (12 x 130 + 278 + 330 + 120) / 14 778 = 2 288 / 14 778 = 15.5 %. |
-| Cost | About 2.4 % more (range 2.1 % to 2.8 %) | An output token costs five input tokens, and a cached input token costs one tenth: (148 667 x 0.1 + 1 898 x 5) / (9 380 000 x 0.1 + 14 778 x 5) = 24 356.7 / 1 011 890 = 2.41 %. With 6 reports the fourth row is 6 x 130 x 42 = 32 760, so the sums are 132 287 input and 1 508 output: (132 287 x 0.1 + 1 508 x 5) / 1 011 890 = 20 768.7 / 1 011 890 = 2.1 %. With 12 reports the fourth row is 65 520, so the sums are 165 047 input and 2 288 output: (165 047 x 0.1 + 2 288 x 5) / 1 011 890 = 27 944.7 / 1 011 890 = 2.8 %. |
+| All tokens of a session | About 3.8 % more (range 3.1 % to 4.5 %) | 353 761 / 9 394 778 = 3.8 %. With 6 reports: 286 681 / 9 394 778 = 3.1 %. With 12 reports: 420 841 / 9 394 778 = 4.5 %. The share is higher in a session with a small context: `REPORT.md` is 1 522 tokens in each request. |
+| Output tokens of a session | About 39.4 % more (range 28.9 % to 50.0 %) | 5 828 / 14 778 = 39.4 %. With 6 reports: (6 x 520 + 698 + 330 + 120) / 14 778 = 4 268 / 14 778 = 28.9 %. With 12 reports: (12 x 520 + 698 + 330 + 120) / 14 778 = 7 388 / 14 778 = 50.0 %. |
+| Cost | About 6.3 % more (range 4.9 % to 7.7 %) | An output token costs five input tokens, and a cached input token costs one tenth: (347 933 x 0.1 + 5 828 x 5) / (9 380 000 x 0.1 + 14 778 x 5) = 63 933.3 / 1 011 890 = 6.3 %. With 6 reports the fourth row is 6 x 520 x 42 = 131 040, so the sums are 282 413 input and 4 268 output: (282 413 x 0.1 + 4 268 x 5) / 1 011 890 = 49 581.3 / 1 011 890 = 4.9 %. With 12 reports the fourth row is 262 080, so the sums are 413 453 input and 7 388 output: (413 453 x 0.1 + 7 388 x 5) / 1 011 890 = 78 285.3 / 1 011 890 = 7.7 %. |
 
 - A session with a high thinking level has more output tokens, so its percentage for output tokens is lower.
 - The first setup of a new page is not in the estimate.
-- The estimate has one end of the work. Each later task of a long session that ends adds 728 output tokens (278 + 330 + 120), 4.9 % of 14 778.
-- The example report has 72 words and 130 tokens, including its two fence lines; the outcome block has 278 tokens.
+- The estimate has one end of the work. Each later task of a long session that ends adds 1 148 output tokens (698 + 330 + 120), 7.8 % of 14 778.
+- The example report has 71 words and 520 tokens, including its two fence lines; the outcome block has 698 tokens.
 - The outcome block replaces the report of the last turn. The estimate keeps 9 reports beside the outcome block, so it is one report too high.
-- The new counts are `SKILL.md`: 1 364 characters / 4 = 341 tokens; `REPORT.md`: 3 725 / 4 = 931; `LOG.md`: 7 618 / 4 = 1 905; the fenced report: 521 / 4 = 130; the fenced outcome block: 1 110 / 4 = 278.
-- Grouping is the largest saving: the measured session wrote about 3 800 output tokens for its reports, its trees and one entry written by hand. With `dummies` the same work is about 1 898.
+- The new counts are `SKILL.md`: 1 364 characters / 4 = 341 tokens; `REPORT.md`: 6 087 / 4 = 1 522; `LOG.md`: 9 662 / 4 = 2 416; the fenced report: 2 081 / 4 = 520; the fenced outcome block: 2 791 / 4 = 698.
+- The borders increase the estimate: the measured session wrote about 3 800 output tokens for its reports, trees and entry. These tables give about 5 828. Grouping still avoids repeated reports.
 
 To make the estimate again:
 

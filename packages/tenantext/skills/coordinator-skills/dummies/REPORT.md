@@ -12,28 +12,54 @@ You are a coordinator session when the user talks to you directly and no start p
 
 ## 3. The report
 
-A turn is one reply to the user. End its last message with one report: a harness can shorten text between tool calls. Use a fenced block with no language tag or Markdown marks:
+A turn is one reply to the user. End its last message with one report: a harness can shorten text between tool calls. In Claude Code and Pi, use three box-drawing tables in one fenced block with no language tag:
 
 ```
-REPORT 2   Key stored, profile at 8 slots, workers run
+REPORT 2  Key stored, profile updated, workers started
 
-Important  STRATA RESTARTS WITH 8 SLOTS; NO CLIENT HAS A CACHE
-           UNTIL THE COPY ENDS IN ABOUT 5 MINUTES.
+┌───────────┬────────────────────────────────────────────────────────┐
+│   Field   │                         Detail                         │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Goal      │ Store the key and start the agreed plan.               │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Open      │ Pi needs a new shell to read the key.                  │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Next      │ I collect the worker results.                          │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Important │ THE SERVICE NOW HAS 8 SLOTS.                           │
+│           │ CLIENTS WAIT UNTIL THE CACHE COPY ENDS.                │
+└───────────┴────────────────────────────────────────────────────────┘
 
-Open       Pi must restart its shell to read the new key.
-Next       I collect the two worker results and run the checks.
+What was done:
+┌───┬───────────┬────────────────────────────────────────────────────┐
+│ # │   Action  │                Resource and result                 │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 1 │ Saved     │ The service key with credsync                      │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 2 │ Edited    │ The profile in three copies                        │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 3 │ Started   │ The service and two workers                        │
+└───┴───────────┴────────────────────────────────────────────────────┘
 
-Goal       Store the Strata key and start the settled plan.
-Done       1 Save     STRATA_API_KEY with credsync
-           2 Edit     the profile in three copies
-           3 Start    Strata, the Pi provider, two workers
+What's next:
+┌───┬─────────┬──────────────────────────────────────────────────────┐
+│ # │  Owner  │                      Next step                       │
+├───┼─────────┼──────────────────────────────────────────────────────┤
+│ 1 │ Agent   │ Collect the worker results.                          │
+├───┼─────────┼──────────────────────────────────────────────────────┤
+│ 2 │ Agent   │ Run checks after both workers finish.                │
+└───┴─────────┴──────────────────────────────────────────────────────┘
 ```
 
 - `REPORT <n>`: the number of the report in this session, then the result in 8 words or less.
-- `Important`: the most important item for a human reader. `Open`: what is not done or not proven, and who must act, or `None.` The item that waits for the user comes first. `Next`: your next step. `Goal`: what you tried to do or to learn. `Done`: one numbered row for each action: a verb of 7 letters or less in a column of 9 characters, then the tool, the file or the URL, and what it gave.
-- Teach a junior developer: short full sentences in Simplified English, with each article and each verb. A `Done` row is a verb and its object. Give a new term its meaning.
-- Limits: 12 words and 78 characters for each line, 2 lines for each label, 75 words for the report without the labels and the step numbers. `Done` has 4 rows or less, each with 1 line. The text starts in column 12, and the text of a `Done` row in column 23. A second line starts below the text of the first line.
-- One empty line stands after the first line, after `Important` and after `Next`.
+- Summary order: `Goal`, `Open`, `Next`, `Important`. `Goal`: what you tried to do or to learn. `Open`: what is not done or not proven, and who must act, or `None.` Put user blockers first within `Open`. `Next`: the immediate next action, matching the first row of `What's next`. `Important`: the most important item for a human reader.
+- `What was done`: one numbered row for each completed action. Use past tense in `Action`, up to 9 letters, then the resource and its verified result. Keep attempted work and failed checks explicit; never present planned work as completed.
+- `What's next`: 1 to 3 likely next steps in order, with an owner and any condition or approval needed. These are proposals, not authorization. When none remain, use one row: `1`, `None`, `No further steps.`
+- Teach a junior developer: short full sentences in Simplified English, with each article and each verb. An action row is a verb and its object. Give a new term its meaning.
+- Keep the headers, borders and row separators shown. Center headers; left-align cell text with one space of padding. Wrap inside cells; leave the label, number, action and owner empty on continuation lines.
+- All three tables have the same width: target 70 columns, maximum 78, or less to fit the pane. Narrow the detail columns first. Preserve full resource names; split a long path across lines without adding characters.
+- Limits: 12 content words per line, 2 lines per label or row, 100 words excluding labels, headers, borders and step numbers. `What was done` has 4 rows or less. Narrow panes may use more lines, not more words.
+- One empty line separates the title and the tables. Keep `What was done:` above the second table and `What's next:` above the third.
 - Exactly one item of the report is in CAPITAL LETTERS: the `Important` text.
 
 ## 4. Grouping

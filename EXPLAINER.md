@@ -1568,6 +1568,9 @@ and [coordinator skills](packages/tenantext/skills/coordinator-skills/README.md)
 The user command [get-status](packages/tenantext/skills/coordinator-skills/get-status/SKILL.md) gathers a status bundle and hands it to a Herdr coordinator.
 It closes the sending pane only after confirmed `go` delivery. Not verified: a live handoff with the pane close.
 The user command [dummies](packages/tenantext/skills/coordinator-skills/dummies/SKILL.md) turns a report form for a junior developer on or off for one harness.
+Claude Code and Pi share three bordered chat tables: summary fields, completed actions, then likely next steps.
+The summary order is Goal, Open, Next, Important. Completed actions use past tense; future steps name owners and conditions.
+The log keeps its Markdown labels and tables. Not verified: live terminal rendering of the chat tables.
 When it is on, a coordinator session also adds one entry to a human session log in OpenKnowledge through the `okknow` command.
 Its state file is in the configuration directory of the user. Not verified: the command in a live session, and a write to a live knowledge base.
 Herdr, `slopscore-pr` and `tracker-site` are separate selectable skills. Their external state can stay outside the profile.

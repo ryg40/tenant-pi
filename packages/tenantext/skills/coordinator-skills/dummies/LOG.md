@@ -4,39 +4,61 @@
 
 ## The outcome block
 
-When the work is complete, end your last message with one outcome block. It replaces the report of that turn and has the grid of the report: the same labels in the same order.
+When the work is complete, end your last message with one outcome block. It replaces the report of that turn. Use the three box-drawing tables of `REPORT.md` in Claude Code and Pi, with the same labels in the same order.
 
 ```
-OUTCOME    The plan is settled. Nothing is changed live.
+OUTCOME  The plan is settled. Nothing is changed live.
 
-Important  PI DIRECT PROVIDER, 8 SLOTS, ROUTE FLAG, LITELLM FIX WORKER,
-           PILOCAL SERVICE
+┌───────────┬────────────────────────────────────────────────────────┐
+│   Field   │                         Detail                         │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Goal      │ Settle the service plan with the owner.                │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Open      │ The owner must approve the plan.                       │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Next      │ The owner reviews the plan.                            │
+├───────────┼────────────────────────────────────────────────────────┤
+│ Important │ THE PLAN IS READY; LIVE CHANGES STILL NEED APPROVAL.   │
+└───────────┴────────────────────────────────────────────────────────┘
 
-Open       The plan waits for the owner's confirmation.
-           The six unlogged 7.7k to 8.8k requests have no known client.
-Next       The Strata restart with 8 slots, the credsync copy of
-           STRATA_API_KEY, the Pi models.json change, the two workers,
-           the four live checks.
+What was done:
+┌───┬───────────┬────────────────────────────────────────────────────┐
+│ # │   Action  │                Resource and result                 │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 1 │ Read      │ config.yaml                                        │
+│   │           │ Two routes shared the same timeout.                │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 2 │ Checked   │ models.json                                        │
+│   │           │ The provider had the expected context limit.       │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 3 │ Read      │ The service profile                                │
+│   │           │ Four slots served concurrent requests.             │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 4 │ Decided   │ The question tool                                  │
+│   │           │ The owner selected eight slots.                    │
+├───┼───────────┼────────────────────────────────────────────────────┤
+│ 5 │ Recorded  │ The project DUMMIES page                           │
+│   │           │ The session entry held the plan.                   │
+└───┴───────────┴────────────────────────────────────────────────────┘
 
-Goal       Settle the next steps after REPORT 10 with the owner
-Done       1 Read     litellm/config.yaml
-                      has two Strata routes, timeout 570, no checkpoint flag
-           2 Read     ~/.pi/agent/models.json
-                      has litellm/strata/default at contextWindow 200000
-           3 Read     strata-profile on llamswapper
-                      the slots come from --conversation-cache-slots 4
-           4 Decide   four rounds of three questions
-                      with the AskUserQuestion tool
-           5 Record   OpenViking preference, memory file,
-                      DUMMIES page projects/strata/DUMMIES
+What's next:
+┌───┬─────────┬──────────────────────────────────────────────────────┐
+│ # │  Owner  │                      Next step                       │
+├───┼─────────┼──────────────────────────────────────────────────────┤
+│ 1 │ Owner   │ Review the plan and approve or request changes.      │
+├───┼─────────┼──────────────────────────────────────────────────────┤
+│ 2 │ Agent   │ If approved, change the service profile.             │
+├───┼─────────┼──────────────────────────────────────────────────────┤
+│ 3 │ Agent   │ After the change, check the service health.          │
+└───┴─────────┴──────────────────────────────────────────────────────┘
 ```
 
 - `OUTCOME` is the result at the end of the session, in 12 words or less. It is also the `--summary` text of the page entry.
 - `Important`, `Open` and `Next` have the meaning that they have in the report. `Goal` is the goal at the start of the session.
-- `Done` has the high-level steps of the work. Compress them to exactly five rows. Each row names its real resources (a repository, an endpoint, an external tool, a URL) and the most important item that you found there.
-- A `Done` row has 2 lines or less. Break a long row at a point of meaning: after the resource name or at a comma. The second line starts below the text of the first line, in column 23.
-- Limits: 12 words and 78 characters for each line, 3 lines for each label above `Done`, 140 words for the block without the labels and the step numbers.
-- One empty line stands after the first line, after `Important` and after `Next`.
+- `What was done` has the high-level completed actions in past tense. Compress them to exactly five rows. Each row names its real resources (a repository, an endpoint, an external tool, a URL) and the most important item that you found there.
+- An action row has 2 lines or less. Break after the resource name or at a comma. Follow the report's padding, continuation and width rules.
+- `What's next` follows the report's owner, condition and no-further-steps rules. Keep likely future work separate from completed actions.
+- Limits: 12 content words per line, 3 lines per summary label, 180 words excluding labels, headers, borders and step numbers. Narrow panes may use more lines, not more words.
 - One item of the block is in CAPITAL LETTERS: the `Important` text. The block is a fenced block with no language tag, as the report.
 
 ## The log page
@@ -73,7 +95,7 @@ python3 D/page.py add --summary "<the OUTCOME line: the result in 12 words or le
 EOF
 ````
 
-- The entry is the outcome block in the syntax of the page. The four label lines are necessary, in this order and form. Write them for a junior developer, as in the report. The page has no line limit: a sentence can be longer than in the block.
+- The entry is the outcome block in the syntax of the page. Box-drawing borders belong only in the chat output; keep the Markdown labels and tables shown in the entry template. The stored label order remains `Important`, `Open`, `Next`, `Goal`. Map `What was done` to `#### Done`; summarize `What's next` in `**Next:**`. The four label lines are necessary, in this order and form. Write them for a junior developer, as in the report. The page has no line limit: a sentence can be longer than in the block.
 - Keep a source change, a push, a build and a deployment apart. Name the commit identifiers, the endpoints and the checks with their results.
 - Write no credential. Name the place of a secret, not its value.
 - The script refuses a line that has the form of a credential, but this is a first guard only: you write no credential, also in a form that the script does not find.

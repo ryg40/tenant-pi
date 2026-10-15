@@ -5,18 +5,21 @@ No file, environment, subprocess, or network access. Every diagnostic is a stati
 """
 import copy
 import ipaddress
+import json
 import re
 import shlex
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 from scripts.validate import ENV, MEMORY as _MEMORY, ROOT, absolute, fail, fields, text
 
-MEMORY = tuple(sorted(_MEMORY))  # One reviewed set; the validator anchors own it.
+# Preserve the existing package order and put AgentCore directly after OpenViking.
+MEMORY = tuple(sorted(_MEMORY, key=lambda cid: "openviking~" if cid == "agentcore" else cid))
 # The overlay fields of each module: the required names, then the optional names. The validator,
 # `compare` and `carry` use this one table.
 MODULE_FIELDS = {"hermes": (("backgroundReview",), ("reviewTransport", "childExtensionPaths")),
                  "wiki": (("ambientPersonalVault", "backgroundTasks"), ("wikiHome", "embedding")),
-                 "openviking": (("captureToolResults",), ("recallContextTimeoutMs",))}
+                 "openviking": (("captureToolResults",), ("recallContextTimeoutMs",)),
+                 "agentcore": (("memoryId", "region", "namespaces", "topK", "capture"), ("actorId", "recallTimeoutMs"))}
 HERMES_CONFIG = "hermes-memory-config.json"
 HERMES_PACKAGE = "pi-hermes-memory"
 WIKI_PACKAGE = "@zosmaai/pi-llm-wiki"
@@ -168,6 +171,34 @@ def _openviking(overlay, choice):
             fail("timeout_ms", at + ".recallContextTimeoutMs")
 
 
+def _agentcore(overlay, choice):
+    at = "overlay.memory.agentcore"
+    fields(choice, *MODULE_FIELDS["agentcore"], at)
+    text(choice["memoryId"], at + ".memoryId")
+    if not choice["memoryId"].strip():
+        fail("text", at + ".memoryId")
+    if type(choice["region"]) is not str or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-\d+", choice["region"]):
+        fail("aws_region", at + ".region")
+    namespaces = choice["namespaces"]
+    if type(namespaces) is not list or not namespaces:
+        fail("namespaces", at + ".namespaces")
+    for namespace in namespaces:
+        if (type(namespace) is not str or not namespace.startswith("/") or not namespace.endswith("/")
+                or any(c.isspace() or not c.isprintable() for c in namespace)
+                or re.search(r"[{}]", namespace.replace("{actorId}", ""))):
+            fail("namespace", at + ".namespaces")
+    if len(set(namespaces)) != len(namespaces):
+        fail("duplicate_namespace", at + ".namespaces")
+    if type(choice["topK"]) is not int or not 1 <= choice["topK"] <= 100:
+        fail("top_k", at + ".topK")
+    if type(choice["capture"]) is not bool:
+        fail("boolean", at + ".capture")
+    if "actorId" in choice and (type(choice["actorId"]) is not str or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", choice["actorId"])):
+        fail("actor_id", at + ".actorId")
+    if "recallTimeoutMs" in choice and (type(choice["recallTimeoutMs"]) is not int or not 1 <= choice["recallTimeoutMs"] <= 600000):
+        fail("timeout_ms", at + ".recallTimeoutMs")
+
+
 def validate_memory(overlay, components):
     """Validate the optional `memory` block against selection and consent.
 
@@ -180,16 +211,17 @@ def validate_memory(overlay, components):
             fail("memory_choices_required", "overlay.memory")
         return
     block = overlay["memory"]
-    fields(block, ("schemaVersion", *MEMORY), (), "overlay.memory")
+    # Older overlays do not name AgentCore; omission keeps this new module off.
+    fields(block, ("schemaVersion", *(cid for cid in MEMORY if cid != "agentcore")), ("agentcore",), "overlay.memory")
     if type(block["schemaVersion"]) is not int or block["schemaVersion"] != 1:
         fail("schema_version", "overlay.memory.schemaVersion")
     if active and not overlay["consent"]["memoryCapture"]:
         fail("memory_consent_required", "overlay.consent.memoryCapture")
-    # Every capture of the OpenViking extension is a write to its server.
-    if "openviking" in active and not overlay["consent"]["remoteMemoryWrites"]:
+    # Both remote modules require explicit consent, including AgentCore recall-only mode.
+    if {"openviking", "agentcore"} & set(active) and not overlay["consent"]["remoteMemoryWrites"]:
         fail("remote_memory_consent_required", "overlay.consent.remoteMemoryWrites")
     for cid in MEMORY:
-        choice = block[cid]
+        choice = block.get(cid)
         if choice is None:
             if cid in enabled:
                 fail("memory_choices_required", "overlay.memory." + cid)
@@ -200,6 +232,8 @@ def validate_memory(overlay, components):
             _hermes(overlay, choice)
         elif cid == "wiki":
             _wiki(overlay, choice)
+        elif cid == "agentcore":
+            _agentcore(overlay, choice)
         else:
             _openviking(overlay, choice)
 
@@ -208,7 +242,7 @@ def _package(components, cid):
     source = components[cid]["source"]
     # Pi takes a local package as a plain path; a tree package directory is inside this kit.
     name = str(ROOT / source["path"]) if source["kind"] == "tree" else "npm:" + source["spec"]
-    if cid == "openviking":
+    if cid in ("openviking", "agentcore"):
         # Pi resolves a local file directly. A filter cannot expose this package's
         # top-level index.ts without a pi manifest or an extensions directory.
         name += "/index.ts"
@@ -235,6 +269,15 @@ def render_memory(overlay, components):
             continue
         choice = block[cid]
         result["packages"].append(_package(components, cid))
+        if cid == "agentcore":
+            result["gaps"].extend({"code": gap["code"], "subject": cid} for gap in components[cid].get("gaps", []))
+            config = {"actorId": "", "recallTimeoutMs": 3000, **choice}
+            value = json.dumps(config, sort_keys=True, separators=(",", ":"))
+            result["setup"].append({"kind": "process_environment", "name": "AGENTCORE_MEMORY_CONFIG",
+                                    "instruction": "AGENTCORE_MEMORY_CONFIG=" + shlex.quote(value)})
+            result["activation"][cid] = {"enabled": True, "localCapture": False, "backgroundModelCalls": False,
+                                         "remoteWrites": choice["capture"], "capture": choice["capture"]}
+            continue
         if cid == "openviking":
             # A tree package: its gaps are the manifest gaps, and it lists no host module as a dependency.
             result["gaps"].extend({"code": gap["code"], "subject": cid} for gap in components[cid].get("gaps", []))

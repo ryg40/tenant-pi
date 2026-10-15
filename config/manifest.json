@@ -1304,6 +1304,26 @@
         "status": "reviewed",
         "boundary": "One local-file packages entry for packages/openviking-pi/index.ts; Pi resolves the source file directly, not through a directory filter. Extension settings resolve from OPENVIKING_* variables, .openviking/config.json and ~/.openviking/, which the kit does not own"
       }
+    },
+    "agentcore": {
+      "source": {"kind": "tree", "path": "packages/agentcore-pi"},
+      "status": "unverified",
+      "reason": null,
+      "requires": ["core"],
+      "owner": "agentcore",
+      "license": "MIT",
+      "resources": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
+      "env": [],
+      "gaps": [
+        {"code": "install_step_required", "fact": "Run npm ci --ignore-scripts in packages/agentcore-pi before loading the extension."},
+        {"code": "aws_resource_required", "fact": "The owner supplies an AgentCore Memory resource, namespace-scoped IAM permissions and SDK credentials outside the kit."},
+        {"code": "package_runtime_unverified", "fact": "Offline fake-client tests cover hooks and requests. Not verified: a generated Pi session with live AWS recall or capture."}
+      ],
+      "configOwnership": {
+        "claims": [{"file": "settings.json", "key": "package:packages/agentcore-pi:index.ts"}],
+        "status": "reviewed",
+        "boundary": "One local-file package entry and the process-local AGENTCORE_MEMORY_CONFIG launch value. Credentials stay in the default AWS credential chain."
+      }
     }
   }
 }

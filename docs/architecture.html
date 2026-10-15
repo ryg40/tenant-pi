@@ -379,7 +379,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
   },
   {
    "node": "hermes",
-   "text": "Hermes, LLM Wiki and OpenViking need consent.memoryCapture. OpenViking also needs consent.remoteMemoryWrites.",
+   "text": "All four memory modules need consent.memoryCapture. OpenViking and AgentCore also need consent.remoteMemoryWrites.",
    "title": "Memory needs consent",
    "view": "components"
   },
@@ -2088,7 +2088,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
     },
     {
      "cols": 1,
-     "h": 278,
+     "h": 352,
      "id": "g-c-memory",
      "label": "Memory",
      "sub": "consent needed",
@@ -2128,7 +2128,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      "tone": "service",
      "w": 220,
      "x": 40,
-     "y": 680
+     "y": 780
     },
     {
      "cols": 2,
@@ -2142,7 +2142,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      "y": 640
     }
    ],
-   "height": 850,
+   "height": 950,
    "id": "components",
    "label": "Components",
    "nodes": [
@@ -3611,6 +3611,88 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      "y": 546
     },
     {
+     "component": "agentcore",
+     "doc": "docs/memory-modules.md",
+     "fields": [
+      [
+       "Component",
+       "agentcore"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/agentcore-pi"
+      ],
+      [
+       "Owner",
+       "agentcore"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core"
+      ],
+      [
+       "Inputs",
+       "memory.agentcore; npm ci --ignore-scripts in packages/agentcore-pi; an AWS resource"
+      ],
+      [
+       "Consent",
+       "consent.memoryCapture and consent.remoteMemoryWrites: true"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One local-file package entry and the process-local AGENTCORE_MEMORY_CONFIG launch value. Credentials stay in the default AWS credential chain."
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/agentcore-pi/index.ts",
+      "packages/agentcore-pi/README.md",
+      "packages/agentcore-pi/package.json"
+     ],
+     "gaps": [
+      [
+       "install_step_required",
+       "Run npm ci --ignore-scripts in packages/agentcore-pi before loading the extension."
+      ],
+      [
+       "aws_resource_required",
+       "The owner supplies an AgentCore Memory resource, namespace-scoped IAM permissions and SDK credentials outside the kit."
+      ],
+      [
+       "package_runtime_unverified",
+       "Offline fake-client tests cover hooks and requests. Not verified: a generated Pi session with live AWS recall or capture."
+      ]
+     ],
+     "group": "g-c-memory",
+     "h": 52,
+     "id": "agentcore",
+     "kind": "comp-memory",
+     "label": "agentcore",
+     "status": "unverified",
+     "sub": "tree source, unverified",
+     "summary": "Optional AgentCore Memory recall. OpenViking stays primary. Capture defaults to off.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner agentcore"
+     ],
+     "w": 180,
+     "x": 60,
+     "y": 620
+    },
+    {
      "component": "coordinator-skills",
      "doc": "docs/guides/modules.md",
      "fields": [
@@ -4264,7 +4346,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      ],
      "w": 180,
      "x": 60,
-     "y": 738
+     "y": 838
     },
     {
      "doc": "docs/guides/compose-seat.md",

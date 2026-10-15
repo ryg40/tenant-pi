@@ -21,7 +21,8 @@ EXAMPLE = ROOT / "config/config.example.json"
 CANARY = "CANARY_SECRET"
 MEMORY_BLOCKS = {"hermes": {"backgroundReview": False},
                  "wiki": {"ambientPersonalVault": False, "backgroundTasks": False},
-                 "openviking": {"captureToolResults": False}}
+                 "openviking": {"captureToolResults": False},
+                 "agentcore": {"memoryId": "mem-EXAMPLE", "region": "us-east-1", "namespaces": ["/shared/"], "topK": 10, "capture": False}}
 EVENTS = []
 RECORDING = []
 PROCESS_EVENTS = ("subprocess.Popen", "os.exec", "os.posix_spawn", "os.system", "os.fork")
@@ -51,7 +52,7 @@ def chosen_overlay(chosen):
     active = [cid for cid in MEMORY_BLOCKS if cid in data["selection"]["enable"]]
     if active:
         data["consent"]["memoryCapture"] = True
-        data["consent"]["remoteMemoryWrites"] = "openviking" in active
+        data["consent"]["remoteMemoryWrites"] = bool({"openviking", "agentcore"} & set(active))
         data["memory"] = {"schemaVersion": 1, **{cid: copy.deepcopy(block) if cid in active else None
                                                  for cid, block in MEMORY_BLOCKS.items()}}
     return data
@@ -68,11 +69,11 @@ def rule(call, *args):
 class ChecklistTests(unittest.TestCase):
     def test_count_and_order_are_the_manifest(self):
         result = report(KNOWN)
-        self.assertEqual(27, len(MANIFEST["components"]))
+        self.assertEqual(28, len(MANIFEST["components"]))
         self.assertEqual(list(MANIFEST["components"]), [item["id"] for item in result["components"]])
-        self.assertEqual(list(range(1, 28)), [item["number"] for item in result["components"]])
+        self.assertEqual(list(range(1, 29)), [item["number"] for item in result["components"]])
         self.assertEqual({"count", "marks", "components", "scope"}, set(result))
-        self.assertEqual((27, "recommended"), (result["count"], result["marks"]))
+        self.assertEqual((28, "recommended"), (result["count"], result["marks"]))
         fields = {"number", "id", "kind", "status", "extensions", "skills", "requires", "prerequisites",
                   "recommended", "marked", "locked"}
         self.assertTrue(all(set(item) == fields for item in result["components"]))
@@ -116,6 +117,8 @@ class ChecklistTests(unittest.TestCase):
 
     def test_recommended_set_is_in_the_manifest_and_closed(self):
         self.assertEqual(16, len(RECOMMENDED))
+        self.assertNotIn("agentcore", RECOMMENDED)
+        self.assertFalse(row("agentcore")["marked"])
         self.assertEqual(len(set(RECOMMENDED)), len(RECOMMENDED))
         self.assertLessEqual(set(RECOMMENDED), set(KNOWN))
         self.assertLessEqual(set(LOCKED), set(RECOMMENDED))
@@ -149,7 +152,9 @@ class PrerequisiteTests(unittest.TestCase):
         for cid, codes in (("hermes", ["overlay:consent.memoryCapture", "overlay:memory.hermes"]),
                            ("wiki", ["overlay:consent.memoryCapture", "overlay:memory.wiki"]),
                            ("openviking", ["overlay:consent.memoryCapture", "overlay:consent.remoteMemoryWrites",
-                                           "overlay:memory.openviking"])):
+                                           "overlay:memory.openviking"]),
+                           ("agentcore", ["overlay:consent.memoryCapture", "overlay:consent.remoteMemoryWrites",
+                                          "overlay:memory.agentcore"])):
             with self.subTest(cid=cid):
                 self.assertEqual(codes, [code for code in row(cid)["prerequisites"] if code.startswith("overlay:")])
                 data = chosen_overlay([cid])
@@ -186,7 +191,7 @@ class PrerequisiteTests(unittest.TestCase):
 
     def test_setup_and_plan_gap_codes_are_the_plan(self):
         base = prepare(MANIFEST, load(EXAMPLE))
-        for cid in ("hermes", "wiki", "openviking", "questions", "mcp", "ops-footer", "promptr"):
+        for cid in ("hermes", "wiki", "openviking", "agentcore", "questions", "mcp", "ops-footer", "promptr"):
             with self.subTest(cid=cid):
                 data = chosen_overlay([cid])
                 extra = {}
@@ -221,7 +226,7 @@ class TextTests(unittest.TestCase):
         self.assertEqual(output, text(report(KNOWN)))
         self.assertTrue(output.endswith("\n") and not output.endswith("\n\n"))
         lines = output.splitlines()
-        self.assertEqual(28, len(lines))
+        self.assertEqual(29, len(lines))
         self.assertEqual(components.ANSWER, lines[-1])
         self.assertIn("`ok`", lines[-1])
         for number, (line, cid) in enumerate(zip(lines, KNOWN), 1):
@@ -234,7 +239,7 @@ class TextTests(unittest.TestCase):
                 for needed in KNOWN[cid]["requires"]:
                     if needed not in LOCKED:
                         self.assertIn(needed, line.split("requires: ", 1)[1])
-        self.assertEqual(16, sum("[x]" in line for line in lines[:27]))
+        self.assertEqual(16, sum("[x]" in line for line in lines[:28]))
         self.assertEqual(" 1 [x] core (locked) | tested", lines[0])
         self.assertEqual(" 7 [x] ops-footer | extension: ops-footer | unverified | requires: context-meter", lines[6])
         self.assertEqual(14, lines[13].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
@@ -245,7 +250,7 @@ class TextTests(unittest.TestCase):
 
     def test_marks_follow_an_overlay(self):
         lines = text(report(KNOWN, ["core", "herdr"])).splitlines()
-        self.assertEqual([1, 12], [number for number, line in enumerate(lines[:27], 1) if "[x]" in line])
+        self.assertEqual([1, 12], [number for number, line in enumerate(lines[:28], 1) if "[x]" in line])
 
 
 class SelectionTests(unittest.TestCase):
@@ -268,10 +273,10 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual(["ops-footer", "herdr-relay", "wiki"], parse_select(" 7 , herdr-relay,26,ops-footer,7", KNOWN))
         self.assertEqual(dump(selection(KNOWN, parse_select("7,13", KNOWN))),
                          dump(selection(KNOWN, parse_select("herdr-relay,ops-footer", KNOWN))))
-        self.assertEqual(list(KNOWN), parse_select(",".join(str(number) for number in range(1, 28)), KNOWN))
+        self.assertEqual(list(KNOWN), parse_select(",".join(str(number) for number in range(1, 29)), KNOWN))
 
     def test_unknown_id_or_number_is_refused_without_its_value(self):
-        for value in ("nope", "0", "28", "7,,13", "", "7;13", "-1", "1.5", "9999999", "٧", CANARY, "core," + CANARY):
+        for value in ("nope", "0", "29", "7,,13", "", "7;13", "-1", "1.5", "9999999", "٧", CANARY, "core," + CANARY):
             with self.subTest(value=value):
                 self.assertEqual("undeclared_component: components.select", rule(parse_select, value, KNOWN))
 
@@ -290,7 +295,7 @@ class SelectionTests(unittest.TestCase):
     def test_recommended_selection_validates_with_consent_and_memory(self):
         result = selection(KNOWN, list(RECOMMENDED))
         self.assertEqual(["core", *sorted(set(RECOMMENDED) - {"core"})], result["selection"]["enable"])
-        self.assertEqual(11, len(result["selection"]["disable"]))
+        self.assertEqual(12, len(result["selection"]["disable"]))
         self.assertEqual({"codex-accounts", "doctor", "coordinator-skills", "knowledge-skills", "slopscore-pr",
                           "hermes", "wiki"}, set(result["prerequisites"]))
         data = load(EXAMPLE)
@@ -346,7 +351,7 @@ class ComponentsCliTests(unittest.TestCase):
         (self.base / "bad.json").write_text('{"selection": "' + CANARY)
         (self.base / "other.json").write_text(json.dumps({"selection": {"enable": ["core", "absent-id"]}}))
         for args, error in ((("--select", "nope"), "undeclared_component: components.select"),
-                            (("--select", "28"), "undeclared_component: components.select"),
+                            (("--select", "29"), "undeclared_component: components.select"),
                             (("--select", CANARY), "undeclared_component: components.select"),
                             (("--select", "7", "--format", "text"), "option_conflict: components.select"),
                             (("--select", "7", "--overlay", str(EXAMPLE)), "option_conflict: components.select"),

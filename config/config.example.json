@@ -8,6 +8,7 @@
       "core"
     ],
     "disable": [
+      "agentcore",
       "anthropic-usage",
       "codex-accounts",
       "context-meter",

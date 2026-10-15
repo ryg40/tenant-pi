@@ -478,7 +478,7 @@ class ContractTests(unittest.TestCase):
                                       if c["source"] == {"kind": "tree", "path": package_dir}
                                       and not optional_tree_absent(cid)
                                       for skill in c["resources"]["skills"]})
-        self.assertEqual(21, len(TREE_COMPONENTS))
+        self.assertEqual(22, len(TREE_COMPONENTS))
         knowledge = data["components"]["knowledge-skills"]["resources"]["skills"]
         self.assertEqual(4, len(knowledge))
         self.assertIn("skills/knowledge-skills/open-knowledge", knowledge)

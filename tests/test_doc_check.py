@@ -565,9 +565,9 @@ class InstallFlowTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual({"consent", "memory"}, set(example))
                 self.assertEqual({"memoryCapture": True, "remoteMemoryWrites": False, "telemetry": False}, example["consent"])
-                # No background model call, an ambient vault, and no third module.
+                # No background model call, an ambient vault, and neither remote module.
                 self.assertEqual({"schemaVersion": 1, "hermes": {"backgroundReview": False},
-                                  "wiki": {"ambientPersonalVault": True, "backgroundTasks": False}, "openviking": None},
+                                  "wiki": {"ambientPersonalVault": True, "backgroundTasks": False}, "openviking": None, "agentcore": None},
                                  example["memory"])
                 data = {**sample, "target": {"agentDir": "/home/EXAMPLE_USER/.pi/profiles/main"},
                         "selection": chosen["selection"], **example}

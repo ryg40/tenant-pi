@@ -1,0 +1,10 @@
+{
+  "name": "agentcore-pi-extension",
+  "version": "0.1.0",
+  "description": "Opt-in AgentCore Memory recall for Pi",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24.0.0 <25"},
+  "scripts": {"test": "node --test tests/"},
+  "dependencies": {"@aws-sdk/client-bedrock-agentcore": "3.1152.0"}
+}

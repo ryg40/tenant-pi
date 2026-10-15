@@ -21,8 +21,8 @@ LOCKED = ("core",)
 FORMATS = ("json", "text")
 # Path segments that name a container of a package, not one extension.
 GENERIC = ("extensions", "skills", "src")
-# The memory module whose captures are writes to a server (`validate_memory`).
-REMOTE_WRITES = ("openviking",)
+# Remote modules require consent even when their capture switch is off.
+REMOTE_WRITES = ("openviking", "agentcore")
 # The component that needs the fixed input slot (`mcp_input_required` of the overlay validator).
 INPUT_SLOTS = {"mcp": "inputs.mcpFile"}
 # Gaps that `render_memory` adds for an npm memory module and that name a step or a build on the host.

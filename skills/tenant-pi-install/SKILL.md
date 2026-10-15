@@ -214,7 +214,7 @@ Tell the user these facts about the checklist:
 
 Do this part before the first `validate`, when a memory module is on. A selection with a memory module and no `memory` block stops `validate` and `plan` with `memory_choices_required: overlay.memory`, with each value of the consent key. With the block and `consent.memoryCapture: false`, they stop with `memory_consent_required: overlay.consent.memoryCapture`.
 
-The checklist marks `hermes` and `wiki`, and it does not mark `openviking`. The answer of the user to the checklist, with the sentence below the list, is the consent for `hermes` and `wiki`. Ask no second question for them. When the user asks what a module does at this pin, answer from `docs/memory-modules.md`:
+The checklist marks `hermes` and `wiki`. It leaves `openviking` and `agentcore` unmarked. The answer of the user to the checklist, with the sentence below the list, is the consent for `hermes` and `wiki`. Ask no second question for them. When the user asks what a module does at this pin, answer from `docs/memory-modules.md`:
 
 - Hermes indexes every session into a SQLite store under the profile and keeps memory files there. With `backgroundReview: true` it also makes model calls on its own: review every 10 turns or 15 tool calls, correction detection, flush on compaction and shutdown, consolidation. That costs tokens on the `roles.memory` model.
 - LLM Wiki keeps a vault under HOME (`~/.llm-wiki/`), not under the profile. With `ambientPersonalVault: true` it creates that vault on first start when none exists, and it injects recall in every directory.
@@ -229,15 +229,17 @@ Each module that is on needs `consent.memoryCapture: true` and its object in the
     "schemaVersion": 1,
     "hermes": {"backgroundReview": false},
     "wiki": {"ambientPersonalVault": true, "backgroundTasks": false},
-    "openviking": null
+    "openviking": null,
+    "agentcore": null
   }
 }
 ```
 
-- The `memory` block holds all three module keys. The key of a module that is off is `null`. With no memory module on, write no `memory` block and keep `consent.memoryCapture: false`.
+- The `memory` block holds all four module keys. Older overlays may omit `agentcore` while it stays off. The key of a module that is off is `null`. With no memory module on, write no `memory` block and keep `consent.memoryCapture: false`.
 - With these values no module makes a model call of its own, and no `roles.memory` is necessary. Both modules store text and answer tool calls only. To switch the background model calls on later, see [POST_INSTALL.md](../../POST_INSTALL.md#switch-a-memory-module-on).
 - With `wiki` on, do "The LLM Wiki vault" below before you write `memory.wiki`.
-- OpenViking, only when the user switched `openviking` on: ask "Do you agree that session content goes to your OpenViking server?" If no, leave the module off. If yes, set `consent.remoteMemoryWrites: true`, ask "Capture tool results on or off?" and set `captureToolResults`. `recallContextTimeoutMs` is optional. Do not ask for the endpoint or the key, and do not read `~/.openviking/`. Without OpenViking, `remoteMemoryWrites` stays `false`.
+- OpenViking, only when the user switched `openviking` on: ask "Do you agree that session content goes to your OpenViking server?" If no, leave the module off. If yes, set `consent.remoteMemoryWrites: true`, ask "Capture tool results on or off?" and set `captureToolResults`. `recallContextTimeoutMs` is optional. Do not ask for the endpoint or the key, and do not read `~/.openviking/`. Without either remote module, `remoteMemoryWrites` stays `false`.
+- AgentCore, only when selected: read [AgentCore Memory](../../docs/memory-modules.md#agentcore-memory). Confirm transfer of recall prompts to AWS. Set both memory consents and the private choices only after approval. Keep `capture: false`. Leave resource, IAM, and credential setup with the owner. The plan prints its dependency setup line; ask before running it. Run no submit without approval of the candidate file.
 
 ### The LLM Wiki vault
 

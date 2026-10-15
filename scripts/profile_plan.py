@@ -295,9 +295,10 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
         # The peer override corrects host-provided `dependencies` in the installed memory manifests and in
         # the manifest of the question extension; the adapter lists none, so the mcp module alone needs no override.
         setup.append(peer_override_line(target))
-    if "openviking" in enabled:
-        # The one dependency of the vendored package is not in the tree (manifest gap `install_step_required`).
-        setup.append("npm --prefix " + shlex.quote(_package_source(components["openviking"]["source"])) + " ci --ignore-scripts")
+    for cid in ("openviking", "agentcore"):
+        if cid in enabled:
+            # Dependencies stay beside the local-file extension, outside the tracked tree.
+            setup.append("npm --prefix " + shlex.quote(_package_source(components[cid]["source"])) + " ci --ignore-scripts")
     if route and overlay_data["modelRoutes"]["gateway"] is not None:
         base = next(item["instruction"] for item in route["setup"] if item["kind"] == "process_environment")
         launch = base + " " + launch

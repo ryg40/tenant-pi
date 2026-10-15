@@ -2,7 +2,9 @@
 
 Status: offline implementation, not a qualified runtime. `scripts/memory_modules.py` is a pure module: no file, environment, subprocess, or network access. Validation, planning, and generation make zero model calls and zero network writes; the tests prove this with a blocked-socket, blocked-subprocess fixture. Not verified: live capture behaviour. Get explicit consent before a live capture test.
 
-Three modules can be enabled: `hermes` (`pi-hermes-memory`), `wiki` (`@zosmaai/pi-llm-wiki`) and `openviking` (the vendored package `packages/openviking-pi`). The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. `openviking` also needs `consent.remoteMemoryWrites`, because each capture is a write to a server. The default example enables none of them and emits no memory extension. The install flow marks `hermes` and `wiki` in its checklist and asks for the consent with one sentence; the user keeps or removes each mark. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
+Four modules can be enabled: `hermes`, `wiki`, `openviking`, and `agentcore`.
+The npm packages are `pi-hermes-memory` and `@zosmaai/pi-llm-wiki`.
+The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. Both remote modules need `consent.remoteMemoryWrites`, including recall-only `agentcore`. The default example enables none of them and emits no memory extension. The install flow marks `hermes` and `wiki` in its checklist and asks for the consent with one sentence; the user keeps or removes each mark. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
 
 ## Activation truth table
 
@@ -13,9 +15,11 @@ Three modules can be enabled: `hermes` (`pi-hermes-memory`), `wiki` (`@zosmaai/p
 | Module enabled, the `memory` block, `consent.memoryCapture` false | `memory_consent_required`. Nothing is generated. |
 | Module enabled, consent true, `memory.<module>` is `null` | `memory_choices_required`. Nothing is generated. |
 | `consent.memoryCapture` true with no memory module enabled | `memory_disabled`. Consent alone activates nothing. |
-| `consent.remoteMemoryWrites` true, with `hermes` or `wiki` enabled but not `openviking` | `remote_memory_disabled: overlay.consent.remoteMemoryWrites`. |
+| `consent.remoteMemoryWrites` true, with `hermes` or `wiki` enabled but neither `openviking` nor `agentcore` | `remote_memory_disabled: overlay.consent.remoteMemoryWrites`. |
 | `consent.remoteMemoryWrites` true with no memory module enabled | `memory_disabled: overlay.consent` comes first. |
-| `openviking` enabled, `consent.memoryCapture` true, `consent.remoteMemoryWrites` false | `remote_memory_consent_required`. Nothing is generated. |
+| `openviking`, `agentcore`, or both enabled, `consent.memoryCapture` true, `consent.remoteMemoryWrites` false | `remote_memory_consent_required`. Nothing is generated. |
+| `agentcore` omitted from an older `memory` block and not selected | Valid; AgentCore stays off. |
+| `openviking`, `agentcore`, or both selected with both consents and valid choices | Render each selected package and its launch settings. |
 | `consent.embeddingTextTransfer` true without selected `wiki` or a non-null `wiki.embedding` | `embedding_consent_unused`. Nothing is generated. |
 | Non-null `wiki.embedding` without `consent.embeddingTextTransfer: true` | `embedding_consent_missing`. Capture consent does not grant embedding consent. |
 | `wiki.embedding` omitted or `null`, embedding consent omitted or false | Embeddings stay off. Old overlays remain valid, even with ambient endpoint and credential variables. |
@@ -57,7 +61,7 @@ A configured credential name, an endpoint, or a reachable service never enables 
 | `openviking.captureToolResults` | boolean | Required. `true` lets the extension send the output of each tool call to the server with the turn. `false` sends the turn without tool result output. The launch line carries the value in both states. |
 | `openviking.recallContextTimeoutMs` | integer, 0 to 600000 | Optional. The time limit of one context recall request in milliseconds. `0` keeps the built-in default of the extension. Without the field, the launch line has no value for it. |
 
-`roles.memory` is the one model choice that `hermes` and `wiki` share. `openviking` uses no role. With `modelRoutes` it is checked against the explicit registry like any other role. Without a registry, the model and its authentication remain `unverified`.
+`roles.memory` is the one model choice that `hermes` and `wiki` share. `openviking` and `agentcore` use no role. With `modelRoutes` it is checked against the explicit registry like any other role. Without a registry, the model and its authentication remain `unverified`.
 
 Not verified: the Pi 0.99.1 behaviour described below with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
@@ -417,6 +421,181 @@ git -C '<openviking checkout>' archive '<commit>' examples agent-plugins | tar -
 
 `sync.mjs` writes `examples/pi-coding-agent-extension/shared/` from `examples/memory-plugin-shared/lib/`. It also writes the copies of the other plugins, so the archive holds the whole `examples/` and `agent-plugins/` trees; with less, the script stops with an error after it wrote `shared/`. The directory holds the files that the extension imports. The OpenViking repository does not track it for this extension, so the kit commits it: Pi loads the package from the kit directory and can only see the files that are there. Then copy `examples/pi-coding-agent-extension/` to `packages/openviking-pi/`, without `node_modules/`, and `examples/LICENSE` to `packages/openviking-pi/LICENSE`. Keep the kit-only README edits and the added `LICENSE` at a refresh. The README banner records the fork commit, upstream merge base, changed files, licence scope and upstream-only references. Update those facts here and in `docs/packages.md` too. The README corrects links and shortens "Local fork: differences" because the kit loads the package by its path. `LICENSE` is the file from `examples/`. Preserve the kit's Pi 1.2.0 user-only recall guard in `index.ts`, lifecycle tests, user-event handshake fixtures, and local recall-test helper. These files are no longer byte-equal to the fork commit; other extension files retain the imported source. Each generated `shared/` file matches the corresponding shared source with its generated-file header added. The capture-adapter fixture stays unchanged; the kit scanner permits its exact placeholder header value through a narrow content allowlist. Read `shared/config-schema.mjs` again: the two variable names and the bounds of `recallContextTimeoutMs` in `scripts/memory_modules.py` must agree with it, and a test compares them. Run `npm ci --ignore-scripts` in the package directory of each clone after a refresh.
 
+## AgentCore Memory
+
+`agentcore` is an optional recall prototype. It stays unmarked in the install checklist.
+OpenViking stays the primary memory. Nothing is converted or removed from either local store.
+Both capture consent and remote-memory consent are required, even with `capture: false`.
+Recall sends the user prompt to AWS for semantic search.
+
+Example private overlay fragment:
+
+```json
+{
+  "consent": {"memoryCapture": true, "remoteMemoryWrites": true, "telemetry": false},
+  "memory": {
+    "schemaVersion": 1,
+    "hermes": null,
+    "wiki": null,
+    "openviking": null,
+    "agentcore": {
+      "memoryId": "mem-EXAMPLE",
+      "region": "us-east-1",
+      "namespaces": ["/owner/{actorId}/", "/shared/"],
+      "topK": 10,
+      "capture": false,
+      "actorId": "example",
+      "recallTimeoutMs": 3000
+    }
+  }
+}
+```
+
+Select `agentcore` in `selection.enable` and remove it from `selection.disable` too.
+The example resource identifier is a placeholder, not a provisioned resource.
+An existing OpenViking selection can stay enabled with its existing choices.
+
+| Field | Rule | Effect |
+| --- | --- | --- |
+| `memoryId` | Required nonempty string | Selects the AWS memory resource. |
+| `region` | Required AWS region form | Selects the SDK region. |
+| `namespaces` | Required nonempty list; each string starts and ends with `/` | One retrieval call per namespace. Duplicate names are refused. |
+| `topK` | Required integer, 1 to 100 | Sets `searchCriteria.topK` and `maxResults`. The overlay validator adds no default. |
+| `capture` | Required boolean | Keep false. Direct extension configuration defaults to false. |
+| `actorId` | Optional nonempty identifier using letters, digits, dots, underscores and hyphens | Substitutes `{actorId}`. Missing values skip owner namespaces with a log line. |
+| `recallTimeoutMs` | Optional integer, 1 to 600000 | Per-call deadline in milliseconds; default 3000. |
+
+The launch line passes these fields as shell-quoted JSON in `AGENTCORE_MEMORY_CONFIG`.
+This uses the same process-environment mechanism as OpenViking's two launch settings.
+The overlay carries no key. The SDK uses its default AWS credential chain.
+An existing `AWS_PROFILE` passes through unchanged; the kit does not set it.
+
+The package pins `@aws-sdk/client-bedrock-agentcore` to `3.1152.0`.
+`npm view` returns `3.1152.0` for both this package and `@aws-sdk/client-bedrock-agentcore-control`.
+The data-plane client exists, so no CLI fallback is needed for the extension.
+The control-plane package is not installed.
+
+`before_agent_start` retrieves records only for a user prompt, not a custom-message start.
+Two configured namespaces cause two calls. The extension follows no pagination token.
+Records form one context block with a clear heading, record identifiers, and namespaces.
+A failed or timed-out call logs one static line and does not block the turn.
+Each call has one SDK attempt. The deadline also bounds credential resolution.
+
+The `turn_end` hook does nothing when capture is off.
+The experimental on switch sends assistant text only through `CreateEvent`, with `extractionMode: SKIP`.
+It sends no tool output or thinking. It needs an actor and separate IAM permission.
+This switch is not part of the reviewed submit path. Keep it off for the first round.
+
+The package declaration names `packages/agentcore-pi/index.ts` after OpenViking.
+The display-only setup line runs `npm --prefix <kit>/packages/agentcore-pi ci --ignore-scripts`.
+The readiness gaps are `install_step_required`, `aws_resource_required`, and `package_runtime_unverified`.
+No peer override, generated config file, or local memory store is added.
+
+### AWS owner steps
+
+1. Create a Memory resource with a self-managed strategy in `us-east-1`.
+2. Configure both namespace trees: `/owner/{actorId}/` and `/shared/`.
+3. Give the agent `bedrock-agentcore:RetrieveMemoryRecords`, `bedrock-agentcore:ListMemoryRecords`, and `bedrock-agentcore:GetMemoryRecord` on that resource.
+4. Limit read access with `bedrock-agentcore:namespace` and `bedrock-agentcore:namespacePath` conditions for the approved trees.
+5. Give a separate submit identity `bedrock-agentcore:BatchCreateMemoryRecords` and `bedrock-agentcore:BatchUpdateMemoryRecords` on that resource.
+6. Limit submit access with the namespace condition keys for the approved source and destination namespaces.
+7. Provision credentials outside the repository through the standard AWS profile or environment path.
+8. Review a test candidate file before a live submit and recall trial.
+
+`BatchDeleteMemoryRecords` is needed only for a separately approved cleanup tool; this script never deletes records.
+`CreateEvent` is needed only for a separately approved capture trial; the first round is recall-only.
+Check the current AWS service authorization table before writing each action's IAM conditions.
+Namespace support varies by operation. A missing request context key must not silently broaden a policy.
+Use both the resource ARN restriction and the appropriate namespace conditions.
+
+References: [AgentCore service authorization](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html)
+and [Memory API reference](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/Welcome.html).
+
+Warning: recall sends prompts to AWS, and submit sends reviewed memory text. Keep sensitive material out unless the owner approves its transfer.
+
+Not verified: resource creation, credentials, IAM conditions, live retrieval, live submission, or live capture.
+Not verified: a generated Pi session with this package, clean-client dependency installation, or strategy consolidation behavior.
+
+## Distill, review and submit
+
+The owner review is a required gate. `--send` records the operator's decision to cross that gate.
+The script does not inspect, distill, convert, or delete the local LLM Wiki or OpenViking stores.
+Create candidates separately and remove anything the owner does not approve for AWS storage.
+
+JSON input is a list of objects with exactly `source`, `namespace`, and `text`.
+Markdown input uses one `## ` section per record, with this exact header order:
+
+```markdown
+# Reviewed candidates
+
+## Example title
+source: wiki://example/notes/convention
+namespace: /shared/
+
+The reviewed text starts after the blank line.
+
+Another paragraph belongs to the same record.
+```
+
+A `## ` heading starts a new record, including inside quoted or fenced text. Do not use that form inside record text.
+The optional preamble is only a `# ` title. The section title is not sent.
+Each source must be a URI without credentials or whitespace. Each source occurs once in a candidate file.
+The namespace must match an explicit `--namespace-allow` value exactly. Namespace templates are not allowed here.
+
+A record above 16000 characters splits at paragraph borders into `<source>#part-<n>` ledger entries.
+A single oversized paragraph is refused. Edit it into paragraphs before submitting.
+A SHA-256 hash of the original source URI and the one-based part number becomes `requestIdentifier`.
+Changing text does not change that identifier. Use `--update` to change a recorded source.
+
+1. Distill only the facts needed for recall into a private candidate file.
+2. Have the owner review every source, namespace, and text.
+3. Run the dry run and check its namespaces, counts, sizes, and text previews.
+4. Run `--send` only after the owner approves the reviewed file and its destination.
+5. Keep the private ledger for later skips and updates.
+
+The tracked sample contains three synthetic records:
+
+```sh
+python3 scripts/memory_submit.py --dry-run --memory-id mem-EXAMPLE --region us-east-1 --namespace-allow /shared/ config/memory-candidates.example.md
+```
+
+This prints one JSON batch with three records. It sends nothing and writes nothing.
+Dry run is also the default when neither mode flag is given.
+Add `--namespace-allow /owner/example/` for reviewed personal records with that exact namespace.
+Use the actual reviewed candidate file and memory identifier for a live run:
+
+```sh
+python3 scripts/memory_submit.py --send --memory-id mem-EXAMPLE --region us-east-1 --namespace-allow /shared/ --ledger .local/memory-submit-ledger.json .local/reviewed-candidates.md
+```
+
+The CLI needs an installed AWS CLI version with `batch-create-memory-records` and `batch-update-memory-records`.
+Python uses only its standard library. No boto3 dependency is needed.
+The script creates batches of at most 100 records, each with one namespace and `content.text`.
+The API also requires each record's `timestamp`, which the script supplies.
+No `recordExpirySpecification` is sent. New records do not expire.
+Updates keep the existing expiry state; records created here have none unless another writer changes them.
+
+The default ledger is `.local/memory-submit-ledger.json`, relative to the working directory.
+It binds source URI and part number to `memoryRecordId`, memory resource, region, and namespace.
+Use a separate ledger per resource and region. The script refuses paths in this repository outside `.local/`.
+The ledger and request files have mode `0600`; the script refuses symbolic links in the ledger path.
+Keep an external ledger in a private, untracked directory too.
+
+A repeated run skips recorded parts. `--update` calls `BatchUpdateMemoryRecords` for recorded parts and creates new parts.
+Updates use stored record IDs and `sourceNamespaces`, not `requestIdentifier`, which that API does not accept.
+A changed namespace or reduced part count stops for owner review. No old record is deleted automatically.
+Partial failures save successful IDs and return exit code 2. The next run skips those successes.
+
+The ledger journals exact pending batches before sending, including timestamps and create `clientToken` values.
+An uncertain response needs the same file, order, and update mode for an exact retry.
+Do not edit pending batches by hand. A stale `.lock` needs owner inspection before removal.
+Only one sender may use a ledger at once. A successful batch clears its pending content.
+
+Warning: dry-run output includes the first 80 characters of each record. Pending ledger entries contain the full pending text.
+
+Not verified: live AWS CLI output, service idempotency duration, record listing, or record updates.
+The offline tests use fake subprocess responses and never invoke AWS.
+
 ## Generated outputs
 
 | Output | Present when | Content |
@@ -431,6 +610,8 @@ git -C '<openviking checkout>' archive '<commit>' examples agent-plugins | tar -
 | Launch line | wiki without `wikiHome` | `-u WIKI_HOME` follows `-u PI_CODING_AGENT_SESSION_DIR`: the line removes an inherited `WIKI_HOME`. See [the wiki home](launcher.md#the-wiki-home). |
 | Launch line | openviking | `OPENVIKING_CAPTURE_TOOL_RESULTS=true` or `=false` precedes `PI_CODING_AGENT_DIR=...`, and `OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=<n>` when the overlay has `recallContextTimeoutMs`. Both are process-local: the kit exports nothing and writes no shell file. A manual `pi` command without them uses the files and the defaults of the extension. |
 | Setup lines | hermes or wiki | One `pi install <source>` line for each declared npm source, with the source string of `settings.json`, then `PI_CODING_AGENT_DIR=<target> node <kit>/scripts/patch_extension_peers.mjs`, with the absolute path of the script. Display only. |
+| Launch line | agentcore | `AGENTCORE_MEMORY_CONFIG` carries the complete non-secret JSON config. |
+| Setup lines | agentcore | `npm --prefix <kit>/packages/agentcore-pi ci --ignore-scripts`. Display only. |
 | Setup lines | openviking | `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only. The module adds no `pi install` line and no peer override line: Pi installs nothing for a path package, and the package lists no host module as a dependency. |
 | Extra file or link | openviking | None. The existing `settings.json` output holds the local-file source and remains listed in `.tenant-pi/state.json`. No generated file holds an endpoint, a key or a user of the server. |
 
@@ -440,7 +621,11 @@ Enabled wiki embeddings add `embedding_endpoint_unverified`, plus `embedding_dim
 
 ## Carry
 
-`compare` reports the recorded overlay `memory` block field by field under `/overlay/memory/<module>/<field>`: the three switches and `reviewTransport` by value, `openviking.captureToolResults` and `openviking.recallContextTimeoutMs` by value, each `childExtensionPaths` entry and `wikiHome` as a marker without a value ([candidate comparison](candidate-compare.md)). `carry` prints one patch per reported field at `/memory/<module>/<field>`, with the value from the right side's overlay copy; the `childExtensionPaths` list is one unit. A memory field that the patched overlay sets, and that the report does not name, stays unchanged, unless the report names another field of the same module and the right side sets that module to `null` or has no block: then the module goes as a whole. A module object of the patched overlay with no field entry in the report is never set to `null` or removed. A module that is `null` in the patched overlay carries as one `/memory/<module>` patch. `carry` never patches `consent`, so a memory patch that needs a consent change (`memoryCapture`, and `remoteMemoryWrites` for `openviking`) leaves that decision to the user ([carrying drift](carry.md)). The field names of the three modules are one table, `MODULE_FIELDS` in `scripts/memory_modules.py`; the validator, `compare` and `carry` read it.
+`compare` reports the recorded overlay `memory` block field by field under `/overlay/memory/<module>/<field>`: the three switches and `reviewTransport` by value, `openviking.captureToolResults` and `openviking.recallContextTimeoutMs` by value, each `childExtensionPaths` entry and `wikiHome` as a marker without a value ([candidate comparison](candidate-compare.md)). `carry` prints one patch per reported field at `/memory/<module>/<field>`, with the value from the right side's overlay copy; the `childExtensionPaths` list is one unit. A memory field that the patched overlay sets, and that the report does not name, stays unchanged, unless the report names another field of the same module and the right side sets that module to `null` or has no block: then the module goes as a whole. A module object of the patched overlay with no field entry in the report is never set to `null` or removed. A module that is `null` in the patched overlay carries as one `/memory/<module>` patch. `carry` never patches `consent`, so a memory patch that needs a consent change (`memoryCapture`, and `remoteMemoryWrites` for either remote module) leaves that decision to the user ([carrying drift](carry.md)). The field names of the four modules are one table, `MODULE_FIELDS` in `scripts/memory_modules.py`; the validator, `compare` and `carry` read it.
+
+AgentCore comparison reports `capture`, `topK`, and `recallTimeoutMs` by value.
+It reports `memoryId`, `region`, `actorId`, and each namespace as private markers without values.
+Carry keeps the namespace list together and never changes consent.
 
 Embedding comparison reports nested fields. `baseUrl`, `model`, and `auth.envVar` are markers without values, like `wikiHome`.
 `provider`, `auth.mode`, and `expectedDimensions` compare by value. The generated `embeddingProvider` also compares by value; other embedding settings remain markers.

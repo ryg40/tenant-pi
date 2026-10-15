@@ -562,7 +562,7 @@ Edit `overlay.json` for the other answers of the user. A core-only profile needs
 2. `selection`: do "The checklist" below. The action `components` is the one source of the component list, and this file holds no copy of it. The action marks the recommended set. That set holds the core, the in-tree extensions and skills for daily work, and the two local memory modules. Each in-tree component is `unverified`: no test of the kit loads it with the kit pin. `promptr` needs the build step of Stage 4. Stage 4a has the questions for `herdr` and `questions`.
 3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/model-routes.md`.
 4. Gateway, only when the user routes through the Tenantext gateway: `modelRoutes.gateway` is `{"auth": "env"}`; `endpoints.codex-accounts` is the gateway URL that ends in `/v1`; `env.codex-accounts` is `${TENANTEXT_LITELLM_API_KEY}`. The user exports the key themselves.
-5. `hermes`, `wiki` and `openviking`, the memory modules. The checklist marks `hermes` and `wiki`. It does not mark `openviking`. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
+5. `hermes`, `wiki`, `openviking`, and `agentcore` are the memory modules. The checklist marks `hermes` and `wiki`. It leaves `openviking` and `agentcore` unmarked. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
    - For `hermes` and `wiki`, the answer of the user to the checklist is the consent. Ask no second question. With both modules on, the overlay gets these two keys:
 
    ```json
@@ -572,16 +572,18 @@ Edit `overlay.json` for the other answers of the user. A core-only profile needs
        "schemaVersion": 1,
        "hermes": {"backgroundReview": false},
        "wiki": {"ambientPersonalVault": true, "backgroundTasks": false},
-       "openviking": null
+       "openviking": null,
+       "agentcore": null
      }
    }
    ```
 
-   - The `memory` block holds all three module keys. The key of a module that is off is `null`. With no memory module on, write no `memory` block and keep `consent.memoryCapture: false`.
+   - The `memory` block holds all four module keys. Older overlays may omit `agentcore` while it stays off. The key of a module that is off is `null`. With no memory module on, write no `memory` block and keep `consent.memoryCapture: false`.
    - `validate` looks for the block first. With a module on and no `memory` block, it stops with `memory_choices_required: overlay.memory`, with each value of the consent key. With the block and `consent.memoryCapture: false`, it stops with `memory_consent_required: overlay.consent.memoryCapture`.
    - With these values no module makes a model call of its own, and no `roles.memory` is necessary. Both modules store text and answer tool calls only. To switch the background model calls on later, see [POST_INSTALL.md](POST_INSTALL.md#switch-a-memory-module-on).
    - With `wiki` on, do "The LLM Wiki vault" below before you write `memory.wiki`.
    - `openviking`, only when the user switched it on: ask "Do you agree that session content goes to your OpenViking server?" A yes sets `consent.remoteMemoryWrites: true`. The module also needs an OpenViking server that the user set up, a `memory.openviking` object, and `npm ci --ignore-scripts` in `packages/openviking-pi`. Read `docs/memory-modules.md` with the user first.
+   - `agentcore`, only when selected: read [AgentCore Memory](docs/memory-modules.md#agentcore-memory) with the user. Confirm transfer of recall prompts to AWS. Set both memory consents and the private choices only after approval. Keep `capture: false`. Part A remains owner work: resource, IAM policy, and credentials. Run no AWS setup or submit without separate approval.
 6. `mcp`: optional. The checklist does not mark it. The server definitions go to `<private dir>/inputs/mcp-adapter.json`, and the overlay gets `inputs.mcpFile: "inputs/mcp-adapter.json"`. Every `validate`, `plan` and `generate` call then needs `--local-dir ~/.config/tenant-pi`. Read `docs/workflow-modules.md` with the user first.
 
 7. Registry, required when `modelRoutes` names a model for a role or the cycle: edit `~/.config/tenant-pi/registry.json` (mode 600; `init-private` creates it as `{}`, the fallback does not create it).

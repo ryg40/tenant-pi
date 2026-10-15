@@ -41,7 +41,7 @@ def npm_name(spec):
     return npm_parts(spec)[0]
 REF = re.compile(r"\$\{[A-Z][A-Z0-9_]*\}\Z")
 ROLE_NAMES = ("interactive", "review", "worker", "research", "memory")
-MEMORY = frozenset(("hermes", "wiki", "openviking"))
+MEMORY = frozenset(("hermes", "wiki", "openviking", "agentcore"))
 # Selectable states. `unverified` has no test in this repository yet; its `gaps` enter every plan.
 SELECTABLE = ("tested", "unverified")
 PACKAGES = "packages"
@@ -708,7 +708,7 @@ def overlay(data, components):
         fail("embedding_consent_missing", "overlay.consent.embeddingTextTransfer")
     if (data["consent"]["memoryCapture"] or data["consent"]["remoteMemoryWrites"]) and not (set(enable) & MEMORY):
         fail("memory_disabled", "overlay.consent")
-    if data["consent"]["remoteMemoryWrites"] and "openviking" not in enable:
+    if data["consent"]["remoteMemoryWrites"] and not {"openviking", "agentcore"} & set(enable):
         fail("remote_memory_disabled", "overlay.consent.remoteMemoryWrites")
     if "memory" in data or set(enable) & MEMORY:
         from scripts.memory_modules import validate_memory

@@ -48,6 +48,7 @@ PUBLISH = (
     "tests/test_peer_overrides.py", "docs/host-peer-overrides.md", "scripts/candidate_compare.py",
     "tests/test_candidate_compare.py", "docs/candidate-compare.md", "scripts/memory_modules.py",
     "tests/test_memory_modules.py", "docs/memory-modules.md", "skills/tenant-pi-install/SKILL.md",
+    "scripts/memory_submit.py", "tests/test_memory_submit.py", "config/memory-candidates.example.md",
     "scripts/publish_portable.py", "tests/test_publish_portable.py", "docs/publishing.md",
     "scripts/workflow_modules.py", "tests/test_workflow_modules.py", "docs/workflow-modules.md",
     "scripts/scan.sh", ".gitleaks.toml", "scripts/host-values.deny", "scripts/host-values.allow",
@@ -107,6 +108,7 @@ PUBLISH_DIRS = (
         "test/herdr/fixtures/agent-prompt-wait.json", "test/herdr/fixtures/agent-wait.json")),
     # A vendored copy. Its `shared/` directory is committed source, not build output.
     ("packages/openviking-pi", ("node_modules/", "LICENSE")),
+    ("packages/agentcore-pi", ("node_modules/",)),
 )
 # Optional list of repository-relative files or directory prefixes ending in "/".
 # The list excludes itself. A portable copy has neither the list nor its excluded files.

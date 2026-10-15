@@ -144,7 +144,7 @@ Goal: a private directory with an overlay that names a new target.
      "target": {"agentDir": "/home/EXAMPLE_USER/.pi/profiles/main"},
      "selection": {
        "enable": ["core"],
-       "disable": ["anthropic-usage", "codex-accounts", "context-meter", "coordinator-skills", "copilot-usage", "doctor", "herdr",
+       "disable": ["agentcore", "anthropic-usage", "codex-accounts", "context-meter", "coordinator-skills", "copilot-usage", "doctor", "herdr",
                    "herdr-relay", "hermes", "knowledge-skills", "mcp",
                    "model-routing", "openviking", "ops-footer", "promptr", "promptr-generate-task-prompt",
                    "promptr-handoff", "promptr-openknowledge-project-pages", "promptr-watch-herdr-agents", "questions",
@@ -188,12 +188,13 @@ Goal: a private directory with an overlay that names a new target.
        "schemaVersion": 1,
        "hermes": {"backgroundReview": false},
        "wiki": {"ambientPersonalVault": true, "backgroundTasks": false},
-       "openviking": null
+       "openviking": null,
+       "agentcore": null
      }
    }
    ```
 
-   The block holds all three module keys. The key of a module that is off is `null`. With these values no module makes a model call of its own, and the overlay needs no `roles.memory`. `validate` looks for the block first. With a module on and no `memory` block, it stops with `memory_choices_required: overlay.memory`, with each value of the consent key. With the block and `consent.memoryCapture` at `false`, it stops with `memory_consent_required: overlay.consent.memoryCapture`. In each case nothing is generated and nothing is captured. See [memory modules](../memory-modules.md), and [POST_INSTALL.md](../../POST_INSTALL.md#switch-a-memory-module-on) for the background model calls.
+   The block holds all four module keys. Older overlays may omit `agentcore` while it stays off. The key of a module that is off is `null`. With these values no module makes a model call of its own, and the overlay needs no `roles.memory`. `validate` looks for the block first. With a module on and no `memory` block, it stops with `memory_choices_required: overlay.memory`, with each value of the consent key. With the block and `consent.memoryCapture` at `false`, it stops with `memory_consent_required: overlay.consent.memoryCapture`. In each case nothing is generated and nothing is captured. See [memory modules](../memory-modules.md), and [POST_INSTALL.md](../../POST_INSTALL.md#switch-a-memory-module-on) for the background model calls.
 
 6. Look for an LLM Wiki vault, only when you selected `wiki`, before you write `memory.wiki`:
 

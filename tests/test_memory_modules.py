@@ -32,6 +32,9 @@ EMBEDDING = {"provider": "openai-compatible", "baseUrl": "https://embeddings.exa
              "model": "text-embedding-ada-002", "auth": {"envVar": "EXAMPLE_EMBEDDING_KEY"}, "expectedDimensions": 1536}
 OPENVIKING = {"captureToolResults": True, "recallContextTimeoutMs": 5000}
 OPENVIKING_DIR = "packages/openviking-pi"
+AGENTCORE = {"memoryId": "mem-EXAMPLE", "region": "us-east-1", "namespaces": ["/owner/{actorId}/", "/shared/"],
+             "topK": 10, "capture": False, "actorId": "example"}
+AGENTCORE_DIR = "packages/agentcore-pi"
 
 
 class MemoryContractTests(unittest.TestCase):
@@ -287,6 +290,146 @@ class MemoryContractTests(unittest.TestCase):
         data["env"]["openviking"] = "${OPENVIKING_API_KEY}"
         self.error(data, "undeclared_env")
         self.assertEqual([], self.components["openviking"]["env"])
+
+    def remote(self, modules, **kwargs):
+        data = self.base(*modules, memory={cid: copy.deepcopy(AGENTCORE if cid == "agentcore" else OPENVIKING)
+                                          for cid in modules}, **kwargs)
+        data["consent"]["remoteMemoryWrites"] = True
+        return data
+
+    def test_remote_truth_table_for_each_module_and_both(self):
+        for modules in (("openviking",), ("agentcore",), ("openviking", "agentcore")):
+            with self.subTest(modules=modules):
+                overlay(self.remote(modules), self.components)
+                for capture, remote, rule in ((False, False, "memory_consent_required"),
+                                               (False, True, "memory_consent_required"),
+                                               (True, False, "remote_memory_consent_required")):
+                    data = self.remote(modules, consent=capture)
+                    data["consent"]["remoteMemoryWrites"] = remote
+                    self.error(data, rule)
+                for consent in (False, True):
+                    data = self.remote(modules, consent=consent)
+                    del data["memory"]
+                    self.error(data, "memory_choices_required")
+                for cid in modules:
+                    data = self.remote(modules)
+                    data["memory"][cid] = None
+                    self.error(data, "memory_choices_required")
+                    data = self.remote(modules)
+                    data["selection"]["enable"].remove(cid)
+                    data["selection"]["disable"].append(cid)
+                    data["consent"].update(memoryCapture=False, remoteMemoryWrites=False)
+                    self.error(data, "memory_consent_required" if len(modules) > 1 else "memory_module_disabled")
+                data = self.remote(modules)
+                data["selection"] = self.base()["selection"]
+                self.error(data, "memory_disabled")
+
+    def test_agentcore_rendering_defaults_and_order(self):
+        data = self.remote(("openviking", "agentcore"))
+        before = copy.deepcopy(data)
+        plan = prepare(self.manifest_data, data)
+        self.assertEqual(before, data)
+        settings = plan["files"]["settings.json"]["content"]
+        self.assertEqual([str(ROOT / OPENVIKING_DIR / "index.ts"), str(ROOT / AGENTCORE_DIR / "index.ts")],
+                         [p["source"] for p in settings["packages"]])
+        launch = shlex.split(plan["commands"]["launch"])
+        config = json.loads(next(value.split("=", 1)[1] for value in launch if value.startswith("AGENTCORE_MEMORY_CONFIG=")))
+        self.assertEqual({**AGENTCORE, "recallTimeoutMs": 3000}, config)
+        self.assertEqual({"enabled": True, "localCapture": False, "backgroundModelCalls": False, "remoteWrites": False,
+                          "capture": False}, render_memory(data, self.components)["activation"]["agentcore"])
+        gaps = [g["code"] for g in plan["readinessGaps"] if g["subject"] == "agentcore"]
+        self.assertEqual(["install_step_required", "aws_resource_required", "package_runtime_unverified"], gaps)
+        self.assertEqual("npm --prefix " + shlex.quote(str(ROOT / AGENTCORE_DIR)) + " ci --ignore-scripts",
+                         plan["commands"]["setup"][-1])
+        self.assertEqual({"settings.json", ".tenant-pi/choices.json"}, set(plan["files"]))
+        data["memory"]["agentcore"].update(capture=True, recallTimeoutMs=5000)
+        del data["memory"]["agentcore"]["actorId"]
+        rendered = render_memory(data, self.components)
+        self.assertTrue(rendered["activation"]["agentcore"]["remoteWrites"])
+        line = next(item["instruction"] for item in rendered["setup"] if item["name"] == "AGENTCORE_MEMORY_CONFIG")
+        config = json.loads(shlex.split(line)[0].split("=", 1)[1])
+        self.assertEqual("", config["actorId"])
+        self.assertEqual(5000, config["recallTimeoutMs"])
+        for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"):
+            self.assertNotIn(name, json.dumps(plan))
+
+    def test_agentcore_choice_validation_and_canaries(self):
+        cases = (("memoryId", "", "text"), ("memoryId", " ", "text"), ("region", CANARY, "aws_region"),
+                 ("namespaces", [], "namespaces"), ("namespaces", ["/shared"], "namespace"),
+                 ("namespaces", ["/a/", "/a/"], "duplicate_namespace"), ("namespaces", [1], "namespace"),
+                 ("namespaces", ["/{unknown}/"], "namespace"), ("namespaces", ["/bad\n/"], "namespace"),
+                 ("topK", 0, "top_k"), ("topK", 101, "top_k"), ("topK", True, "top_k"),
+                 ("capture", "false", "boolean"), ("capture", 1, "boolean"), ("actorId", "../shared", "actor_id"),
+                 ("recallTimeoutMs", True, "timeout_ms"), ("recallTimeoutMs", 0, "timeout_ms"),
+                 ("recallTimeoutMs", 600001, "timeout_ms"), ("apiKey", CANARY, "unknown_fields"))
+        for key, value, rule in cases:
+            with self.subTest(key=key, value=value):
+                data = self.remote(("agentcore",))
+                data["memory"]["agentcore"][key] = value
+                self.error(data, rule)
+        for key in ("memoryId", "region", "namespaces", "topK", "capture"):
+            data = self.remote(("agentcore",))
+            del data["memory"]["agentcore"][key]
+            self.error(data, "required_fields")
+        for value in (CANARY, [], 1, True):
+            data = self.remote(("agentcore",))
+            data["memory"]["agentcore"] = value
+            self.error(data, "object")
+        for value in (1, 100):
+            data = self.remote(("agentcore",))
+            data["memory"]["agentcore"]["topK"] = value
+            overlay(data, self.components)
+
+    def test_agentcore_generate_compare_and_pure_render(self):
+        from unittest.mock import patch
+        temp = tempfile.TemporaryDirectory(prefix="tenant-pi-agentcore-")
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        generated = []
+        for name in ("first", "second"):
+            data = self.remote(("openviking", "agentcore"))
+            data["target"]["agentDir"] = str(root / name)
+            with patch("socket.socket.connect", side_effect=AssertionError("network")), \
+                    patch("subprocess.Popen", side_effect=AssertionError("process")):
+                plan = prepare(self.manifest_data, data)
+                write(plan, str(root / name))
+            generated.append({path: json.loads((root / name / path).read_text())
+                              for path in FILES if (root / name / path).is_file()})
+        report = compare(*generated)
+        self.assertEqual([], report["unsupported"])
+        self.assertEqual("none", report["right"]["drift"]["status"])
+        self.assertEqual(generated[0]["settings.json"], generated[1]["settings.json"])
+        before = copy.deepcopy(data)
+        with patch("builtins.open", side_effect=AssertionError("file")), \
+                patch("os._Environ.__getitem__", side_effect=AssertionError("environment")), \
+                patch("socket.socket.connect", side_effect=AssertionError("network")), \
+                patch("subprocess.Popen", side_effect=AssertionError("process")):
+            validate_memory(data, self.components)
+            render_memory(data, self.components)
+        self.assertEqual(before, data)
+
+    def test_agentcore_compare_redacts_identity_and_carry_keeps_namespaces_together(self):
+        from scripts.carry import carry
+        from scripts.profile_write import _provenance
+
+        def files(data):
+            plan = prepare(self.manifest_data, data)
+            found = {name: copy.deepcopy(item["content"]) for name, item in plan["files"].items()}
+            found[STATE] = {"schemaVersion": 1, "status": "complete",
+                            "provenance": _provenance(found[".tenant-pi/choices.json"], list(found))}
+            return found
+
+        left = self.remote(("agentcore",))
+        right = copy.deepcopy(left)
+        right["memory"]["agentcore"].update(memoryId=CANARY, actorId=CANARY, namespaces=["/" + CANARY + "/"],
+                                           capture=True, topK=5)
+        a, b = files(left), files(right)
+        report = compare(a, b)
+        self.assertNotIn(CANARY, json.dumps(report))
+        report["right"] = {"path": "/candidate/right"}
+        result = carry(report, left, self.manifest_data, b, "/candidate/right")
+        self.assertIn({"op": "replace", "path": "/memory/agentcore/namespaces", "value": ["/" + CANARY + "/"]}, result["patches"])
+        self.assertFalse(any(p["path"].startswith("/consent") for p in result["patches"]))
 
     def test_local_only_consent_disables_every_background_model_path(self):
         data = self.base("hermes", "wiki", memory={"hermes": HERMES_OFF, "wiki": WIKI_OFF})

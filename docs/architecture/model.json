@@ -329,7 +329,7 @@
     {"id": "g-c-memory", "label": "Memory", "sub": "consent needed", "x": 40, "y": 340, "cols": 1, "tone": "runtime"},
     {"id": "g-c-skills", "label": "Skills", "sub": "packages/tenantext/skills", "x": 300, "y": 380, "cols": 2, "tone": "profile"},
     {"id": "g-c-herdr", "label": "Herdr and questions", "sub": "coordination", "x": 760, "y": 380, "cols": 1, "tone": "private"},
-    {"id": "g-c-mcp", "label": "MCP", "sub": "npm pi-mcp-adapter", "x": 40, "y": 680, "cols": 1, "tone": "service"},
+    {"id": "g-c-mcp", "label": "MCP", "sub": "npm pi-mcp-adapter", "x": 40, "y": 780, "cols": 1, "tone": "service"},
     {"id": "g-c-deploy", "label": "Deploy", "sub": "deploy/compose", "x": 300, "y": 640, "cols": 2, "tone": "release"}
    ],
    "nodes": [
@@ -395,6 +395,12 @@
      "summary": "The vendored OpenViking extension. It writes sessions and memories to a separately configured OpenViking server.",
      "inputs": "memory.openviking; npm ci --ignore-scripts in packages/openviking-pi; a server", "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
      "files": ["packages/openviking-pi/README.md", "packages/openviking-pi/package.json"], "doc": "docs/memory-modules.md"},
+
+    {"id": "agentcore", "component": "agentcore", "group": "g-c-memory", "label": "agentcore", "kind": "comp-memory",
+     "summary": "Optional AgentCore Memory recall. OpenViking stays primary. Capture defaults to off.",
+     "inputs": "memory.agentcore; npm ci --ignore-scripts in packages/agentcore-pi; an AWS resource",
+     "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
+     "files": ["packages/agentcore-pi/README.md", "packages/agentcore-pi/package.json"], "doc": "docs/memory-modules.md"},
 
     {"id": "coordinator-skills", "component": "coordinator-skills", "group": "g-c-skills", "label": "coordinator-skills", "kind": "comp-skills",
      "summary": "Skills for a coordinator: grilling, wayfinder, research, prototype, specs and tickets, review, status. They name host tools that the kit does not install.",
@@ -684,7 +690,7 @@
   {"view": "pipeline", "node": "p-compare", "title": "Update by comparison", "text": "An update is a new candidate from the same overlay. compare shows the drift, and carry prints the overlay patches."},
   {"view": "components", "node": "core", "title": "Core is always on", "text": "Each other component is optional. You move its id from selection.disable to selection.enable in the overlay."},
   {"view": "components", "node": "codex-accounts", "title": "The gateway route", "text": "codex-accounts sends model requests to an HTTPS gateway. The key stays in the launching shell."},
-  {"view": "components", "node": "hermes", "title": "Memory needs consent", "text": "Hermes, LLM Wiki and OpenViking need consent.memoryCapture. OpenViking also needs consent.remoteMemoryWrites."},
+  {"view": "components", "node": "hermes", "title": "Memory needs consent", "text": "All four memory modules need consent.memoryCapture. OpenViking and AgentCore also need consent.remoteMemoryWrites."},
   {"view": "devrel", "node": "d-publish-check", "title": "The publish check", "text": "Each tracked file is published, excluded or development-only. The public reader rules keep private content out of the snapshot."},
   {"view": "devrel", "node": "d-publisher", "title": "A reviewed snapshot", "text": "publish_portable.py builds the snapshot from a clean HEAD, with only the publish set, and tags it portable/<yyyymmdd>-<sha>."},
   {"view": "runtime", "node": "r-gateway", "title": "Services stay outside the kit", "text": "The gateway, the memory servers and the host tools are services of your host. The kit writes references, never a key."},

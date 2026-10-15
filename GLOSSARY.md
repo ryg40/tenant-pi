@@ -18,6 +18,10 @@ _Avoid_: Portable baseline, exported agent home
 Keyword search combined with embedding similarity to find relevant wiki pages.
 An embedding is a numeric representation of text meaning.
 
+**AgentCore Memory**:
+An AWS service that stores memory records and finds relevant records through semantic search.
+It is separate from the local memory stores.
+
 **Hands-on trial**:
 A clean-client trial in which a person performs the interactive checks that an agent cannot prove: a terminal workspace, a Pi session, a structured question, a model reply.
 _Avoid_: Manual test, smoke test

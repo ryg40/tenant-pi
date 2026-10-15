@@ -175,7 +175,7 @@ def carry(report, overlay_data, manifest_data, right_files, right_path):
                           for file, field in entries)
     block = overlay_data.get("memory")
     if (right is not None and "memory" not in right and type(block) is dict
-            and any(type(block[cid]) is dict and cid not in named for cid in MEMORY)):
+            and any(type(block.get(cid)) is dict and cid not in named for cid in MEMORY)):
         # The right copy has no block, and `--overlay` holds a module object that the report does not
         # touch: `/memory` must stay. An absent block reads as a block with every module `null`.
         right = {**right, "memory": {**dict.fromkeys(MEMORY), "schemaVersion": block["schemaVersion"]}}

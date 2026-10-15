@@ -1,6 +1,7 @@
 # In-tree packages
 
-`packages/tenantext` and `packages/promptr` hold the sources of the two optional Pi packages. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. Each package has its own license metadata, tests and documentation.
+`packages/tenantext` and `packages/promptr` hold the sources of the two optional Pi packages. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. `packages/agentcore-pi` holds the optional AgentCore Memory prototype.
+Each package has its own license metadata, tests and documentation.
 
 Tenantext and Promptr pin `@types/node` to `24.19.2` for their Node `>=24.0.0 <25` requirement.
 
@@ -32,6 +33,8 @@ Each extension and each skill of the packages is one component in `config/manife
 | `promptr-watch-herdr-agents` | `packages/promptr` | `skills/watch-herdr-agents` | `core`, `promptr` | `unverified` | `host_tool_required`, `skill_use_unverified`, `kit_test_missing` |
 | `openviking` | `packages/openviking-pi` | Local-file source `index.ts`, not a directory filter | `core` | `unverified` | `install_step_required`, `server_required`, `package_runtime_unverified`, `capture_cost_unmeasured` |
 
+| `agentcore` | `packages/agentcore-pi` | Local-file source `index.ts` | `core` | `unverified` | `install_step_required`, `aws_resource_required`, `package_runtime_unverified` |
+
 Facts for a selection:
 
 - The `components` action prints one line for each component of the manifest, with the names of its extensions and skills, its required IDs and its prerequisites. See [the CLI contract](generator.md#components-the-checklist-of-the-components).
@@ -41,7 +44,7 @@ Facts for a selection:
 - `herdr` holds the skill only. The Herdr application is a host tool: the kit does not install it, and the `check-herdr` action reports the `herdr` command. See [Herdr and the question tool](herdr-setup.md).
 - `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.11.0` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
 - A `blocked` component cannot be enabled. The validator fails with `blocked_component`.
-- A generated profile declares each package one time in `settings.packages`. The `source` is the absolute package directory path, except OpenViking, whose source is the `index.ts` file. For a directory source, each enabled component adds its own `extensions` or `skills` filter entry. An empty directory filter loads nothing of that kind.
+- A generated profile declares each package one time in `settings.packages`. The `source` is the absolute package directory path, except OpenViking and AgentCore, whose sources are their `index.ts` files. For a directory source, each enabled component adds its own `extensions` or `skills` filter entry. An empty directory filter loads nothing of that kind.
 - The profile depends on the location of the kit. If you move the kit, generate a new profile.
 - `codex-accounts` declares `TENANTEXT_LITELLM_BASE_URL` and `TENANTEXT_LITELLM_API_KEY`: `extensions/codex-accounts/routing.ts` reads both. `doctor` declares `TENANTEXT_LITELLM_BASE_URL`: `extensions/doctor/checks.ts` reads it for one information line. `coordinator-skills` declares `GITEA_TOKEN`: the skills `to-spec` and `to-tickets` send it to the Gitea API of the issue tracker.
 - The gateway keys of the overlay are `endpoints.codex-accounts` and `env.codex-accounts`. The old key `tenantext` fails with `moved_key`.
@@ -159,6 +162,42 @@ Four defaults in `src/` are placeholders. Three have an override by environment 
 The tracker dialog of `/promptr-tracker init` shows `GITEA_OWNER` as the default owner for the Gitea provider (`providerDefaultOwner` in `src/tracking/binding.mts`). Without `GITEA_OWNER` it shows `owner`. Edit this value in the dialog. If you accept `owner`, the dialog binds a repository that does not exist.
 
 `scripts/preview-sidebar.sh` looks for a Tenantext checkout beside the repository, then in `$PROMPTR_STACK_DIR/tenantext` when `PROMPTR_STACK_DIR` is set.
+
+## AgentCore Memory extension (`packages/agentcore-pi`)
+
+This package recalls reviewed AWS memory records without changing local memory stores.
+OpenViking stays the primary memory. The checklist leaves AgentCore unmarked.
+The module requires selection, both memory consents, and `memory.agentcore` choices.
+See [the memory guide](memory-modules.md#agentcore-memory) and [the package README](../packages/agentcore-pi/README.md).
+
+| Item | Value |
+| --- | --- |
+| Source | Own code at `packages/agentcore-pi/index.ts`, loaded after OpenViking as a local-file source. |
+| License | The repository MIT license covers this code. |
+| Node | `>=24.0.0 <25`. |
+| Dependency | `@aws-sdk/client-bedrock-agentcore` `3.1152.0`, pinned with a lock file. |
+| Configuration | Shell-quoted JSON in process-local `AGENTCORE_MEMORY_CONFIG`. No credential is rendered. |
+| Credentials | The default AWS SDK credential chain, including `AWS_PROFILE`. |
+| Publish rule | `("packages/agentcore-pi", ("node_modules/",))`. |
+| Capture | Off by default; the first round is recall-only. |
+
+After approval, install dependencies from the kit root:
+
+```sh
+npm --prefix packages/agentcore-pi ci --ignore-scripts
+```
+
+The package tests need no AWS credential, SDK installation, or network:
+
+```sh
+node --test packages/agentcore-pi/tests/
+```
+
+Registry metadata confirms both AWS data-plane and control-plane packages at `3.1152.0`.
+Only the data-plane package is used. No CLI fallback is needed by the extension.
+The separate reviewed submit script uses the AWS CLI only with `--send`.
+
+Not verified: live AWS calls, IAM enforcement, clean-client installation, or loading this package in a generated Pi session.
 
 ## OpenViking extension (`packages/openviking-pi`)
 

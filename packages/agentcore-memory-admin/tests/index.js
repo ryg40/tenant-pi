@@ -5,3 +5,4 @@ import "./provision.test.mjs";
 import "./offboard.test.mjs";
 import "./purge.test.mjs";
 import "./migrate.test.mjs";
+import "./records.test.mjs";

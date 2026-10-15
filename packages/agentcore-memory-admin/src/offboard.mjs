@@ -4,7 +4,7 @@
 import { namespaces, validateId, validateRegistry } from "./core.mjs";
 import { POLICY_NAME, userName } from "./render.mjs";
 import { accessKeys, inlinePolicyNames, missing } from "./iam.mjs";
-import { deleteRecords, listRecords, within } from "./records.mjs";
+import { LAG_LINE, LIST_FORM, deleteRecords, goneLines, listNamespaces, within } from "./records.mjs";
 
 /** The namespaces of one person: own actor namespace, own proposals and own rejected records of every project of the registry. */
 export function offboardNamespaces(registry, actorId) {
@@ -35,18 +35,14 @@ function person(registry, actorId) {
   return found;
 }
 
-/** The records to delete and the records to keep: a record that also names another namespace stays. */
+/** The records to delete and the records to keep: one list for each exact namespace of the person.
+ * A record that also names another namespace stays. Each delete names the namespace that returned the record. */
 async function personRecords(memory, registry, actorId) {
-  const prefixes = offboardNamespaces(registry, actorId);
-  const found = new Map();
-  for (const namespace of prefixes) {
-    for (const record of await listRecords(memory, registry.memory.memoryId, namespace)) {
-      found.set(record.memoryRecordId, { ...record, listed: namespace });
-    }
-  }
+  const exact = offboardNamespaces(registry, actorId);
+  const { records } = await listNamespaces(memory, registry.memory.memoryId, exact);
   const remove = [], keep = [];
-  for (const record of found.values()) {
-    if (within(record, prefixes)) remove.push({ ...record, namespace: record.namespaces[0] });
+  for (const record of records) {
+    if (within(record, exact)) remove.push({ ...record, namespace: record.listed });
     else keep.push(record);
   }
   return { remove, keep };
@@ -95,12 +91,13 @@ export async function offboardPlan(registry, actorId, clients = null) {
   for (const namespace of offboardNamespaces(registry, actorId)) lines.push(`  ${namespace}`);
   if (clients) {
     const { remove, keep } = await personRecords(clients.memory, registry, actorId);
-    lines.push(`records to delete: ${remove.length} (request field namespace, prefix form)`);
+    lines.push(`records to delete: ${remove.length} (${LIST_FORM})`);
     for (const record of remove) lines.push(`  ${record.memoryRecordId} ${record.namespaces.join(",")}`);
     if (keep.length) {
       lines.push(`records kept, because they also name another namespace: ${keep.length}`);
       for (const record of keep) lines.push(`  ${record.memoryRecordId}`);
     }
+    lines.push(LAG_LINE);
     const state = await userState(clients.iam, user);
     if (!state) lines.push(`iam user ${user}: absent`);
     else {
@@ -131,7 +128,8 @@ export async function offboardApply(registry, actorId, clients) {
   }
   const done = [];
   const { remove, keep } = await personRecords(clients.memory, registry, actorId);
-  done.push(`deleted ${await deleteRecords(clients.memory, registry.memory.memoryId, remove)} record(s)`);
+  const result = await deleteRecords(clients.memory, registry.memory.memoryId, remove);
+  done.push(`deleted ${result.deleted} record(s)`, ...goneLines(result));
   if (keep.length) done.push(`kept ${keep.length} record(s) that also name another namespace`);
   if (state) {
     for (const key of state.keys) await clients.iam.send("DeleteAccessKey", { UserName: user, AccessKeyId: key.AccessKeyId });

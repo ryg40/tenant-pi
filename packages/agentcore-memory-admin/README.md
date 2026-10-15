@@ -35,8 +35,8 @@ node packages/agentcore-memory-admin/bin/registry.mjs <command> --registry <file
 | `provision --person <actorId>` | The plan and the rendered policy. No AWS call, also with `--profile`. | Creates the user without console access, puts the inline policy `agentcore-memory`, tags `purpose=agentcore-memory` and `actorId=<actorId>`, and creates one access key. Each step runs only on a difference: a second apply makes no IAM write. |
 | `rotate --person <actorId>` | The plan. No AWS call. | Creates the second access key and prints the command that deletes the first key after the handoff. Refuses when the user does not have exactly one key. |
 | `offboard --person <actorId>` | The namespaces of the person. With `--profile`: the records, the user, its keys and its inline policies (read-only calls). | Deletes the records in batches of 100, then the access keys, the inline policy and the user, in that order. Then sets `status` to `offboarded` and removes the person from every member and maintainer list of the registry file. |
-| `purge --project <projectId> [--person <actorId>]` | The rejected tree to purge. With `--profile`: id, actor, date and first line of each record. | Deletes the records of `/project/<p>/rejected/` (or of one actor below it) in batches of 100 with `BatchDeleteMemoryRecords`. |
-| `migrate --owner <actorId> [--smoke-record-id <id>]` | The namespaces and the two target policies. With `--profile`: the test records, the smoke record, the records to move and the current policies. | Deletes the live-check records and the smoke record, moves each other `/owner/<a>/` record to `/actor/<a>/`, then gives each service policy a new default version and deletes the old version. |
+| `purge --project <projectId> [--person <actorId>]` | The exact rejected namespace `/project/<p>/rejected/<a>/` of each person of the registry, or of the one `--person`. With `--profile`: the count of each namespace, and id, actor, date and first line of each record. | Deletes the listed records in batches of 100 with `BatchDeleteMemoryRecords`. |
+| `migrate --owner <actorId> [--old-namespace <namespace>]... [--smoke-record-id <id>]` | The exact namespaces to list and the two target policies. With `--profile`: each namespace with its count, the test records, the smoke record, the records to move and the current policies. | Deletes the live-check records and the smoke record, moves each other listed record of `/owner/<a>/` and of each `--old-namespace` to the same path below `/actor/<a>/`, then gives each service policy a new default version and deletes the old version. |
 | `check --profile <admin>` | The differences between the live IAM users, policies, keys and tags and the registry. Read-only IAM calls. | Not an apply command. |
 
 Options:
@@ -44,8 +44,9 @@ Options:
 - `--account <12 digits>`: the account id of the memory ARN. Without it, a command with `--profile` reads it with `sts get-caller-identity`. A dry run without both prints `<account>` and counts the policy size with a 12-digit value.
 - `--show-values`: print the memory id, the account id and the service user names. A dry run without it prints `<memoryId>`, `<account>` and `<submit user>` in their place. Do not paste a `--show-values` output into the tracker.
 - `--key-dir <dir>`: the private key directory. The default is `~/.local/state/agentcore-memory-admin/keys`. It must be outside the repository.
+- `--old-namespace <namespace>`: for `migrate` only. One more exact namespace below `/owner/<actorId>/` to move, with a trailing slash, for example `/owner/alice/notes/`. Repeat the option for each path. Each path segment holds letters, digits, `.`, `_` or `-`, and starts with a letter or a digit. The option refuses `/owner/<actorId>/` itself and the test namespace `/owner/<actorId>/livecheck/`.
 
-The exit code is 0 when the command is done, 1 when it refuses or fails, and 2 for a usage error. The apply step refuses `--apply` without `--profile`, and refuses the example registry and any registry file inside the repository. A diagnostic of an AWS call prints the error class name only, because the error text can carry request data.
+The exit code is 0 when the command is done, 1 when it refuses or fails, and 2 for a usage error. The apply step refuses `--apply` without `--profile`, and refuses the example registry and any registry file inside the repository. A diagnostic of an AWS call prints the error class name only, because the error text can carry request data. A failed record of a batch delete or a batch move is the one exception: the apply prints its id, its error code and its message (see [the lag of the list index](#the-lag-of-the-list-index)).
 
 ## The rendered policies
 
@@ -82,13 +83,25 @@ The handoff is a manual step of the coordinator and the owner:
 
 ## Offboarding, purge and migration
 
+Every list names one exact namespace. The live store reads the request field `namespace` of `ListMemoryRecords` as an exact match, while the API reference describes a prefix. The live proof of 2026-10-15 showed the exact match: a list of the rejected tree of a project returned no record, and a list of the rejected namespace of one person returned its record. So no command sends a tree prefix. The dry run says "exact form" on its list lines and names each namespace that it lists. Each delete names the exact namespace that returned the record.
+
 Offboarding lists `/actor/<a>/` and, for every project of the registry, `/project/<p>/proposals/<a>/` and `/project/<p>/rejected/<a>/`. A record that also names a namespace outside these trees stays and is reported. The apply refuses before the first delete when the user has an item that this tool never creates: console access, a group, an attached managed policy, an MFA device, a signing certificate, an SSH key, a service-specific credential or another inline policy. The last maintainer of a project cannot be offboarded; name another maintainer first.
 
-The purge lists one rejected tree. When a listed record names a namespace outside that tree, the apply refuses and deletes nothing.
+The purge of a project lists the exact namespace `/project/<p>/rejected/<a>/` of each person of the registry, with every status, and prints each namespace. With `--person <actorId>`, it lists the one namespace of that actor; the actor does not need to be in the registry. The purge of a project does not list a rejected record of an actor outside the registry; give `--person` for that actor. When a listed record names a namespace outside the rejected tree of the project (or of the actor), the apply refuses and deletes nothing.
 
-The migration lists `/owner/<a>/` with the request field `namespace` as a prefix and prints the form and the count. The records of `/shared/livecheck/` and `/owner/<a>/livecheck/` and the smoke record are test records. The move of each other record is one `BatchUpdateMemoryRecords` entry with `sourceNamespaces` the old namespace, `namespaces` the same path below `/actor/<a>/`, and the metadata `actorId`, `harness` `migration` and `proposedAt` (the creation time of the record). A move keeps the record id. The apply refuses before the first write when a service user does not have exactly one customer managed policy, or when a policy that needs a change has five versions.
+The migration lists the exact namespaces `/shared/livecheck/`, `/owner/<a>/livecheck/` and `/owner/<a>/`, then each `--old-namespace`, then `/shared/` when it looks up the smoke record. It prints each namespace with its count. A record in another path below `/owner/<a>/` is not listed and not moved: give each such path with its own `--old-namespace` option. The dry run says so. The records of `/shared/livecheck/` and `/owner/<a>/livecheck/` and the smoke record are test records. A listed record with a second namespace stays and is reported. The move of each other record is one `BatchUpdateMemoryRecords` entry with `sourceNamespaces` the old namespace, `namespaces` the same path below `/actor/<a>/`, and the metadata `actorId`, `harness` `migration` and `proposedAt` (the creation time of the record). A move keeps the record id. The apply refuses before the first write when a service user does not have exactly one customer managed policy, or when a policy that needs a change has five versions.
 
 Run the migration after the owner's person user works in Pi: the narrowed policy of the worker identity no longer reads `/owner/<a>/`.
+
+### The lag of the list index
+
+The list index lags behind a write. In the live proof of 2026-10-15 it lagged one to five minutes: an offboarding one minute after a purge still listed the purged record, and the delete of that record failed. So a step right after a delete or a move can list a record that is gone. Each dry run with `--profile` says so in its `list index:` line.
+
+A failed delete with the error code 404 counts as done. The service model gives the `errorCode` of a failed record as an integer and lists no values. Its one error for a record that does not exist, `ResourceNotFoundException`, has the HTTP status 404. The apply prints the number of such records in the line `<n> record(s) were gone already (error code 404); counted as done`.
+
+Any other failed delete, and any failed move, stops the step before the next batch. Offboarding then makes no IAM change. The error prints the id, the error code and the message of each failed record, for example `mem-1234: error code 500: <message>`. The message loses its control characters and has at most 200 characters. Run the step again after five minutes.
+
+After an apply, wait five minutes and run the dry run again. It must list no record of the step.
 
 ## Dependencies and tests
 
@@ -107,7 +120,10 @@ Not verified:
 
 - Every apply step against IAM and the live store. The live proof of the project covers them.
 - The condition key value of `BatchUpdateMemoryRecords` for the migration move and for the submit identity.
-- The prefix semantics of the request field `namespace` on `ListMemoryRecords` for `/owner/<a>/`.
+- The purge of a project with one exact list for each person, and the migration with `--old-namespace`, on the live store. The live dry runs of 2026-10-15 ran the code before this change.
+- The error code of a delete of a record that is gone, on the live store. The script expects 404 from the service model. A record that fails with another code stops the step, and the output names the code.
+- Whether a delete with a namespace that does not match the record also fails with 404. The script sends the exact namespace that returned the record.
+- The lag of the list index beyond the one observation of the live proof: one to five minutes.
 - That an update without `content` keeps the text, and whether the metadata of an update replaces or merges the stored metadata.
-- The `namespace` field of a `BatchDeleteMemoryRecords` entry: the script sends the namespace of the record.
+- The `namespace` field of a `BatchDeleteMemoryRecords` entry: the script sends the exact namespace that returned the record.
 - The submit ledger of the owner still names `/owner/<a>/` for a moved record. The submit script refuses a later update of such a source, because its namespace changed.

@@ -23,20 +23,23 @@ const OPTIONS = {
   registry: { type: "string" }, person: { type: "string" }, service: { type: "string" }, owner: { type: "string" },
   project: { type: "string" },
   apply: { type: "boolean" }, profile: { type: "string" }, account: { type: "string" }, "show-values": { type: "boolean" },
-  "key-dir": { type: "string" }, "smoke-record-id": { type: "string" }, help: { type: "boolean" },
+  "key-dir": { type: "string" }, "smoke-record-id": { type: "string" }, "old-namespace": { type: "string", multiple: true },
+  help: { type: "boolean" },
 };
 export const HELP = `usage: registry.mjs <command> --registry <file> [options]
 commands:
   render --person <actorId> | --service submit|worker
   provision --person <actorId>    rotate --person <actorId>    offboard --person <actorId>
   purge --project <projectId> [--person <actorId>]
-  migrate --owner <actorId> [--smoke-record-id <id>]    check --profile <admin>
+  migrate --owner <actorId> [--old-namespace <namespace>]... [--smoke-record-id <id>]
+  check --profile <admin>
 options:
   --apply --profile <admin>   run the apply step (provision, rotate, offboard, purge, migrate)
   --profile <admin>           read-only lists in a dry run; the account id from STS
   --account <12 digits>       the account id of the memory ARN
   --show-values               print the memory id, the account id and the service user names
   --key-dir <dir>             the private key directory (default ~/.local/state/agentcore-memory-admin/keys)
+  --old-namespace <namespace> migrate: one more exact namespace below /owner/<actorId>/ to move; repeat it for each path
 A dry run is the default. It prints the plan and changes nothing.`;
 
 export const defaultDeps = () => ({
@@ -101,7 +104,8 @@ async function run(command, values, deps, clients) {
   // Only a command that compares or writes a policy needs the account id. A plan makes no AWS call, also with --profile.
   const needsAccount = ["render", "migrate", "check"].includes(command) || (apply && command === "provision");
   const stsProfile = needsAccount ? values.profile : undefined;
-  const options = { showValues: Boolean(values["show-values"]), smokeRecordId: values["smoke-record-id"], profile: values.profile };
+  const options = { showValues: Boolean(values["show-values"]), smokeRecordId: values["smoke-record-id"], profile: values.profile,
+    oldNamespaces: values["old-namespace"] ?? [] };
   options.account = await resolveAccount({ account: values.account, profile: stsProfile }, { createSts: clients.sts });
   const iam = () => clients.iam(values.profile);
   const memory = () => clients.memory(values.profile, registry.memory.region);

@@ -4,7 +4,7 @@ title: The AgentCore admin tool
 description: packages/agentcore-memory-admin is the owner's registry script; it renders the IAM user, the inline policy and the person config of each person, and plans offboarding, purge and migration, with a dry run as the default.
 tags: [agentcore, admin, registry, iam, offboarding]
 resource: ../../packages/agentcore-memory-admin/
-generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T18:10:00Z}
+generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T22:30:00Z}
 sources:
   - id: admin-readme
     resource: ../../packages/agentcore-memory-admin/README.md
@@ -43,8 +43,8 @@ Together the two checks refuse an id with a wildcard, a duplicate id, an inactiv
 | `provision --person <actorId>` | The plan and the policy. No AWS call. | Creates the user without console access, the inline policy, the tags and one access key; each step runs only on a difference. |
 | `rotate --person <actorId>` | The plan. | Creates the second key and prints the command that deletes the first one after the handoff. |
 | `offboard --person <actorId>` | The namespaces, records, key and user of the person. | Deletes the records, then the access keys, the inline policy and the user. |
-| `purge --project <projectId>` | The rejected tree of the project. | Deletes those records in batches of 100. |
-| `migrate --owner <actorId>` | The old owner records and the policy changes. | Deletes the test records, moves the other records to `/actor/<actorId>/` and narrows the two service policies. |
+| `purge --project <projectId>` | The exact rejected namespace of each person of the registry, or of one `--person`. | Deletes the listed records in batches of 100. |
+| `migrate --owner <actorId>` | The exact old namespaces with their counts, and the policy changes. A deeper old path needs its own `--old-namespace` option. | Deletes the test records, moves the other listed records to `/actor/<actorId>/` and narrows the two service policies. |
 | `check --profile <admin>` | Differences between live IAM and the registry. | None. |
 
 ## Safety rules
@@ -55,6 +55,8 @@ Together the two checks refuse an id with a wildcard, a duplicate id, an inactiv
 - The default key directory is `~/.local/state/agentcore-memory-admin/keys`. A directory inside the repository is refused.
 - A dry run prints `<memoryId>` and `<account>` in place of the private values.
 - Offboarding refuses before the first delete when the user has an item that the tool never creates, or when the person is the last maintainer of a project.
+- Every list names one exact namespace, because the live store reads the namespace of a list as an exact match. No command sends a tree prefix.
+- The list index lags one to five minutes behind a write, so a step right after a delete can list a record that is gone. A failed delete with the error code 404 counts as done. Any other failed delete or move stops the step and prints the id, the error code and the message of each failed record.
 
 ## Tests
 

@@ -93,29 +93,40 @@ export function fakeIam(state = {}) {
   return { send, destroy: () => calls.push({ name: "destroy" }), calls, users, managed };
 }
 
-/** An in-memory memory store. `ListMemoryRecords` treats `namespace` as a prefix and pages by two. */
-export function fakeMemory(records = []) {
+/** An in-memory memory store. `ListMemoryRecords` answers with the records of the exact namespace only, as the
+ * live store does (`exactStore` of the core tests is the model): a list of a tree prefix gets no record. It pages by two.
+ * `lagging` holds records that the list index still returns but that the store no longer holds, as after a delete on the
+ * live store. A delete or a move of a record that the store does not hold fails with `errorCode` 404. `failures` maps a
+ * record id to the `errorCode` and `errorMessage` of a failed delete or move. The message texts of the fake are not the live texts. */
+export function fakeMemory(records = [], { lagging = [], failures = {} } = {}) {
   const store = records.map((record) => structuredClone(record));
+  const index = lagging.map((record) => structuredClone(record));
   const calls = [];
+  const outcome = (memoryRecordId, apply) => {
+    if (failures[memoryRecordId]) return { memoryRecordId, status: "FAILED", ...failures[memoryRecordId] };
+    const record = store.find((entry) => entry.memoryRecordId === memoryRecordId);
+    if (!record) return { memoryRecordId, status: "FAILED", errorCode: 404, errorMessage: "fake: the memory record does not exist" };
+    apply(record);
+    return { memoryRecordId, status: "SUCCEEDED" };
+  };
+  const answer = (results) => ({ successfulRecords: results.filter((item) => item.status === "SUCCEEDED"),
+    failedRecords: results.filter((item) => item.status === "FAILED") });
   const send = async (name, input) => {
     calls.push({ name, input });
     if (name === "ListMemoryRecords") {
-      const matches = store.filter((record) => record.namespaces.some((ns) => ns.startsWith(input.namespace)));
+      const matches = [...store, ...index].filter((record) => record.namespaces.includes(input.namespace));
       const start = Number(input.nextToken ?? 0);
       return { memoryRecordSummaries: matches.slice(start, start + 2).map((record) => ({ ...record, content: { text: record.text } })),
         nextToken: start + 2 < matches.length ? String(start + 2) : undefined };
     }
     if (name === "BatchDeleteMemoryRecords") {
-      for (const item of input.records) store.splice(store.findIndex((record) => record.memoryRecordId === item.memoryRecordId), 1);
-      return { successfulRecords: input.records.map(({ memoryRecordId }) => ({ memoryRecordId, status: "SUCCEEDED" })), failedRecords: [] };
+      return answer(input.records.map((item) => outcome(item.memoryRecordId, (record) => store.splice(store.indexOf(record), 1))));
     }
     if (name === "BatchUpdateMemoryRecords") {
-      for (const item of input.records) {
-        const record = store.find((entry) => entry.memoryRecordId === item.memoryRecordId);
+      return answer(input.records.map((item) => outcome(item.memoryRecordId, (record) => {
         record.namespaces = item.namespaces;
         record.metadata = item.metadata;
-      }
-      return { successfulRecords: input.records.map(({ memoryRecordId }) => ({ memoryRecordId, status: "SUCCEEDED" })), failedRecords: [] };
+      })));
     }
     throw new Error(`fake memory has no ${name}`);
   };

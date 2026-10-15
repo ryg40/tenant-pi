@@ -2,29 +2,41 @@
 // smoke record, move each other record of `/owner/<a>/` to `/actor/<a>/` with
 // `BatchUpdateMemoryRecords`, then narrow the two customer managed policies of the service
 // identities. The dry run lists; only `--apply` writes.
+// The live store lists one exact namespace. The migration lists the namespaces that it knows and each
+// deeper path below `/owner/<a>/` that the owner names with `--old-namespace`; it finds no other path.
 
 import { namespaces, validateId } from "./core.mjs";
 import { renderService, usage } from "./render.mjs";
 import { attachedPolicies, defaultVersion, samePolicy } from "./iam.mjs";
-import { deleteRecords, listRecords, moveRecords, within } from "./records.mjs";
+import { LAG_LINE, deleteRecords, goneLines, listNamespaces, listRecords, moveRecords, namespaceLines, within } from "./records.mjs";
 
 const RECORD_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/;
+// One segment of a deeper old path: letters, digits, `.`, `_` and `-`, with a letter or a digit first.
+const SEGMENT = "[A-Za-z0-9][A-Za-z0-9._-]{0,63}";
 // IAM keeps at most five versions of a managed policy.
 const VERSION_LIMIT = 5;
 
-export function migrationNamespaces(ownerId) {
+/** The namespaces of the migration. `sources` are the exact namespaces to move: `/owner/<a>/` and each
+ * `--old-namespace`, a deeper path below it. The test namespace `/owner/<a>/livecheck/` is not a source. */
+export function migrationNamespaces(ownerId, oldNamespaces = []) {
   validateId(ownerId, "--owner");
-  return {
-    tests: ["/shared/livecheck/", `/owner/${ownerId}/livecheck/`],
-    old: `/owner/${ownerId}/`,
-    target: namespaces.actor(ownerId),
-  };
+  const old = `/owner/${ownerId}/`;
+  const tests = ["/shared/livecheck/", `${old}livecheck/`];
+  const deeper = new RegExp(`^${old}(?:${SEGMENT}/)+$`);
+  const sources = [old];
+  for (const namespace of oldNamespaces) {
+    if (typeof namespace !== "string" || !deeper.test(namespace) || tests.includes(namespace)) {
+      throw usage("--old-namespace must be a path below /owner/<owner>/ with a trailing slash, and not the livecheck namespace");
+    }
+    if (!sources.includes(namespace)) sources.push(namespace);
+  }
+  return { tests, old, sources, target: namespaces.actor(ownerId) };
 }
 
 const moved = (namespace, ns) => ns.target + namespace.slice(ns.old.length);
 
-function owner(registry, ownerId) {
-  const ns = migrationNamespaces(ownerId);
+function owner(registry, ownerId, options) {
+  const ns = migrationNamespaces(ownerId, options.oldNamespaces);
   const found = registry.people.find((person) => person.actorId === ownerId);
   if (!found || found.status !== "active") throw new Error("--owner must be an active person of the registry");
   return ns;
@@ -43,28 +55,34 @@ function patterns(document) {
   return [...found];
 }
 
+/** The exact namespaces that the migration lists, in the order of the lists. */
+const listedNamespaces = (ns, smokeRecordId) => [...ns.tests, ...ns.sources, ...(smokeRecordId ? [namespaces.global()] : [])];
+
+/** One list for each exact namespace. A listed record with a namespace outside its trees stays and is reported. */
 async function records(memory, registry, ns, smokeRecordId) {
   const memoryId = registry.memory.memoryId;
-  const tests = new Map();
-  for (const prefix of ns.tests) {
-    for (const record of await listRecords(memory, memoryId, prefix)) {
-      if (within(record, ns.tests)) tests.set(record.memoryRecordId, record);
-    }
-  }
-  let smoke = null;
-  if (smokeRecordId) {
-    smoke = (await listRecords(memory, memoryId, namespaces.global())).find((record) => record.memoryRecordId === smokeRecordId) ?? null;
-    if (smoke && !within(smoke, [namespaces.global()])) throw new Error("--smoke-record-id names a record outside /shared/");
-  }
-  const old = await listRecords(memory, memoryId, ns.old);
-  const move = [], keep = [];
-  for (const record of old) {
-    if (tests.has(record.memoryRecordId)) continue;
+  const tested = await listNamespaces(memory, memoryId, ns.tests);
+  const tests = tested.records.filter((record) => within(record, ns.tests));
+  const testIds = new Set(tests.map((record) => record.memoryRecordId));
+  const keep = new Map(tested.records.filter((record) => !testIds.has(record.memoryRecordId)).map((record) => [record.memoryRecordId, record]));
+  const sourced = await listNamespaces(memory, memoryId, ns.sources);
+  const move = [];
+  for (const record of sourced.records) {
+    if (testIds.has(record.memoryRecordId)) continue;
     // A record has one namespace; a move names one source and one target.
     if (record.namespaces.length === 1 && within(record, [ns.old])) move.push(record);
-    else keep.push(record);
+    else keep.set(record.memoryRecordId, record);
   }
-  return { tests: [...tests.values()], smoke, move, keep, listed: old.length };
+  const counts = [...tested.counts, ...sourced.counts];
+  let smoke = null;
+  if (smokeRecordId) {
+    const shared = await listRecords(memory, memoryId, namespaces.global());
+    counts.push({ namespace: namespaces.global(), count: shared.length });
+    const found = shared.find((record) => record.memoryRecordId === smokeRecordId);
+    if (found && !within(found, [namespaces.global()])) throw new Error("--smoke-record-id names a record outside /shared/");
+    smoke = found ? { ...found, listed: namespaces.global() } : null;
+  }
+  return { tests, smoke, move, keep: [...keep.values()], counts };
 }
 
 async function servicePolicies(iam, registry, options) {
@@ -83,18 +101,23 @@ const recordLine = (record) => `  ${record.memoryRecordId} ${record.namespaces.j
 
 /** The dry run. Without clients it lists from the registry only and makes no AWS call. */
 export async function migratePlan(registry, ownerId, options, clients = null) {
-  const ns = owner(registry, ownerId);
+  const ns = owner(registry, ownerId, options);
   if (options.smokeRecordId !== undefined && !RECORD_ID.test(options.smokeRecordId)) throw usage("--smoke-record-id has an invalid value");
-  const lines = [`owner: ${ownerId}`, `test namespaces: ${ns.tests.join(", ")}`, `move: ${ns.old} to ${ns.target}`];
+  const lines = [`owner: ${ownerId}`, `test namespaces: ${ns.tests.join(", ")}`,
+    ...ns.sources.map((source) => `move: ${source} to ${moved(source, ns)}`),
+    `a record in another path below ${ns.old} is not listed; give each such path with its own --old-namespace option`];
+  const listed = listedNamespaces(ns, options.smokeRecordId);
   if (clients) {
     const found = await records(clients.memory, registry, ns, options.smokeRecordId);
-    lines.push(`list form: request field namespace with the prefix ${ns.old}; ${found.listed} record(s) listed`);
+    lines.push(...namespaceLines(listed, found.counts));
     lines.push(`test records to delete: ${found.tests.length}`, ...found.tests.map(recordLine));
     if (options.smokeRecordId) lines.push(`smoke record: ${found.smoke ? recordLine(found.smoke).trim() : "not found in /shared/"}`);
     lines.push(`records to move: ${found.move.length}`,
       ...found.move.map((record) => `${recordLine(record)} -> ${record.namespaces.map((n) => moved(n, ns)).join(",")}`));
     if (found.keep.length) lines.push(`records kept, because they name another or a second namespace: ${found.keep.length}`, ...found.keep.map(recordLine));
+    lines.push(LAG_LINE);
   } else {
+    lines.push(...namespaceLines(listed));
     lines.push("records: not listed; give --profile <admin> to list them (read-only calls)");
     if (options.smokeRecordId) lines.push(`smoke record: ${options.smokeRecordId}, looked up in /shared/ with --profile <admin>`);
   }
@@ -127,7 +150,7 @@ function metadata(ownerId, record, now) {
 
 /** The apply step. Every refusal happens before the first write. */
 export async function migrateApply(registry, ownerId, options, clients, now) {
-  const ns = owner(registry, ownerId);
+  const ns = owner(registry, ownerId, options);
   const memoryId = registry.memory.memoryId;
   const policies = await servicePolicies(clients.iam, registry, options);
   for (const policy of policies) {
@@ -138,10 +161,12 @@ export async function migrateApply(registry, ownerId, options, clients, now) {
   }
   const found = await records(clients.memory, registry, ns, options.smokeRecordId);
   const done = [];
-  const tests = [...found.tests, ...(found.smoke ? [found.smoke] : [])].map((record) => ({ ...record, namespace: record.namespaces[0] }));
-  done.push(`deleted ${await deleteRecords(clients.memory, memoryId, tests)} test record(s)`);
+  // Each delete names the exact namespace that returned the record.
+  const tests = [...found.tests, ...(found.smoke ? [found.smoke] : [])].map((record) => ({ ...record, namespace: record.listed }));
+  const deleted = await deleteRecords(clients.memory, memoryId, tests);
+  done.push(`deleted ${deleted.deleted} test record(s)`, ...goneLines(deleted));
 
-  // A move keeps the record id. A record that a stopped run moved is no longer under the old prefix.
+  // A move keeps the record id. A record that a stopped run moved is no longer in its old namespace.
   const moves = found.move.map((record) => ({ memoryRecordId: record.memoryRecordId, timestamp: now(),
     sourceNamespaces: [record.namespaces[0]], namespaces: [moved(record.namespaces[0], ns)], metadata: metadata(ownerId, record, now) }));
   done.push(`moved ${await moveRecords(clients.memory, memoryId, moves)} record(s) from ${ns.old} to ${ns.target}`);

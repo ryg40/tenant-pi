@@ -5,7 +5,7 @@ import { fakeIam, fakeMemory, privateRegistry, record, run } from "./fakes.mjs";
 const WRITES = new Set(["BatchDeleteMemoryRecords", "BatchUpdateMemoryRecords", "BatchCreateMemoryRecords", "DeleteAccessKey",
   "DeleteUserPolicy", "DeleteUser", "CreateUser", "PutUserPolicy", "CreateAccessKey", "TagUser"]);
 
-function setup() {
+function setup(options = {}) {
   const registry = privateRegistry();
   const iam = fakeIam();
   iam.users.set("pi-memory-person-dana", { policies: new Map([["agentcore-memory", "{}"]]), keys: ["EXAMPLEKEYID1"], tags: [],
@@ -19,7 +19,7 @@ function setup() {
     record("mem-shared", "/project/example-project/shared/", "approved by alice", { metadata: { actorId: { stringValue: "dana" } } }),
     record("mem-proposal-chen", "/project/example-project/proposals/chen/"),
   ];
-  const memory = fakeMemory(records);
+  const memory = fakeMemory(records, options);
   const sequence = [];
   for (const client of [iam, memory]) {
     const send = client.send;
@@ -34,7 +34,7 @@ test("the dry run with a profile lists the records, the user, its keys and polic
   const s = setup();
   const result = await run(["offboard", "--registry", s.registry.file, "--person", "dana", "--profile", "admin-example"], s.deps);
   assert.equal(result.code, 0, result.err);
-  assert.match(result.out, /records to delete: 152/);
+  assert.match(result.out, /records to delete: 152 \(request field namespace, exact form\)/);
   assert.match(result.out, /mem-rejected-1 \/project\/example-site\/rejected\/dana\//);
   assert.match(result.out, /records kept, because they also name another namespace: 1/);
   assert.match(result.out, /iam user pi-memory-person-dana: 1 access key\(s\), inline policies: agentcore-memory/);
@@ -56,6 +56,7 @@ test("the apply deletes the records in batches of 100, then the keys, the policy
   const batches = s.memory.calls.filter((call) => call.name === "BatchDeleteMemoryRecords").map((call) => call.input.records);
   assert.deepEqual(batches.map((batch) => batch.length), [100, 52]);
   assert.ok(batches.flat().every((item) => item.namespace && item.memoryRecordId));
+  assert.deepEqual(batches.flat().find((item) => item.memoryRecordId === "mem-rejected-1").namespace, "/project/example-site/rejected/dana/");
   assert.deepEqual(s.memory.store.map((item) => item.memoryRecordId).sort(),
     ["mem-other-actor", "mem-proposal-chen", "mem-shared", "mem-two-namespaces"]);
   assert.ok(!s.iam.users.has("pi-memory-person-dana"));
@@ -91,4 +92,35 @@ test("a second apply after a finished offboarding finds nothing and keeps the re
   assert.equal(second.code, 0, second.err);
   assert.match(second.out, /deleted 0 record\(s\)/);
   assert.match(second.out, /user pi-memory-person-dana was absent/);
+});
+
+const LAG = /^list index: it lags one to five minutes behind a write; a record that a step deleted or moved in that time can still be listed$/m;
+
+test("a record that the list index still holds after its delete counts as done, and the apply goes on to the IAM steps", async () => {
+  // The live proof of 2026-10-15, round 4: a purge deleted the rejected record; offboarding one minute later still listed it.
+  const s = setup({ lagging: [record("mem-purged", "/project/example-project/rejected/dana/")] });
+  const plan = await run(["offboard", "--registry", s.registry.file, "--person", "dana", "--profile", "admin-example"], s.deps);
+  assert.match(plan.out, /records to delete: 153 /);
+  assert.match(plan.out, LAG);
+  const result = await run(["offboard", "--registry", s.registry.file, "--person", "dana", "--apply", "--profile", "admin-example"], s.deps);
+  assert.equal(result.code, 0, result.err);
+  assert.match(result.out, /^deleted 152 record\(s\)\n1 record\(s\) were gone already \(error code 404\); counted as done$/m);
+  assert.deepEqual(s.sequence.filter((name) => WRITES.has(name)),
+    ["BatchDeleteMemoryRecords", "BatchDeleteMemoryRecords", "DeleteAccessKey", "DeleteUserPolicy", "DeleteUser"]);
+  assert.equal(result.written.length, 1);
+});
+
+test("any other failed delete stops the apply before the IAM steps and names the code and the message of each failed record", async () => {
+  const s = setup({ failures: {
+    "mem-rejected-1": { errorCode: 500, errorMessage: "internal\nfailure \u001b[31mred" },
+    "mem-proposal-1": {},
+  } });
+  const result = await run(["offboard", "--registry", s.registry.file, "--person", "dana", "--apply", "--profile", "admin-example"], s.deps);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /^error: 2 record delete\(s\) failed after 150 deleted; run the step again$/m);
+  assert.match(result.err, /^  mem-rejected-1: error code 500: internal failure {2}\[31mred$/m);
+  assert.match(result.err, /^  mem-proposal-1: error code none: no message$/m);
+  assert.ok(!/[\x00-\x09\x0b-\x1f]/.test(result.err), "no control character reaches the terminal");
+  assert.ok(!s.sequence.some((name) => ["DeleteAccessKey", "DeleteUserPolicy", "DeleteUser"].includes(name)));
+  assert.deepEqual(result.written, []);
 });

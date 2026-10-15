@@ -4,7 +4,7 @@ title: The AgentCore Claude Code plugin
 description: packages/agentcore-claude is a Claude Code plugin with a UserPromptSubmit recall hook and a stdio MCP server whose write tools always ask for a permission prompt.
 tags: [agentcore, claude-code, plugin, mcp, recall]
 resource: ../../packages/agentcore-claude/
-generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T18:10:00Z}
+generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T19:33:00Z}
 sources:
   - id: plugin-readme
     resource: ../../packages/agentcore-claude/README.md
@@ -38,16 +38,18 @@ Claude Code keeps the additional context of a hook in the session transcript on 
 | Tool | Does |
 | --- | --- |
 | `memory_propose` | Proposes `text` to a project of the person. |
-| `memory_list_proposals` | Lists the proposals of a project. Maintainers only. |
-| `memory_show_proposal` | Shows one proposal. Maintainers only. |
-| `memory_approve` | Moves a proposal to the shared namespace. |
-| `memory_reject` | Moves a proposal to the rejected namespace. A reason is required. |
+| `memory_list_proposals` | Lists the proposals of one proposer `actorId` in a project. Maintainers only. |
+| `memory_show_proposal` | Shows one proposal of the proposer `actorId`. Maintainers only. |
+| `memory_approve` | Moves a proposal of the proposer `actorId` to the shared namespace. |
+| `memory_reject` | Moves a proposal of the proposer `actorId` to the rejected namespace. A reason is required. |
+
+The four review tools take the proposer, because the live store lists one exact proposals namespace.
 
 A refusal is a tool error with one static code, for example `not_member` or `not_maintainer`. No answer and no log line holds an SDK message, a query or a record text.
 
 ## The confirmation
 
-The three write tools carry the flag `anthropic/requiresUserInteraction`. With it, Claude Code shows the permission prompt on every call, and an allow rule does not skip it. The confirm callback of the server returns true only for the same action, project, text, record id and reason as the dialog. The plugin ships no permission allow entry; never add one.
+The three write tools carry the flag `anthropic/requiresUserInteraction`. With it, Claude Code shows the permission prompt on every call, and an allow rule does not skip it. The confirm callback of the server returns true only for the same action, project, text, proposer, record id and reason as the dialog. The plugin ships no permission allow entry; never add one.
 
 Warning: a session that skips permission prompts loses this gate. That is the case for a Claude Code version before v2.1.214, for an MCP client that ignores the flag, and for an Agent SDK application that approves the call without a person.
 

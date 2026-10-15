@@ -16,6 +16,7 @@ const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const RECORD_ID = /^mem-[A-Za-z0-9_-]{36,46}$/;
 
 const projectId = z.string().regex(ID).describe("A project id of your memory config, for example example-project.");
+const actorId = z.string().regex(ID).describe("The person id of the proposer, for example dana. memory_list_proposals shows it as actorId.");
 const memoryRecordId = z.string().regex(RECORD_ID).describe("The id of a proposal record, as memory_list_proposals shows it.");
 const reason = z.string().trim().min(1).max(1000);
 /**
@@ -44,37 +45,40 @@ export const TOOLS = {
 		_meta: REQUIRES_USER,
 	},
 	memory_list_proposals: {
-		title: "List the proposals of a project",
-		description: "Maintainer review: list the pending proposals of one project, with text, author and date. Read only.",
-		inputSchema: z.object({ projectId }),
+		title: "List the proposals of one proposer in a project",
+		description: [
+			"Maintainer review: list the pending proposals of one proposer in one project, with text, author and date. Read only.",
+			"The store lists the one proposals namespace of one person, so name the proposer. Ask the user for the person ids of the project members.",
+		].join(" "),
+		inputSchema: z.object({ projectId, actorId }),
 		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	memory_show_proposal: {
 		title: "Show one proposal",
-		description: "Maintainer review: show one pending proposal of a project by its record id. Read only.",
-		inputSchema: z.object({ projectId, memoryRecordId }),
+		description: "Maintainer review: show one pending proposal of a project by its proposer and its record id. Read only.",
+		inputSchema: z.object({ projectId, actorId, memoryRecordId }),
 		annotations: { readOnlyHint: true, openWorldHint: true },
 	},
 	memory_approve: {
 		title: "Approve a proposal",
 		description: [
-			"Maintainer review: approve one proposal of a project.",
-			"The core moves the record from the proposals namespace to the shared namespace of the project. Nothing is copied or deleted.",
-			"Before you call this tool, show the user the proposal text, the project and the record id, and ask the user to confirm.",
+			"Maintainer review: approve one proposal of a project. Name its proposer and its record id.",
+			"The core moves the record from the proposals namespace of the proposer to the shared namespace of the project. Nothing is copied or deleted.",
+			"Before you call this tool, show the user the proposal text, the project, the proposer and the record id, and ask the user to confirm.",
 			"Every member's agent recalls an approved record.",
 		].join(" "),
-		inputSchema: z.object({ projectId, memoryRecordId, reason: reason.optional() }),
+		inputSchema: z.object({ projectId, actorId, memoryRecordId, reason: reason.optional() }),
 		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 		_meta: REQUIRES_USER,
 	},
 	memory_reject: {
 		title: "Reject a proposal",
 		description: [
-			"Maintainer review: reject one proposal of a project. A reason is required; it stays in the private ledger.",
+			"Maintainer review: reject one proposal of a project. Name its proposer and its record id. A reason is required; it stays in the private ledger.",
 			"The core moves the record to the rejected namespace of its author in the project. Nothing is deleted. Recall never reads a rejected record.",
-			"Before you call this tool, show the user the proposal text, the project, the record id and the reason, and ask the user to confirm.",
+			"Before you call this tool, show the user the proposal text, the project, the proposer, the record id and the reason, and ask the user to confirm.",
 		].join(" "),
-		inputSchema: z.object({ projectId, memoryRecordId, reason }),
+		inputSchema: z.object({ projectId, actorId, memoryRecordId, reason }),
 		annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
 		_meta: REQUIRES_USER,
 	},
@@ -90,10 +94,11 @@ export function confirmPropose(expected) {
 		&& preview.projectId === expected.projectId && same(preview.text, expected.text);
 }
 
-/** The confirm callback of approve and reject: true only for the action, project, record and reason of the tool input. */
+/** The confirm callback of approve and reject: true only for the action, project, proposer, record and reason of the tool input. */
 export function confirmReview(action, expected) {
 	return async (preview) => Boolean(preview) && preview.action === action
 		&& preview.projectId === expected.projectId
+		&& preview.proposal?.actorId === expected.actorId
 		&& preview.proposal?.memoryRecordId === expected.memoryRecordId
 		&& (preview.reason === undefined || preview.reason === expected.reason);
 }
@@ -148,21 +153,24 @@ export function createHandlers(deps = {}) {
 			const result = await memory.propose({ text, projectId: target, origin }, confirmPropose({ text, projectId: target }));
 			return { memoryRecordId: result.memoryRecordId, namespace: result.namespace, projectId: target };
 		},
-		async memory_list_proposals({ projectId }) {
-			return { proposals: await (await core()).listProposals({ projectId }) };
+		// The live store lists one exact namespace, so every review tool names the proposer. Never the prefix form.
+		async memory_list_proposals({ projectId, actorId }) {
+			const memory = await core();
+			if (typeof actorId !== "string" || !actorId) throw memoryError("config");
+			return { proposals: await memory.listProposals({ projectId, actorId }) };
 		},
-		async memory_show_proposal({ projectId, memoryRecordId }) {
-			const proposal = await (await core()).showProposal({ projectId, memoryRecordId });
+		async memory_show_proposal({ projectId, actorId, memoryRecordId }) {
+			const proposal = await (await core()).showProposal({ projectId, actorId, memoryRecordId });
 			if (!proposal) throw memoryError("proposal_missing");
 			return proposal;
 		},
-		async memory_approve({ projectId, memoryRecordId, reason }) {
-			const input = { projectId, memoryRecordId, reason, reviewer: origin };
+		async memory_approve({ projectId, actorId, memoryRecordId, reason }) {
+			const input = { projectId, actorId, memoryRecordId, reason, reviewer: origin };
 			return (await core()).approve(input, confirmReview("approve", input));
 		},
-		async memory_reject({ projectId, memoryRecordId, reason }) {
+		async memory_reject({ projectId, actorId, memoryRecordId, reason }) {
 			if (typeof reason !== "string" || !reason.trim()) throw memoryError("not_confirmed");
-			const input = { projectId, memoryRecordId, reason, reviewer: origin };
+			const input = { projectId, actorId, memoryRecordId, reason, reviewer: origin };
 			return (await core()).reject(input, confirmReview("reject", input));
 		},
 	};

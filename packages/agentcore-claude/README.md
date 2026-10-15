@@ -73,16 +73,18 @@ Claude Code keeps the additional context of a hook in the session transcript und
 | Tool | Input | Core call |
 | --- | --- | --- |
 | `memory_propose` | `text`, optional `projectId` | `propose` into `/project/{projectId}/proposals/{actorId}/` |
-| `memory_list_proposals` | `projectId` | `listProposals` |
-| `memory_show_proposal` | `projectId`, `memoryRecordId` | `showProposal` |
-| `memory_approve` | `projectId`, `memoryRecordId`, optional `reason` | `approve`: a move to `/project/{projectId}/shared/` |
-| `memory_reject` | `projectId`, `memoryRecordId`, `reason` | `reject`: a move to `/project/{projectId}/rejected/{actorId}/` |
+| `memory_list_proposals` | `projectId`, `actorId` | `listProposals` on `/project/{projectId}/proposals/{actorId}/` |
+| `memory_show_proposal` | `projectId`, `actorId`, `memoryRecordId` | `showProposal` |
+| `memory_approve` | `projectId`, `actorId`, `memoryRecordId`, optional `reason` | `approve`: a move to `/project/{projectId}/shared/` |
+| `memory_reject` | `projectId`, `actorId`, `memoryRecordId`, `reason` | `reject`: a move to `/project/{projectId}/rejected/{actorId}/` |
 
 Approve and reject move the record. Nothing is copied or deleted. Only a maintainer of the project can list, approve or reject; IAM and the core refuse a member.
 
+The four review tools take the proposer `actorId`. The live store reads the namespace of a list as an exact match, so the core lists the one proposals namespace of the proposer and matches the record id there. The record id alone is not enough. A record of another proposer gives `proposal_missing`. No tool sends the list of the whole proposals tree: the live store answers it with no record. The person config holds no member list, so the tool description tells the agent to ask the maintainer for the member ids.
+
 Without `projectId`, `memory_propose` resolves the project from the working directory of the server process, or from `AGENTCORE_PROJECT`. A `projectId` in the tool input must be a project of the person's config; the core refuses every other project.
 
-The input schema refuses a project id outside `[a-z0-9][a-z0-9-]{0,63}` and a record id outside the `MemoryRecordId` shape of the service model (`mem-` and 36 to 46 more characters). `memory_reject` without a reason is refused before the core runs.
+The input schema refuses a project id or an `actorId` outside `[a-z0-9][a-z0-9-]{0,63}` and a record id outside the `MemoryRecordId` shape of the service model (`mem-` and 36 to 46 more characters). A review tool without `actorId` and `memory_reject` without a reason are refused before the core runs.
 
 A refusal is a tool error with one static code of the core, for example `not_member`, `not_maintainer`, `not_confirmed`, `proposal_missing` or `aws_denied`. An error without a core code answers `failed`. No answer and no log line holds an SDK message, a query or a record text. Standard output carries the protocol only. Logs are static lines on standard error, for example `agentcore-memory mcp: memory_propose refused (not_member)`.
 
@@ -93,8 +95,8 @@ The origin of every call is `agent: "claude-code"`, `harness: "claude-code"` and
 The person confirms each write in the permission dialog of Claude Code:
 
 1. The tool description of `memory_propose` tells the agent to show the text and the target project to the person and to ask before the call. The descriptions of `memory_approve` and `memory_reject` ask the same for the proposal.
-2. Claude Code shows the permission dialog with the tool input: the text, and the project when the agent names one; for a review, the project, the record id and the reason. The person approves or refuses.
-3. The confirm callback of the server returns true only when the core is about to write the input of the dialog: the same action, the same project, the same text (apart from white space at the ends), the same record id and the same reason.
+2. Claude Code shows the permission dialog with the tool input: the text, and the project when the agent names one; for a review, the project, the proposer, the record id and the reason. The person approves or refuses.
+3. The confirm callback of the server returns true only when the core is about to write the input of the dialog: the same action, the same project, the same text (apart from white space at the ends), the same proposer, the same record id and the same reason.
 
 The three tools that write (`memory_propose`, `memory_approve`, `memory_reject`) carry `_meta["anthropic/requiresUserInteraction"]: true` in their `tools/list` entry. With this flag Claude Code shows the permission prompt on every call, also in the `acceptEdits`, `auto` and `bypassPermissions` modes, and an allow rule does not skip it. In `dontAsk` mode Claude Code denies the call. See [Require approval for a specific tool](https://code.claude.com/docs/en/mcp#require-approval-for-a-specific-tool); the flag needs Claude Code v2.1.214 or later. The two read tools have no flag and follow the normal permission rules.
 
@@ -113,7 +115,7 @@ The server imports `zod` for the input schemas, so `zod` `4.6.7` is a direct dep
 
 ## Tests
 
-The tests use a fake core. They need no AWS credential, no network and no installed core.
+The tests use a fake core. One test runs the review tools with the real core and a fake client that matches the namespace of a list exactly, as the live store does. They need no AWS credential, no network and no installed core.
 
 ```sh
 node --test packages/agentcore-claude/tests/
@@ -122,7 +124,7 @@ printf '{"prompt":"hello","session_id":"s1","cwd":"/tmp"}' | AGENTCORE_MEMORY_DI
 
 The second command prints `{}` and exits 0.
 
-They cover the hook (the context block, the skip rules, exit 0 on a throwing core, the deadline, no file written, no request data on standard error), the server over stdio (`initialize`, `tools/list` with the five tools and the flag, `memory_propose` returns the record id, `memory_reject` without a reason is refused, a core error gives a static code only), the confirm callbacks, and the shape of `hooks.json`, `.mcp.json` and `plugin.json`.
+They cover the hook (the context block, the skip rules, exit 0 on a throwing core, the deadline, no file written, no request data on standard error), the server over stdio (`initialize`, `tools/list` with the five tools and the flag, `memory_propose` returns the record id, `memory_reject` without a reason is refused, a review tool without `actorId` is refused, a core error gives a static code only), the confirm callbacks, the review tools with the real core, and the shape of `hooks.json`, `.mcp.json` and `plugin.json`.
 
 ## Trial in Claude Code
 
@@ -131,7 +133,7 @@ One headless session of Claude Code 2.1.300 loaded the plugin with `--plugin-dir
 ## Not verified
 
 - The forced permission prompt of the flagged tools in the `acceptEdits`, `auto` and `bypassPermissions` modes. The documentation states it; no session here tested it.
-- The plugin with the real core. The tests use a fake of the contract.
+- The plugin with the real core in a Claude Code session. One offline test runs the review tools with the real core and a fake client; the other tests use a fake of the contract.
 - The working directory of the MCP server process in Claude Code. The project resolution without `projectId` depends on it.
 - Whether Claude Code gives `CLAUDE_CODE_SESSION_ID` to an MCP server process.
 - Every live AWS call: recall, propose, approve and reject.

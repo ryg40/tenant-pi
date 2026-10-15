@@ -221,6 +221,7 @@ export interface MemoryClient {
     searchCriteria: { searchQuery: string; topK: number };
     maxResults: number;
   }, options: { abortSignal: AbortSignal }): Promise<{ memoryRecordSummaries?: RecordSummaryLike[] }>;
+  /** The live store reads `namespace` as an exact match: a list on a tree prefix returns no record. */
   list(input: {
     memoryId: string;
     namespace: Namespace;
@@ -280,6 +281,8 @@ export interface LedgerEntry {
   text: string;
   metadata: Partial<RecordMetadata>;
   reason?: string;
+  /** The exact proposals namespace that the move names in `sourceNamespaces`. Absent in a line of an older core. */
+  sourceNamespace?: Namespace;
   targetNamespace?: Namespace;
 }
 
@@ -317,17 +320,20 @@ export interface MemoryCore {
   /** One record into the proposals namespace of the person for the project. Refuses without a project or a membership. */
   propose(input: { text: string; projectId: ProjectId; origin: Origin }, confirm: ConfirmFn): Promise<ProposeResult>;
 
-  /** The proposals of a project, all members, through the proposals prefix. Needs the maintainer role. */
+  /**
+   * The proposals of a project. Needs the maintainer role. With `actorId`: the one exact proposals namespace of
+   * that member, the live form. Without it: the proposals prefix, which the live store answers with no record.
+   */
   listProposals(input: { projectId: ProjectId; actorId?: ActorId }): Promise<ProposalSummary[]>;
 
-  /** One proposal by id, found through `listProposals`. Null when absent. */
-  showProposal(input: { projectId: ProjectId; memoryRecordId: string }): Promise<ProposalSummary | null>;
+  /** One proposal by id in the one exact proposals namespace of its proposer `actorId`. Null when absent. */
+  showProposal(input: { projectId: ProjectId; actorId: ActorId; memoryRecordId: string }): Promise<ProposalSummary | null>;
 
-  /** Journal, then move the proposal to the shared namespace of the project with `approvedBy` and `approvedAt`, then journal. No copy, no delete. */
-  approve(input: { projectId: ProjectId; memoryRecordId: string; reason?: string; reviewer: Origin }, confirm: ConfirmFn): Promise<ApproveResult>;
+  /** Find the proposal in the exact proposals namespace of `actorId`. Journal, then move it to the shared namespace of the project with `approvedBy` and `approvedAt`, then journal. No copy, no delete. */
+  approve(input: { projectId: ProjectId; actorId: ActorId; memoryRecordId: string; reason?: string; reviewer: Origin }, confirm: ConfirmFn): Promise<ApproveResult>;
 
-  /** Journal with the reason, then move the proposal to the rejected namespace of its actor with `rejectedBy` and `rejectedAt`, then journal. */
-  reject(input: { projectId: ProjectId; memoryRecordId: string; reason: string; reviewer: Origin }, confirm: ConfirmFn): Promise<RejectResult>;
+  /** Find the proposal in the exact proposals namespace of `actorId`. Journal with the reason, then move it to the rejected namespace of its actor with `rejectedBy` and `rejectedAt`, then journal. */
+  reject(input: { projectId: ProjectId; actorId: ActorId; memoryRecordId: string; reason: string; reviewer: Origin }, confirm: ConfirmFn): Promise<RejectResult>;
 
   /** Abort pending calls and destroy the client. */
   close(): Promise<void>;

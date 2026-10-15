@@ -233,7 +233,7 @@ test("the review functions need the maintainer role", async () => {
   const { core, calls } = makeCore(chen);
   await assert.rejects(core.listProposals({ projectId: "example-site" }), { code: "not_maintainer" });
   await assert.rejects(core.listProposals({ projectId: "other-project" }), { code: "not_member" });
-  await assert.rejects(core.showProposal({ projectId: "example-site", memoryRecordId: "x" }), { code: "not_maintainer" });
+  await assert.rejects(core.showProposal({ projectId: "example-site", actorId: "dana", memoryRecordId: "x" }), { code: "not_maintainer" });
   assert.deepEqual(calls, []);
   const maintainer = makeCore(bruno, { ledger: memoryLedger() });
   assert.deepEqual(await maintainer.core.listProposals({ projectId: "example-site" }), []);

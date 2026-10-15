@@ -11,11 +11,11 @@ const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
 const FIXTURE = join(PACKAGE, "tests", "fixtures", "registry.example.json");
 
 /** Runs the CLI with fakes. `answers` are the scripted terminal answers, in order. */
-async function run(argv, { config = chen, env = {}, answers = [], handlers, remote = null, ledger } = {}) {
+async function run(argv, { config = chen, env = {}, answers = [], handlers, records, remote = null, ledger } = {}) {
   const out = [];
   const err = [];
   const asked = [];
-  const fake = fakeClient(handlers);
+  const fake = fakeClient(handlers, records);
   const code = await main(argv, {
     env: { AGENTCORE_MEMORY_CONFIG: config ? JSON.stringify(config) : undefined, HOME: "/nonexistent", ...env },
     cwd: "/", stdout: { write: (text) => out.push(text) }, stderr: { write: (text) => err.push(text) },
@@ -99,7 +99,11 @@ test("propose shows the preview, asks y/N and writes only after yes", async () =
 
 test("there is no flag that skips the question; usage errors exit 2", async () => {
   for (const argv of [["propose", "--text", "x", "--yes"], ["propose", "--text", "x", "--file", "y"], ["propose"],
-    ["proposals", "reject", "--project", "example-site", "--id", "rec"], ["proposals"], ["unknown"], [],
+    ["proposals", "reject", "--project", "example-site", "--actor", "chen", "--id", "rec"], ["proposals"], ["unknown"], [],
+    ["proposals", "show", "--project", "example-site", "--id", "rec"],
+    ["proposals", "approve", "--project", "example-site", "--id", "rec"],
+    ["proposals", "reject", "--project", "example-site", "--id", "rec", "--reason", "x"],
+    ["proposals", "approve", "--project", "example-site", "--actor", "", "--id", "rec"],
     ["recall", "--query", ""], ["scope", "--registry", FIXTURE], ["recall", "--query", "x", "extra"]]) {
     const result = await run(argv, { answers: ["y"] });
     assert.equal(result.code, 2, argv.join(" "));
@@ -127,35 +131,51 @@ test("the kill switch, a missing config and --config", async () => {
   assert.deepEqual([refused.code, refused.err], [1, "agentcore-memory: config\n"]);
 });
 
-test("proposals list, show, approve and reject for a maintainer", async () => {
-  const listed = [summary("rec-chen", "/project/example-site/proposals/chen/", "Chen proposes a fact")];
-  const handlers = { list: () => ({ memoryRecordSummaries: listed }) };
-  const list = await run(["proposals", "list", "--project", "example-site"], { config: bruno, handlers });
-  assert.equal(list.code, 0);
-  assert.equal(JSON.parse(list.out.trim()).memoryRecordId, "rec-chen");
-  const byActor = await run(["proposals", "list", "--project", "example-site", "--actor", "chen"], { config: bruno, handlers });
+test("proposals list, show, approve and reject for a maintainer, with the proposer", async () => {
+  // The fake store answers like the live store: an exact namespace match, so the prefix list returns no record.
+  const records = [summary("rec-chen", "/project/example-site/proposals/chen/", "Chen proposes a fact"),
+    summary("rec-dana", "/project/example-site/proposals/dana/", "Dana proposes a fact")];
+  const list = await run(["proposals", "list", "--project", "example-site"], { config: bruno, records });
+  assert.deepEqual([list.code, list.out], [0, ""]);
+  assert.equal(list.calls[0].input.namespace, "/project/example-site/proposals/");
+  const byActor = await run(["proposals", "list", "--project", "example-site", "--actor", "chen"], { config: bruno, records });
   assert.equal(byActor.calls[0].input.namespace, "/project/example-site/proposals/chen/");
-  const show = await run(["proposals", "show", "--project", "example-site", "--id", "rec-chen"], { config: bruno, handlers });
+  assert.deepEqual(byActor.out.trim().split("\n").map((line) => JSON.parse(line).memoryRecordId), ["rec-chen"]);
+  const show = await run(["proposals", "show", "--project", "example-site", "--actor", "chen", "--id", "rec-chen"],
+    { config: bruno, records });
   assert.equal(JSON.parse(show.out).text, "Chen proposes a fact");
-  const absent = await run(["proposals", "show", "--project", "example-site", "--id", "rec-x"], { config: bruno, handlers });
-  assert.deepEqual([absent.code, absent.err], [1, "agentcore-memory: proposal_missing\n"]);
+  assert.deepEqual(show.calls.filter((call) => call.method === "list").map((call) => call.input.namespace),
+    ["/project/example-site/proposals/chen/"]);
+  for (const [actor, id] of [["chen", "rec-x"], ["dana", "rec-chen"]]) {
+    const absent = await run(["proposals", "show", "--project", "example-site", "--actor", actor, "--id", id], { config: bruno, records });
+    assert.deepEqual([absent.code, absent.err], [1, "agentcore-memory: proposal_missing\n"]);
+  }
 
   const ledger = memoryLedger();
-  const approve = await run(["proposals", "approve", "--project", "example-site", "--id", "rec-chen", "--reason", "Useful"],
-    { config: bruno, handlers, answers: ["y"], ledger });
+  const approve = await run(["proposals", "approve", "--project", "example-site", "--actor", "chen", "--id", "rec-chen",
+    "--reason", "Useful"], { config: bruno, records, answers: ["y"], ledger });
   assert.equal(approve.code, 0);
   assert.deepEqual(approve.asked, ["Confirm approve? [y/N] "]);
+  assert.match(approve.err, /"namespace": "\/project\/example-site\/proposals\/chen\/"/);
   assert.match(approve.err, /"targetNamespace": "\/project\/example-site\/shared\/"/);
   assert.deepEqual(JSON.parse(approve.out), { memoryRecordId: "rec-chen", sourceNamespace: "/project/example-site/proposals/chen/",
     targetNamespace: "/project/example-site/shared/" });
-  assert.deepEqual(ledger.lines.map((line) => line.action), ["approve", "approve-done"]);
+  assert.equal(approve.calls[0].input.namespace, "/project/example-site/proposals/chen/");
+  assert.deepEqual(approve.calls[1].input.records[0].sourceNamespaces, ["/project/example-site/proposals/chen/"]);
+  assert.deepEqual(ledger.lines.map((line) => [line.action, line.sourceNamespace]), [
+    ["approve", "/project/example-site/proposals/chen/"], ["approve-done", "/project/example-site/proposals/chen/"]]);
+  const wrongActor = await run(["proposals", "approve", "--project", "example-site", "--actor", "dana", "--id", "rec-chen"],
+    { config: bruno, records, answers: ["y"] });
+  assert.deepEqual([wrongActor.code, wrongActor.err, wrongActor.asked], [1, "agentcore-memory: proposal_missing\n", []]);
 
-  const reject = await run(["proposals", "reject", "--project", "example-site", "--id", "rec-chen", "--reason", "Duplicate"],
-    { config: bruno, handlers, answers: ["Y"] });
-  assert.equal(JSON.parse(reject.out).targetNamespace, "/project/example-site/rejected/chen/");
-  assert.match(reject.err, /"targetNamespace": "\/project\/example-site\/rejected\/chen\/"/);
+  const reject = await run(["proposals", "reject", "--project", "example-site", "--actor", "dana", "--id", "rec-dana",
+    "--reason", "Duplicate"], { config: bruno, records, answers: ["Y"] });
+  assert.equal(reject.code, 0);
+  assert.equal(JSON.parse(reject.out).targetNamespace, "/project/example-site/rejected/dana/");
+  assert.match(reject.err, /"targetNamespace": "\/project\/example-site\/rejected\/dana\/"/);
+  assert.equal(reject.calls[0].input.namespace, "/project/example-site/proposals/dana/");
 
-  const member = await run(["proposals", "list", "--project", "example-site"], { config: chen, handlers });
+  const member = await run(["proposals", "list", "--project", "example-site"], { config: chen, records });
   assert.deepEqual([member.code, member.err, member.calls], [1, "agentcore-memory: not_maintainer\n", []]);
 });
 

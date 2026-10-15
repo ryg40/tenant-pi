@@ -29,6 +29,7 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | [Compose seat](docs/guides/compose-seat.md) | A Pi profile in a container that you reach over SSH, with Docker Compose or Podman; not qualified. |
 | [Explainer](EXPLAINER.md) | The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
 | [Architecture](docs/architecture.md) | The installed environment: terminal, selected Pi profile, runtime modules, state and optional services. Open the self-contained `docs/architecture.html` from disk. Five views include model-route alternatives, memory data flows and a searchable module catalog. The guide explains navigation and rebuilding. |
+| [Shared memory tutorials](EXPLAINER.html) | Eight beginner tutorials of the optional shared AgentCore memory: key handoff, recall, propose, review and offboarding in rendered terminal, Pi and Claude Code frames, with four example people. Open the self-contained file from disk. |
 | [Providers](docs/guides/providers.md) | Codex login, and llama-swap and vLLM as direct providers in `models.json` of the profile. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
 | [After the install](POST_INSTALL.md) | The commands for each update and change after a base install. You do not read the install text again. |

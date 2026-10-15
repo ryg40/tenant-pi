@@ -131,9 +131,10 @@ function proposalActor(projectId, namespace) {
 }
 
 /**
- * The namespaces that list the proposals of a project. The prefix form is one list call on
- * `/project/{p}/proposals/`. The fallback, when the live store does not treat `namespace` as a prefix,
- * is one exact proposals namespace per member: the caller passes `actorId` once per member.
+ * The namespaces that list the proposals of a project. The live store reads the `namespace` of a list as an
+ * exact match. So the live form is one exact proposals namespace per member: the caller passes `actorId` once
+ * per member. Without `actorId` this gives the prefix form `/project/{p}/proposals/`, which the live store
+ * answers with no record. Only `listProposals` without an actor, the CLI `proposals list`, uses that form.
  */
 export function proposalListNamespaces(projectId, actorId) {
   return actorId === undefined || actorId === null
@@ -494,12 +495,20 @@ export function createCore(input, deps = {}) {
     return (await listTree(projectId, actorId)).map((item) => item.proposal).filter(Boolean);
   }
 
-  async function showProposal({ projectId, memoryRecordId }) {
-    return (await listProposals({ projectId })).find((proposal) => proposal.memoryRecordId === memoryRecordId) ?? null;
+  /** The listed summaries of the one exact proposals namespace of the proposer. Never the prefix form. */
+  async function listProposer(projectId, actorId) {
+    requireMaintainer(projectId);
+    return listTree(projectId, validateId(actorId));
   }
 
-  async function findProposal(projectId, memoryRecordId) {
-    const found = (await listTree(projectId)).filter((item) => item.memoryRecordId === memoryRecordId);
+  // The record id alone is not enough: the live store lists one exact namespace, so the proposer names it.
+  async function showProposal({ projectId, actorId, memoryRecordId }) {
+    return (await listProposer(projectId, actorId)).map((item) => item.proposal)
+      .find((proposal) => proposal?.memoryRecordId === memoryRecordId) ?? null;
+  }
+
+  async function findProposal(projectId, actorId, memoryRecordId) {
+    const found = (await listProposer(projectId, actorId)).filter((item) => item.memoryRecordId === memoryRecordId);
     const proposal = found.find((item) => item.proposal)?.proposal;
     if (proposal) return proposal;
     throw failure(found.length ? "proposal_outside_project" : "proposal_missing");
@@ -510,15 +519,16 @@ export function createCore(input, deps = {}) {
    * result. The metadata map is complete (the proposal keys plus the review keys), so a replace and a merge of the
    * map give the same keys. No content: the text stays as it is. Nothing is copied and nothing is deleted.
    */
-  async function move(action, { projectId, memoryRecordId, reason, reviewer }, confirm) {
+  async function move(action, { projectId, actorId, memoryRecordId, reason, reviewer }, confirm) {
     requireMaintainer(projectId);
     if (typeof memoryRecordId !== "string" || !memoryRecordId) throw failure("proposal_missing");
+    validateId(actorId);
     if (reason !== undefined && typeof reason !== "string") throw failure("text_empty");
     if (action === "reject" && (typeof reason !== "string" || !reason.trim())) throw failure("text_empty");
     if (reason !== undefined && codePoints(reason) > MAX_TEXT) throw failure("text_too_long");
     checkOrigin(reviewer);
     const ledgerFile = ledgerOf();
-    const proposal = await findProposal(projectId, memoryRecordId);
+    const proposal = await findProposal(projectId, actorId, memoryRecordId);
     const targetNamespace = action === "approve"
       ? namespaces.projectShared(projectId) : namespaces.rejected(projectId, proposal.actorId);
     // The ledger is read before the question, so a refused ledger path stops before anyone answers.
@@ -538,7 +548,8 @@ export function createCore(input, deps = {}) {
         : { rejectedBy: config.actorId, rejectedAt: at.toISOString() }) };
     const entry = {
       maintainer: config.actorId, projectId, proposalRecordId: memoryRecordId, actorId: proposal.actorId,
-      text: proposal.text, metadata: proposal.metadata, ...(reason !== undefined ? { reason } : {}), targetNamespace,
+      text: proposal.text, metadata: proposal.metadata, ...(reason !== undefined ? { reason } : {}),
+      sourceNamespace: proposal.namespace, targetNamespace,
     };
     try {
       await ledgerFile.append({ at: at.toISOString(), action, ...entry });

@@ -14,11 +14,13 @@ const USAGE = `Usage: agentcore-memory [--config <file>] <command>
   recall --query <text> [--project <id>]
   propose (--text <text> | --file <path>) [--project <id>]
   proposals list --project <id> [--actor <id>]
-  proposals show --project <id> --id <recordId>
-  proposals approve --project <id> --id <recordId> [--reason <text>]
-  proposals reject --project <id> --id <recordId> --reason <text>
+  proposals show --project <id> --actor <id> --id <recordId>
+  proposals approve --project <id> --actor <id> --id <recordId> [--reason <text>]
+  proposals reject --project <id> --actor <id> --id <recordId> --reason <text>
   scope --registry <file> --person <actorId>
 
+--actor names the proposer. The store lists one exact proposals namespace,
+so a list without --actor returns no record on the live store.
 Each write shows a preview and asks y/N on the terminal. No flag skips the question.
 `;
 
@@ -27,9 +29,9 @@ const COMMANDS = {
   recall: ["query", "project"],
   propose: ["text", "file", "project"],
   "proposals list": ["project", "actor"],
-  "proposals show": ["project", "id"],
-  "proposals approve": ["project", "id", "reason"],
-  "proposals reject": ["project", "id", "reason"],
+  "proposals show": ["project", "actor", "id"],
+  "proposals approve": ["project", "actor", "id", "reason"],
+  "proposals reject": ["project", "actor", "id", "reason"],
   scope: ["registry", "person"],
 };
 const OPTIONS = Object.fromEntries(["config", "cwd", "query", "project", "text", "file", "actor", "id", "reason",
@@ -153,21 +155,21 @@ export async function main(argv, deps = {}) {
         for (const proposal of await core.listProposals({ projectId: values.project, actorId: values.actor })) print(proposal);
         break;
       case "proposals show": {
-        need(values, "project", "id");
-        const proposal = await core.showProposal({ projectId: values.project, memoryRecordId: values.id });
+        need(values, "project", "actor", "id");
+        const proposal = await core.showProposal({ projectId: values.project, actorId: values.actor, memoryRecordId: values.id });
         if (!proposal) throw new MemoryError("proposal_missing");
         print(proposal);
         break;
       }
       case "proposals approve":
-        need(values, "project", "id");
-        print(await core.approve({ projectId: values.project, memoryRecordId: values.id, reason: values.reason, reviewer: origin },
-          confirm));
+        need(values, "project", "actor", "id");
+        print(await core.approve({ projectId: values.project, actorId: values.actor, memoryRecordId: values.id,
+          reason: values.reason, reviewer: origin }, confirm));
         break;
       case "proposals reject":
-        need(values, "project", "id", "reason");
-        print(await core.reject({ projectId: values.project, memoryRecordId: values.id, reason: values.reason, reviewer: origin },
-          confirm));
+        need(values, "project", "actor", "id", "reason");
+        print(await core.reject({ projectId: values.project, actorId: values.actor, memoryRecordId: values.id,
+          reason: values.reason, reviewer: origin }, confirm));
         break;
     }
     return 0;

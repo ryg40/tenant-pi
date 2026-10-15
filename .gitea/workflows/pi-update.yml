@@ -32,10 +32,8 @@
           }
         },
         {
-          "uses": "https://github.com/actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-          "with": {
-            "python-version": "3.11"
-          }
+          "name": "Check runner Python",
+          "run": "python3 -c 'import sys; print(sys.version); sys.exit(0 if sys.version_info[:2] == (3, 11) else \"Python 3.11 is required in the runner image\")'"
         },
         {
           "uses": "https://github.com/actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
@@ -78,10 +76,8 @@
           }
         },
         {
-          "uses": "https://github.com/actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-          "with": {
-            "python-version": "3.11"
-          }
+          "name": "Check runner Python",
+          "run": "python3 -c 'import sys; print(sys.version); sys.exit(0 if sys.version_info[:2] == (3, 11) else \"Python 3.11 is required in the runner image\")'"
         },
         {
           "id": "preflight",
@@ -126,10 +122,8 @@
           }
         },
         {
-          "uses": "https://github.com/actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-          "with": {
-            "python-version": "3.11"
-          }
+          "name": "Check runner Python",
+          "run": "python3 -c 'import sys; print(sys.version); sys.exit(0 if sys.version_info[:2] == (3, 11) else \"Python 3.11 is required in the runner image\")'"
         },
         {
           "uses": "https://github.com/actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
@@ -173,10 +167,8 @@
           }
         },
         {
-          "uses": "https://github.com/actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-          "with": {
-            "python-version": "3.11"
-          }
+          "name": "Check runner Python",
+          "run": "python3 -c 'import sys; print(sys.version); sys.exit(0 if sys.version_info[:2] == (3, 11) else \"Python 3.11 is required in the runner image\")'"
         },
         {
           "uses": "https://github.com/actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
@@ -221,10 +213,8 @@
           }
         },
         {
-          "uses": "https://github.com/actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-          "with": {
-            "python-version": "3.11"
-          }
+          "name": "Check runner Python",
+          "run": "python3 -c 'import sys; print(sys.version); sys.exit(0 if sys.version_info[:2] == (3, 11) else \"Python 3.11 is required in the runner image\")'"
         },
         {
           "uses": "https://github.com/actions/download-artifact@9bc31d5ccc31df68ecc42ccf4149144866c47d8a",

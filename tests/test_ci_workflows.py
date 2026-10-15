@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -26,6 +28,9 @@ WORKFLOWS = (".gitea/workflows/pi-update.yml", ".gitea/workflows/checks.yml", ".
 CHECKS = ("python3 -m unittest discover -s tests -q", "python3 scripts/examples.py",
           "python3 scripts/validate.py --overlay config/config.example.json",
           "python3 scripts/publish_check.py", "python3 scripts/doc_check.py")
+PYTHON_CHECK = ("python3 -c 'import sys; print(sys.version); "
+                'sys.exit(0 if sys.version_info[:2] == (3, 11) else '
+                '"Python 3.11 is required in the runner image")' + "'")
 
 
 class Workflows(unittest.TestCase):
@@ -53,6 +58,9 @@ class Workflows(unittest.TestCase):
                     if "run" not in step:
                         continue
                     command = step["run"]
+                    if command == PYTHON_CHECK:
+                        self.assertTrue(name.startswith(".gitea/"))
+                        continue
                     if command not in CHECKS:
                         self.assertRegex(command, r"^python3 scripts/ci_update.py (detect|preflight|qualify|notes|request) --directory \.local/ci(?:/(detect|preflight|qualify|notes))?$")
                     if command.startswith("python3 -m unittest"):
@@ -71,8 +79,36 @@ class Workflows(unittest.TestCase):
             self.assertNotIn("secrets.", text)
             self.assertNotIn("TOKEN", text)
             self.assertNotIn("npm", text)
-            self.assertEqual([s["run"] for s in workflow["jobs"]["offline"]["steps"] if "run" in s], list(CHECKS))
+            expected = ([PYTHON_CHECK] if name.startswith(".gitea/") else []) + list(CHECKS)
+            self.assertEqual([s["run"] for s in workflow["jobs"]["offline"]["steps"] if "run" in s], expected)
             self.assertFalse(workflow["jobs"]["offline"]["steps"][0]["with"]["persist-credentials"])
+
+    def test_python_setup_matches_runner_platform(self):
+        for name in WORKFLOWS[:2]:
+            for job in self.load(name)["jobs"].values():
+                steps = job["steps"]
+                self.assertEqual(steps[1], {"name": "Check runner Python", "run": PYTHON_CHECK})
+                self.assertNotIn("setup-python@", json.dumps(steps))
+                self.assertEqual(sum(step.get("run") == PYTHON_CHECK for step in steps), 1)
+        github_steps = self.load(WORKFLOWS[2])["jobs"]["offline"]["steps"]
+        self.assertEqual(github_steps[1], {
+            "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
+            "with": {"python-version": "3.11"},
+        })
+
+    def test_runner_python_check_accepts_only_python_311(self):
+        command = shlex.split(PYTHON_CHECK)
+        self.assertEqual(command[:2], ["python3", "-c"])
+        for version in ((3, 11, 2), (3, 11, 14), (3, 10, 16), (3, 12, 0), (4, 0, 0)):
+            with self.subTest(version=version):
+                result = subprocess.run(
+                    [sys.executable, "-c", f"import sys; sys.version_info = {version!r}; " + command[2]],
+                    capture_output=True, text=True, timeout=10,
+                )
+                self.assertTrue(result.stdout.strip())
+                self.assertEqual(result.returncode, 0 if version[:2] == (3, 11) else 1)
+                if result.returncode:
+                    self.assertIn("Python 3.11 is required in the runner image", result.stderr)
 
     def test_update_gates_and_artifacts(self):
         workflow = self.load(WORKFLOWS[0])

@@ -4,7 +4,7 @@ title: The shared memory core
 description: packages/agentcore-memory-core is the one library of the shared memory - config, namespace builder, project resolution, recall, propose, the review moves, the registry scopes and the review CLI - with no delete action.
 tags: [agentcore, package, library, cli]
 resource: ../../packages/agentcore-memory-core/
-generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T18:10:00Z}
+generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T19:33:00Z}
 sources:
   - id: core-readme
     resource: ../../packages/agentcore-memory-core/README.md
@@ -29,7 +29,7 @@ The contract is `src/types.ts`; `src/index.mjs` implements it.
 | Project | `resolveProject` | The environment variable, then the Git remote, then the directory. |
 | Recall | `recall`, `formatContext` | One query per namespace of the recall set; one context block for both harnesses. |
 | Propose | `propose` | One record into the person's proposals namespace, after the confirm callback. |
-| Review | `listProposals`, `showProposal`, `approve`, `reject` | Maintainer actions. Approve and reject are moves. |
+| Review | `listProposals`, `showProposal`, `approve`, `reject` | Maintainer actions. Show, approve and reject take the proposer and list its one exact proposals namespace. Approve and reject are moves. |
 | Registry | `validateRegistry`, `personScope`, `submitScope`, `workerScope`, `renderPersonConfig` | The one place that decides the `read`, `write` and `move` patterns of an identity. No scope has a delete. |
 
 ## How it behaves
@@ -47,11 +47,13 @@ The contract is `src/types.ts`; `src/index.mjs` implements it.
 
 | Command | Does |
 | --- | --- |
-| `proposals list --project <id> [--actor <id>]` | One JSON line per proposal. |
-| `proposals show --project <id> --id <recordId>` | One proposal. |
-| `proposals approve --project <id> --id <recordId>` | Shows the target, asks `y/N`, moves the record to the shared namespace. |
-| `proposals reject --project <id> --id <recordId> --reason <text>` | Shows the target, asks `y/N`, moves the record to the rejected namespace. |
+| `proposals list --project <id> [--actor <id>]` | One JSON line per proposal of the member `--actor`. Without `--actor` the live store returns no record. |
+| `proposals show --project <id> --actor <id> --id <recordId>` | One proposal of the proposer `--actor`. |
+| `proposals approve --project <id> --actor <id> --id <recordId>` | Shows the target, asks `y/N`, moves the record to the shared namespace. |
+| `proposals reject --project <id> --actor <id> --id <recordId> --reason <text>` | Shows the target, asks `y/N`, moves the record to the rejected namespace. |
 | `scope --registry <file> --person <actorId>` | Prints the scope and the person config. No AWS call. |
+
+The live store reads the namespace of `ListMemoryRecords` as an exact match: a list on the proposals tree of a project returns no record. So `--actor` names the proposer, and the record id alone is not enough.
 
 The CLI also has `resolve-project`, `recall` and `propose`. An error prints one line `agentcore-memory: <code>` and exits with 1.
 
@@ -64,7 +66,7 @@ npm --prefix packages/agentcore-memory-core ci --ignore-scripts
 node --test packages/agentcore-memory-core/tests/
 ```
 
-Not verified: the core against a live store; the prefix form of `ListMemoryRecords` on a proposals tree. The fallback is one list per member with `--actor`.
+Not verified: the core against a live store; show, approve and reject with `--actor` on the live store.
 
 ## Links
 

@@ -1,7 +1,8 @@
 // A fake of the core module (`loadConfig`, `createCore`) for the plugin tests.
 // It keeps the contract shapes of `agentcore-memory-core/src/types.ts`:
-// approve and reject are moves. It records each call. It never touches AWS,
-// the network or the file system.
+// approve and reject are moves. Like the live store, the review calls find a
+// proposal only in the exact proposals namespace of its proposer `actorId`.
+// It records each call. It never touches AWS, the network or the file system.
 
 export const PROPOSAL_ID = "mem-example-proposal-000000000000000000000";
 export const CREATED_ID = "mem-example-created-0000000000000000000000";
@@ -92,16 +93,18 @@ export function fakeCoreModule(options = {}) {
 					calls.push({ method: "listProposals", input });
 					fail("listProposals");
 					if (input.projectId !== "example-site") throw codeError("not_maintainer");
-					return [proposal];
+					// Without an actor the live store answers the prefix form with no record.
+					return input.actorId === proposal.actorId ? [proposal] : [];
 				},
 				async showProposal(input) {
 					calls.push({ method: "showProposal", input });
 					fail("showProposal");
-					return input.memoryRecordId === PROPOSAL_ID ? proposal : null;
+					return input.actorId === proposal.actorId && input.memoryRecordId === PROPOSAL_ID ? proposal : null;
 				},
 				async approve(input, confirm) {
 					calls.push({ method: "approve", input });
 					fail("approve");
+					if (input.actorId !== proposal.actorId || input.memoryRecordId !== PROPOSAL_ID) throw codeError("proposal_missing");
 					const ok = await confirm(preview({ action: "approve", projectId: input.projectId, proposal,
 						targetNamespace: `/project/${input.projectId}/shared/`, reason: input.reason }));
 					if (ok !== true) throw codeError("not_confirmed");
@@ -110,6 +113,7 @@ export function fakeCoreModule(options = {}) {
 				async reject(input, confirm) {
 					calls.push({ method: "reject", input });
 					fail("reject");
+					if (input.actorId !== proposal.actorId || input.memoryRecordId !== PROPOSAL_ID) throw codeError("proposal_missing");
 					const targetNamespace = `/project/${input.projectId}/rejected/${proposal.actorId}/`;
 					const ok = await confirm(preview({ action: "reject", projectId: input.projectId, proposal, targetNamespace, reason: input.reason }));
 					if (ok !== true) throw codeError("not_confirmed");

@@ -93,6 +93,12 @@ PUBLISH = (
     "docs/guides/compose-seat.md",
     "docs/architecture.html", "docs/architecture.md", "docs/architecture/model.json",
     "scripts/architecture_build.py", "tests/test_architecture_build.py",
+    "EXPLAINER.html", "scripts/explainer_build.py", "tests/test_explainer_build.py",
+    "docs/explainer/page.json", "docs/explainer/explainer.css", "docs/explainer/template.html",
+    "docs/explainer/tutorials/01-dana-receives-her-key.json", "docs/explainer/tutorials/02-dana-first-pi-session.json",
+    "docs/explainer/tutorials/03-dana-proposes-a-record.json", "docs/explainer/tutorials/04-alice-reviews.json",
+    "docs/explainer/tutorials/05-dana-sees-the-approved-record.json", "docs/explainer/tutorials/06-chen-in-claude-code.json",
+    "docs/explainer/tutorials/07-a-directory-without-a-project.json", "docs/explainer/tutorials/08-dana-leaves.json",
 )
 # Package directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.

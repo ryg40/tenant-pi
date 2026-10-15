@@ -1,0 +1,756 @@
+{
+  "title": "Dana receives her key",
+  "who": "Dana, a new member of `example-project`",
+  "goal": "Dana gets her own access key from Alice. She stores it, checks it and reads the memory once, before she uses an agent.",
+  "place": "Dana's laptop. A terminal in her home directory, `/home/dana`.",
+  "steps": [
+    {
+      "title": "Alice prepares Dana's access",
+      "before": [
+        "Alice adds Dana to her private registry: one person entry and one member entry in `example-project`.",
+        "Then she runs the registry script. A dry run is the default: the script prints the plan and changes nothing."
+      ],
+      "frame": {
+        "kind": "shell",
+        "title": "alice@desk: ~/tenant-pi",
+        "source": "`packages/agentcore-memory-admin/src/cli.mjs`, run with the fake clients of its tests",
+        "live": false,
+        "lines": [
+          {
+            "t": "cmd",
+            "prompt": "alice@desk:~/tenant-pi$",
+            "text": "node packages/agentcore-memory-admin/bin/registry.mjs render --registry ~/.config/agentcore-memory-admin/registry.json --person dana"
+          },
+          {
+            "t": "out",
+            "text": "person: dana (Dana Dunn)"
+          },
+          {
+            "t": "out",
+            "text": "iam user: pi-memory-person-dana"
+          },
+          {
+            "t": "out",
+            "text": "inline policy: agentcore-memory"
+          },
+          {
+            "t": "out",
+            "text": "policy characters without white space: 746 of 2048"
+          },
+          {
+            "t": "out",
+            "text": "policy:"
+          },
+          {
+            "t": "out",
+            "text": "{"
+          },
+          {
+            "t": "out",
+            "text": "  \"Version\": \"2012-10-17\","
+          },
+          {
+            "t": "out",
+            "text": "  \"Statement\": ["
+          },
+          {
+            "t": "out",
+            "text": "    {"
+          },
+          {
+            "t": "out",
+            "text": "      \"Sid\": \"Read\","
+          },
+          {
+            "t": "out",
+            "text": "      \"Effect\": \"Allow\","
+          },
+          {
+            "t": "out",
+            "text": "      \"Action\": ["
+          },
+          {
+            "t": "out",
+            "text": "        \"bedrock-agentcore:RetrieveMemoryRecords\","
+          },
+          {
+            "t": "out",
+            "text": "        \"bedrock-agentcore:ListMemoryRecords\""
+          },
+          {
+            "t": "out",
+            "text": "      ],"
+          },
+          {
+            "t": "out",
+            "text": "      \"Resource\": \"arn:aws:bedrock-agentcore:us-east-1:<account>:memory/<memoryId>\","
+          },
+          {
+            "t": "out",
+            "text": "      \"Condition\": {"
+          },
+          {
+            "t": "out",
+            "text": "        \"StringLike\": {"
+          },
+          {
+            "t": "out",
+            "text": "          \"bedrock-agentcore:namespace\": ["
+          },
+          {
+            "t": "out",
+            "text": "            \"/shared/*\","
+          },
+          {
+            "t": "out",
+            "text": "            \"/actor/dana/*\","
+          },
+          {
+            "t": "out",
+            "text": "            \"/project/example-project/shared/*\","
+          },
+          {
+            "t": "out",
+            "text": "            \"/project/example-project/proposals/dana/*\""
+          },
+          {
+            "t": "out",
+            "text": "          ]"
+          },
+          {
+            "t": "out",
+            "text": "        }"
+          },
+          {
+            "t": "out",
+            "text": "      }"
+          },
+          {
+            "t": "out",
+            "text": "    },"
+          },
+          {
+            "t": "out",
+            "text": "    {"
+          },
+          {
+            "t": "out",
+            "text": "      \"Sid\": \"Write\","
+          },
+          {
+            "t": "out",
+            "text": "      \"Effect\": \"Allow\","
+          },
+          {
+            "t": "out",
+            "text": "      \"Action\": ["
+          },
+          {
+            "t": "out",
+            "text": "        \"bedrock-agentcore:BatchCreateMemoryRecords\""
+          },
+          {
+            "t": "out",
+            "text": "      ],"
+          },
+          {
+            "t": "out",
+            "text": "      \"Resource\": \"arn:aws:bedrock-agentcore:us-east-1:<account>:memory/<memoryId>\","
+          },
+          {
+            "t": "out",
+            "text": "      \"Condition\": {"
+          },
+          {
+            "t": "out",
+            "text": "        \"ForAllValues:StringLike\": {"
+          },
+          {
+            "t": "out",
+            "text": "          \"bedrock-agentcore:namespace\": ["
+          },
+          {
+            "t": "out",
+            "text": "            \"/project/example-project/proposals/dana/*\""
+          },
+          {
+            "t": "out",
+            "text": "          ]"
+          },
+          {
+            "t": "out",
+            "text": "        },"
+          },
+          {
+            "t": "out",
+            "text": "        \"Null\": {"
+          },
+          {
+            "t": "out",
+            "text": "          \"bedrock-agentcore:namespace\": \"false\""
+          },
+          {
+            "t": "out",
+            "text": "        }"
+          },
+          {
+            "t": "out",
+            "text": "      }"
+          },
+          {
+            "t": "out",
+            "text": "    }"
+          },
+          {
+            "t": "out",
+            "text": "  ]"
+          },
+          {
+            "t": "out",
+            "text": "}"
+          },
+          {
+            "t": "out",
+            "text": "person config:"
+          },
+          {
+            "t": "out",
+            "text": "{"
+          },
+          {
+            "t": "out",
+            "text": "  \"schemaVersion\": 1,"
+          },
+          {
+            "t": "out",
+            "text": "  \"memoryId\": \"<memoryId>\","
+          },
+          {
+            "t": "out",
+            "text": "  \"region\": \"us-east-1\","
+          },
+          {
+            "t": "out",
+            "text": "  \"actorId\": \"dana\","
+          },
+          {
+            "t": "out",
+            "text": "  \"projects\": ["
+          },
+          {
+            "t": "out",
+            "text": "    {"
+          },
+          {
+            "t": "out",
+            "text": "      \"projectId\": \"example-project\","
+          },
+          {
+            "t": "out",
+            "text": "      \"role\": \"member\","
+          },
+          {
+            "t": "out",
+            "text": "      \"remotes\": ["
+          },
+          {
+            "t": "out",
+            "text": "        \"https://git.example.com/example/example-project.git\""
+          },
+          {
+            "t": "out",
+            "text": "      ]"
+          },
+          {
+            "t": "out",
+            "text": "    }"
+          },
+          {
+            "t": "out",
+            "text": "  ]"
+          },
+          {
+            "t": "out",
+            "text": "}"
+          },
+          {
+            "t": "out",
+            "text": "handoff note:"
+          },
+          {
+            "t": "out",
+            "text": "Handoff for dana:"
+          },
+          {
+            "t": "out",
+            "text": "1. Store the access key in the AWS profile \"pi-memory-person-dana\" of ~/.aws/credentials (file mode 0600)."
+          },
+          {
+            "t": "out",
+            "text": "2. Save the person config as ~/.config/agentcore-memory/config.json and add \"profile\": \"pi-memory-person-dana\"."
+          },
+          {
+            "t": "out",
+            "text": "3. Delete the Bitwarden Send message after the copy. The config file holds no key."
+          },
+          {
+            "t": "out",
+            "text": "dry run: no AWS call; nothing changed"
+          }
+        ]
+      },
+      "after": [
+        "The policy allows two read actions on four namespace trees, and one write action on Dana's proposals only. It has no delete action.",
+        "The coordinator runs the apply step with the admin login after Alice says yes. The step creates the IAM user, the inline policy and one access key. It writes the key into a private file and never prints it."
+      ]
+    },
+    {
+      "title": "Dana opens the Bitwarden Send",
+      "before": [
+        "Alice sends Dana a link in a message. She tells Dana the password of the link by voice, not in the message.",
+        "The link opens once and expires after one day. Dana opens it and types the password."
+      ],
+      "frame": {
+        "kind": "send",
+        "title": "Bitwarden Send, opened once with the password",
+        "source": "the key file form and the handoff steps of `packages/agentcore-memory-admin/README.md`, and the config that `provisionApply` writes in `packages/agentcore-memory-admin/src/iam.mjs`",
+        "live": false,
+        "lines": [
+          {
+            "t": "out",
+            "text": "[pi-memory-person-dana]"
+          },
+          {
+            "t": "out",
+            "text": "aws_access_key_id = <access key id>"
+          },
+          {
+            "t": "out",
+            "text": "aws_secret_access_key = <secret access key>"
+          },
+          {
+            "t": "blank"
+          },
+          {
+            "t": "out",
+            "text": "{"
+          },
+          {
+            "t": "out",
+            "text": "  \"schemaVersion\": 1,"
+          },
+          {
+            "t": "out",
+            "text": "  \"memoryId\": \"mem-EXAMPLE\","
+          },
+          {
+            "t": "out",
+            "text": "  \"region\": \"us-east-1\","
+          },
+          {
+            "t": "out",
+            "text": "  \"actorId\": \"dana\","
+          },
+          {
+            "t": "out",
+            "text": "  \"projects\": ["
+          },
+          {
+            "t": "out",
+            "text": "    {"
+          },
+          {
+            "t": "out",
+            "text": "      \"projectId\": \"example-project\","
+          },
+          {
+            "t": "out",
+            "text": "      \"role\": \"member\","
+          },
+          {
+            "t": "out",
+            "text": "      \"remotes\": ["
+          },
+          {
+            "t": "out",
+            "text": "        \"https://git.example.com/example/example-project.git\""
+          },
+          {
+            "t": "out",
+            "text": "      ]"
+          },
+          {
+            "t": "out",
+            "text": "    }"
+          },
+          {
+            "t": "out",
+            "text": "  ],"
+          },
+          {
+            "t": "out",
+            "text": "  \"profile\": \"pi-memory-person-dana\""
+          },
+          {
+            "t": "out",
+            "text": "}"
+          }
+        ]
+      },
+      "after": [
+        "The Send holds two texts: the key in the form of the AWS credentials file, and Dana's person config.",
+        "Dana copies both now. The link does not open a second time. Then she deletes the message with the link."
+      ]
+    },
+    {
+      "title": "Dana stores the key in an AWS profile",
+      "before": [
+        "The AWS command line program `aws` stores a key under a profile name. The name must be `pi-memory-person-dana`, because the person config names it.",
+        "Dana pastes the two parts of the key when `aws configure` asks for them."
+      ],
+      "frame": {
+        "kind": "shell",
+        "title": "dana@laptop: ~",
+        "source": "the [AWS CLI documentation of `aws configure`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)",
+        "live": false,
+        "lines": [
+          {
+            "t": "cmd",
+            "prompt": "dana@laptop:~$",
+            "text": "aws configure --profile pi-memory-person-dana"
+          },
+          {
+            "t": "ask",
+            "text": "AWS Access Key ID [None]: ",
+            "answer": "<access key id>"
+          },
+          {
+            "t": "ask",
+            "text": "AWS Secret Access Key [None]: ",
+            "answer": "<secret access key>"
+          },
+          {
+            "t": "ask",
+            "text": "Default region name [None]: ",
+            "answer": "us-east-1"
+          },
+          {
+            "t": "ask",
+            "text": "Default output format [None]: ",
+            "answer": "json"
+          },
+          {
+            "t": "cmd",
+            "prompt": "dana@laptop:~$",
+            "text": "chmod 600 ~/.aws/credentials"
+          }
+        ]
+      },
+      "after": [
+        "The key is now in `~/.aws/credentials`, in the section `[pi-memory-person-dana]`. The region goes to `~/.aws/config`.",
+        "`chmod 600` lets only Dana read and write the file."
+      ]
+    },
+    {
+      "title": "Dana checks who she is",
+      "before": [
+        "`aws sts get-caller-identity` asks AWS which identity a key belongs to. It reads no record and needs no right in the policy."
+      ],
+      "frame": {
+        "kind": "shell",
+        "title": "dana@laptop: ~",
+        "source": "the [AWS CLI reference of `get-caller-identity`](https://docs.aws.amazon.com/cli/latest/reference/sts/get-caller-identity.html)",
+        "live": false,
+        "lines": [
+          {
+            "t": "cmd",
+            "prompt": "dana@laptop:~$",
+            "text": "aws sts get-caller-identity --profile pi-memory-person-dana"
+          },
+          {
+            "t": "out",
+            "text": "{"
+          },
+          {
+            "t": "out",
+            "text": "    \"UserId\": \"AIDASAMPLEUSERID\","
+          },
+          {
+            "t": "out",
+            "text": "    \"Account\": \"123456789012\","
+          },
+          {
+            "t": "out",
+            "text": "    \"Arn\": \"arn:aws:iam::123456789012:user/pi-memory-person-dana\""
+          },
+          {
+            "t": "out",
+            "text": "}"
+          }
+        ]
+      },
+      "after": [
+        "The `Arn` ends with `user/pi-memory-person-dana`. The key belongs to Dana's IAM user."
+      ]
+    },
+    {
+      "title": "Dana reads the global namespace",
+      "before": [
+        "Dana's policy allows a list on `/shared/`. A list reads and changes nothing, so it is a safe first test."
+      ],
+      "frame": {
+        "kind": "shell",
+        "title": "dana@laptop: ~",
+        "source": "the AWS CLI help of `list-memory-records` and the output form of one live `retrieve-memory-records` run of the owner's first prototype; the record values are examples",
+        "live": false,
+        "lines": [
+          {
+            "t": "cmd",
+            "prompt": "dana@laptop:~$",
+            "text": "aws bedrock-agentcore list-memory-records --memory-id mem-EXAMPLE --namespace /shared/ --profile pi-memory-person-dana"
+          },
+          {
+            "t": "out",
+            "text": "{"
+          },
+          {
+            "t": "out",
+            "text": "    \"memoryRecordSummaries\": ["
+          },
+          {
+            "t": "out",
+            "text": "        {"
+          },
+          {
+            "t": "out",
+            "text": "            \"memoryRecordId\": \"mem-EXAMPLE1-0000-4000-8000-0000example1\","
+          },
+          {
+            "t": "out",
+            "text": "            \"content\": {"
+          },
+          {
+            "t": "out",
+            "text": "                \"text\": \"Every repository of the team runs its tests with `npm test` before a commit.\""
+          },
+          {
+            "t": "out",
+            "text": "            },"
+          },
+          {
+            "t": "out",
+            "text": "            \"namespaces\": ["
+          },
+          {
+            "t": "out",
+            "text": "                \"/shared/\""
+          },
+          {
+            "t": "out",
+            "text": "            ],"
+          },
+          {
+            "t": "out",
+            "text": "            \"createdAt\": \"2026-03-02T09:15:00.000000+00:00\","
+          },
+          {
+            "t": "out",
+            "text": "            \"metadata\": {"
+          },
+          {
+            "t": "out",
+            "text": "                \"x-amz-agentcore-memory-recordType\": {"
+          },
+          {
+            "t": "out",
+            "text": "                    \"stringValue\": \"BASE\""
+          },
+          {
+            "t": "out",
+            "text": "                },"
+          },
+          {
+            "t": "out",
+            "text": "                \"x-amz-agentcore-memory-createdAt\": {"
+          },
+          {
+            "t": "out",
+            "text": "                    \"dateTimeValue\": \"2026-03-02T09:15:00.000000+00:00\""
+          },
+          {
+            "t": "out",
+            "text": "                },"
+          },
+          {
+            "t": "out",
+            "text": "                \"x-amz-agentcore-memory-updatedAt\": {"
+          },
+          {
+            "t": "out",
+            "text": "                    \"dateTimeValue\": \"2026-03-02T09:15:00.000000+00:00\""
+          },
+          {
+            "t": "out",
+            "text": "                }"
+          },
+          {
+            "t": "out",
+            "text": "            }"
+          },
+          {
+            "t": "out",
+            "text": "        }"
+          },
+          {
+            "t": "out",
+            "text": "    ]"
+          },
+          {
+            "t": "out",
+            "text": "}"
+          }
+        ]
+      },
+      "after": [
+        "Each record has an id, a text, one namespace and a creation time.",
+        "The store adds three metadata keys of its own, for example `x-amz-agentcore-memory-recordType`."
+      ]
+    },
+    {
+      "title": "A read outside her scope fails",
+      "before": [
+        "Dana tries to list Chen's private namespace. Her policy does not name it."
+      ],
+      "frame": {
+        "kind": "shell",
+        "title": "dana@laptop: ~",
+        "source": "the form of a denied write in the first live check of the owner; the denied action here is a list",
+        "live": false,
+        "lines": [
+          {
+            "t": "cmd",
+            "prompt": "dana@laptop:~$",
+            "text": "aws bedrock-agentcore list-memory-records --memory-id mem-EXAMPLE --namespace /actor/chen/ --profile pi-memory-person-dana"
+          },
+          {
+            "t": "err",
+            "text": "aws: [ERROR]: An error occurred (AccessDeniedException) when calling the ListMemoryRecords operation: User: arn:aws:iam::123456789012:user/pi-memory-person-dana is not authorized to perform this operation"
+          }
+        ]
+      },
+      "after": [
+        "IAM checks the namespace of the request against Dana's policy. The answer is an error and no data."
+      ]
+    },
+    {
+      "title": "Dana saves the person config",
+      "before": [
+        "Dana saves the config text of the Send as `~/.config/agentcore-memory/config.json`. She adds one optional field, `hostLabel`."
+      ],
+      "frame": {
+        "kind": "file",
+        "title": "~/.config/agentcore-memory/config.json",
+        "source": "the fields of `validateConfig` in `packages/agentcore-memory-core/src/index.mjs`",
+        "live": false,
+        "lines": [
+          {
+            "t": "out",
+            "text": "{"
+          },
+          {
+            "t": "out",
+            "text": "  \"schemaVersion\": 1,"
+          },
+          {
+            "t": "out",
+            "text": "  \"memoryId\": \"mem-EXAMPLE\","
+          },
+          {
+            "t": "out",
+            "text": "  \"region\": \"us-east-1\","
+          },
+          {
+            "t": "out",
+            "text": "  \"actorId\": \"dana\","
+          },
+          {
+            "t": "out",
+            "text": "  \"projects\": ["
+          },
+          {
+            "t": "out",
+            "text": "    {"
+          },
+          {
+            "t": "out",
+            "text": "      \"projectId\": \"example-project\","
+          },
+          {
+            "t": "out",
+            "text": "      \"role\": \"member\","
+          },
+          {
+            "t": "out",
+            "text": "      \"remotes\": ["
+          },
+          {
+            "t": "out",
+            "text": "        \"https://git.example.com/example/example-project.git\""
+          },
+          {
+            "t": "out",
+            "text": "      ]"
+          },
+          {
+            "t": "out",
+            "text": "    }"
+          },
+          {
+            "t": "out",
+            "text": "  ],"
+          },
+          {
+            "t": "out",
+            "text": "  \"profile\": \"pi-memory-person-dana\","
+          },
+          {
+            "t": "out",
+            "text": "  \"hostLabel\": \"dana-laptop\""
+          },
+          {
+            "t": "out",
+            "text": "}"
+          }
+        ]
+      },
+      "after": [
+        "`schemaVersion`: the version of the file form. It is always `1`.",
+        "`memoryId`: the id of the one memory of the team. `region`: the AWS region of the memory.",
+        "`actorId`: Dana's id. It goes into her namespaces and into the metadata of her proposals.",
+        "`projects`: one entry per project. `projectId` is the id, `role` is `member` or `maintainer`, and `remotes` lists the Git remotes of the project. An optional `directories` list maps a directory without a remote.",
+        "`profile`: the AWS profile with the key. The file holds no key.",
+        "`hostLabel`: a short word for the metadata `host` of a proposal. Without it, the core sends the host name of the computer.",
+        "Optional fields with defaults: `topK` (10 records per namespace), `recallTimeoutMs` (3000), `writeTimeoutMs` (10000). A maintainer adds `ledgerPath`.",
+        "An unknown field or broken JSON stops the core with the code `config`. So does a missing file that `AGENTCORE_MEMORY_CONFIG_FILE` names. The error never shows a value of the file."
+      ]
+    }
+  ],
+  "learned": [
+    "Each person has one IAM user, `pi-memory-person-<actorId>`, with one access key and one inline policy.",
+    "The key travels once, through a Bitwarden Send with a password told by voice.",
+    "The key lives in an AWS profile. The person config names the profile and holds no key.",
+    "`aws sts get-caller-identity` shows which IAM user a key belongs to.",
+    "A read in your own namespaces works. A read in the namespace of another person fails."
+  ],
+  "cannot": [
+    "The key cannot be read from the tracker, from a commit or from a log. The scan hooks refuse a commit with a key pattern.",
+    "A link without the password opens nothing.",
+    "Dana's key cannot read `/actor/chen/` or the proposals of another person. IAM denies the request.",
+    "Dana's key cannot create an IAM user or change a policy. Her policy holds no IAM action.",
+    "Dana's key cannot delete a record. No person and no maintainer holds a delete action."
+  ],
+  "notVerified": [
+    "The look of the Bitwarden Send page, and the form of the two texts in one Send.",
+    "The output of `list-memory-records` for this design, and the error text of a read outside the policy. The denial frame copies the form of a denied write."
+  ]
+}

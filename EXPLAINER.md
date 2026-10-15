@@ -1654,6 +1654,8 @@ Warning: the compatibility `PATH` changes every `docker` command in that shell. 
 
 [docs/architecture.html](docs/architecture.html) shows this structure, each component of the manifest and its files as interactive diagrams.
 
+[EXPLAINER.html](EXPLAINER.html) shows the optional shared AgentCore memory as eight beginner tutorials, with rendered terminal frames and four example people.
+
 | Component | Where | Who writes it | What it is |
 | --- | --- | --- | --- |
 | The clone | `~/tenant-pi` | Git | The reviewed kit. It holds no value of yours. |

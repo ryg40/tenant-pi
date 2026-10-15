@@ -55,7 +55,7 @@ Use an isolated, disposable Linux job container. Do not mount a live Pi profile,
 | Requirement | Offline checks | Update jobs |
 | --- | --- | --- |
 | Runner label | `ubuntu-latest` | `ubuntu-latest` |
-| Python | Python 3.11, set by `setup-python` | Python 3.11, set by `setup-python` |
+| Python | Gitea: Python 3.11 in the image; GitHub: set by `setup-python` | Python 3.11 in the image |
 | Node | Node 20 or later for JavaScript actions | Node 24.21.0 and its npm, set by `setup-node` |
 | Other tools | Git and Bash | Git, Bash and the package test prerequisites |
 | Network | Checkout and language/action setup only | Also the npm registry, package archives and the Gitea API |
@@ -63,7 +63,13 @@ Use an isolated, disposable Linux job container. Do not mount a live Pi profile,
 
 The label is a requirement, not a claim that a registered runner has it. Check the runner label and container image before enabling scheduled runs.
 
-The offline commands use only the Python standard library. They install no package and make no model request. The public job uploads no artifact.
+Each Gitea job checks the installed `python3` before running repository commands. It accepts Python 3.11 patch releases and fails with a clear message for another version. A missing `python3` also fails the step. The job installs no Python package or interpreter.
+
+A Gitea label named `ubuntu-latest` can select a Debian image. `setup-python` does not provide a matching download for Debian Bookworm. For example, `node:20-bookworm` already includes Python 3.11. Use an image with that interpreter rather than an unsupported download. The GitHub workflow keeps `setup-python` on its Ubuntu runner.
+
+A rerun uses the workflow from the original commit. Fixing the development branch does not change an existing snapshot tag. Publish a new snapshot after approval to include a workflow fix; do not move an old tag.
+
+The offline commands use only the Python standard library. They install no package and make no model request. The memory-submit tests use `unittest.TestCase`, so discovery runs them without `pytest`. The public job uploads no artifact.
 
 The update adapter starts `scripts/pi_update.py` with a new temporary `HOME` and a short environment allowlist. It forwards no job token or provider key. Qualification and notes use a temporary work directory outside the checkout. The adapter copies only step logs into the artifact directory. It removes that work directory after the stage. The update command must also isolate each Pi process. It installs Pi under its work directory, not globally.
 
@@ -182,7 +188,7 @@ Removing the secret makes preflight fail and skips qualification. It does not st
 
 ## Evidence and limits
 
-`tests/test_ci_workflows.py` parses all workflow files as JSON-form YAML, rejects duplicate keys and checks command paths, action pins, triggers, dependencies and secret placement.
+`tests/test_ci_workflows.py` parses all workflow files as JSON-form YAML, rejects duplicate keys and checks command paths, action pins, triggers, dependencies and secret placement. It requires the Python check in every Gitea job and keeps `setup-python` on GitHub. It executes the version check with supported and unsupported version tuples.
 
 The adapter tests use a temporary stub for `scripts/pi_update.py`. They cover no update, a new core version, a module-only update, failed stages, breaking notes, and child environment filtering. A fake API checks both manifest pins, the validation anchor, duplicate requests, branch races and stale revisions. No test writes to a Git server.
 

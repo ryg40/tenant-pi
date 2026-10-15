@@ -16,7 +16,7 @@ The security review of the whole design is [the shared memory security document]
 | Project | `resolveProject` | The environment variable, then the Git remote, then the directory. No match: global and private recall only; propose refused. |
 | Recall | `recall`, `formatContext` | One query per namespace of the recall set. A failure is reported; the turn continues. One context block for both harnesses. |
 | Propose | `propose` | One record into the person's proposals namespace of the project. The confirm callback gates the write. |
-| Review | `listProposals`, `showProposal`, `approve`, `reject` | A maintainer action. Approve moves the proposal to the shared namespace of the project; reject moves it to the rejected namespace of its actor. Both are one `BatchUpdateMemoryRecords` call with `sourceNamespaces` and `namespaces`. Nothing is copied or deleted. The private ledger gets a journal line before and after each move. |
+| Review | `listProposals`, `showProposal`, `approve`, `reject` | A maintainer action. Show, approve and reject take the proposer `actorId` and find the record in the one exact proposals namespace of the proposer. Approve moves the proposal to the shared namespace of the project; reject moves it to the rejected namespace of its actor. Both are one `BatchUpdateMemoryRecords` call with `sourceNamespaces` and `namespaces`. Nothing is copied or deleted. The private ledger gets a journal line before and after each move. |
 | Registry | `validateRegistry`, `personScope`, `submitScope`, `workerScope`, `renderPersonConfig` | The one place that decides the namespace scope of an identity: `read`, `write` and `move` patterns. No scope has a delete. The IAM renderer reads it. |
 
 ## Files
@@ -40,10 +40,14 @@ The security review of the whole design is [the shared memory security document]
 - The context block holds one JSON line per record. A line break in a record text stays inside its JSON string, so a record cannot add a line of its own to the block.
 - Propose counts the text in Unicode code points. The `requestIdentifier` is the SHA-256 of the actor, the project, the text and the time. The `clientToken` is the SHA-256 of the canonical JSON of the request without the token.
 - The project resolution compares Git remotes after normalization: no scheme, no user, no `.git`, no trailing slash, the host in lower case. `git@host:path` and `ssh://git@host/path` give the same value. A port and the case of the path stay. The directory rule compares real paths. The longest configured directory wins.
-- The proposal list is one `ListMemoryRecords` on `/project/<p>/proposals/`, the prefix form, with 100 records per page and at most 10 pages. It keeps a record only when the record has exactly one namespace and that namespace is `/project/<p>/proposals/<actorId>/`. The fallback, when the live store does not read `namespace` as a prefix, is `listProposals({ projectId, actorId })`: one exact proposals namespace per member. The CLI flag `--actor` uses it. Both forms go through the one function `proposalListNamespaces`.
+- The live store reads the request field `namespace` of `ListMemoryRecords` as an exact match. The API reference describes it as a prefix. The live proof of 2026-10-15 showed the exact match: a list on the proposals tree of a project returned no record, and a list on the proposals namespace of the proposer returned the proposal. The AWS CLI gave the same answer.
+- The live form of the proposal list is `listProposals({ projectId, actorId })`: one `ListMemoryRecords` on the exact namespace `/project/<p>/proposals/<actorId>/`, with 100 records per page and at most 10 pages. The CLI flag `--actor` uses it. The person config holds no member list, so the maintainer names each member.
+- `listProposals({ projectId })` without an actor sends the prefix form `/project/<p>/proposals/`. The live store answers it with no record. Only the CLI command `proposals list` without `--actor` uses it. Both forms go through the one function `proposalListNamespaces`.
+- The list keeps a record only when the record has exactly one namespace and that namespace is `/project/<p>/proposals/<actorId>/`. With an actor, it also drops a proposal of another actor.
+- Show, approve and reject take the proposer: `actorId` in the input, the flag `--actor` of the CLI. They list the one exact namespace `/project/<p>/proposals/<actorId>/` and match the record id there. The record id alone is not enough on the live store. A record of another proposer gives `proposal_missing`. An `actorId` outside the id rule gives `config` before any call. No path of show, approve or reject sends the prefix form.
 - A move sends one record: the id, `timestamp`, `sourceNamespaces` with the proposal namespace, `namespaces` with the target and the whole metadata map. The map holds the seven propose keys and the review keys. `actorId` and `projectId` come from the namespace of the proposal, not from the metadata that the proposer wrote. The move drops any other key of the proposal. The request has no `content`.
 - The ledger is a JSON Lines file, append only, mode `0600`, in a directory that the core creates with mode `0700`. The default path is `~/.local/state/agentcore-memory/review-ledger.jsonl` (below `XDG_STATE_HOME` when it is set). `ledgerPath` of the config replaces it. Like `scripts/memory_submit.py`, the core refuses a ledger path in the Git work tree of the current directory and in the Git work tree of this package, except below `.local/` at the top of such a tree. A broken ledger line fails with the code `ledger`.
-- A move writes the intent line (`approve` or `reject`) before the call and the end line (`approve-done` or `reject-done`) after it. When the intent line fails, no call happens. When the end line fails after a move, the core logs one static line and returns the result. A later move of the same record logs one static line when its last ledger line is an intent without an end.
+- A move writes the intent line (`approve` or `reject`) before the call and the end line (`approve-done` or `reject-done`) after it. Both lines hold `sourceNamespace`, the exact proposals namespace of the move, and `targetNamespace`. When the intent line fails, no call happens. When the end line fails after a move, the core logs one static line and returns the result. A later move of the same record logs one static line when its last ledger line is an intent without an end.
 
 ## The CLI
 
@@ -57,13 +61,13 @@ node packages/agentcore-memory-core/bin/agentcore-memory.mjs scope --registry pa
 | `resolve-project [--cwd <dir>]` | Prints the project resolution as JSON. |
 | `recall --query <text> [--project <id>]` | Prints the context block. It prints nothing without records. |
 | `propose (--text <text> \| --file <path>) [--project <id>]` | Shows the preview, asks `y/N`, writes, prints the result as JSON. |
-| `proposals list --project <id> [--actor <id>]` | Prints one JSON line per proposal. `--actor` lists one proposals namespace. |
-| `proposals show --project <id> --id <recordId>` | Prints one proposal. |
-| `proposals approve --project <id> --id <recordId> [--reason <text>]` | Shows the preview with the target namespace, asks `y/N`, moves the record to the shared namespace. |
-| `proposals reject --project <id> --id <recordId> --reason <text>` | Shows the preview with the target namespace, asks `y/N`, moves the record to the rejected namespace of its actor. |
+| `proposals list --project <id> [--actor <id>]` | Prints one JSON line per proposal. `--actor` lists the one proposals namespace of that member: the live form. Without `--actor` the live store returns no record. |
+| `proposals show --project <id> --actor <id> --id <recordId>` | Prints one proposal of the proposer `--actor`. |
+| `proposals approve --project <id> --actor <id> --id <recordId> [--reason <text>]` | Shows the preview with the source and the target namespace, asks `y/N`, moves the record to the shared namespace. |
+| `proposals reject --project <id> --actor <id> --id <recordId> --reason <text>` | Shows the preview with the source and the target namespace, asks `y/N`, moves the record to the rejected namespace of its actor. |
 | `scope --registry <file> --person <actorId>` | Prints the identity scope and the person config as JSON. No AWS call, no config. |
 
-`--config <file>` sets the config file for one run. The preview and the question go to standard error. The result goes to standard output. The question reads one line from the terminal. Without a terminal the answer is no, and no flag skips the question, so an agent cannot confirm through a pipe. An error prints one line `agentcore-memory: <code>` and exits with 1. A usage error exits with 2.
+`--actor` names the proposer: the `actorId` of a line of `proposals list`. Show, approve and reject without `--actor` are a usage error. `--config <file>` sets the config file for one run. The preview and the question go to standard error. The result goes to standard output. The question reads one line from the terminal. Without a terminal the answer is no, and no flag skips the question, so an agent cannot confirm through a pipe. An error prints one line `agentcore-memory: <code>` and exits with 1. A usage error exits with 2.
 
 ## The example people
 
@@ -80,4 +84,6 @@ node --test packages/agentcore-memory-core/tests/
 
 Node `>=24.0.0 <25`, as the kit requires. The tests use fake clients. They need no AWS credential and no network.
 
-Not verified: the core against a live store. The live proof of the project covers it after the four tickets merge. The open items: the prefix form of the proposal list; the move under the namespace condition key; whether an update without `content` keeps the text; whether the metadata map of an update replaces or merges.
+Not verified: the core against a live store. The live proof of the project covers it after the four tickets merge. The open items: the move under the namespace condition key; whether an update without `content` keeps the text; whether the metadata map of an update replaces or merges.
+
+Not verified: show, approve and reject with the proposer on the live store, after the correction of the exact namespace. The offline tests use a fake store with the exact match of the live store.

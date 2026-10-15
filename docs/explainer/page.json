@@ -153,12 +153,16 @@
         "Amber text after a question is the answer that the person types.",
         "Red text is an error message.",
         "A dashed box is content that the model reads and the screen does not show.",
-        "The line under each frame says where the output shape comes from."
+        "The line under each frame says where the output shape comes from: a live run, or the code and the documentation."
       ]
     },
     {
       "kind": "p",
       "text": "Every value is an example: the memory id `mem-EXAMPLE`, the account `123456789012`, the record ids, the dates, the session ids and the texts. No value comes from a real store."
+    },
+    {
+      "kind": "p",
+      "text": "The owner ran a live proof of the design on the real store, with test people and in several rounds. A frame with the caption \"Shape from a live run\" shows the form of that output, with example values. The section [Not verified](#not-verified) names each frame that no live run produced."
     }
   ],
   "people": [
@@ -225,6 +229,10 @@
       "text": "One fact in the store: a text, one namespace, metadata and a record id such as `mem-EXAMPLE4-0000-4000-8000-0000example4`."
     },
     {
+      "term": "Store keys",
+      "text": "The four metadata keys that the store adds to every record: `x-amz-agentcore-memory-recordType`, `x-amz-agentcore-memory-strategyType`, `x-amz-agentcore-memory-createdAt` and `x-amz-agentcore-memory-updatedAt`. The first two hold text, so the recall block and the review lines show them. A move does not send them, and the store keeps them."
+    },
+    {
       "term": "Namespace",
       "text": "The path of a record, for example `/project/example-project/shared/`. A record has exactly one namespace."
     },
@@ -247,6 +255,10 @@
     {
       "term": "Recall",
       "text": "The search before each prompt: one query per namespace of the recall set. The agent reads the result as reference data."
+    },
+    {
+      "term": "List index",
+      "text": "The index from which the store answers a list. It lags one to five minutes behind a write. A review right after a propose ends with `proposal_missing`, and a list right after a move can still show the old namespace. Wait a few minutes and run the command again."
     },
     {
       "term": "Proposal",
@@ -279,6 +291,10 @@
     {
       "term": "Dry run",
       "text": "A run that prints the plan and changes nothing. Every owner command starts with it."
+    },
+    {
+      "term": "Live proof",
+      "text": "The run of the design on the real store with test people, in rounds. The owner gave the word for each write. A frame with a live shape names its round."
     },
     {
       "term": "Admin login",
@@ -341,11 +357,10 @@
     }
   ],
   "notVerified": [
-    "Every frame of this page. No live run of the shared memory produced any of them. The shapes come from the code and the offline tests of the packages, from the code of Pi 1.2.0 (the Pi version of the kit pin), from the documentation of the AWS CLI and of the Claude Code plugin, and from one live retrieval of the owner's first prototype. The table below names the source of each frame.",
-    "Every value. The memory id, the account, the record ids, the dates, the session ids, the texts and the answers of the agents are examples.",
-    "The open items of the design: the read form of the policy and the move of approve and reject under the namespace condition key. The [security document](docs/shared-memory-security.md#not-verified) lists each one. The live proof of the design tests them.",
-    "The metadata key `x-amz-agentcore-memory-recordType` on a listed or recalled record of this design. One live retrieval of the first prototype showed it.",
-    "The metadata of a record after a move: whether the store replaces or merges the map. The frames show the map that the core sends.",
-    "Where Pi shows a line that the extension writes to standard error."
+    "The frames that the table below names. No live run produced them. Their shapes come from the code and the offline tests of the packages, from the code of Pi 1.2.0 (the Pi version of the kit pin), and from the documentation of the AWS CLI and of the Claude Code plugin.",
+    "Every value, also in a frame with a live shape. The memory id, the account, the record ids, the dates, the session ids, the texts and the answers of the agents are examples.",
+    "The open items of the design that the live proof did not test: a batch with mixed namespaces, a move by a member and a move by a maintainer of another project. The [security document](docs/shared-memory-security.md#not-verified) lists the open items.",
+    "Whether the store replaces or merges the metadata map of an update. The core sends the complete map, so the live proof cannot tell.",
+    "Where Pi shows a line that the extension writes to standard error. The live proof saw these lines on the standard error of `pi -p`."
   ]
 }

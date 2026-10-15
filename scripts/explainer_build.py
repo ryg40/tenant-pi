@@ -282,9 +282,11 @@ def render_line(line, kind):
             return (f'<div class="tool claude{state}"><div class="ln call"><span class="bullet">&#x25CF;</span> '
                     f'<b>{mono(line["name"])}</b>{mono(line["args"])}</div>'
                     f'<div class="ln result">  &#x2514;  {mono(line["result"])}</div></div>')
-        return (f'<div class="tool pi{state}"><div class="ln name"><b>{mono(line["name"])}</b></div>'
-                f'<div class="ln blank"> </div><div class="ln args">{mono(line["args"])}</div>'
-                f'<div class="ln result">{mono(line["result"])}</div></div>')
+        # Pi: the call line `name key="value"`, then the output text. A pending call has no output yet.
+        state = state or ("" if line["result"] else " pending")
+        result = f'<div class="ln result">{mono(line["result"])}</div>' if line["result"] else ""
+        return (f'<div class="tool pi{state}"><div class="ln call"><b>{mono(line["name"])}</b> '
+                f'<span class="args">{mono(line["args"])}</span></div>{result}</div>')
     if t == "dialog":
         selected = line.get("selected", 0)
         options = []

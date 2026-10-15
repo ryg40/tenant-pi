@@ -30,6 +30,19 @@ PROJECTS = {"example-project", "example-site", "<projectId>"}
 # Built at run time, so the published test file holds no complete canary.
 CANARY = "-".join(("canary", "explainer", "private", "4f1c"))
 TAG_ATTRIBUTE = re.compile(r"<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*?\s(src|href)\s*=\s*\"([^\"]*)\"")
+# The value shapes of a live run. A frame with a live shape keeps the shape and takes an example value.
+# A session id of Pi or Claude Code is a UUID; the examples have zeros in their first two groups.
+UUID = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+# A time of a record, a ledger line or a key file name, and a bare date. The examples are in March 2026.
+TIMESTAMP = re.compile(r"\b(\d{4})-?(\d{2})-?(\d{2})T\d{2}:?\d{2}")
+BARE_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b(?!T)")
+POLICY_VERSION = "2012-10-17"
+# A JSON field of a person: compact, escaped inside a hook string, or typed in the AWS CLI form.
+PERSON_FIELD = re.compile(r'\b(actorId|approvedBy|rejectedBy|maintainer|projectId|host|session|session_id)\\*"\s*:\s*\\*"([^"\\]*)')
+TYPED_FIELD = re.compile(r'"(actorId|approvedBy|rejectedBy|projectId|host|session)": \{</div>\s*<div class="ln out">\s*'
+                         r'"stringValue": "([^"]*)"')
+# The public hosts of the links. A remote of a frame is below example.com.
+LINK_HOSTS = {"docs.aws.amazon.com", "bitwarden.com", "code.claude.com", "docs.claude.com"}
 
 
 def sources():
@@ -128,7 +141,9 @@ class BuildTests(unittest.TestCase):
             self.assertIn(name, self.text)
             self.assertIn(f"<code>{actor}</code>", self.text)
         self.assertLessEqual(set(re.findall(r"/actor/([a-z0-9-]+)/", self.text)), set(PEOPLE))
-        self.assertLessEqual(set(re.findall(r"pi-memory-person-([a-z0-9-]+)", self.text)), set(PEOPLE))
+        # A key file name adds a time to the user name: pi-memory-person-<actorId>-<yyyymmddThhmmssZ>.
+        users = re.findall(r"pi-memory-person-([a-z0-9-]+?)(?=-[0-9]{8}T[0-9]{6}Z|[^a-z0-9-]|$)", self.text)
+        self.assertLessEqual(set(users), set(PEOPLE))
         self.assertLessEqual(set(re.findall(r"/project/([a-z0-9<>A-Z-]+)/", self.text)), PROJECTS)
         self.assertLessEqual(set(re.findall(r"/home/([a-z0-9-]+)/", self.text)), set(PEOPLE))
         self.assertLessEqual(set(re.findall(r"\b([a-z]+)@(?:laptop|desk)\b", self.text)), set(PEOPLE))
@@ -136,9 +151,60 @@ class BuildTests(unittest.TestCase):
     def test_example_values_only(self):
         for value in re.findall(r"mem-[A-Za-z0-9_-]+", self.text):
             self.assertTrue(value.startswith("mem-EXAMPLE"), value)
-        self.assertEqual({"123456789012"}, set(re.findall(r"(?<![0-9])[0-9]{12}(?![0-9])", self.text)))
+        # The last group of an example session id has 12 digits too; the session rule checks it.
+        accounts = re.findall(r"(?<![0-9])[0-9]{12}(?![0-9])", UUID.sub("", self.text))
+        self.assertEqual({"123456789012"}, set(accounts))
         self.assertIsNone(re.search(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b", self.text))
         self.assertIsNone(re.search(r"(?i)aws_secret_access_key\s*=\s*[A-Za-z0-9/+]{20,}", self.text))
+
+    def test_session_ids_and_times_are_examples(self):
+        for value in UUID.findall(self.text):
+            self.assertTrue(value.startswith("00000000-0000-"), value)
+        times = TIMESTAMP.findall(self.text)
+        self.assertTrue(times)
+        for year, month, _ in times:
+            self.assertEqual(("2026", "03"), (year, month))
+        self.assertEqual({POLICY_VERSION}, set(BARE_DATE.findall(self.text)))
+
+    def test_fields_of_people_hold_example_values(self):
+        people, projects = set(PEOPLE), PROJECTS - {"<projectId>"}
+        fields = PERSON_FIELD.findall(self.text) + TYPED_FIELD.findall(self.text)
+        self.assertTrue(fields)
+        for name, value in fields:
+            if name in ("actorId", "approvedBy", "rejectedBy", "maintainer"):
+                self.assertIn(value, people, name)
+            elif name == "projectId":
+                self.assertIn(value, projects, name)
+            elif name == "host":
+                self.assertRegex(value, r"^(alice|bruno|chen|dana)-(laptop|desk)$")
+            else:
+                self.assertRegex(value, r"^00000000-0000-", name)
+        for value in re.findall(r'projectId=\\*"([^"\\]*)', self.text):
+            self.assertIn(value, projects)
+        for value in re.findall(r"(?:person: |Handoff for |provision plan for |actorId=)([a-z0-9-]+)", self.text):
+            self.assertIn(value, people)
+        for option, value in re.findall(r"--(project|actor|person|owner) ([a-z0-9-]+)", self.text):
+            self.assertIn(value, projects if option == "project" else people, option)
+        for value in re.findall(r"--profile ([a-z0-9-]+)", self.text):
+            self.assertRegex(value, r"^(example-admin|pi-memory-person-(alice|bruno|chen|dana))$")
+
+    def test_prompts_hosts_and_paths_are_examples(self):
+        prompts = re.findall(r'<span class="ps">([^<]*)</span>', self.text)
+        self.assertTrue(prompts)
+        for prompt in prompts:
+            self.assertRegex(prompt, r"^(alice|bruno|chen|dana)@(laptop|desk):~[a-z/-]*\$$")
+        for host in re.findall(r"https://([^/\"\s<]+)", self.text):
+            self.assertTrue(host in LINK_HOSTS or host == "example.com" or host.endswith(".example.com"), host)
+        self.assertEqual([], re.findall(r"(?<![\w.~-])/(?:opt|root|srv|mnt|var|tmp)/", self.text))
+
+    def test_each_live_frame_names_its_round(self):
+        frames = [step["frame"] for tutorial in self.tutorials for step in tutorial["steps"]]
+        live = [frame for frame in frames if frame["live"]]
+        self.assertTrue(live)
+        for frame in live:
+            self.assertRegex(frame["source"], r"^rounds? [0-9]", frame["title"])
+            self.assertIn("of the live proof", frame["source"], frame["title"])
+        self.assertEqual(len(live), self.text.count("Shape from a live run."))
 
     def test_no_private_canary_reaches_the_page(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -283,7 +349,7 @@ class BrowserTests(unittest.TestCase):
                 if out:
                     page.screenshot(path=str(Path(out) / f"explainer-{width}.png"), full_page=True)
                     if width == 1440:
-                        for anchor in ("tutorial-2-step-3", "tutorial-3-step-2", "tutorial-4-step-3", "tutorial-6-step-5"):
+                        for anchor in ("tutorial-2-step-3", "tutorial-3-step-2", "tutorial-4-step-4", "tutorial-6-step-5"):
                             page.locator(f"#{anchor}").screenshot(path=str(Path(out) / f"explainer-{anchor}.png"))
                 self.assertEqual([], requests, "the page must stay offline")
                 self.assertEqual([], errors)

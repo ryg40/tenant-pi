@@ -67,6 +67,8 @@ th{background:#efe8da;font-weight:700}
 .tool{margin:8px 0;padding:8px 10px;border-radius:6px}
 .tool.pi{background:#14231a;border:1px solid #24402c}
 .tool.pi.failed{background:#2a1517;border-color:#55282c}
+.tool.pi.pending{background:#1d2330;border-color:#2e3747}
+.tool.pi .args{color:var(--tmuted)}
 .tool.claude{padding:0}
 .tool.claude .bullet{color:var(--tgreen)}
 .tool.claude.failed .bullet{color:var(--tred)}

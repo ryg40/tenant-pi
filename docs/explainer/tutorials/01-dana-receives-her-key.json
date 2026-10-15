@@ -8,18 +8,38 @@
       "title": "Alice prepares Dana's access",
       "before": [
         "Alice adds Dana to her private registry: one person entry and one member entry in `example-project`.",
-        "Then she runs the registry script. A dry run is the default: the script prints the plan and changes nothing."
+        "Then she runs the `provision` command of the registry script. A dry run is the default: the script prints the plan and changes nothing."
       ],
       "frame": {
         "kind": "shell",
         "title": "alice@desk: ~/tenant-pi",
-        "source": "`packages/agentcore-memory-admin/src/cli.mjs`, run with the fake clients of its tests",
-        "live": false,
+        "source": "round 1 of the live proof: the `provision` dry run of the registry script for the test person; the values come from the example registry of the repository",
+        "live": true,
         "lines": [
           {
             "t": "cmd",
             "prompt": "alice@desk:~/tenant-pi$",
-            "text": "node packages/agentcore-memory-admin/bin/registry.mjs render --registry ~/.config/agentcore-memory-admin/registry.json --person dana"
+            "text": "node packages/agentcore-memory-admin/bin/registry.mjs provision --registry ~/.config/agentcore-memory-admin/registry.json --person dana"
+          },
+          {
+            "t": "out",
+            "text": "provision plan for dana:"
+          },
+          {
+            "t": "out",
+            "text": "1. create user pi-memory-person-dana (no console access), unless it exists"
+          },
+          {
+            "t": "out",
+            "text": "2. put inline policy agentcore-memory (746 characters), only when it differs"
+          },
+          {
+            "t": "out",
+            "text": "3. tag purpose=agentcore-memory actorId=dana"
+          },
+          {
+            "t": "out",
+            "text": "4. create one access key, only when the user has none; write it once into a new key file (mode 0600)"
           },
           {
             "t": "out",
@@ -300,8 +320,57 @@
         ]
       },
       "after": [
+        "The plan has four steps: the user, the inline policy, the two tags and one access key.",
         "The policy allows two read actions on four namespace trees, and one write action on Dana's proposals only. It has no delete action.",
-        "The coordinator runs the apply step with the admin login after Alice says yes. The step creates the IAM user, the inline policy and one access key. It writes the key into a private file and never prints it."
+        "The handoff note fits the config of the dry run, which has no `profile` field. The apply step writes the config file with `profile` already."
+      ]
+    },
+    {
+      "title": "The coordinator creates the user and the key",
+      "before": [
+        "The coordinator is the agent of the owner with the admin login. After Alice says yes, it runs the same command with `--apply`."
+      ],
+      "frame": {
+        "kind": "shell",
+        "title": "coordinator on alice@desk: ~/tenant-pi",
+        "source": "round 1 of the live proof: the `provision` apply for the test person; the paths and the time are examples",
+        "live": true,
+        "lines": [
+          {
+            "t": "cmd",
+            "prompt": "alice@desk:~/tenant-pi$",
+            "text": "node packages/agentcore-memory-admin/bin/registry.mjs provision --registry ~/.config/agentcore-memory-admin/registry.json --person dana --apply --profile example-admin"
+          },
+          {
+            "t": "out",
+            "text": "created user pi-memory-person-dana"
+          },
+          {
+            "t": "out",
+            "text": "put inline policy agentcore-memory"
+          },
+          {
+            "t": "out",
+            "text": "tagged purpose and actorId"
+          },
+          {
+            "t": "out",
+            "text": "created one access key; key file /home/alice/.local/state/agentcore-memory-admin/keys/pi-memory-person-dana-20260302T091512Z.credentials"
+          },
+          {
+            "t": "out",
+            "text": "person config file /home/alice/.local/state/agentcore-memory-admin/keys/pi-memory-person-dana-20260302T091512Z.config.json"
+          },
+          {
+            "t": "out",
+            "text": "apply: done"
+          }
+        ]
+      },
+      "after": [
+        "The step creates the IAM user, puts the inline policy, sets the two tags and creates one access key.",
+        "It writes the key into a new private file with mode 0600 and never prints the key. Beside it, it writes Dana's person config with the field `profile`.",
+        "A second apply changes nothing. Each step runs only when IAM differs from the plan."
       ]
     },
     {
@@ -313,7 +382,7 @@
       "frame": {
         "kind": "send",
         "title": "Bitwarden Send, opened once with the password",
-        "source": "the key file form and the handoff steps of `packages/agentcore-memory-admin/README.md`, and the config that `provisionApply` writes in `packages/agentcore-memory-admin/src/iam.mjs`",
+        "source": "the key file form and the handoff steps of `packages/agentcore-memory-admin/README.md`, and the config that `provisionApply` writes in `packages/agentcore-memory-admin/src/iam.mjs`; the live proof made no Send",
         "live": false,
         "lines": [
           {
@@ -411,7 +480,7 @@
       "frame": {
         "kind": "shell",
         "title": "dana@laptop: ~",
-        "source": "the [AWS CLI documentation of `aws configure`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)",
+        "source": "the [AWS CLI documentation of `aws configure`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html); the live proof added the key file to `~/.aws/credentials` instead",
         "live": false,
         "lines": [
           {
@@ -459,7 +528,7 @@
       "frame": {
         "kind": "shell",
         "title": "dana@laptop: ~",
-        "source": "the [AWS CLI reference of `get-caller-identity`](https://docs.aws.amazon.com/cli/latest/reference/sts/get-caller-identity.html)",
+        "source": "the [AWS CLI reference of `get-caller-identity`](https://docs.aws.amazon.com/cli/latest/reference/sts/get-caller-identity.html); the live proof ran this check and kept no output",
         "live": false,
         "lines": [
           {
@@ -501,7 +570,7 @@
       "frame": {
         "kind": "shell",
         "title": "dana@laptop: ~",
-        "source": "the AWS CLI help of `list-memory-records` and the output form of one live `retrieve-memory-records` run of the owner's first prototype; the record values are examples",
+        "source": "the AWS CLI help of `list-memory-records`, and the metadata keys of the live proof (rounds 0 to 2); the live proof printed no AWS CLI list with a record",
         "live": false,
         "lines": [
           {
@@ -591,6 +660,18 @@
           },
           {
             "t": "out",
+            "text": "                },"
+          },
+          {
+            "t": "out",
+            "text": "                \"x-amz-agentcore-memory-strategyType\": {"
+          },
+          {
+            "t": "out",
+            "text": "                    \"stringValue\": \"NONE\""
+          },
+          {
+            "t": "out",
             "text": "                }"
           },
           {
@@ -613,33 +694,55 @@
       },
       "after": [
         "Each record has an id, a text, one namespace and a creation time.",
-        "The store adds three metadata keys of its own, for example `x-amz-agentcore-memory-recordType`."
+        "The store adds four metadata keys of its own: `x-amz-agentcore-memory-recordType`, `x-amz-agentcore-memory-strategyType`, `x-amz-agentcore-memory-createdAt` and `x-amz-agentcore-memory-updatedAt`. The glossary calls them the [store keys](#term-store-keys)."
       ]
     },
     {
       "title": "A read outside her scope fails",
       "before": [
-        "Dana tries to list Chen's private namespace. Her policy does not name it."
+        "Dana searches Chen's private namespace with `retrieve-memory-records`. Her policy does not name it.",
+        "Then she searches her own proposals namespace. Her policy names it, and she has proposed nothing yet."
       ],
       "frame": {
         "kind": "shell",
         "title": "dana@laptop: ~",
-        "source": "the form of a denied write in the first live check of the owner; the denied action here is a list",
-        "live": false,
+        "source": "round 1 of the live proof: the reads of the test person outside and inside its policy",
+        "live": true,
         "lines": [
           {
             "t": "cmd",
             "prompt": "dana@laptop:~$",
-            "text": "aws bedrock-agentcore list-memory-records --memory-id mem-EXAMPLE --namespace /actor/chen/ --profile pi-memory-person-dana"
+            "text": "aws bedrock-agentcore retrieve-memory-records --memory-id mem-EXAMPLE --namespace /actor/chen/ --search-criteria searchQuery=tests --profile pi-memory-person-dana"
+          },
+          {
+            "t": "blank"
           },
           {
             "t": "err",
-            "text": "aws: [ERROR]: An error occurred (AccessDeniedException) when calling the ListMemoryRecords operation: User: arn:aws:iam::123456789012:user/pi-memory-person-dana is not authorized to perform this operation"
+            "text": "aws: [ERROR]: An error occurred (AccessDeniedException) when calling the RetrieveMemoryRecords operation: User: arn:aws:iam::123456789012:user/pi-memory-person-dana is not authorized to perform this operation"
+          },
+          {
+            "t": "cmd",
+            "prompt": "dana@laptop:~$",
+            "text": "aws bedrock-agentcore retrieve-memory-records --memory-id mem-EXAMPLE --namespace /project/example-project/proposals/dana/ --search-criteria searchQuery=tests --profile pi-memory-person-dana"
+          },
+          {
+            "t": "out",
+            "text": "{"
+          },
+          {
+            "t": "out",
+            "text": "    \"memoryRecordSummaries\": []"
+          },
+          {
+            "t": "out",
+            "text": "}"
           }
         ]
       },
       "after": [
-        "IAM checks the namespace of the request against Dana's policy. The answer is an error and no data."
+        "IAM checks the namespace of the request against Dana's policy. A read outside it gets an error with the name of her IAM user, and no data.",
+        "A read inside her policy can be empty. The answer is then an empty list, not an error."
       ]
     },
     {
@@ -650,7 +753,7 @@
       "frame": {
         "kind": "file",
         "title": "~/.config/agentcore-memory/config.json",
-        "source": "the fields of `validateConfig` in `packages/agentcore-memory-core/src/index.mjs`",
+        "source": "the fields of `validateConfig` in `packages/agentcore-memory-core/src/index.mjs`; an input file, which no run prints",
         "live": false,
         "lines": [
           {
@@ -737,10 +840,11 @@
   ],
   "learned": [
     "Each person has one IAM user, `pi-memory-person-<actorId>`, with one access key and one inline policy.",
+    "The coordinator creates the user and the key with the admin login, after the dry run and Alice's word.",
     "The key travels once, through a Bitwarden Send with a password told by voice.",
     "The key lives in an AWS profile. The person config names the profile and holds no key.",
     "`aws sts get-caller-identity` shows which IAM user a key belongs to.",
-    "A read in your own namespaces works. A read in the namespace of another person fails."
+    "A read in your own namespaces works, also when it finds nothing. A read in the namespace of another person fails."
   ],
   "cannot": [
     "The key cannot be read from the tracker, from a commit or from a log. The scan hooks refuse a commit with a key pattern.",
@@ -750,7 +854,8 @@
     "Dana's key cannot delete a record. No person and no maintainer holds a delete action."
   ],
   "notVerified": [
-    "The look of the Bitwarden Send page, and the form of the two texts in one Send.",
-    "The output of `list-memory-records` for this design, and the error text of a read outside the policy. The denial frame copies the form of a denied write."
+    "The look of the Bitwarden Send page, and the form of the two texts in one Send. The live proof made no Send.",
+    "`aws configure` and the output of `aws sts get-caller-identity`. The live proof added the key file to `~/.aws/credentials` and kept no output of the identity check.",
+    "The AWS CLI output of `list-memory-records` with a record. The live proof printed records through the core only. The keys of step 6 come from those runs."
   ]
 }

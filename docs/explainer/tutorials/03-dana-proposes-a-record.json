@@ -12,27 +12,28 @@
       "frame": {
         "kind": "pi",
         "title": "pi: ~/example-project",
-        "source": "`packages/agentcore-pi/runtime.mjs` with the core and a fake client, and the tool block of the Pi 1.2.0 code for a tool without its own renderer; the chat lines are examples",
-        "live": false,
+        "source": "round 1 of the live proof: the screen of the Pi pane during a propose; the chat line is an example",
+        "live": true,
         "lines": [
           {
             "t": "user",
             "text": "The integration tests failed until I ran npm run db:reset. Please propose this to the project memory."
           },
           {
-            "t": "agent",
-            "text": "I will propose one record for example-project."
-          },
-          {
             "t": "tool",
             "name": "agentcore_propose",
-            "args": "{\n  \"text\": \"In example-project, run `npm run db:reset` before the integration tests. The tests expect an empty database.\"\n}",
+            "args": "text=\"In example-project, run `npm run db:reset` before the integration tests. The tests expect a...",
             "result": ""
+          },
+          {
+            "t": "out",
+            "text": "⠦ Working"
           }
         ]
       },
       "after": [
-        "The agent chooses the words of the text. Dana checks them in the next step."
+        "The tool block shows the name of the tool and its input on one line. Pi shows at most 100 characters of the input and ends a longer input with `...`. The working line says that the tool waits.",
+        "The agent chooses the words of the text. Dana reads the whole text in the next step."
       ]
     },
     {
@@ -43,8 +44,8 @@
       "frame": {
         "kind": "pi",
         "title": "pi: ~/example-project",
-        "source": "the confirm dialog of the Pi 1.2.0 code (`showExtensionConfirm` and the extension selector) with the title and the message of `packages/agentcore-pi/runtime.mjs`",
-        "live": false,
+        "source": "round 1 of the live proof: the confirm dialog in the Pi pane",
+        "live": true,
         "lines": [
           {
             "t": "dialog",
@@ -71,13 +72,13 @@
       "frame": {
         "kind": "pi",
         "title": "pi: ~/example-project",
-        "source": "`packages/agentcore-pi/runtime.mjs` with the core and a fake client, and the tool block of the Pi 1.2.0 code for a tool without its own renderer; the chat lines are examples",
-        "live": false,
+        "source": "round 1 of the live proof: the tool result of the session; the layout of a finished block comes from the Pi 1.2.0 code; the chat line is an example",
+        "live": true,
         "lines": [
           {
             "t": "tool",
             "name": "agentcore_propose",
-            "args": "{\n  \"text\": \"In example-project, run `npm run db:reset` before the integration tests. The tests expect an empty database.\"\n}",
+            "args": "text=\"In example-project, run `npm run db:reset` before the integration tests. The tests expect a...",
             "result": "{\"memoryRecordId\":\"mem-EXAMPLE4-0000-4000-8000-0000example4\",\"namespace\":\"/project/example-project/proposals/dana/\"}"
           },
           {
@@ -98,7 +99,7 @@
       "frame": {
         "kind": "pi",
         "title": "pi: ~/example-project",
-        "source": "`packages/agentcore-pi/runtime.mjs` with the core and a fake client, and the tool block of the Pi 1.2.0 code for a tool without its own renderer; the chat lines are examples",
+        "source": "`packages/agentcore-pi/runtime.mjs` with the core and a fake client, and the tool block of the Pi 1.2.0 code for an extension tool without its own renderer; the chat lines are examples; the live proof always answered Yes",
         "live": false,
         "lines": [
           {
@@ -115,7 +116,7 @@
           {
             "t": "tool",
             "name": "agentcore_propose",
-            "args": "{\n  \"text\": \"In example-project, run `npm run db:reset` before the integration tests. The tests expect an empty database.\"\n}",
+            "args": "text=\"In example-project, run `npm run db:reset` before the integration tests. The tests expect a...",
             "result": "AgentCore Memory propose refused: not_confirmed",
             "error": true
           }
@@ -128,12 +129,13 @@
     {
       "title": "Where the record is now",
       "before": [
-        "Dana's policy allows a read of her own proposals namespace. She lists it with her key."
+        "Dana's policy allows a read of her own proposals namespace.",
+        "The store answers a list from an index that lags one to five minutes behind a write. Dana waits a few minutes. Then she lists the namespace with her key."
       ],
       "frame": {
         "kind": "shell",
         "title": "dana@laptop: ~/example-project",
-        "source": "the AWS CLI help of `list-memory-records` and the output form of one live `retrieve-memory-records` run of the owner's first prototype; the record values are examples",
+        "source": "the AWS CLI help of `list-memory-records`, and the metadata keys of the proposal in the live proof (round 1); the live proof listed the proposal through the core only",
         "live": false,
         "lines": [
           {
@@ -183,7 +185,7 @@
           },
           {
             "t": "out",
-            "text": "            \"createdAt\": \"2026-03-10T14:02:11.000000+00:00\","
+            "text": "            \"createdAt\": \"2026-03-10T14:02:11.204000+00:00\","
           },
           {
             "t": "out",
@@ -207,7 +209,7 @@
           },
           {
             "t": "out",
-            "text": "                    \"dateTimeValue\": \"2026-03-10T14:02:11.000000+00:00\""
+            "text": "                    \"dateTimeValue\": \"2026-03-10T14:02:11.204000+00:00\""
           },
           {
             "t": "out",
@@ -219,7 +221,19 @@
           },
           {
             "t": "out",
-            "text": "                    \"dateTimeValue\": \"2026-03-10T14:02:11.000000+00:00\""
+            "text": "                    \"dateTimeValue\": \"2026-03-10T14:02:11.204000+00:00\""
+          },
+          {
+            "t": "out",
+            "text": "                },"
+          },
+          {
+            "t": "out",
+            "text": "                \"agent\": {"
+          },
+          {
+            "t": "out",
+            "text": "                    \"stringValue\": \"pi\""
           },
           {
             "t": "out",
@@ -239,23 +253,11 @@
           },
           {
             "t": "out",
-            "text": "                \"projectId\": {"
+            "text": "                \"session\": {"
           },
           {
             "t": "out",
-            "text": "                    \"stringValue\": \"example-project\""
-          },
-          {
-            "t": "out",
-            "text": "                },"
-          },
-          {
-            "t": "out",
-            "text": "                \"agent\": {"
-          },
-          {
-            "t": "out",
-            "text": "                    \"stringValue\": \"pi\""
+            "text": "                    \"stringValue\": \"00000000-0000-7000-8000-000000000001\""
           },
           {
             "t": "out",
@@ -287,11 +289,11 @@
           },
           {
             "t": "out",
-            "text": "                \"session\": {"
+            "text": "                \"proposedAt\": {"
           },
           {
             "t": "out",
-            "text": "                    \"stringValue\": \"dana-pi-session-1\""
+            "text": "                    \"stringValue\": \"2026-03-10T14:01:52.418Z\""
           },
           {
             "t": "out",
@@ -299,11 +301,23 @@
           },
           {
             "t": "out",
-            "text": "                \"proposedAt\": {"
+            "text": "                \"projectId\": {"
           },
           {
             "t": "out",
-            "text": "                    \"stringValue\": \"2026-03-10T14:02:11.000Z\""
+            "text": "                    \"stringValue\": \"example-project\""
+          },
+          {
+            "t": "out",
+            "text": "                },"
+          },
+          {
+            "t": "out",
+            "text": "                \"x-amz-agentcore-memory-strategyType\": {"
+          },
+          {
+            "t": "out",
+            "text": "                    \"stringValue\": \"NONE\""
           },
           {
             "t": "out",
@@ -328,28 +342,32 @@
         ]
       },
       "after": [
-        "The record is in `/project/example-project/proposals/dana/`. Dana and the maintainers of the project can read it. Alice is the maintainer."
+        "The record is in `/project/example-project/proposals/dana/`. Dana and the maintainers of the project can read it. Alice is the maintainer.",
+        "`proposedAt` is earlier than `createdAt`. The core sets `proposedAt` before the dialog, and the store sets `createdAt` at the write."
       ]
     },
     {
       "title": "Where the record is not",
       "before": [
-        "Chen is a member of the same project. He tries to list Dana's proposals with his own key."
+        "Chen is a member of the same project. He searches Dana's proposals namespace with his own key."
       ],
       "frame": {
         "kind": "shell",
         "title": "chen@laptop: ~",
-        "source": "the form of a denied write in the first live check of the owner; the denied action here is a list",
-        "live": false,
+        "source": "round 1 of the live proof: a read of the test person in the proposals namespace of another person",
+        "live": true,
         "lines": [
           {
             "t": "cmd",
             "prompt": "chen@laptop:~$",
-            "text": "aws bedrock-agentcore list-memory-records --memory-id mem-EXAMPLE --namespace /project/example-project/proposals/dana/ --profile pi-memory-person-chen"
+            "text": "aws bedrock-agentcore retrieve-memory-records --memory-id mem-EXAMPLE --namespace /project/example-project/proposals/dana/ --search-criteria searchQuery=tests --profile pi-memory-person-chen"
+          },
+          {
+            "t": "blank"
           },
           {
             "t": "err",
-            "text": "aws: [ERROR]: An error occurred (AccessDeniedException) when calling the ListMemoryRecords operation: User: arn:aws:iam::123456789012:user/pi-memory-person-chen is not authorized to perform this operation"
+            "text": "aws: [ERROR]: An error occurred (AccessDeniedException) when calling the RetrieveMemoryRecords operation: User: arn:aws:iam::123456789012:user/pi-memory-person-chen is not authorized to perform this operation"
           }
         ]
       },
@@ -372,6 +390,8 @@
     "A batch with one allowed and one other namespace is denied as a whole."
   ],
   "notVerified": [
-    "The look of the tool block in the Pi chat view. The block form comes from the fallback renderer of Pi 1.2.0 for a tool without its own renderer."
+    "The look of a finished tool block in the Pi chat view. The live screen showed the block during the dialog. The result under the call line comes from the Pi 1.2.0 code.",
+    "The answer No and the code `not_confirmed` in a live session. The live proof always answered Yes.",
+    "The AWS CLI output of a listed proposal. The live proof listed it through the core."
   ]
 }

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "memory": {"region": "us-east-1", "memoryId": "mem-EXAMPLE"},
+  "service": {"submitUser": "example-memory-submit", "workerReadUser": "example-memory-read"},
+  "people": [
+    {"actorId": "alice", "name": "Alice Archer", "email": "alice.archer@example.com", "pin": "XYZ1000", "status": "active"},
+    {"actorId": "bruno", "name": "Bruno Brook", "email": "bruno.brook@example.com", "pin": "XYZ1001", "status": "active"},
+    {"actorId": "chen", "name": "Chen Cole", "email": "chen.cole@example.com", "pin": "XYZ1002", "status": "active"},
+    {"actorId": "dana", "name": "Dana Dunn", "email": "dana.dunn@example.com", "pin": "XYZ1003", "status": "active"}
+  ],
+  "projects": [
+    {
+      "projectId": "example-project",
+      "maintainers": ["alice"],
+      "members": ["alice", "bruno", "chen", "dana"],
+      "remotes": ["https://git.example.com/example/example-project.git"]
+    },
+    {
+      "projectId": "example-site",
+      "maintainers": ["bruno"],
+      "members": ["bruno", "chen"],
+      "remotes": ["git@git.example.com:example/example-site.git"]
+    }
+  ]
+}

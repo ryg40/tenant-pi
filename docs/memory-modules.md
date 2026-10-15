@@ -4,7 +4,7 @@ Status: offline implementation, not a qualified runtime. `scripts/memory_modules
 
 Four modules can be enabled: `hermes`, `wiki`, `openviking`, and `agentcore`.
 The npm packages are `pi-hermes-memory` and `@zosmaai/pi-llm-wiki`.
-The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. Both remote modules need `consent.remoteMemoryWrites`, including recall-only `agentcore`. The default example enables none of them and emits no memory extension. The install flow marks `hermes` and `wiki` in its checklist and asks for the consent with one sentence; the user keeps or removes each mark. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
+The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. Both remote modules need `consent.remoteMemoryWrites`. The default example enables none of them and emits no memory extension. The install flow marks `hermes` and `wiki` in its checklist and asks for the consent with one sentence; the user keeps or removes each mark. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
 
 ## Activation truth table
 
@@ -19,6 +19,8 @@ The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore
 | `consent.remoteMemoryWrites` true with no memory module enabled | `memory_disabled: overlay.consent` comes first. |
 | `openviking`, `agentcore`, or both enabled, `consent.memoryCapture` true, `consent.remoteMemoryWrites` false | `remote_memory_consent_required`. Nothing is generated. |
 | `agentcore` omitted from an older `memory` block and not selected | Valid; AgentCore stays off. |
+| `memory.agentcore` with a field of the single-person prototype (`memoryId`, `region`, `namespaces`, `topK`, `capture`, `actorId`, `recallTimeoutMs`) | `agentcore_legacy_fields: overlay.memory.agentcore`. Nothing is generated. |
+| `memory.agentcore.configFile` missing, or not an absolute path | `required_fields: overlay.memory.agentcore`, or `text`, `shell_or_template` or `absolute_path` for `overlay.memory.agentcore.configFile`. Nothing is generated. |
 | `openviking`, `agentcore`, or both selected with both consents and valid choices | Render each selected package and its launch settings. |
 | `consent.embeddingTextTransfer` true without selected `wiki` or a non-null `wiki.embedding` | `embedding_consent_unused`. Nothing is generated. |
 | Non-null `wiki.embedding` without `consent.embeddingTextTransfer: true` | `embedding_consent_missing`. Capture consent does not grant embedding consent. |
@@ -423,10 +425,11 @@ git -C '<openviking checkout>' archive '<commit>' examples agent-plugins | tar -
 
 ## AgentCore Memory
 
-`agentcore` is an optional recall prototype. It stays unmarked in the install checklist.
+`agentcore` connects Pi to the shared AgentCore Memory of several people. It stays unmarked in the install checklist.
 OpenViking stays the primary memory. Nothing is converted or removed from either local store.
-Both capture consent and remote-memory consent are required, even with `capture: false`.
-Recall sends the user prompt to AWS for semantic search.
+Both capture consent and remote-memory consent are required.
+Recall sends the user prompt to AWS for semantic search. The propose tool sends the text of each proposal that the person confirms.
+The design, the IAM rules and the security review are in [the shared memory security document](shared-memory-security.md).
 
 Example private overlay fragment:
 
@@ -438,83 +441,79 @@ Example private overlay fragment:
     "hermes": null,
     "wiki": null,
     "openviking": null,
-    "agentcore": {
-      "memoryId": "mem-EXAMPLE",
-      "region": "us-east-1",
-      "namespaces": ["/owner/{actorId}/", "/shared/"],
-      "topK": 10,
-      "capture": false,
-      "actorId": "example",
-      "recallTimeoutMs": 3000
-    }
+    "agentcore": {"configFile": "/home/example/.config/agentcore-memory/config.json"}
   }
 }
 ```
 
 Select `agentcore` in `selection.enable` and remove it from `selection.disable` too.
-The example resource identifier is a placeholder, not a provisioned resource.
 An existing OpenViking selection can stay enabled with its existing choices.
 
 | Field | Rule | Effect |
 | --- | --- | --- |
-| `memoryId` | Required nonempty string | Selects the AWS memory resource. |
-| `region` | Required AWS region form | Selects the SDK region. |
-| `namespaces` | Required nonempty list; each string starts and ends with `/` | One retrieval call per namespace. Duplicate names are refused. |
-| `topK` | Required integer, 1 to 100 | Sets `searchCriteria.topK` and `maxResults`. The overlay validator adds no default. |
-| `capture` | Required boolean | Keep false. Direct extension configuration defaults to false. |
-| `actorId` | Optional nonempty identifier using letters, digits, dots, underscores and hyphens | Substitutes `{actorId}`. Missing values skip owner namespaces with a log line. |
-| `recallTimeoutMs` | Optional integer, 1 to 600000 | Per-call deadline in milliseconds; default 3000. |
+| `configFile` | Required absolute path. No empty, `.` or `..` segment, no control character, no `$` or backtick. A segment holds letters, digits, `_`, `.`, `-`, spaces and quotes. | The launch value `AGENTCORE_MEMORY_CONFIG_FILE`. The kit checks the form only. It never opens the file. |
 
-The launch line passes these fields as shell-quoted JSON in `AGENTCORE_MEMORY_CONFIG`.
-This uses the same process-environment mechanism as OpenViking's two launch settings.
-The overlay carries no key. The SDK uses its default AWS credential chain.
-An existing `AWS_PROFILE` passes through unchanged; the kit does not set it.
+The person config file holds the memory id, the region, the AWS profile, the actor id and the projects of one person.
+Its fields are `MemoryConfig` in `packages/agentcore-memory-core/src/types.ts`. It holds no key.
+The registry script of the owner renders the file, and the owner hands it over with the key.
+Keep the file outside every repository.
+The path must be absolute: a relative path resolves against the directory where Pi starts, so a checkout could supply its own file.
 
-The package pins `@aws-sdk/client-bedrock-agentcore` to `3.1152.0`.
-`npm view` returns `3.1152.0` for both this package and `@aws-sdk/client-bedrock-agentcore-control`.
-The data-plane client exists, so no CLI fallback is needed for the extension.
-The control-plane package is not installed.
+The fields of the single-person prototype are refused: `memoryId`, `region`, `namespaces`, `topK`, `capture`, `actorId` and `recallTimeoutMs`.
+An overlay with one of them fails with `agentcore_legacy_fields: overlay.memory.agentcore`. The message holds no field value.
+To move an old overlay, put the person config file in place, replace the old fields with `configFile`, and generate the profile again.
 
-`before_agent_start` retrieves records only for a user prompt, not a custom-message start.
-Two configured namespaces cause two calls. The extension follows no pagination token.
-Records form one context block with a clear heading, record identifiers, and namespaces.
-A failed or timed-out call logs one static line and does not block the turn.
-Each call has one SDK attempt. The deadline also bounds credential resolution.
+### Launch and setup
 
-The `turn_end` hook does nothing when capture is off.
-The experimental on switch sends assistant text only through `CreateEvent`, with `extractionMode: SKIP`.
-It sends no tool output or thinking. It needs an actor and separate IAM permission.
-This switch is not part of the reviewed submit path. Keep it off for the first round.
+The launch line puts `AGENTCORE_MEMORY_CONFIG_FILE=<path>` before `PI_CODING_AGENT_DIR=...`.
+The value is process-local: the kit exports nothing and writes no shell file.
+The launch line also removes an inherited `AGENTCORE_MEMORY_CONFIG` with `env -u`.
+The reason: the core reads that inline value before the file, so an old shell export could replace the file of the overlay.
+`AGENTCORE_MEMORY_DISABLE` and `AGENTCORE_PROJECT` pass through. The first is the kill switch: with the value `1`, the extension registers nothing.
+The second overrides the project of the working directory.
+The overlay carries no key. The SDK uses the AWS profile that the person config names, else its default credential chain.
 
 The package declaration names `packages/agentcore-pi/index.ts` after OpenViking.
-The display-only setup line runs `npm --prefix <kit>/packages/agentcore-pi ci --ignore-scripts`.
+The extension imports the shared core `packages/agentcore-memory-core` by a relative path. Keep the kit directory in place.
+The display-only setup line runs `npm --prefix <kit>/packages/agentcore-memory-core ci --ignore-scripts`.
+The lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1152.0`. The extension package has no dependency of its own.
 The readiness gaps are `install_step_required`, `aws_resource_required`, and `package_runtime_unverified`.
 No peer override, generated config file, or local memory store is added.
 
-### AWS owner steps
+### Recall and propose
 
-1. Create a Memory resource with a self-managed strategy in `us-east-1`.
-2. Configure both namespace trees: `/owner/{actorId}/` and `/shared/`.
-3. Give the agent `bedrock-agentcore:RetrieveMemoryRecords`, `bedrock-agentcore:ListMemoryRecords`, and `bedrock-agentcore:GetMemoryRecord` on that resource.
-4. Limit read access with `bedrock-agentcore:namespace` and `bedrock-agentcore:namespacePath` conditions for the approved trees.
-5. Give a separate submit identity `bedrock-agentcore:BatchCreateMemoryRecords` and `bedrock-agentcore:BatchUpdateMemoryRecords` on that resource.
-6. Limit submit access with the namespace condition keys for the approved source and destination namespaces.
-7. Provision credentials outside the repository through the standard AWS profile or environment path.
-8. Review a test candidate file before a live submit and recall trial.
+`before_agent_start` runs for a typed user prompt only. A custom-message start and an empty prompt send nothing.
+The extension resolves the project of the Pi working directory: `AGENTCORE_PROJECT`, then the `origin` remote, then the configured directories.
+The core sends one retrieval per namespace: `/shared/`, `/actor/<actorId>/` and, with a project, `/project/<projectId>/shared/`.
+Recall never reads a proposals namespace or a rejected namespace.
+The records form one hidden context message (`display: false`) with the heading `AgentCore Memory recall`.
+A failed or timed-out call logs one static line and does not block the turn.
+An `AGENTCORE_PROJECT` outside the memberships logs one static line per session. Recall then runs without a project.
 
-`BatchDeleteMemoryRecords` is needed only for a separately approved cleanup tool; this script never deletes records.
-`CreateEvent` is needed only for a separately approved capture trial; the first round is recall-only.
-Check the current AWS service authorization table before writing each action's IAM conditions.
-Namespace support varies by operation. A missing request context key must not silently broaden a policy.
-Use both the resource ARN restriction and the appropriate namespace conditions.
+The tool `agentcore_propose` takes `text` and an optional `projectId`. Without `projectId`, it resolves the project of the working directory.
+The core writes one record into `/project/<projectId>/proposals/<actorId>/` only after the person confirms.
+The confirmation dialog shows the target namespace as its title and the text as its message.
+Without a dialog, for example in `pi -p`, Pi answers no and nothing is written.
+A refusal returns a static code, for example `project_none`, `not_member`, `text_too_long` or `not_confirmed`.
+A maintainer of the project reviews the proposal with the review CLI of the core. Only a maintainer moves it into the shared namespace.
+The extension has no capture path: it sends no answer, tool output or turn text.
+`session_shutdown` closes the core.
+
+### Owner steps
+
+1. Provision the person with the registry script. See [provisioning a person](shared-memory-security.md#provisioning-a-person).
+   The result is one IAM user, one inline policy and one person config file.
+2. Hand over the key and the config file. See [key handoff](shared-memory-security.md#key-handoff).
+3. The person saves the key in the AWS profile that the config names, and the file at the `configFile` path.
+4. Select `agentcore`, give both consents, set `configFile`, and generate the profile.
+5. Run the setup line of the plan after approval.
 
 References: [AgentCore service authorization](https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html)
 and [Memory API reference](https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/Welcome.html).
 
-Warning: recall sends prompts to AWS, and submit sends reviewed memory text. Keep sensitive material out unless the owner approves its transfer.
+Warning: recall sends prompts to AWS, and propose sends the confirmed text. Keep sensitive material out unless the owner approves its transfer.
 
-Not verified: resource creation, credentials, IAM conditions, live retrieval, live submission, or live capture.
-Not verified: a generated Pi session with this package, clean-client dependency installation, or strategy consolidation behavior.
+Not verified: live recall or propose, IAM enforcement, a generated Pi session with this package, and a clean-client installation of the core.
 
 ## Distill, review and submit
 
@@ -561,7 +560,11 @@ python3 scripts/memory_submit.py --dry-run --memory-id mem-EXAMPLE --region us-e
 
 This prints one JSON batch with three records. It sends nothing and writes nothing.
 Dry run is also the default when neither mode flag is given.
-Add `--namespace-allow /owner/example/` for reviewed personal records with that exact namespace.
+Add `--namespace-allow /actor/alice/` for reviewed private records of one person, here the example person `alice`, with that exact namespace.
+The submit identity writes only `/shared/` and `/actor/{actorId}/`; see [the global submit by the owner](shared-memory-security.md#global-submit-by-the-owner).
+The one-time migration of the registry script moves the old records of `/owner/{actorId}/` to `/actor/{actorId}/` and deletes the test records.
+A submit ledger entry of a moved record still names `/owner/{actorId}/`.
+The script refuses that source with the namespace `/actor/{actorId}/`; use a new source URI.
 Use the actual reviewed candidate file and memory identifier for a live run:
 
 ```sh
@@ -610,8 +613,8 @@ The offline tests use fake subprocess responses and never invoke AWS.
 | Launch line | wiki without `wikiHome` | `-u WIKI_HOME` follows `-u PI_CODING_AGENT_SESSION_DIR`: the line removes an inherited `WIKI_HOME`. See [the wiki home](launcher.md#the-wiki-home). |
 | Launch line | openviking | `OPENVIKING_CAPTURE_TOOL_RESULTS=true` or `=false` precedes `PI_CODING_AGENT_DIR=...`, and `OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=<n>` when the overlay has `recallContextTimeoutMs`. Both are process-local: the kit exports nothing and writes no shell file. A manual `pi` command without them uses the files and the defaults of the extension. |
 | Setup lines | hermes or wiki | One `pi install <source>` line for each declared npm source, with the source string of `settings.json`, then `PI_CODING_AGENT_DIR=<target> node <kit>/scripts/patch_extension_peers.mjs`, with the absolute path of the script. Display only. |
-| Launch line | agentcore | `AGENTCORE_MEMORY_CONFIG` carries the complete non-secret JSON config. |
-| Setup lines | agentcore | `npm --prefix <kit>/packages/agentcore-pi ci --ignore-scripts`. Display only. |
+| Launch line | agentcore | `AGENTCORE_MEMORY_CONFIG_FILE='<path>'` precedes `PI_CODING_AGENT_DIR=...`, and `-u AGENTCORE_MEMORY_CONFIG` follows `-u PI_CODING_AGENT_SESSION_DIR`. The kit never reads the file. |
+| Setup lines | agentcore | `npm --prefix <kit>/packages/agentcore-memory-core ci --ignore-scripts`. Display only. The extension package has no dependency; the core installs the AWS SDK. |
 | Setup lines | openviking | `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only. The module adds no `pi install` line and no peer override line: Pi installs nothing for a path package, and the package lists no host module as a dependency. |
 | Extra file or link | openviking | None. The existing `settings.json` output holds the local-file source and remains listed in `.tenant-pi/state.json`. No generated file holds an endpoint, a key or a user of the server. |
 
@@ -623,9 +626,8 @@ Enabled wiki embeddings add `embedding_endpoint_unverified`, plus `embedding_dim
 
 `compare` reports the recorded overlay `memory` block field by field under `/overlay/memory/<module>/<field>`: the three switches and `reviewTransport` by value, `openviking.captureToolResults` and `openviking.recallContextTimeoutMs` by value, each `childExtensionPaths` entry and `wikiHome` as a marker without a value ([candidate comparison](candidate-compare.md)). `carry` prints one patch per reported field at `/memory/<module>/<field>`, with the value from the right side's overlay copy; the `childExtensionPaths` list is one unit. A memory field that the patched overlay sets, and that the report does not name, stays unchanged, unless the report names another field of the same module and the right side sets that module to `null` or has no block: then the module goes as a whole. A module object of the patched overlay with no field entry in the report is never set to `null` or removed. A module that is `null` in the patched overlay carries as one `/memory/<module>` patch. `carry` never patches `consent`, so a memory patch that needs a consent change (`memoryCapture`, and `remoteMemoryWrites` for either remote module) leaves that decision to the user ([carrying drift](carry.md)). The field names of the four modules are one table, `MODULE_FIELDS` in `scripts/memory_modules.py`; the validator, `compare` and `carry` read it.
 
-AgentCore comparison reports `capture`, `topK`, and `recallTimeoutMs` by value.
-It reports `memoryId`, `region`, `actorId`, and each namespace as private markers without values.
-Carry keeps the namespace list together and never changes consent.
+AgentCore comparison reports `configFile` as a private marker without a value.
+Carry patches `configFile` with the value of the right side's overlay copy and never changes consent.
 
 Embedding comparison reports nested fields. `baseUrl`, `model`, and `auth.envVar` are markers without values, like `wikiHome`.
 `provider`, `auth.mode`, and `expectedDimensions` compare by value. The generated `embeddingProvider` also compares by value; other embedding settings remain markers.

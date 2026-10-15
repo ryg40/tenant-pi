@@ -1,0 +1,9 @@
+{
+  "name": "agentcore-memory",
+  "version": "0.1.0",
+  "description": "Shared AgentCore Memory for several people: a UserPromptSubmit recall hook and an MCP server with propose and the maintainer review tools. The tenant-pi core package does every AWS call.",
+  "author": { "name": "The tenant-pi authors" },
+  "license": "MIT",
+  "keywords": ["memory", "agentcore", "aws", "review"],
+  "mcpServers": "./.mcp.json"
+}

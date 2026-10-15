@@ -1315,14 +1315,14 @@
       "resources": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
       "env": [],
       "gaps": [
-        {"code": "install_step_required", "fact": "Run npm ci --ignore-scripts in packages/agentcore-pi before loading the extension."},
-        {"code": "aws_resource_required", "fact": "The owner supplies an AgentCore Memory resource, namespace-scoped IAM permissions and SDK credentials outside the kit."},
-        {"code": "package_runtime_unverified", "fact": "Offline fake-client tests cover hooks and requests. Not verified: a generated Pi session with live AWS recall or capture."}
+        {"code": "install_step_required", "fact": "Run npm ci --ignore-scripts in packages/agentcore-memory-core before loading the extension. The extension imports that shared core, and the lock file of the core installs the AWS SDK."},
+        {"code": "aws_resource_required", "fact": "The owner supplies the AgentCore Memory resource, the IAM user of the person with its namespace-scoped inline policy, the access key and the person config file. A generated profile creates none of them; the owner tool packages/agentcore-memory-admin renders the policy and the person config."},
+        {"code": "package_runtime_unverified", "fact": "Offline fake-core tests cover the recall hook, the propose tool and its confirmation. Not verified: a generated Pi session with live AWS recall or propose."}
       ],
       "configOwnership": {
         "claims": [{"file": "settings.json", "key": "package:packages/agentcore-pi:index.ts"}],
         "status": "reviewed",
-        "boundary": "One local-file package entry and the process-local AGENTCORE_MEMORY_CONFIG launch value. Credentials stay in the default AWS credential chain."
+        "boundary": "One local-file package entry and the process-local AGENTCORE_MEMORY_CONFIG_FILE launch value; the launch line removes an inherited AGENTCORE_MEMORY_CONFIG. The kit never reads the person config file. Credentials stay in the AWS profile that the person config names, else in the default AWS SDK credential chain."
       }
     }
   }

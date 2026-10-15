@@ -1,11 +1,8 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerAgentCore, readConfig } from "./runtime.mjs";
+// Pi loads this file from the kit directory, so the core resolves beside this package.
+import { createCore, loadConfig } from "../agentcore-memory-core/src/index.mjs";
+import { registerAgentCore } from "./runtime.mjs";
 
 export default function (pi: ExtensionAPI) {
-  try {
-    const config = readConfig(process.env);
-    if (config) registerAgentCore(pi, config);
-  } catch {
-    console.error("AgentCore Memory: invalid configuration; disabled");
-  }
+  registerAgentCore(pi, { loadConfig, createCore });
 }

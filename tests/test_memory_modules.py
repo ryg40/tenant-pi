@@ -32,9 +32,12 @@ EMBEDDING = {"provider": "openai-compatible", "baseUrl": "https://embeddings.exa
              "model": "text-embedding-ada-002", "auth": {"envVar": "EXAMPLE_EMBEDDING_KEY"}, "expectedDimensions": 1536}
 OPENVIKING = {"captureToolResults": True, "recallContextTimeoutMs": 5000}
 OPENVIKING_DIR = "packages/openviking-pi"
-AGENTCORE = {"memoryId": "mem-EXAMPLE", "region": "us-east-1", "namespaces": ["/owner/{actorId}/", "/shared/"],
-             "topK": 10, "capture": False, "actorId": "example"}
+AGENTCORE = {"configFile": "/home/example/.config/agentcore-memory/config.json"}
 AGENTCORE_DIR = "packages/agentcore-pi"
+AGENTCORE_CORE_DIR = "packages/agentcore-memory-core"
+# The overlay fields of the single-person prototype, each refused with one rule.
+AGENTCORE_LEGACY = {"memoryId": "mem-EXAMPLE", "region": "us-east-1", "namespaces": ["/owner/{actorId}/", "/shared/"],
+                    "topK": 10, "capture": False, "actorId": "example", "recallTimeoutMs": 3000}
 
 
 class MemoryContractTests(unittest.TestCase):
@@ -333,51 +336,72 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual([str(ROOT / OPENVIKING_DIR / "index.ts"), str(ROOT / AGENTCORE_DIR / "index.ts")],
                          [p["source"] for p in settings["packages"]])
         launch = shlex.split(plan["commands"]["launch"])
-        config = json.loads(next(value.split("=", 1)[1] for value in launch if value.startswith("AGENTCORE_MEMORY_CONFIG=")))
-        self.assertEqual({**AGENTCORE, "recallTimeoutMs": 3000}, config)
-        self.assertEqual({"enabled": True, "localCapture": False, "backgroundModelCalls": False, "remoteWrites": False,
+        # The file path is the one launch value; an inherited inline config cannot override it.
+        self.assertIn("AGENTCORE_MEMORY_CONFIG_FILE=" + AGENTCORE["configFile"], launch)
+        self.assertFalse(any(value.startswith("AGENTCORE_MEMORY_CONFIG=") for value in launch))
+        self.assertIn(["-u", "AGENTCORE_MEMORY_CONFIG"], [launch[i:i + 2] for i in range(len(launch) - 1)])
+        for name in ("AGENTCORE_MEMORY_DISABLE", "AGENTCORE_PROJECT"):
+            self.assertNotIn(name, plan["commands"]["launch"])
+        self.assertEqual({"enabled": True, "localCapture": False, "backgroundModelCalls": False, "remoteWrites": True,
                           "capture": False}, render_memory(data, self.components)["activation"]["agentcore"])
         gaps = [g["code"] for g in plan["readinessGaps"] if g["subject"] == "agentcore"]
         self.assertEqual(["install_step_required", "aws_resource_required", "package_runtime_unverified"], gaps)
-        self.assertEqual("npm --prefix " + shlex.quote(str(ROOT / AGENTCORE_DIR)) + " ci --ignore-scripts",
+        # The extension has no dependency of its own; the core beside it installs the AWS SDK.
+        self.assertEqual("npm --prefix " + shlex.quote(str(ROOT / AGENTCORE_CORE_DIR)) + " ci --ignore-scripts",
                          plan["commands"]["setup"][-1])
+        self.assertFalse(any(str(ROOT / AGENTCORE_DIR) in line for line in plan["commands"]["setup"]))
         self.assertEqual({"settings.json", ".tenant-pi/choices.json"}, set(plan["files"]))
-        data["memory"]["agentcore"].update(capture=True, recallTimeoutMs=5000)
-        del data["memory"]["agentcore"]["actorId"]
-        rendered = render_memory(data, self.components)
-        self.assertTrue(rendered["activation"]["agentcore"]["remoteWrites"])
-        line = next(item["instruction"] for item in rendered["setup"] if item["name"] == "AGENTCORE_MEMORY_CONFIG")
-        config = json.loads(shlex.split(line)[0].split("=", 1)[1])
-        self.assertEqual("", config["actorId"])
-        self.assertEqual(5000, config["recallTimeoutMs"])
-        for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"):
+        recorded = plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["setup"]
+        self.assertIn({"kind": "process_environment", "name": "AGENTCORE_MEMORY_CONFIG_FILE",
+                       "instruction": "AGENTCORE_MEMORY_CONFIG_FILE=" + AGENTCORE["configFile"]}, recorded)
+        for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE", "mem-EXAMPLE"):
             self.assertNotIn(name, json.dumps(plan))
+        # With the wiki, the inline config goes first, then the wiki home (docs/launcher.md).
+        both = self.base("agentcore", "wiki", memory={"agentcore": copy.deepcopy(AGENTCORE), "wiki": WIKI_OFF})
+        both["consent"]["remoteMemoryWrites"] = True
+        self.assertIn("env -u PI_CODING_AGENT_SESSION_DIR -u AGENTCORE_MEMORY_CONFIG -u WIKI_HOME PI_CODING_AGENT_DIR=",
+                      prepare(self.manifest_data, both)["commands"]["launch"])
+        # A path with a space and a quote stays one shell word.
+        data["memory"]["agentcore"]["configFile"] = "/home/Test User/it's/config.json"
+        line = next(item["instruction"] for item in render_memory(data, self.components)["setup"]
+                    if item["name"] == "AGENTCORE_MEMORY_CONFIG_FILE")
+        self.assertEqual(["AGENTCORE_MEMORY_CONFIG_FILE=/home/Test User/it's/config.json"], shlex.split(line))
 
     def test_agentcore_choice_validation_and_canaries(self):
-        cases = (("memoryId", "", "text"), ("memoryId", " ", "text"), ("region", CANARY, "aws_region"),
-                 ("namespaces", [], "namespaces"), ("namespaces", ["/shared"], "namespace"),
-                 ("namespaces", ["/a/", "/a/"], "duplicate_namespace"), ("namespaces", [1], "namespace"),
-                 ("namespaces", ["/{unknown}/"], "namespace"), ("namespaces", ["/bad\n/"], "namespace"),
-                 ("topK", 0, "top_k"), ("topK", 101, "top_k"), ("topK", True, "top_k"),
-                 ("capture", "false", "boolean"), ("capture", 1, "boolean"), ("actorId", "../shared", "actor_id"),
-                 ("recallTimeoutMs", True, "timeout_ms"), ("recallTimeoutMs", 0, "timeout_ms"),
-                 ("recallTimeoutMs", 600001, "timeout_ms"), ("apiKey", CANARY, "unknown_fields"))
-        for key, value, rule in cases:
-            with self.subTest(key=key, value=value):
+        cases = (("", "text"), (" ", "absolute_path"), ("config.json", "absolute_path"),
+                 ("~/.config/agentcore-memory/config.json", "absolute_path"), ("/home/example/../config.json", "absolute_path"),
+                 ("/home/./config.json", "absolute_path"), ("/home//config.json", "absolute_path"),
+                 ("/home/" + CANARY + "\n.json", "text"), ("/home/" + CANARY + "\x7f.json", "text"),
+                 ("/home/$" + CANARY, "shell_or_template"), ("/home/`" + CANARY + "`", "shell_or_template"),
+                 ("/home/" + CANARY + ";x", "absolute_path"), (1, "text"), (None, "text"), (["/a"], "text"))
+        for value, rule in cases:
+            with self.subTest(value=value):
                 data = self.remote(("agentcore",))
-                data["memory"]["agentcore"][key] = value
+                data["memory"]["agentcore"]["configFile"] = value
                 self.error(data, rule)
-        for key in ("memoryId", "region", "namespaces", "topK", "capture"):
-            data = self.remote(("agentcore",))
-            del data["memory"]["agentcore"][key]
-            self.error(data, "required_fields")
+        # Each field of the prototype is refused with one rule, with or without the new field.
+        for key, value in AGENTCORE_LEGACY.items():
+            for base in ({}, AGENTCORE):
+                with self.subTest(key=key, base=base):
+                    data = self.remote(("agentcore",))
+                    data["memory"]["agentcore"] = {**base, key: CANARY if type(value) is str else value}
+                    self.error(data, "agentcore_legacy_fields")
+        data = self.remote(("agentcore",))
+        data["memory"]["agentcore"] = {key: CANARY for key in AGENTCORE_LEGACY}
+        self.error(data, "agentcore_legacy_fields")
+        data = self.remote(("agentcore",))
+        data["memory"]["agentcore"]["apiKey"] = CANARY
+        self.error(data, "unknown_fields")
+        data = self.remote(("agentcore",))
+        data["memory"]["agentcore"] = {}
+        self.error(data, "required_fields")
         for value in (CANARY, [], 1, True):
             data = self.remote(("agentcore",))
             data["memory"]["agentcore"] = value
             self.error(data, "object")
-        for value in (1, 100):
+        for value in ("/home/Test User/config.json", "/srv/agentcore/chen.config.json"):
             data = self.remote(("agentcore",))
-            data["memory"]["agentcore"]["topK"] = value
+            data["memory"]["agentcore"]["configFile"] = value
             overlay(data, self.components)
 
     def test_agentcore_generate_compare_and_pure_render(self):
@@ -408,7 +432,7 @@ class MemoryContractTests(unittest.TestCase):
             render_memory(data, self.components)
         self.assertEqual(before, data)
 
-    def test_agentcore_compare_redacts_identity_and_carry_keeps_namespaces_together(self):
+    def test_agentcore_compare_marks_the_config_file_and_carry_patches_it(self):
         from scripts.carry import carry
         from scripts.profile_write import _provenance
 
@@ -421,14 +445,17 @@ class MemoryContractTests(unittest.TestCase):
 
         left = self.remote(("agentcore",))
         right = copy.deepcopy(left)
-        right["memory"]["agentcore"].update(memoryId=CANARY, actorId=CANARY, namespaces=["/" + CANARY + "/"],
-                                           capture=True, topK=5)
+        right["memory"]["agentcore"]["configFile"] = "/home/" + CANARY + "/config.json"
         a, b = files(left), files(right)
         report = compare(a, b)
         self.assertNotIn(CANARY, json.dumps(report))
+        self.assertNotIn(AGENTCORE["configFile"], json.dumps(report))
+        self.assertIn("/overlay/memory/agentcore/configFile", json.dumps(report))
+        self.assertEqual([], compare(a, files(copy.deepcopy(left)))["unsupported"])
         report["right"] = {"path": "/candidate/right"}
         result = carry(report, left, self.manifest_data, b, "/candidate/right")
-        self.assertIn({"op": "replace", "path": "/memory/agentcore/namespaces", "value": ["/" + CANARY + "/"]}, result["patches"])
+        self.assertEqual([{"op": "replace", "path": "/memory/agentcore/configFile", "value": "/home/" + CANARY + "/config.json"}],
+                         [p for p in result["patches"] if p["path"].startswith("/memory")])
         self.assertFalse(any(p["path"].startswith("/consent") for p in result["patches"]))
 
     def test_local_only_consent_disables_every_background_model_path(self):

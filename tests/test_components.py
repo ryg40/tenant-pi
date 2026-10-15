@@ -22,7 +22,7 @@ CANARY = "CANARY_SECRET"
 MEMORY_BLOCKS = {"hermes": {"backgroundReview": False},
                  "wiki": {"ambientPersonalVault": False, "backgroundTasks": False},
                  "openviking": {"captureToolResults": False},
-                 "agentcore": {"memoryId": "mem-EXAMPLE", "region": "us-east-1", "namespaces": ["/shared/"], "topK": 10, "capture": False}}
+                 "agentcore": {"configFile": "/home/example/.config/agentcore-memory/config.json"}}
 EVENTS = []
 RECORDING = []
 PROCESS_EVENTS = ("subprocess.Popen", "os.exec", "os.posix_spawn", "os.system", "os.fork")

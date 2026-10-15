@@ -1,0 +1,15 @@
+{
+  "name": "agentcore-memory-admin",
+  "version": "0.1.0",
+  "description": "The registry script of the shared AgentCore Memory: IAM provisioning, offboarding and migration, dry run by default",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24.0.0 <25"},
+  "bin": {"agentcore-memory-registry": "./bin/registry.mjs"},
+  "scripts": {"test": "node --test tests/"},
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "3.1152.0",
+    "@aws-sdk/client-iam": "3.1152.0",
+    "@aws-sdk/client-sts": "3.1152.0"
+  }
+}

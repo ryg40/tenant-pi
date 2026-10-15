@@ -1,6 +1,6 @@
 # In-tree packages
 
-`packages/tenantext` and `packages/promptr` hold the sources of the two optional Pi packages. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. `packages/agentcore-pi` holds the optional AgentCore Memory prototype.
+`packages/tenantext` and `packages/promptr` hold the sources of the two optional Pi packages. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. `packages/agentcore-pi` holds the AgentCore Memory extension for Pi on the shared memory core: recall before each typed prompt and the confirmed propose tool `agentcore_propose`; it is the optional `agentcore` memory module. `packages/agentcore-memory-core` holds the shared memory core for several people: the contract, its implementation and the review CLI. `packages/agentcore-claude` holds the Claude Code plugin of the shared memory: a recall hook and an MCP server with the propose and review tools. `packages/agentcore-memory-admin` holds the registry script of the shared memory, an owner tool.
 Each package has its own license metadata, tests and documentation.
 
 Tenantext and Promptr pin `@types/node` to `24.19.2` for their Node `>=24.0.0 <25` requirement.
@@ -32,7 +32,6 @@ Each extension and each skill of the packages is one component in `config/manife
 | `promptr-openknowledge-project-pages` | `packages/promptr` | `skills/openknowledge-project-pages` | `core`, `promptr` | `unverified` | `host_service_required`, `skill_use_unverified`, `kit_test_missing` |
 | `promptr-watch-herdr-agents` | `packages/promptr` | `skills/watch-herdr-agents` | `core`, `promptr` | `unverified` | `host_tool_required`, `skill_use_unverified`, `kit_test_missing` |
 | `openviking` | `packages/openviking-pi` | Local-file source `index.ts`, not a directory filter | `core` | `unverified` | `install_step_required`, `server_required`, `package_runtime_unverified`, `capture_cost_unmeasured` |
-
 | `agentcore` | `packages/agentcore-pi` | Local-file source `index.ts` | `core` | `unverified` | `install_step_required`, `aws_resource_required`, `package_runtime_unverified` |
 
 Facts for a selection:
@@ -165,39 +164,116 @@ The tracker dialog of `/promptr-tracker init` shows `GITEA_OWNER` as the default
 
 ## AgentCore Memory extension (`packages/agentcore-pi`)
 
-This package recalls reviewed AWS memory records without changing local memory stores.
+This package connects Pi to the shared AgentCore Memory of several people. It changes no local memory store.
 OpenViking stays the primary memory. The checklist leaves AgentCore unmarked.
-The module requires selection, both memory consents, and `memory.agentcore` choices.
-See [the memory guide](memory-modules.md#agentcore-memory) and [the package README](../packages/agentcore-pi/README.md).
+The module requires selection, both memory consents, and `memory.agentcore.configFile`.
+The extension recalls before each typed prompt and adds the tool `agentcore_propose`, which writes only after the person confirms.
+See [the memory guide](memory-modules.md#agentcore-memory), [the security document](shared-memory-security.md) and [the package README](../packages/agentcore-pi/README.md).
 
 | Item | Value |
 | --- | --- |
 | Source | Own code at `packages/agentcore-pi/index.ts`, loaded after OpenViking as a local-file source. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependency | `@aws-sdk/client-bedrock-agentcore` `3.1152.0`, pinned with a lock file. |
-| Configuration | Shell-quoted JSON in process-local `AGENTCORE_MEMORY_CONFIG`. No credential is rendered. |
-| Credentials | The default AWS SDK credential chain, including `AWS_PROFILE`. |
+| Dependency | None of its own. It imports the core `packages/agentcore-memory-core` by a relative path; the lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1152.0`. |
+| Configuration | The person config file. The launch line names it in process-local `AGENTCORE_MEMORY_CONFIG_FILE` and removes an inherited `AGENTCORE_MEMORY_CONFIG`. No credential is rendered. |
+| Credentials | The AWS profile that the person config names, else the default AWS SDK credential chain. |
 | Publish rule | `("packages/agentcore-pi", ("node_modules/",))`. |
-| Capture | Off by default; the first round is recall-only. |
+| Capture | None. The capture switch of the prototype is removed. |
 
-After approval, install dependencies from the kit root:
+After approval, install the dependencies of the core from the kit root:
 
 ```sh
-npm --prefix packages/agentcore-pi ci --ignore-scripts
+npm --prefix packages/agentcore-memory-core ci --ignore-scripts
 ```
 
-The package tests need no AWS credential, SDK installation, or network:
+The package tests need no AWS credential, SDK installation, or network. They use a fake core:
 
 ```sh
 node --test packages/agentcore-pi/tests/
 ```
 
-Registry metadata confirms both AWS data-plane and control-plane packages at `3.1152.0`.
-Only the data-plane package is used. No CLI fallback is needed by the extension.
-The separate reviewed submit script uses the AWS CLI only with `--send`.
+One test loads `index.ts` with the real core in a separate process. It runs only when `packages/agentcore-memory-core/src/index.mjs` exists, and it sends no AWS request.
 
 Not verified: live AWS calls, IAM enforcement, clean-client installation, or loading this package in a generated Pi session.
+
+## AgentCore memory core (`packages/agentcore-memory-core`)
+
+The core of the shared AgentCore Memory for several people. It is a library, not a kit component: no manifest entry names it. The Pi extension, the Claude Code plugin and the registry script import it by a relative path. The review CLI is part of the package.
+The contract is `src/types.ts`; `src/index.mjs` implements it. The package also holds the review CLI `bin/agentcore-memory.mjs` and offline tests with fake clients.
+The design and its security review are in [the shared memory security document](shared-memory-security.md). The package README is `packages/agentcore-memory-core/README.md`.
+
+| Item | Value |
+| --- | --- |
+| Source | `packages/agentcore-memory-core`, own code. |
+| License | The repository MIT license covers this code. |
+| Node | `>=24.0.0 <25`. |
+| Dependency | `@aws-sdk/client-bedrock-agentcore` `3.1152.0`, with a lock file. The Pi extension and the Claude Code plugin get the SDK through the core. |
+| AWS actions | `RetrieveMemoryRecords`, `ListMemoryRecords`, `BatchCreateMemoryRecords` and `BatchUpdateMemoryRecords`. No delete action. |
+| Tests | `npm --prefix packages/agentcore-memory-core ci --ignore-scripts`, then `node --test packages/agentcore-memory-core/tests/`. No AWS credential, no network. |
+| Publish rule | `("packages/agentcore-memory-core", ("node_modules/",))`. |
+
+Not verified: the core against a live store, until the live proof after the four implementation tickets.
+
+## AgentCore memory Claude Code plugin (`packages/agentcore-claude`)
+
+A Claude Code plugin for the shared AgentCore Memory of several people. A `UserPromptSubmit` hook recalls records for each prompt. A stdio MCP server `agentcore-memory` has the tools `memory_propose`, `memory_list_proposals`, `memory_show_proposal`, `memory_approve` and `memory_reject`. Both import the core package; the plugin holds no AWS logic. It is not a kit component: no manifest entry names it.
+The package README is `packages/agentcore-claude/README.md`. The security review is in [the shared memory security document](shared-memory-security.md).
+
+| Item | Value |
+| --- | --- |
+| Source | `packages/agentcore-claude`, own code. |
+| License | The repository MIT license covers this code. |
+| Node | `>=24.0.0 <25`. |
+| Dependencies | `@modelcontextprotocol/server` `2.3.1` and `zod` `4.6.7`, pinned with a lock file. The core package brings `@aws-sdk/client-bedrock-agentcore`. |
+| Core | Imported by the relative path `../agentcore-memory-core/src/index.mjs`. The plugin works only when Claude Code loads it in place, for example with `--plugin-dir`. |
+| Confirmation | The permission dialog of Claude Code. The three write tools carry `anthropic/requiresUserInteraction`. The plugin ships no permission allow entry. |
+| Kill switch | `AGENTCORE_MEMORY_DISABLE=1`. |
+| Publish rule | `("packages/agentcore-claude", ("node_modules/",))`. |
+
+Install the core and the plugin from the kit root, then load the plugin for one session:
+
+```sh
+npm --prefix packages/agentcore-memory-core ci --ignore-scripts
+npm --prefix packages/agentcore-claude ci --ignore-scripts
+claude --plugin-dir packages/agentcore-claude
+```
+
+The package tests use a fake core and need no AWS credential and no network:
+
+```sh
+node --test packages/agentcore-claude/tests/
+```
+
+Not verified: the plugin with the real core, and every live AWS call.
+
+## AgentCore memory admin (`packages/agentcore-memory-admin`)
+
+The registry script of the shared AgentCore Memory. It is an owner tool, not a kit component: no manifest entry names it, and no profile loads it. It renders, from the private registry of the owner, one IAM user and one inline policy per person, the person config, the two service policies, the offboarding plan, the purge of rejected records and the one-time migration of the old owner namespace.
+A dry run is the default and changes nothing. Only the coordinator runs the apply step, with the owner's admin login, after a dry run and the owner's word.
+The design and its security review are in [the shared memory security document](shared-memory-security.md). The package README is `packages/agentcore-memory-admin/README.md`.
+
+| Item | Value |
+| --- | --- |
+| Source | `packages/agentcore-memory-admin`, own code. The script is `bin/registry.mjs`. |
+| License | The repository MIT license covers this code. |
+| Node | `>=24.0.0 <25`. |
+| Dependency | `@aws-sdk/client-iam`, `@aws-sdk/client-sts` and `@aws-sdk/client-bedrock-agentcore`, each `3.1152.0`, pinned with a lock file. |
+| Core | Imported by the relative path `../../agentcore-memory-core/src/index.mjs`: the id rule, the namespace builder, the registry validation, the three scope functions and the person config. The script adds field names to a refusal and two registry rules (a duplicate PIN, a project without a maintainer). |
+| Registry | The tracked `registry.example.json` holds the four example people only. The private registry stays outside every repository. |
+| Credentials | The admin profile with `--apply --profile <admin>`; a dry run without `--profile` makes no AWS call. |
+| Publish rule | `("packages/agentcore-memory-admin", ("node_modules/",))`. |
+
+Install the dependencies and run the tests from the kit root:
+
+```sh
+npm --prefix packages/agentcore-memory-admin ci --ignore-scripts
+node --test packages/agentcore-memory-admin/tests/
+```
+
+The tests use fake IAM, STS and memory clients. They need no AWS credential and no network.
+
+Not verified: every apply step against IAM and the live store, until the live proof of the shared memory.
 
 ## OpenViking extension (`packages/openviking-pi`)
 

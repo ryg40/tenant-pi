@@ -7,7 +7,7 @@ diagnostic is a static `rule: field` string; an input value never enters it.
 import shlex
 from pathlib import PurePosixPath
 
-from scripts.memory_modules import MEMORY
+from scripts.memory_modules import AGENTCORE_CORE, MEMORY
 from scripts.profile_plan import DECLARED_NPM, PEER_OVERRIDE_NPM, _package_source
 from scripts.validate import RESOURCE_KINDS, SELECTABLE, fail, id_list, npm_name
 
@@ -91,7 +91,8 @@ def prerequisites(cid, component):
     if npm_memory or cid in PEER_OVERRIDE_NPM:
         found.append("setup:" + PEER_STEP)
     if cid in MEMORY and kind == "tree":
-        found.append("setup:" + INSTALL_STEP.format(path=source["path"]))
+        # The AgentCore extension has no dependency of its own; the shared core beside it installs the AWS SDK.
+        found.append("setup:" + INSTALL_STEP.format(path=AGENTCORE_CORE if cid == "agentcore" else source["path"]))
     return found
 
 

@@ -42,9 +42,7 @@ REVIEWED_TREE = frozenset(s["path"] for s in REVIEWED_SOURCES.values() if s and 
 # `paths` is a positional list of private entries: one marker per index.
 MEMORY_POLICIES = {"backgroundReview": "bool", "reviewTransport": "transport", "childExtensionPaths": "paths",
                    "ambientPersonalVault": "bool", "backgroundTasks": "bool", "wikiHome": "marker", "embedding": "embedding",
-                   "captureToolResults": "bool", "recallContextTimeoutMs": "int",
-                   "memoryId": "marker", "region": "marker", "namespaces": "paths", "actorId": "marker",
-                   "topK": "int", "capture": "bool", "recallTimeoutMs": "int"}
+                   "captureToolResults": "bool", "recallContextTimeoutMs": "int", "configFile": "marker"}
 EMBEDDING_POLICIES = {"provider": "embedding_provider", "baseUrl": "marker", "model": "marker",
                       "expectedDimensions": "dimensions"}
 EMBEDDING_AUTH_POLICIES = {"envVar": "marker", "mode": "embedding_auth"}

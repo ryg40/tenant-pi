@@ -1,0 +1,12 @@
+{
+  "name": "agentcore-memory-core",
+  "version": "0.1.0",
+  "description": "The shared AgentCore Memory core for several people: config, namespaces, recall, propose and review",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=24.0.0 <25"},
+  "exports": {".": "./src/index.mjs"},
+  "types": "./src/types.ts",
+  "scripts": {"test": "node --test tests/"},
+  "dependencies": {"@aws-sdk/client-bedrock-agentcore": "3.1152.0"}
+}

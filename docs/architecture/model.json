@@ -1,8 +1,8 @@
 {
  "schemaVersion": 1,
  "meta": {
-  "title": "tenant-pi architecture",
-  "intro": "The kit checks your private choices and generates a separate Pi profile. It writes new files, but installs no package, starts no service and stores no credential."
+  "title": "tenant-pi installed environment",
+  "intro": "A runtime map, not a host scan. Core is required. Optional means selectable; configured means supplied with settings and credentials; verified means a recorded check of the stated behavior. This page verifies no live service."
  },
  "placeholders": {
   "clone": "$HOME/tenant-pi",
@@ -14,36 +14,78 @@
   "gateway": "the gateway",
   "gateway_url": "https://gateway.example.invalid/v1",
   "aliases": "the model aliases of the gateway",
-  "dev_repo": "the development repository",
-  "mirror": "the public mirror",
-  "publication_service": "the publication service",
   "ov_server": "your OpenViking server",
   "ok_service": "your OpenKnowledge service",
   "wiki_vault": "~/.llm-wiki/",
   "mcp_servers": "the MCP servers that you define",
   "herdr_bin": "the herdr command on PATH",
-  "lab_vm": "a separate test machine",
   "seat_address": "ssh -p <port> <account>@<host>"
  },
  "kinds": {
-  "input": {"label": "Input file", "color": "#f2b84b"},
-  "action": {"label": "Kit action", "color": "#3fc1c9"},
-  "output": {"label": "Generated file", "color": "#6cd47e"},
-  "runtime": {"label": "Pi runtime", "color": "#a98bff"},
-  "guard": {"label": "Guard or check", "color": "#ff6b6b"},
-  "service": {"label": "External service", "color": "#ff8fc7"},
-  "release": {"label": "Release step", "color": "#5fa8ff"},
-  "agent": {"label": "Herdr pane", "color": "#ffd166"},
-  "host": {"label": "Host fact", "color": "#ffb38a"},
-  "comp-core": {"label": "Core component", "color": "#d6dde8"},
-  "comp-tenantext": {"label": "Tenantext extension", "color": "#4dd0e1"},
-  "comp-promptr": {"label": "Promptr", "color": "#f78c6b"},
-  "comp-memory": {"label": "Memory module", "color": "#b39dff"},
-  "comp-mcp": {"label": "MCP module", "color": "#ff8fc7"},
-  "comp-herdr": {"label": "Herdr and questions", "color": "#ffd166"},
-  "comp-skills": {"label": "Skill set", "color": "#7fdc8f"},
-  "comp-deploy": {"label": "Deploy", "color": "#5fa8ff"},
-  "file": {"label": "File", "color": "#8b98ad"}
+  "input": {
+   "label": "User / configuration",
+   "color": "#f2b84b"
+  },
+  "output": {
+   "label": "Local state",
+   "color": "#6cd47e"
+  },
+  "runtime": {
+   "label": "Pi process",
+   "color": "#a98bff"
+  },
+  "service": {
+   "label": "Service endpoint",
+   "color": "#ff8fc7"
+  },
+  "release": {
+   "label": "Release step",
+   "color": "#5fa8ff"
+  },
+  "agent": {
+   "label": "Herdr pane",
+   "color": "#ffd166"
+  },
+  "host": {
+   "label": "Host fact",
+   "color": "#ffb38a"
+  },
+  "comp-core": {
+   "label": "Core component",
+   "color": "#d6dde8"
+  },
+  "comp-tenantext": {
+   "label": "Tenantext extension",
+   "color": "#4dd0e1"
+  },
+  "comp-promptr": {
+   "label": "Promptr",
+   "color": "#f78c6b"
+  },
+  "comp-memory": {
+   "label": "Memory module",
+   "color": "#b39dff"
+  },
+  "comp-mcp": {
+   "label": "MCP module",
+   "color": "#ff8fc7"
+  },
+  "comp-herdr": {
+   "label": "Herdr and questions",
+   "color": "#ffd166"
+  },
+  "comp-skills": {
+   "label": "Skill set",
+   "color": "#7fdc8f"
+  },
+  "comp-deploy": {
+   "label": "Deploy",
+   "color": "#5fa8ff"
+  },
+  "file": {
+   "label": "File",
+   "color": "#8b98ad"
+  }
  },
  "tones": {
   "clone": "#5fa8ff",
@@ -59,641 +101,1935 @@
  "views": [
   {
    "id": "overview",
-   "label": "System overview",
-   "summary": "The four places of the kit: the clone, the private directory, the generated profile and the Pi runtime. The kit refuses a target in the live profile.",
+   "label": "Installed environment",
+   "summary": "Start at your terminal. One Pi process uses the selected profile, local files and your chosen model route. Optional modules add memory and service calls; these are capabilities, not an inventory of your machine.",
    "groups": [
-    {"id": "g-clone", "label": "The clone", "sub": "{{clone}}", "x": 40, "y": 40, "cols": 2, "tone": "clone"},
-    {"id": "g-private", "label": "The private directory", "sub": "{{private}}", "x": 920, "y": 40, "cols": 2, "tone": "private"},
-    {"id": "g-actions", "label": "The kit actions", "sub": "scripts/tenant_pi.py", "x": 480, "y": 420, "cols": 2, "tone": "actions"},
-    {"id": "g-profile", "label": "The generated profile", "sub": "{{profile}}", "x": 40, "y": 780, "cols": 2, "tone": "profile"},
-    {"id": "g-runtime", "label": "The Pi runtime", "sub": "one npm package for the user", "x": 480, "y": 780, "cols": 2, "tone": "runtime"},
-    {"id": "g-live", "label": "The live profile", "sub": "{{live}}", "x": 920, "y": 780, "cols": 1, "tone": "live"}
+    {
+     "id": "o-user",
+     "label": "Your interface",
+     "sub": "Same account; Herdr is optional",
+     "x": 40,
+     "y": 80,
+     "nodeW": 200,
+     "cols": 1,
+     "tone": "private",
+     "gapY": 22
+    },
+    {
+     "id": "o-profile",
+     "label": "Selected profile",
+     "sub": "Configuration scope, not a sandbox",
+     "x": 420,
+     "y": 80,
+     "nodeW": 240,
+     "cols": 1,
+     "tone": "profile",
+     "gapY": 22
+    },
+    {
+     "id": "o-local",
+     "label": "Local files and code",
+     "sub": "Profile, account and project have different lifetimes",
+     "x": 40,
+     "y": 390,
+     "nodeW": 240,
+     "cols": 2,
+     "tone": "clone",
+     "gapY": 22
+    },
+    {
+     "id": "o-endpoints",
+     "label": "Service endpoints",
+     "sub": "Only the routes and modules you use",
+     "x": 860,
+     "y": 80,
+     "nodeW": 240,
+     "cols": 1,
+     "tone": "service",
+     "gapY": 22
+    }
    ],
    "nodes": [
-    {"id": "manifest", "group": "g-clone", "label": "The manifest", "sub": "config/manifest.json", "kind": "input",
-     "summary": "Each component with its source, pin and status, and the runtime requirements. The public input of the plan. A kit update changes the manifest and never your choices.",
-     "tags": ["public input", "reviewed"], "files": ["config/manifest.json"], "doc": "docs/guides/modules.md", "drill": "components"},
-    {"id": "example", "group": "g-clone", "label": "Sample overlay", "sub": "config/config.example.json", "kind": "input",
-     "summary": "A synthetic core-only overlay. init-private adapts it to your target.",
-     "tags": ["synthetic"], "files": ["config/config.example.json"], "doc": "docs/private-directory.md"},
-    {"id": "templates", "group": "g-clone", "label": "Private templates", "sub": "config/private/", "kind": "input",
-     "summary": "The templates of the registry, the install log, the accepted-drift list and the Git ignore file of the private directory.",
-     "tags": ["template"], "files": ["config/private/registry.json", "config/private/install-log.md", "config/private/accepted-drift.md", "config/private/gitignore"], "doc": "docs/private-directory.md"},
-    {"id": "packages", "group": "g-clone", "label": "In-tree packages", "sub": "packages/", "kind": "input",
-     "summary": "The optional modules: packages/tenantext, packages/promptr and packages/openviking-pi. A profile points at them by absolute path, so the clone must stay in its place.",
-     "tags": ["optional", "tree source"], "files": ["packages/tenantext/package.json", "packages/promptr/package.json", "packages/openviking-pi/package.json"], "doc": "docs/packages.md", "drill": "components"},
-    {"id": "cli", "group": "g-clone", "label": "The command line", "sub": "scripts/tenant_pi.py", "kind": "action",
-     "summary": "The options, the bounded file loader and each action. python3 scripts/tenant_pi.py --help lists the actions.",
-     "tags": ["entry point"], "files": ["scripts/tenant_pi.py"], "script": "scripts/tenant_pi.py", "doc": "docs/generator.md", "drill": "pipeline"},
-    {"id": "checks", "group": "g-clone", "label": "Offline checks", "sub": "tests/, publish_check.py", "kind": "guard",
-     "summary": "You run the unit tests and the publish check after the clone. They need no network and change nothing.",
-     "tags": ["offline"], "files": ["scripts/publish_check.py", "scripts/examples.py", "scripts/validate.py"], "script": "scripts/publish_check.py", "doc": "docs/guides/setup.md", "drill": "devrel"},
-
-    {"id": "overlay", "group": "g-private", "label": "Your overlay", "sub": "overlay.json", "kind": "input",
-     "summary": "Your choices: the target, the component selection, the models, the references and the consent. The private input of the plan.",
-     "tags": ["private input", "mode 0600"], "files": ["{{private}}/overlay.json"], "doc": "docs/private-directory.md"},
-    {"id": "registry", "group": "g-private", "label": "Model registry", "sub": "registry.json", "kind": "input",
-     "summary": "Your evidence that a provider has a model. Only model routes need it. You pass it with --registry.",
-     "tags": ["private input", "optional"], "files": ["{{private}}/registry.json"], "doc": "docs/model-routes.md"},
-    {"id": "inputs", "group": "g-private", "label": "Module inputs", "sub": "inputs/", "kind": "input",
-     "summary": "The input files of optional modules, for example inputs/mcp-adapter.json. validate, plan and generate read them with --local-dir.",
-     "tags": ["private input", "optional"], "files": ["{{private}}/inputs/"], "doc": "docs/private-directory.md"},
-    {"id": "runtime-report", "group": "g-private", "label": "Runtime report", "sub": "runtime.json", "kind": "output",
-     "summary": "The saved output of check-runtime: the installed Pi, Node and Python, compared with the pins of the manifest.",
-     "tags": ["record"], "files": ["{{private}}/runtime.json"], "doc": "docs/check-runtime.md"},
-    {"id": "launcher", "group": "g-private", "label": "Launcher file", "sub": "launch-main.sh", "kind": "output",
-     "summary": "Two lines that start Pi with the target as its profile. generate writes it with --launcher. Mode 0700.",
-     "tags": ["mode 0700"], "files": ["{{private}}/launch-main.sh", "scripts/launcher.py"], "script": "scripts/launcher.py", "doc": "docs/launcher.md"},
-    {"id": "live-baseline", "group": "g-private", "label": "Live baseline", "sub": "live-baseline.json", "kind": "output",
-     "summary": "The entry names, sizes and modification times of the live profile. check-baseline compares the live profile with it.",
-     "tags": ["record", "mode 0600"], "files": ["{{private}}/live-baseline.json"], "doc": "docs/directory-baseline.md"},
-    {"id": "install-log", "group": "g-private", "label": "Install log", "sub": "install-log.md", "kind": "input",
-     "summary": "Your record of each install. accepted-drift.md beside it lists the differences that you keep on purpose.",
-     "tags": ["record"], "files": ["{{private}}/install-log.md", "{{private}}/accepted-drift.md"], "doc": "docs/accepted-drift.md"},
-
-    {"id": "init-private", "group": "g-actions", "label": "init-private", "sub": "scripts/private_init.py", "kind": "action",
-     "summary": "Creates the private directory from the templates, mode 0700, with five files and an empty inputs/ directory.",
-     "tags": ["writes once"], "files": ["scripts/private_init.py"], "script": "scripts/private_init.py", "doc": "docs/private-directory.md"},
-    {"id": "check-runtime", "group": "g-actions", "label": "check-runtime", "sub": "scripts/check_runtime.py", "kind": "action",
-     "summary": "Starts three --version processes and compares Pi, Node and Python with the pins of the manifest. The Pi probe uses an empty temporary profile.",
-     "tags": ["starts processes"], "files": ["scripts/check_runtime.py"], "script": "scripts/check_runtime.py", "doc": "docs/check-runtime.md"},
-    {"id": "validate", "group": "g-actions", "label": "validate", "sub": "scripts/validate.py", "kind": "action",
-     "summary": "Checks the overlay against the manifest, offline. A refusal prints rule: field on standard error and exits with code 2. It never prints a path or a value.",
-     "tags": ["offline", "read-only"], "files": ["scripts/validate.py"], "script": "scripts/validate.py", "doc": "docs/generator.md"},
-    {"id": "plan", "group": "g-actions", "label": "plan (pure)", "sub": "scripts/profile_plan.py", "kind": "action",
-     "summary": "Builds the files, the launch line and the readiness gaps in memory. It writes nothing. A command that changes the machine is display text only.",
-     "tags": ["pure", "in memory"], "files": ["scripts/profile_plan.py"], "script": "scripts/profile_plan.py", "doc": "docs/profile-plan.md"},
-    {"id": "generate", "group": "g-actions", "label": "generate (the writer)", "sub": "scripts/profile_write.py", "kind": "guard",
-     "summary": "The one function that creates a profile. It creates a new, absent directory or stops. It builds the plan a second time from the record and refuses a difference.",
-     "tags": ["new directories only", "guarded"], "files": ["scripts/profile_write.py"], "script": "scripts/profile_write.py", "doc": "docs/profile-write.md"},
-    {"id": "baseline", "group": "g-actions", "label": "baseline", "sub": "scripts/baseline.py", "kind": "guard",
-     "summary": "baseline records the entry names, sizes and times of one directory. check-baseline then reports unchanged, changed or no_baseline. It opens no file of the directory.",
-     "tags": ["read-only", "names only"], "files": ["scripts/baseline.py"], "script": "scripts/baseline.py", "doc": "docs/directory-baseline.md"},
-
-    {"id": "settings", "group": "g-profile", "label": "settings.json", "sub": "for Pi", "kind": "output",
-     "summary": "The Pi settings: the core keys, the package entries with filters and the model defaults. Pi can change it later, and compare shows the drift.",
-     "tags": ["mode 0600"], "files": ["{{profile}}/settings.json"], "doc": "docs/profile-write.md"},
-    {"id": "choices", "group": "g-profile", "label": "choices.json", "sub": ".tenant-pi/choices.json", "kind": "output",
-     "summary": "The inputs of this profile. They explain each byte of settings.json.",
-     "tags": ["record"], "files": ["{{profile}}/.tenant-pi/choices.json"], "doc": "docs/profile-write.md"},
-    {"id": "state", "group": "g-profile", "label": "state.json", "sub": ".tenant-pi/state.json", "kind": "output",
-     "summary": "The marker and the record of the generation. The list action reads it.",
-     "tags": ["marker"], "files": ["{{profile}}/.tenant-pi/state.json"], "doc": "docs/candidate-list.md"},
-    {"id": "pi-state", "group": "g-profile", "label": "Pi state", "sub": "auth.json, sessions/", "kind": "runtime",
-     "summary": "The login, the sessions, the model data and the helper tools. Pi writes them at run time. The kit does not read auth.json.",
-     "tags": ["host-only", "written by Pi"], "files": ["{{profile}}/auth.json", "{{profile}}/sessions/"], "doc": "docs/profile-lifecycle.md"},
-
-    {"id": "pi", "group": "g-runtime", "label": "Pi", "sub": "pi --no-approve", "kind": "runtime",
-     "summary": "The pi program: one npm package for the user, shared by each profile. The launcher starts it with PI_CODING_AGENT_DIR set to the target.",
-     "tags": ["npm package", "you install it"], "files": ["{{pi_bin}}"], "doc": "docs/launcher.md", "drill": "runtime"},
-    {"id": "provider", "group": "g-runtime", "label": "Model provider", "sub": "{{provider}}", "kind": "service",
-     "summary": "Pi gets a credential from /login or from a key in the launching shell, never from a file of the kit. The provider answers the model requests.",
-     "tags": ["credential outside the kit"], "doc": "docs/guides/providers.md", "drill": "runtime"},
-
-    {"id": "live", "group": "g-live", "label": "Live profile", "sub": "{{live}}", "kind": "guard",
-     "summary": "The profile that a bare pi command opens. The kit refuses a target in it or under it, with the rule under_pi_agent. It stays the fallback until a candidate replaces it.",
-     "tags": ["refused", "fallback"], "files": ["{{live}}"], "doc": "docs/profile-lifecycle.md"}
+    {
+     "id": "terminal",
+     "group": "o-user",
+     "label": "User terminal",
+     "sub": "Prompts, replies, approvals",
+     "kind": "input",
+     "summary": "You interact with Pi in a terminal. The launcher selects {{profile}} through PI_CODING_AGENT_DIR. It runs {{pi_bin}} from your shell PATH.",
+     "doc": "docs/launcher.md",
+     "files": [
+      "{{private}}/launch-main.sh"
+     ]
+    },
+    {
+     "id": "herdr",
+     "group": "o-user",
+     "label": "Herdr workspace",
+     "sub": "Optional terminal panes",
+     "kind": "agent",
+     "summary": "Herdr can host the terminal and other agent panes. Its skill and application are separate choices. The application is {{herdr_bin}}. A plain terminal needs neither. Herdr-hosted Pi is not qualified.",
+     "doc": "docs/herdr-setup.md",
+     "tags": [
+      "optional",
+      "not qualified"
+     ]
+    },
+    {
+     "id": "pi",
+     "group": "o-profile",
+     "label": "Pi runtime",
+     "sub": "Core; Node + selected profile",
+     "kind": "runtime",
+     "summary": "Pi runs as your operating-system account, using {{profile}}/settings.json. A profile selects configuration and state; it is not an OS sandbox. Local tools keep the account permissions.",
+     "doc": "docs/launcher.md",
+     "files": [
+      "{{profile}}/settings.json"
+     ],
+     "drill": "profile",
+     "tags": [
+      "core",
+      "configuration scope"
+     ]
+    },
+    {
+     "id": "modules",
+     "group": "o-profile",
+     "label": "Enabled modules",
+     "sub": "Extensions, tools and skills",
+     "kind": "comp-tenantext",
+     "summary": "Pi loads only the selected resources declared by the profile and other trusted resource scopes. Core works without these optional modules. Skills provide instructions; extensions add runtime behavior. The catalog shows available modules, not enabled modules on this machine.",
+     "doc": "docs/packages.md",
+     "drill": "components",
+     "tags": [
+      "optional",
+      "selection is not verification"
+     ]
+    },
+    {
+     "id": "profile-state",
+     "group": "o-local",
+     "label": "Profile state",
+     "sub": "auth.json; sessions; Hermes",
+     "kind": "output",
+     "summary": "Pi writes login and sessions under {{profile}}. Enabled Hermes stores session indexes and memory there too. A new candidate gets none of this state. Authentication is not copied between profiles.",
+     "doc": "docs/profile-lifecycle.md",
+     "files": [
+      "{{profile}}/auth.json",
+      "{{profile}}/sessions/"
+     ],
+     "drill": "profile"
+    },
+    {
+     "id": "shared-state",
+     "group": "o-local",
+     "label": "Account memory",
+     "sub": "Wiki vault; OpenViking client state",
+     "kind": "comp-memory",
+     "summary": "Optional LLM Wiki uses {{wiki_vault}} or a project vault. OpenViking client queues and logs live under ~/.openviking/. These paths are outside the selected profile and can be shared by profiles of the account. Recall text can enter model requests.",
+     "doc": "docs/memory-modules.md",
+     "tags": [
+      "optional",
+      "account-shared"
+     ],
+     "drill": "memory"
+    },
+    {
+     "id": "project",
+     "group": "o-local",
+     "label": "Working project",
+     "sub": "Files, shell and trusted settings",
+     "kind": "file",
+     "summary": "Core tools read and edit files and run shell commands with account permissions. A trusted project can add resource and settings overrides. Optional Promptr also writes project .promptr/ state.",
+     "doc": "docs/workflow-modules.md",
+     "drill": "profile"
+    },
+    {
+     "id": "clone",
+     "group": "o-local",
+     "label": "Runtime module sources",
+     "sub": "Clone paths + installed npm modules",
+     "kind": "file",
+     "summary": "Optional in-tree code stays at {{clone}}/packages/. Generated profiles refer to its absolute paths; keep the clone in place. The AgentCore extension imports the shared memory core in packages/agentcore-memory-core. The Claude Code plugin packages/agentcore-claude and the owner tool packages/agentcore-memory-admin use the same core; no profile loads them. Other selected modules load from the profile npm directory. The clone is a code source, not a running service.",
+     "doc": "docs/packages.md",
+     "files": [
+      "packages/tenantext/package.json",
+      "packages/promptr/package.json",
+      "packages/openviking-pi/package.json",
+      "packages/agentcore-memory-core/package.json",
+      "packages/agentcore-claude/package.json",
+      "packages/agentcore-memory-admin/package.json"
+     ],
+     "drill": "components"
+    },
+    {
+     "id": "models",
+     "group": "o-endpoints",
+     "label": "Chosen model route",
+     "sub": "Native OR direct OR gateway",
+     "kind": "service",
+     "summary": "Pi sends prompt context and tool results through the selected route. Native provider login and direct inference do not require a gateway. The optional gateway forwards requests to an upstream provider.",
+     "doc": "docs/guides/providers.md",
+     "drill": "runtime"
+    },
+    {
+     "id": "remote-memory",
+     "group": "o-endpoints",
+     "label": "Remote memory",
+     "sub": "OpenViking; optional AgentCore",
+     "kind": "service",
+     "summary": "Only enabled and configured clients contact these services. OpenViking recalls memories and can capture turns. AgentCore sends each typed prompt to AWS as a recall query and has no capture path. Its propose tool sends a text only after the person confirms it. Both need the two memory consents.",
+     "doc": "docs/memory-modules.md",
+     "tags": [
+      "optional",
+      "separate consent"
+     ],
+     "drill": "memory"
+    },
+    {
+     "id": "services",
+     "group": "o-endpoints",
+     "label": "Tool and service calls",
+     "sub": "MCP, knowledge, tracker, usage",
+     "kind": "service",
+     "summary": "Optional tools send their call inputs to configured services and return results to Pi. Some enabled modules also make startup or automatic calls. Endpoint configuration proves neither access nor a successful call.",
+     "doc": "docs/workflow-modules.md",
+     "drill": "runtime",
+     "tags": [
+      "optional",
+      "not verified on this client"
+     ]
+    }
    ],
    "edges": [
-    {"from": "example", "to": "init-private", "label": "the sample overlay"},
-    {"from": "templates", "to": "init-private", "label": "the templates"},
-    {"from": "init-private", "to": "overlay", "label": "creates", "style": "writes"},
-    {"from": "init-private", "to": "install-log", "label": "creates", "style": "writes"},
-    {"from": "manifest", "to": "validate", "label": "the manifest"},
-    {"from": "overlay", "to": "validate", "label": "the overlay"},
-    {"from": "registry", "to": "validate", "label": "--registry", "style": "optional"},
-    {"from": "inputs", "to": "validate", "label": "--local-dir", "style": "optional"},
-    {"from": "cli", "to": "validate", "label": "runs each action"},
-    {"from": "checks", "to": "cli", "label": "tests each action", "style": "optional"},
-    {"from": "check-runtime", "to": "runtime-report", "label": "saved report", "style": "writes"},
-    {"from": "runtime-report", "to": "plan", "label": "--runtime-report", "style": "optional"},
-    {"from": "validate", "to": "plan", "label": "valid input"},
-    {"from": "plan", "to": "generate", "label": "the plan"},
-    {"from": "generate", "to": "settings", "label": "creates, one time", "style": "writes"},
-    {"from": "generate", "to": "choices", "label": "creates", "style": "writes"},
-    {"from": "generate", "to": "state", "label": "creates", "style": "writes"},
-    {"from": "generate", "to": "launcher", "label": "--launcher", "style": "writes"},
-    {"from": "generate", "to": "live", "label": "refuses a target here", "style": "refuses"},
-    {"from": "packages", "to": "settings", "label": "tree package entries", "style": "optional"},
-    {"from": "launcher", "to": "pi", "label": "starts with PI_CODING_AGENT_DIR"},
-    {"from": "pi", "to": "settings", "label": "reads", "style": "reads"},
-    {"from": "pi", "to": "pi-state", "label": "reads and writes", "style": "writes"},
-    {"from": "pi", "to": "provider", "label": "model requests"},
-    {"from": "baseline", "to": "live", "label": "scans names only", "style": "reads"},
-    {"from": "baseline", "to": "live-baseline", "label": "records", "style": "writes"}
+    {
+     "from": "terminal",
+     "to": "pi",
+     "label": "input / replies",
+     "style": "interaction",
+     "points": [
+      [
+       260,
+       164
+      ],
+      [
+       440,
+       164
+      ]
+     ],
+     "labelAt": [
+      350,
+      154
+     ]
+    },
+    {
+     "from": "herdr",
+     "to": "pi",
+     "label": "hosts a Pi terminal",
+     "style": "optional",
+     "detailOnly": true
+    },
+    {
+     "from": "pi",
+     "to": "modules",
+     "label": "load",
+     "style": "loads",
+     "points": [
+      [
+       560,
+       190
+      ],
+      [
+       560,
+       212
+      ]
+     ],
+     "labelAt": [
+      603,
+      205
+     ]
+    },
+    {
+     "from": "pi",
+     "to": "models",
+     "label": "model request",
+     "style": "model",
+     "points": [
+      [
+       680,
+       164
+      ],
+      [
+       880,
+       164
+      ]
+     ],
+     "labelAt": [
+      780,
+      154
+     ]
+    },
+    {
+     "from": "modules",
+     "to": "remote-memory",
+     "label": "recall / capture",
+     "style": "memory",
+     "points": [
+      [
+       680,
+       238
+      ],
+      [
+       880,
+       238
+      ]
+     ],
+     "labelAt": [
+      780,
+      228
+     ]
+    },
+    {
+     "from": "modules",
+     "to": "services",
+     "label": "tool call",
+     "style": "optional",
+     "points": [
+      [
+       680,
+       252
+      ],
+      [
+       780,
+       252
+      ],
+      [
+       780,
+       312
+      ],
+      [
+       880,
+       312
+      ]
+     ],
+     "labelAt": [
+      814,
+      302
+     ]
+    },
+    {
+     "from": "pi",
+     "to": "profile-state",
+     "label": "session / auth writes",
+     "style": "writes",
+     "points": [
+      [
+       440,
+       180
+      ],
+      [
+       350,
+       180
+      ],
+      [
+       350,
+       350
+      ],
+      [
+       30,
+       350
+      ],
+      [
+       30,
+       474
+      ],
+      [
+       60,
+       474
+      ]
+     ],
+     "labelAt": [
+      210,
+      339
+     ]
+    },
+    {
+     "from": "modules",
+     "to": "shared-state",
+     "label": "local memory",
+     "style": "memory",
+     "points": [
+      [
+       600,
+       264
+      ],
+      [
+       600,
+       474
+      ],
+      [
+       560,
+       474
+      ]
+     ],
+     "labelAt": [
+      534,
+      350
+     ]
+    },
+    {
+     "from": "modules",
+     "to": "clone",
+     "label": "load code",
+     "style": "loads",
+     "points": [
+      [
+       630,
+       264
+      ],
+      [
+       630,
+       548
+      ],
+      [
+       560,
+       548
+      ]
+     ],
+     "labelAt": [
+      675,
+      410
+     ]
+    },
+    {
+     "from": "pi",
+     "to": "project",
+     "label": "file edits / shell commands",
+     "style": "writes",
+     "detailOnly": true
+    }
+   ],
+   "boundaries": [
+    {
+     "id": "account",
+     "label": "Your account / runtime host",
+     "sub": "Local process and files; account permissions still apply",
+     "x": 20,
+     "y": 20,
+     "w": 700,
+     "h": 610
+    },
+    {
+     "id": "endpoints",
+     "label": "Outside the Pi process",
+     "sub": "Same host, LAN or remote; not installed by this page",
+     "x": 840,
+     "y": 20,
+     "w": 320,
+     "h": 350
+    }
    ]
   },
   {
-   "id": "pipeline",
-   "label": "Pipeline",
-   "summary": "From two inputs to a running profile. Validate and plan are pure. Only the guarded writer creates files. You run each install command yourself.",
+   "id": "profile",
+   "label": "Profile & files",
+   "summary": "A selected profile is a directory, not a separate account. The launcher chooses it; Pi and enabled modules use several storage scopes. No authentication state moves to a new profile.",
    "groups": [
-    {"id": "g-p-in", "label": "1. Inputs", "sub": "manifest + overlay", "x": 40, "y": 40, "cols": 1, "tone": "private"},
-    {"id": "g-p-check", "label": "2. Check", "sub": "offline, read-only", "x": 300, "y": 40, "cols": 1, "tone": "actions"},
-    {"id": "g-p-plan", "label": "3. Plan", "sub": "pure, in memory", "x": 560, "y": 40, "cols": 1, "tone": "actions"},
-    {"id": "g-p-write", "label": "4. Generate", "sub": "the guarded writer", "x": 820, "y": 40, "cols": 1, "tone": "profile"},
-    {"id": "g-p-run", "label": "5. Install and launch", "sub": "your stages", "x": 1080, "y": 40, "cols": 1, "nodeW": 220, "tone": "runtime"},
-    {"id": "g-p-update", "label": "6. Update a profile", "sub": "regenerate, compare, carry, switch", "x": 40, "y": 600, "cols": 6, "tone": "neutral"}
+    {
+     "id": "p-process",
+     "label": "Running process",
+     "sub": "Same account and environment",
+     "x": 40,
+     "y": 50,
+     "nodeW": 260,
+     "cols": 1,
+     "tone": "runtime",
+     "gapY": 80
+    },
+    {
+     "id": "p-files",
+     "label": "Configuration and state",
+     "sub": "Paths are examples, not detected values",
+     "x": 590,
+     "y": 50,
+     "nodeW": 320,
+     "cols": 1,
+     "tone": "profile",
+     "gapY": 80
+    },
+    {
+     "id": "p-deploy",
+     "label": "Optional deployment form",
+     "sub": "Not part of a normal host install",
+     "x": 40,
+     "y": 800,
+     "nodeW": 870,
+     "cols": 1,
+     "tone": "release",
+     "gapY": 22
+    }
    ],
    "nodes": [
-    {"id": "p-manifest", "group": "g-p-in", "label": "The manifest", "sub": "config/manifest.json", "kind": "input",
-     "summary": "The public, reviewed input: components, pins, statuses and the runtime ranges.",
-     "tags": ["public input"], "files": ["config/manifest.json"], "doc": "docs/guides/modules.md", "drill": "components"},
-    {"id": "p-init", "group": "g-p-in", "label": "init-private", "sub": "scripts/private_init.py", "kind": "action",
-     "summary": "Creates the private directory from the templates of config/private/ and adapts the sample overlay to the target.",
-     "tags": ["writes once"], "files": ["scripts/private_init.py", "config/config.example.json"], "script": "scripts/private_init.py", "doc": "docs/private-directory.md"},
-    {"id": "p-overlay", "group": "g-p-in", "label": "Your overlay", "sub": "overlay.json", "kind": "input",
-     "summary": "The private input: your target, the selection, the routes, the references and the consent.",
-     "tags": ["private input"], "files": ["{{private}}/overlay.json"], "doc": "docs/private-directory.md"},
-    {"id": "p-registry", "group": "g-p-in", "label": "Model registry", "sub": "registry.json", "kind": "input",
-     "summary": "The evidence for a model choice. validate needs it with --registry when modelRoutes names a model.",
-     "tags": ["optional"], "files": ["{{private}}/registry.json"], "doc": "docs/model-routes.md"},
-    {"id": "p-inputs", "group": "g-p-in", "label": "Module inputs", "sub": "inputs/mcp-adapter.json", "kind": "input",
-     "summary": "The input file of the MCP module. validate, plan and generate need --local-dir for it.",
-     "tags": ["optional"], "files": ["{{private}}/inputs/mcp-adapter.json"], "doc": "docs/workflow-modules.md"},
-
-    {"id": "p-validate", "group": "g-p-check", "label": "validate", "sub": "scripts/validate.py", "kind": "action",
-     "summary": "The rules of the manifest and of the overlay. A refusal prints rule: field and exits with code 2.",
-     "tags": ["offline"], "files": ["scripts/validate.py", "scripts/tenant_pi.py"], "script": "scripts/validate.py", "doc": "docs/generator.md"},
-    {"id": "p-components", "group": "g-p-check", "label": "components", "sub": "scripts/components.py", "kind": "action",
-     "summary": "Prints the checklist of all components with the recommended set marked. It enables nothing.",
-     "tags": ["read-only"], "files": ["scripts/components.py"], "script": "scripts/components.py", "doc": "docs/generator.md"},
-    {"id": "p-check-runtime", "group": "g-p-check", "label": "check-runtime", "sub": "scripts/check_runtime.py", "kind": "action",
-     "summary": "Compares the installed Pi, Node and Python with the pins. Its report goes into the plan with --runtime-report.",
-     "tags": ["starts processes"], "files": ["scripts/check_runtime.py"], "script": "scripts/check_runtime.py", "doc": "docs/check-runtime.md"},
-    {"id": "p-check-herdr", "group": "g-p-check", "label": "check-herdr", "sub": "scripts/check_runtime.py", "kind": "action",
-     "summary": "Runs one herdr --version and reports present, missing or unparsed. It installs nothing.",
-     "tags": ["starts one process"], "files": ["scripts/check_runtime.py"], "script": "scripts/check_runtime.py", "doc": "docs/herdr-setup.md"},
-    {"id": "p-wiki-vault", "group": "g-p-check", "label": "check-wiki-vault", "sub": "scripts/wiki_vault.py", "kind": "action",
-     "summary": "Reports the personal LLM Wiki vault from lstat calls: present, absent, or a second vault through WIKI_HOME. It opens no file.",
-     "tags": ["read-only"], "files": ["scripts/wiki_vault.py"], "script": "scripts/wiki_vault.py", "doc": "docs/memory-modules.md"},
-
-    {"id": "p-plan", "group": "g-p-plan", "label": "plan", "sub": "prepare() in profile_plan.py", "kind": "action",
-     "summary": "prepare() builds the files, the launch line and the gaps. The plan does not depend on the machine. It writes nothing.",
-     "tags": ["pure"], "files": ["scripts/profile_plan.py"], "script": "scripts/profile_plan.py", "doc": "docs/profile-plan.md"},
-    {"id": "p-routes", "group": "g-p-plan", "label": "Model routes", "sub": "scripts/model_routes.py", "kind": "action",
-     "summary": "Adds the model roles and routes to the plan: defaultProvider, defaultModel and defaultThinkingLevel.",
-     "tags": ["plan part"], "files": ["scripts/model_routes.py"], "script": "scripts/model_routes.py", "doc": "docs/model-routes.md"},
-    {"id": "p-memory", "group": "g-p-plan", "label": "Memory modules", "sub": "scripts/memory_modules.py", "kind": "action",
-     "summary": "Adds the Hermes, LLM Wiki and OpenViking configuration to the plan. Each needs consent in the overlay.",
-     "tags": ["plan part", "consent"], "files": ["scripts/memory_modules.py"], "script": "scripts/memory_modules.py", "doc": "docs/memory-modules.md"},
-    {"id": "p-workflow", "group": "g-p-plan", "label": "Workflow modules", "sub": "scripts/workflow_modules.py", "kind": "action",
-     "summary": "Adds the MCP adapter and the question extension to the plan.",
-     "tags": ["plan part"], "files": ["scripts/workflow_modules.py"], "script": "scripts/workflow_modules.py", "doc": "docs/workflow-modules.md"},
-    {"id": "p-gaps", "group": "g-p-plan", "label": "Gaps and display lines", "sub": "readinessGaps, *DisplayOnly", "kind": "output",
-     "summary": "The plan output: each readiness gap, the files, and the commands that change the machine as display text. You read them and run them.",
-     "tags": ["display only"], "files": ["scripts/profile_plan.py"], "doc": "docs/profile-plan.md"},
-
-    {"id": "p-generate", "group": "g-p-write", "label": "generate", "sub": "write() in profile_write.py", "kind": "guard",
-     "summary": "Writes a new profile into an absent target. It refuses a target under the live profile, inside the clone or inside a wiki vault.",
-     "tags": ["new directories only"], "files": ["scripts/profile_write.py"], "script": "scripts/profile_write.py", "doc": "docs/profile-write.md"},
-    {"id": "p-target", "group": "g-p-write", "label": "The target", "sub": "{{profile}}", "kind": "output",
-     "summary": "The new profile: settings.json and the .tenant-pi/ records. Mode 0700 for the directory, 0600 for each file.",
-     "tags": ["new"], "files": ["{{profile}}/settings.json", "{{profile}}/.tenant-pi/choices.json", "{{profile}}/.tenant-pi/state.json"], "doc": "docs/profile-write.md", "drill": "overview"},
-    {"id": "p-launcher", "group": "g-p-write", "label": "Launcher file", "sub": "scripts/launcher.py", "kind": "output",
-     "summary": "With --launcher, generate also writes the launcher file into the private directory.",
-     "tags": ["mode 0700"], "files": ["scripts/launcher.py", "{{private}}/launch-main.sh"], "script": "scripts/launcher.py", "doc": "docs/launcher.md"},
-
-    {"id": "p-install", "group": "g-p-run", "label": "Install by hand", "sub": "Node, Pi, npm ci, pi install", "kind": "runtime",
-     "summary": "You install Node 24, Pi at the pin and the packages of the enabled modules. The kit runs none of these commands.",
-     "tags": ["your stage"], "doc": "docs/guides/setup.md"},
-    {"id": "p-launch", "group": "g-p-run", "label": "Launch Pi", "sub": "launch-main.sh", "kind": "runtime",
-     "summary": "The launcher starts Pi with the target as its profile. You log in with /login inside Pi, or with a key in the shell.",
-     "tags": ["your stage"], "files": ["{{private}}/launch-main.sh"], "doc": "docs/launcher.md", "drill": "runtime"},
-    {"id": "p-baseline", "group": "g-p-run", "label": "baseline, check-baseline", "sub": "scripts/baseline.py", "kind": "guard",
-     "summary": "Before the launch, record the live profile. After the session, check-baseline shows whether the live profile changed.",
-     "tags": ["read-only"], "files": ["scripts/baseline.py"], "script": "scripts/baseline.py", "doc": "docs/directory-baseline.md"},
-    {"id": "p-results", "group": "g-p-run", "label": "results", "sub": "scripts/install_results.py", "kind": "output",
-     "summary": "Writes INSTALLER_KIT_RESULTS.md at the end of an install, from the overlay, the candidates and a facts file.",
-     "tags": ["record"], "files": ["scripts/install_results.py"], "script": "scripts/install_results.py", "doc": "docs/install-results.md"},
-
-    {"id": "p-pi-update", "group": "g-p-update", "label": "pi-update", "sub": "scripts/pi_update.py", "kind": "action",
-     "summary": "detect finds a new npm release. qualify tests an isolated candidate. notes reads the breaking changes. It changes no pin and no profile.",
-     "tags": ["network: npm registry"], "files": ["scripts/pi_update.py"], "script": "scripts/pi_update.py", "doc": "docs/pi-update.md"},
-    {"id": "p-candidate", "group": "g-p-update", "label": "New candidate", "sub": "generate into a new target", "kind": "guard",
-     "summary": "An update is a new target from the same overlay. The old profile stays as the way back.",
-     "tags": ["new directory"], "files": ["scripts/profile_write.py"], "doc": "docs/guides/candidate-update.md"},
-    {"id": "p-list", "group": "g-p-update", "label": "list", "sub": "scripts/candidate_list.py", "kind": "action",
-     "summary": "Lists the candidates under one parent directory from their state.json files. Read-only.",
-     "tags": ["read-only"], "files": ["scripts/candidate_list.py"], "script": "scripts/candidate_list.py", "doc": "docs/candidate-list.md"},
-    {"id": "p-inventory", "group": "g-p-update", "label": "inventory", "sub": "scripts/profile_inventory.py", "kind": "action",
-     "summary": "Names the packages, extensions, skills and prompts of one profile. Read-only.",
-     "tags": ["read-only"], "files": ["scripts/profile_inventory.py"], "script": "scripts/profile_inventory.py", "doc": "docs/profile-inventory.md"},
-    {"id": "p-compare", "group": "g-p-update", "label": "compare", "sub": "scripts/candidate_compare.py", "kind": "action",
-     "summary": "A redacted comparison of two profile directories. It shows the drift that Pi wrote.",
-     "tags": ["read-only", "redacted"], "files": ["scripts/candidate_compare.py"], "script": "scripts/candidate_compare.py", "doc": "docs/candidate-compare.md"},
-    {"id": "p-carry", "group": "g-p-update", "label": "carry", "sub": "scripts/carry.py", "kind": "action",
-     "summary": "Prints overlay patches from a compare report. You apply the wanted patches. It writes nothing.",
-     "tags": ["prints only"], "files": ["scripts/carry.py"], "script": "scripts/carry.py", "doc": "docs/carry.md"}
+    {
+     "id": "p-launch",
+     "group": "p-process",
+     "label": "Launcher",
+     "sub": "PI_CODING_AGENT_DIR",
+     "kind": "input",
+     "summary": "The launcher in {{private}} starts {{pi_bin}} with {{profile}} as the agent directory. It removes inherited PI_CODING_AGENT_SESSION_DIR. It inherits other environment values, including provider keys.",
+     "doc": "docs/launcher.md",
+     "files": [
+      "scripts/launcher.py"
+     ]
+    },
+    {
+     "id": "p-pi",
+     "group": "p-process",
+     "label": "Pi session",
+     "sub": "Login and conversation history",
+     "kind": "runtime",
+     "summary": "Pi creates auth.json after login and sessions during use. The kit copies no authentication or session state from another profile.",
+     "doc": "docs/guides/providers.md"
+    },
+    {
+     "id": "p-modules",
+     "group": "p-process",
+     "label": "Selected resources",
+     "sub": "Extensions, skills and prompts",
+     "kind": "comp-tenantext",
+     "summary": "Directory package filters select enabled extensions and skills. OpenViking and AgentCore instead load their index.ts as local-file sources. Additional owner packages and trusted project resources are possible.",
+     "doc": "docs/packages.md",
+     "drill": "components"
+    },
+    {
+     "id": "p-tools",
+     "group": "p-process",
+     "label": "Core file and shell tools",
+     "sub": "Working directory; account rights",
+     "kind": "runtime",
+     "summary": "The profile does not confine tool access to its own directory. Trusted project settings can override profile choices. Project trust is a separate launch-time decision.",
+     "doc": "docs/workflow-modules.md"
+    },
+    {
+     "id": "p-memory",
+     "group": "p-process",
+     "label": "Optional memory clients",
+     "sub": "Stores have different lifetimes",
+     "kind": "comp-memory",
+     "summary": "Hermes is profile-scoped. LLM Wiki can be account- or project-scoped. OpenViking client state is account-shared. Server memories are separate from these local paths.",
+     "doc": "docs/memory-modules.md",
+     "drill": "memory"
+    },
+    {
+     "id": "p-settings",
+     "group": "p-files",
+     "label": "Selected profile settings",
+     "sub": "{{profile}}/settings.json",
+     "kind": "output",
+     "summary": "Settings hold package sources, filters and defaults. Optional mcp-adapter.json and hermes-memory-config.json live beside them. Owner-managed models.json registers direct inference. .tenant-pi/ holds generation records, not a runtime daemon.",
+     "doc": "docs/profile-lifecycle.md",
+     "files": [
+      "{{profile}}/settings.json",
+      "{{profile}}/.tenant-pi/choices.json",
+      "{{profile}}/.tenant-pi/state.json"
+     ]
+    },
+    {
+     "id": "p-state",
+     "group": "p-files",
+     "label": "Profile-owned runtime state",
+     "sub": "auth.json; sessions/; npm/; caches",
+     "kind": "output",
+     "summary": "These files belong to this profile. A new candidate starts without its login, sessions, installed npm modules or Hermes store. MCP can spill output to the temporary directory outside the profile.",
+     "doc": "docs/workflow-modules.md",
+     "files": [
+      "{{profile}}/auth.json",
+      "{{profile}}/sessions/",
+      "{{profile}}/npm/"
+     ]
+    },
+    {
+     "id": "p-code",
+     "group": "p-files",
+     "label": "Code stays at its source",
+     "sub": "{{clone}}/packages/",
+     "kind": "file",
+     "summary": "In-tree runtime modules are loaded by absolute path from this clone. npm modules reside under the profile npm directory. Moving the clone breaks those path references. A kit update can change code loaded by an existing profile.",
+     "doc": "docs/packages.md",
+     "files": [
+      "scripts/profile_plan.py"
+     ]
+    },
+    {
+     "id": "p-project",
+     "group": "p-files",
+     "label": "Project files and settings",
+     "sub": "Working directory; .pi/; .promptr/",
+     "kind": "file",
+     "summary": "Pi tools can read and write the project. Trusted .pi/settings.json can add settings and resources. Optional Promptr stores project state in .promptr/ and profile state under promptr/.",
+     "doc": "docs/workflow-modules.md"
+    },
+    {
+     "id": "p-account",
+     "group": "p-files",
+     "label": "Shared account state",
+     "sub": "Wiki, OpenViking client, OS keyring",
+     "kind": "comp-memory",
+     "summary": "The wiki vault {{wiki_vault}}, ~/.openviking/ and the operating-system keyring are outside the selected profile. Other profiles of this account can share them. The fallback {{live}} stays separate; a new candidate does not import it.",
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "{{wiki_vault}}",
+      "{{live}}"
+     ]
+    },
+    {
+     "id": "compose-seat",
+     "group": "p-deploy",
+     "label": "Compose seat (optional)",
+     "sub": "Container account reached over SSH",
+     "kind": "comp-deploy",
+     "summary": "An alternative deployment form: one generated profile in a container, reached over SSH. {{seat_address}} is an example, not evidence of a completed trial. The guided seat path uses a gateway. A normal host install needs no container. Not qualified.",
+     "tags": [
+      "not qualified",
+      "deploy"
+     ],
+     "files": [
+      "deploy/compose/Dockerfile",
+      "deploy/compose/compose.yaml",
+      "deploy/compose/entrypoint.sh",
+      "deploy/compose/sshd_config",
+      "deploy/compose/profile.sh",
+      "deploy/compose/README.md"
+     ],
+     "doc": "docs/guides/compose-seat.md",
+     "drill": "overview"
+    }
    ],
    "edges": [
-    {"from": "p-init", "to": "p-overlay", "label": "creates", "style": "writes"},
-    {"from": "p-manifest", "to": "p-validate", "label": "the manifest"},
-    {"from": "p-overlay", "to": "p-validate", "label": "the overlay"},
-    {"from": "p-registry", "to": "p-validate", "label": "--registry", "style": "optional"},
-    {"from": "p-inputs", "to": "p-validate", "label": "--local-dir", "style": "optional"},
-    {"from": "p-manifest", "to": "p-components", "label": "the checklist", "style": "reads"},
-    {"from": "p-components", "to": "p-overlay", "label": "a selection that you copy", "style": "optional"},
-    {"from": "p-validate", "to": "p-plan", "label": "valid input"},
-    {"from": "p-check-runtime", "to": "p-plan", "label": "--runtime-report", "style": "optional"},
-    {"from": "p-routes", "to": "p-plan", "label": "routes"},
-    {"from": "p-memory", "to": "p-plan", "label": "memory configuration"},
-    {"from": "p-workflow", "to": "p-plan", "label": "workflow configuration"},
-    {"from": "p-plan", "to": "p-gaps", "label": "prints"},
-    {"from": "p-plan", "to": "p-generate", "label": "the same plan, built again"},
-    {"from": "p-generate", "to": "p-target", "label": "creates a new directory", "style": "writes"},
-    {"from": "p-generate", "to": "p-launcher", "label": "--launcher", "style": "writes"},
-    {"from": "p-gaps", "to": "p-install", "label": "you run the display lines"},
-    {"from": "p-install", "to": "p-launch", "label": "then"},
-    {"from": "p-launcher", "to": "p-launch", "label": "starts Pi"},
-    {"from": "p-baseline", "to": "p-launch", "label": "before and after", "style": "reads"},
-    {"from": "p-launch", "to": "p-results", "label": "facts of the install"},
-    {"from": "p-check-herdr", "to": "p-install", "label": "reports the herdr command", "style": "optional"},
-    {"from": "p-pi-update", "to": "p-candidate", "label": "a new pin, after review"},
-    {"from": "p-candidate", "to": "p-list", "label": "state.json"},
-    {"from": "p-list", "to": "p-compare", "label": "old and new candidate"},
-    {"from": "p-inventory", "to": "p-compare", "label": "names only", "style": "optional"},
-    {"from": "p-compare", "to": "p-carry", "label": "the report"},
-    {"from": "p-carry", "to": "p-overlay", "label": "patches that you apply", "style": "optional"},
-    {"from": "p-target", "to": "p-inventory", "label": "reads", "style": "reads"}
-   ]
-  },
-  {
-   "id": "components",
-   "label": "Components",
-   "summary": "The components of config/manifest.json, grouped by kind. Core is always on. Each other component is optional and requires core.",
-   "groups": [
-    {"id": "g-c-core", "label": "Core", "sub": "always on", "x": 40, "y": 40, "cols": 1, "tone": "neutral"},
-    {"id": "g-c-tenantext", "label": "Tenantext extensions", "sub": "packages/tenantext/extensions", "x": 300, "y": 40, "cols": 3, "tone": "actions"},
-    {"id": "g-c-promptr", "label": "Promptr", "sub": "packages/promptr", "x": 1000, "y": 40, "cols": 1, "nodeW": 270, "tone": "private"},
-    {"id": "g-c-memory", "label": "Memory", "sub": "consent needed", "x": 40, "y": 340, "cols": 1, "tone": "runtime"},
-    {"id": "g-c-skills", "label": "Skills", "sub": "packages/tenantext/skills", "x": 300, "y": 380, "cols": 2, "tone": "profile"},
-    {"id": "g-c-herdr", "label": "Herdr and questions", "sub": "coordination", "x": 760, "y": 380, "cols": 1, "tone": "private"},
-    {"id": "g-c-mcp", "label": "MCP", "sub": "npm pi-mcp-adapter", "x": 40, "y": 780, "cols": 1, "tone": "service"},
-    {"id": "g-c-deploy", "label": "Deploy", "sub": "deploy/compose", "x": 300, "y": 640, "cols": 2, "tone": "release"}
-   ],
-   "nodes": [
-    {"id": "core", "component": "core", "group": "g-c-core", "label": "core", "kind": "comp-core",
-     "summary": "Pi itself at the pin. The only component that is always on. Each other component requires it.",
-     "inputs": "target.agentDir", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "model-routing", "component": "model-routing", "group": "g-c-core", "label": "model-routing", "kind": "comp-core",
-     "summary": "Builtin Pi settings for the default provider, model and thinking level, and the model cycle.",
-     "inputs": "roles, optional modelRoutes; --registry when modelRoutes names a model", "consent": "none", "doc": "docs/model-routes.md"},
-
-    {"id": "tenantext", "component": "tenantext", "group": "g-c-tenantext", "label": "tenantext", "kind": "comp-tenantext",
-     "summary": "The base Tenantext extension of the in-tree package.",
-     "inputs": "none", "consent": "none", "files": ["packages/tenantext/README.md"], "doc": "docs/packages.md"},
-    {"id": "codex-accounts", "component": "codex-accounts", "group": "g-c-tenantext", "label": "codex-accounts", "kind": "comp-tenantext",
-     "summary": "The routing client of the gateway route. It sends model requests to an HTTPS gateway that ends in /v1. Its login route is blocked.",
-     "inputs": "modelRoutes.gateway {auth: env}, endpoints.codex-accounts, env.codex-accounts", "consent": "none",
-     "files": ["packages/tenantext/extensions/codex-accounts/routing.ts", "packages/tenantext/extensions/codex-accounts/settings.ts"], "doc": "docs/model-routes.md"},
-    {"id": "slopscore", "component": "slopscore", "group": "g-c-tenantext", "label": "slopscore", "kind": "comp-tenantext",
-     "summary": "A spend readout by model, role and tool.",
-     "inputs": "none", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "context-meter", "component": "context-meter", "group": "g-c-tenantext", "label": "context-meter", "kind": "comp-tenantext",
-     "summary": "Shows the context use of the session. ops-footer needs it.",
-     "inputs": "none", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "ops-footer", "component": "ops-footer", "group": "g-c-tenantext", "label": "ops-footer", "kind": "comp-tenantext",
-     "summary": "A footer with usage readings and health checks. It receives the readings of the usage components.",
-     "inputs": "context-meter enabled", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "copilot-usage", "component": "copilot-usage", "group": "g-c-tenantext", "label": "copilot-usage", "kind": "comp-tenantext",
-     "summary": "Reads the Copilot quota. It reads login files and environment tokens of the account and sends one to the usage endpoint.",
-     "inputs": "none", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "anthropic-usage", "component": "anthropic-usage", "group": "g-c-tenantext", "label": "anthropic-usage", "kind": "comp-tenantext",
-     "summary": "Reads the Claude quota with an active login, read-only. Mode off sends nothing.",
-     "inputs": "none", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "doctor", "component": "doctor", "group": "g-c-tenantext", "label": "doctor", "kind": "comp-tenantext",
-     "summary": "Checks the setup of the Tenantext extensions and reports on the extensions that are not enabled.",
-     "inputs": "none", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "resources", "component": "resources", "group": "g-c-tenantext", "label": "resources", "kind": "comp-tenantext",
-     "summary": "Manages the resource selections of the profile: toggles in settings.json.",
-     "inputs": "none", "consent": "none", "doc": "docs/resources.md"},
-
-    {"id": "promptr", "component": "promptr", "group": "g-c-promptr", "label": "promptr", "kind": "comp-promptr",
-     "summary": "The Promptr extension. It needs npm ci and npm run build in packages/promptr before the first start. It keeps state in the profile and in the project.",
-     "inputs": "npm ci --ignore-scripts and npm run build in packages/promptr", "consent": "none", "files": ["packages/promptr/README.md", "packages/promptr/package.json"], "doc": "docs/packages.md"},
-    {"id": "promptr-generate-task-prompt", "component": "promptr-generate-task-prompt", "group": "g-c-promptr", "label": "generate-task-prompt", "kind": "comp-promptr",
-     "summary": "A Promptr skill that writes a task prompt from a packet.",
-     "inputs": "promptr", "consent": "none", "doc": "docs/packages.md"},
-    {"id": "promptr-handoff", "component": "promptr-handoff", "group": "g-c-promptr", "label": "handoff", "kind": "comp-promptr",
-     "summary": "A Promptr skill that writes a handoff file from evidence.",
-     "inputs": "promptr", "consent": "none", "doc": "docs/packages.md"},
-    {"id": "promptr-openknowledge-project-pages", "component": "promptr-openknowledge-project-pages", "group": "g-c-promptr", "label": "openknowledge-project-pages", "kind": "comp-promptr",
-     "summary": "A Promptr skill that reads and writes shared project pages through the OpenKnowledge API.",
-     "inputs": "promptr, an OpenKnowledge service", "consent": "none", "doc": "docs/packages.md"},
-    {"id": "promptr-watch-herdr-agents", "component": "promptr-watch-herdr-agents", "group": "g-c-promptr", "label": "watch-herdr-agents", "kind": "comp-promptr",
-     "summary": "A Promptr skill that watches Herdr agent panes. It needs the herdr command.",
-     "inputs": "promptr, the herdr tool", "consent": "none", "doc": "docs/packages.md"},
-
-    {"id": "hermes", "component": "hermes", "group": "g-c-memory", "label": "hermes", "kind": "comp-memory",
-     "summary": "Local memory in the profile: hermes-memory-config.json and runtime memory files. It uses the native module better-sqlite3.",
-     "inputs": "memory.hermes; roles.memory when backgroundReview is true", "consent": "consent.memoryCapture: true", "doc": "docs/memory-modules.md"},
-    {"id": "wiki", "component": "wiki", "group": "g-c-memory", "label": "wiki", "kind": "comp-memory",
-     "summary": "LLM Wiki: profile settings and a personal vault outside the target. An existing vault is used as it is.",
-     "inputs": "memory.wiki", "consent": "consent.memoryCapture: true", "doc": "docs/memory-modules.md"},
-    {"id": "openviking", "component": "openviking", "group": "g-c-memory", "label": "openviking", "kind": "comp-memory",
-     "summary": "The vendored OpenViking extension. It writes sessions and memories to a separately configured OpenViking server.",
-     "inputs": "memory.openviking; npm ci --ignore-scripts in packages/openviking-pi; a server", "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
-     "files": ["packages/openviking-pi/README.md", "packages/openviking-pi/package.json"], "doc": "docs/memory-modules.md"},
-
-    {"id": "agentcore", "component": "agentcore", "group": "g-c-memory", "label": "agentcore", "kind": "comp-memory",
-     "summary": "Optional AgentCore Memory recall. OpenViking stays primary. Capture defaults to off.",
-     "inputs": "memory.agentcore; npm ci --ignore-scripts in packages/agentcore-pi; an AWS resource",
-     "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
-     "files": ["packages/agentcore-pi/README.md", "packages/agentcore-pi/package.json"], "doc": "docs/memory-modules.md"},
-
-    {"id": "coordinator-skills", "component": "coordinator-skills", "group": "g-c-skills", "label": "coordinator-skills", "kind": "comp-skills",
-     "summary": "Skills for a coordinator: grilling, wayfinder, research, prototype, specs and tickets, review, status. They name host tools that the kit does not install.",
-     "inputs": "a Gitea tracker for to-spec, to-tickets and wayfinder", "consent": "none", "files": ["packages/tenantext/skills/coordinator-skills/README.md"], "doc": "docs/guides/modules.md"},
-    {"id": "knowledge-skills", "component": "knowledge-skills", "group": "g-c-skills", "label": "knowledge-skills", "kind": "comp-skills",
-     "summary": "Skills for OpenKnowledge and the Open Knowledge Format. The MCP server and the ok command are external tools.",
-     "inputs": "the OpenKnowledge MCP server and the ok command", "consent": "none", "files": ["packages/tenantext/skills/knowledge-skills/README.md"], "doc": "docs/guides/modules.md"},
-    {"id": "slopscore-pr", "component": "slopscore-pr", "group": "g-c-skills", "label": "slopscore-pr", "kind": "comp-skills",
-     "summary": "A skill that puts the slopscore block into a pull request.",
-     "inputs": "the host tools of the skill", "consent": "none", "doc": "docs/guides/modules.md"},
-    {"id": "tracker-site", "component": "tracker-site", "group": "g-c-skills", "label": "tracker-site", "kind": "comp-skills",
-     "summary": "A skill that builds a tracker brief and site from the repository and its issue tracker.",
-     "inputs": "Python 3.11 and Git on PATH; PYTHONPATH set to packages/tenantext", "consent": "none", "doc": "docs/guides/modules.md"},
-
-    {"id": "herdr", "component": "herdr", "group": "g-c-herdr", "label": "herdr", "kind": "comp-herdr",
-     "summary": "The Herdr skill. Agent fan-out goes through it. It does not install the Herdr application.",
-     "inputs": "the herdr tool on PATH", "consent": "none", "doc": "docs/herdr-setup.md"},
-    {"id": "herdr-relay", "component": "herdr-relay", "group": "g-c-herdr", "label": "herdr-relay", "kind": "comp-herdr",
-     "summary": "Runs a shell command through a standing worker pane. Optional and off by default.",
-     "inputs": "herdr enabled, the herdr tool, Python 3", "consent": "none", "doc": "docs/herdr-setup.md"},
-    {"id": "questions", "component": "questions", "group": "g-c-herdr", "label": "questions", "kind": "comp-herdr",
-     "summary": "The Pi question extension at an exact version. It gives Pi the ask_user_question tool.",
-     "inputs": "none", "consent": "none", "doc": "docs/herdr-setup.md"},
-
-    {"id": "mcp", "component": "mcp", "group": "g-c-mcp", "label": "mcp", "kind": "comp-mcp",
-     "summary": "The MCP adapter with definitions from a private input file. It disables the native Pi MCP and runs in exclusive mode.",
-     "inputs": "inputs.mcpFile and that file under --local-dir", "consent": "none", "doc": "docs/workflow-modules.md"},
-
-    {"id": "compose-seat", "group": "g-c-deploy", "label": "Compose seat", "sub": "not a manifest component", "kind": "comp-deploy",
-     "summary": "A container, started by Compose, that holds one generated Pi profile for one user and is reached over SSH. Not qualified.",
-     "tags": ["not qualified", "deploy"], "files": ["deploy/compose/Dockerfile", "deploy/compose/compose.yaml", "deploy/compose/entrypoint.sh", "deploy/compose/sshd_config", "deploy/compose/profile.sh", "deploy/compose/README.md"], "doc": "docs/guides/compose-seat.md", "drill": "runtime"},
-    {"id": "compose-plan", "group": "g-c-deploy", "label": "compose-plan", "sub": "scripts/compose_plan.py", "kind": "action",
-     "summary": "Turns the answers of the container destination into the overlay, the registry, the two env files and the Compose command lines. Without --write it writes nothing.",
-     "tags": ["pure module"], "files": ["scripts/compose_plan.py"], "script": "scripts/compose_plan.py", "doc": "docs/generator.md"}
-   ],
-   "edges": [
-    {"from": "ops-footer", "to": "context-meter", "label": "requires", "style": "requires"},
-    {"from": "herdr-relay", "to": "herdr", "label": "requires", "style": "requires"},
-    {"from": "promptr-generate-task-prompt", "to": "promptr", "label": "requires", "style": "requires"},
-    {"from": "promptr-handoff", "to": "promptr", "label": "requires", "style": "requires"},
-    {"from": "promptr-openknowledge-project-pages", "to": "promptr", "label": "requires", "style": "requires"},
-    {"from": "promptr-watch-herdr-agents", "to": "promptr", "label": "requires", "style": "requires"},
-    {"from": "model-routing", "to": "codex-accounts", "label": "the gateway route needs it", "style": "optional"},
-    {"from": "copilot-usage", "to": "ops-footer", "label": "usage readings", "style": "optional"},
-    {"from": "anthropic-usage", "to": "ops-footer", "label": "usage readings", "style": "optional"},
-    {"from": "doctor", "to": "codex-accounts", "label": "imports its files", "style": "optional"},
-    {"from": "coordinator-skills", "to": "questions", "label": "asks through ask_user_question", "style": "optional"},
-    {"from": "coordinator-skills", "to": "herdr", "label": "fan-out", "style": "optional"},
-    {"from": "compose-plan", "to": "compose-seat", "label": "the private files of the seat", "style": "writes"},
-    {"from": "compose-seat", "to": "core", "label": "holds one profile"},
-    {"from": "compose-seat", "to": "codex-accounts", "label": "the gateway route"}
-   ]
-  },
-  {
-   "id": "devrel",
-   "label": "Development and release",
-   "summary": "The kit is developed in {{dev_repo}}. A reviewed snapshot of the publish set goes to {{mirror}} on {{publication_service}}.",
-   "groups": [
-    {"id": "g-d-dev", "label": "Development repository", "sub": "{{dev_repo}}", "x": 40, "y": 40, "cols": 1, "tone": "clone"},
-    {"id": "g-d-checks", "label": "Checks", "sub": "offline, no network", "x": 300, "y": 40, "cols": 2, "tone": "actions"},
-    {"id": "g-d-scan", "label": "Scans and hooks", "sub": "scripts/scan.sh", "x": 760, "y": 40, "cols": 1, "tone": "live"},
-    {"id": "g-d-ci", "label": "Continuous integration", "sub": "workflows", "x": 1020, "y": 40, "cols": 1, "tone": "neutral"},
-    {"id": "g-d-publish", "label": "Publication", "sub": "scripts/publish_portable.py", "x": 40, "y": 440, "cols": 6, "tone": "release"}
-   ],
-   "nodes": [
-    {"id": "d-repo", "group": "g-d-dev", "label": "main", "sub": "{{dev_repo}}", "kind": "release",
-     "summary": "The development history of the kit. It can hold development-only files and notes that never publish.",
-     "tags": ["private copy"], "doc": "docs/publishing.md"},
-    {"id": "d-branch", "group": "g-d-dev", "label": "A change branch", "sub": "one change, one merge", "kind": "release",
-     "summary": "A change goes on its own branch. The pre-commit hook scans each staged change. The branch merges into main after the checks pass.",
-     "tags": ["level warn"], "doc": "docs/secret-handling.md"},
-    {"id": "d-dev-only", "group": "g-d-dev", "label": "Dev-only list", "sub": "scripts/dev-only-files.txt", "kind": "guard",
-     "summary": "The optional list of development-only files and directories. It excludes itself. A portable snapshot has neither the list nor its files.",
-     "tags": ["never published"], "doc": "docs/publishing.md"},
-    {"id": "d-local", "group": "g-d-dev", "label": "Ignored .local/", "sub": ".local/ in the clone", "kind": "guard",
-     "summary": "Private client state and the local deny list. Git ignores it, but the ignore rule is not a security or publication control.",
-     "tags": ["ignored"], "doc": "docs/secret-handling.md"},
-
-    {"id": "d-tests", "group": "g-d-checks", "label": "Unit tests", "sub": "python3 -m unittest", "kind": "guard",
-     "summary": "The unit tests of the kit. They include the documentation check and the build check of this architecture file.",
-     "tags": ["required check"], "files": ["tests/test_contract.py", "tests/test_publish_rules.py", "tests/test_architecture_build.py"], "doc": "docs/guides/release-checklist.md"},
-    {"id": "d-examples", "group": "g-d-checks", "label": "Examples", "sub": "scripts/examples.py", "kind": "guard",
-     "summary": "Checks or regenerates the synthetic examples.",
-     "tags": ["required check"], "files": ["scripts/examples.py"], "script": "scripts/examples.py", "doc": "docs/guides/release-checklist.md"},
-    {"id": "d-overlay", "group": "g-d-checks", "label": "Sample overlay", "sub": "validate.py --overlay", "kind": "guard",
-     "summary": "Validates config/config.example.json against the manifest.",
-     "tags": ["required check"], "files": ["scripts/validate.py", "config/config.example.json"], "script": "scripts/validate.py", "doc": "docs/guides/release-checklist.md"},
-    {"id": "d-publish-check", "group": "g-d-checks", "label": "Publish check", "sub": "scripts/publish_check.py", "kind": "guard",
-     "summary": "Checks the reviewed publish set: each tracked file is published, excluded or dev-only; no secret pattern; the public reader rules; the examples.",
-     "tags": ["required check"], "files": ["scripts/publish_check.py"], "script": "scripts/publish_check.py", "doc": "docs/publishing.md"},
-    {"id": "d-public", "group": "g-d-checks", "label": "Public reader rules", "sub": "publish_check.py --public", "kind": "guard",
-     "summary": "Finds content that a stranger must not get: a tracker reference, a machine path, a host record, a deny-list pattern. A finding never prints the text.",
-     "tags": ["PUBLIC_RULES"], "files": ["scripts/publish_check.py"], "script": "scripts/publish_check.py", "doc": "docs/publishing.md"},
-    {"id": "d-doc-check", "group": "g-d-checks", "label": "Doc check", "sub": "scripts/doc_check.py", "kind": "guard",
-     "summary": "Checks the links, the JSON examples and the CLI names of the published documents. The unit tests run it too.",
-     "tags": ["offline"], "files": ["scripts/doc_check.py"], "script": "scripts/doc_check.py", "doc": "docs/guides/release-checklist.md"},
-
-    {"id": "d-scan", "group": "g-d-scan", "label": "scan.sh", "sub": "gitleaks + host values", "kind": "guard",
-     "summary": "Stops a secret or a host value before it goes to a remote. It runs gitleaks with no network and a redacted output. Level fail on portable refs, warn elsewhere.",
-     "tags": ["no network"], "files": ["scripts/scan.sh", ".gitleaks.toml"], "script": "scripts/scan.sh", "doc": "docs/secret-handling.md"},
-    {"id": "d-lists", "group": "g-d-scan", "label": "Host-value lists", "sub": "scripts/host-values.*", "kind": "input",
-     "summary": "The tracked deny list, the untracked local deny list, the private-address rules, the allow list and the accepted lines.",
-     "tags": ["patterns"], "files": ["scripts/host-values.deny", "scripts/host-values.regex", "scripts/host-values.allow", "scripts/host-values.allow-lines"], "doc": "docs/secret-handling.md"},
-    {"id": "d-hooks", "group": "g-d-scan", "label": "Git hooks", "sub": "pre-commit, pre-push", "kind": "guard",
-     "summary": "pre-commit and pre-merge-commit scan the staged change. pre-push scans the commits that the push sends. A hook fails closed.",
-     "tags": ["fail closed"], "files": ["scripts/install-hooks.sh", "scripts/git-hooks/dispatch", "scripts/git-hooks/pre-commit", "scripts/git-hooks/pre-merge-commit", "scripts/git-hooks/pre-push"], "script": "scripts/install-hooks.sh", "doc": "docs/secret-handling.md"},
-
-    {"id": "d-ci-checks", "group": "g-d-ci", "label": "Checks workflow", "sub": "checks.yml", "kind": "guard",
-     "summary": "Runs the offline commands on each push and pull request, with no secret and no package install.",
-     "tags": ["each push"], "files": [".gitea/workflows/checks.yml", ".github/workflows/checks.yml"], "doc": "docs/ci.md"},
-    {"id": "d-ci-update", "group": "g-d-ci", "label": "Pi update workflow", "sub": "pi-update.yml", "kind": "action",
-     "summary": "Daily: detects a new Pi release, qualifies it, reads its notes and proposes a pull request.",
-     "tags": ["scheduled"], "files": [".gitea/workflows/pi-update.yml", "scripts/ci_update.py", "scripts/pi_update.py"], "script": "scripts/ci_update.py", "doc": "docs/ci.md"},
-    {"id": "d-update-pr", "group": "g-d-ci", "label": "Update pull request", "sub": "a new pin to review", "kind": "release",
-     "summary": "A proposed pin move. A person reviews it before it merges. See the pin move guide.",
-     "tags": ["review"], "doc": "docs/guides/pin-move-release.md"},
-
-    {"id": "d-publish-set", "group": "g-d-publish", "label": "Publish set", "sub": "PUBLISH + PUBLISH_DIRS", "kind": "release",
-     "summary": "Exact reviewed paths and one directory rule for each in-tree package. Only these files reach the snapshot.",
-     "tags": ["explicit list"], "files": ["scripts/publish_check.py"], "doc": "docs/publishing.md"},
-    {"id": "d-publisher", "group": "g-d-publish", "label": "publish_portable.py", "sub": "from a clean HEAD", "kind": "action",
-     "summary": "Refuses a dirty tree, runs the four offline checks, builds a tree of the publish set through a temporary index and makes the snapshot commit and tag.",
-     "tags": ["no working-tree change"], "files": ["scripts/publish_portable.py"], "script": "scripts/publish_portable.py", "doc": "docs/publishing.md"},
-    {"id": "d-portable", "group": "g-d-publish", "label": "portable branch", "sub": "snapshot history", "kind": "release",
-     "summary": "Each snapshot has the previous snapshot as its parent. The history holds snapshots, not the source history.",
-     "tags": ["level fail"], "doc": "docs/publishing.md"},
-    {"id": "d-tags", "group": "g-d-publish", "label": "Snapshot tags", "sub": "portable/<yyyymmdd>-<sha>", "kind": "release",
-     "summary": "An annotated tag for each snapshot, with a neutral identity and no signature. The branch and the tag move in one transaction.",
-     "tags": ["annotated"], "doc": "docs/publishing.md"},
-    {"id": "d-mirror", "group": "g-d-publish", "label": "Public mirror", "sub": "{{mirror}}", "kind": "service",
-     "summary": "The published copy on {{publication_service}}. It is a snapshot mirror and takes no issues.",
-     "tags": ["public"], "doc": "docs/publishing.md"},
-    {"id": "d-release", "group": "g-d-publish", "label": "Release entry", "sub": "release notes of a tag", "kind": "release",
-     "summary": "A tag can have a release entry with the release notes: the result of each gate and the open gaps.",
-     "tags": ["optional"], "doc": "docs/guides/release-checklist.md"}
-   ],
-   "edges": [
-    {"from": "d-branch", "to": "d-hooks", "label": "each commit"},
-    {"from": "d-hooks", "to": "d-scan", "label": "runs"},
-    {"from": "d-lists", "to": "d-scan", "label": "patterns"},
-    {"from": "d-lists", "to": "d-public", "label": "the deny lists"},
-    {"from": "d-branch", "to": "d-repo", "label": "merge after the checks"},
-    {"from": "d-tests", "to": "d-branch", "label": "required", "style": "optional"},
-    {"from": "d-doc-check", "to": "d-tests", "label": "runs inside", "style": "optional"},
-    {"from": "d-public", "to": "d-publish-check", "label": "part of"},
-    {"from": "d-publish-check", "to": "d-publish-set", "label": "checks"},
-    {"from": "d-dev-only", "to": "d-publish-set", "label": "excludes", "style": "refuses"},
-    {"from": "d-local", "to": "d-lists", "label": "the local deny list", "style": "optional"},
-    {"from": "d-repo", "to": "d-publisher", "label": "committed HEAD"},
-    {"from": "d-publisher", "to": "d-tests", "label": "runs the four checks"},
-    {"from": "d-publisher", "to": "d-examples", "label": "runs"},
-    {"from": "d-publisher", "to": "d-overlay", "label": "runs"},
-    {"from": "d-publisher", "to": "d-publish-check", "label": "runs"},
-    {"from": "d-publish-set", "to": "d-publisher", "label": "only these files"},
-    {"from": "d-publisher", "to": "d-portable", "label": "snapshot commit", "style": "writes"},
-    {"from": "d-publisher", "to": "d-tags", "label": "annotated tag", "style": "writes"},
-    {"from": "d-portable", "to": "d-mirror", "label": "push, scanned at level fail"},
-    {"from": "d-tags", "to": "d-mirror", "label": "push"},
-    {"from": "d-tags", "to": "d-release", "label": "release notes", "style": "optional"},
-    {"from": "d-hooks", "to": "d-portable", "label": "pre-push scan", "style": "reads"},
-    {"from": "d-repo", "to": "d-ci-checks", "label": "each push"},
-    {"from": "d-mirror", "to": "d-ci-checks", "label": "each push"},
-    {"from": "d-ci-update", "to": "d-update-pr", "label": "proposes"},
-    {"from": "d-update-pr", "to": "d-repo", "label": "review and merge"}
+    {
+     "from": "p-launch",
+     "to": "p-settings",
+     "label": "select / read",
+     "style": "loads",
+     "points": [
+      [
+       320,
+       134
+      ],
+      [
+       610,
+       134
+      ]
+     ],
+     "labelAt": [
+      465.0,
+      122
+     ]
+    },
+    {
+     "from": "p-pi",
+     "to": "p-state",
+     "label": "read / write",
+     "style": "writes",
+     "points": [
+      [
+       320,
+       266
+      ],
+      [
+       610,
+       266
+      ]
+     ],
+     "labelAt": [
+      465.0,
+      254
+     ]
+    },
+    {
+     "from": "p-modules",
+     "to": "p-code",
+     "label": "load enabled code",
+     "style": "loads",
+     "points": [
+      [
+       320,
+       398
+      ],
+      [
+       610,
+       398
+      ]
+     ],
+     "labelAt": [
+      465.0,
+      386
+     ]
+    },
+    {
+     "from": "p-tools",
+     "to": "p-project",
+     "label": "file / shell access",
+     "style": "writes",
+     "points": [
+      [
+       320,
+       530
+      ],
+      [
+       610,
+       530
+      ]
+     ],
+     "labelAt": [
+      465.0,
+      518
+     ]
+    },
+    {
+     "from": "p-memory",
+     "to": "p-account",
+     "label": "recall / capture",
+     "style": "memory",
+     "points": [
+      [
+       320,
+       662
+      ],
+      [
+       610,
+       662
+      ]
+     ],
+     "labelAt": [
+      465.0,
+      650
+     ]
+    }
    ]
   },
   {
    "id": "runtime",
-   "label": "Runtime and services",
-   "summary": "What a generated profile talks to at run time. The kit configures references only. It starts no service and writes no endpoint key.",
+   "label": "Models & services",
+   "summary": "Choose one model route per request; the first three rows are alternatives. The other rows are optional service clients, not mandatory steps in inference. Every endpoint needs separate configuration and verification.",
    "groups": [
-    {"id": "g-r-profile", "label": "The generated profile", "sub": "{{profile}}", "x": 40, "y": 40, "cols": 1, "tone": "profile"},
-    {"id": "g-r-gateway", "label": "The gateway route", "sub": "codex-accounts", "x": 300, "y": 40, "cols": 2, "tone": "service"},
-    {"id": "g-r-memory", "label": "Memory", "sub": "consent in the overlay", "x": 760, "y": 40, "cols": 2, "nodeW": 200, "tone": "runtime"},
-    {"id": "g-r-tools", "label": "Tools and knowledge", "sub": "host tools", "x": 300, "y": 400, "cols": 3, "tone": "actions"},
-    {"id": "g-r-seat", "label": "Seats and trials", "sub": "not qualified", "x": 980, "y": 400, "cols": 1, "tone": "release"}
+    {
+     "id": "r-clients",
+     "label": "In the Pi account",
+     "sub": "Enabled client or chosen route",
+     "x": 40,
+     "y": 50,
+     "nodeW": 280,
+     "cols": 1,
+     "tone": "runtime",
+     "gapY": 80
+    },
+    {
+     "id": "r-services",
+     "label": "Outside the Pi process",
+     "sub": "Same host or remote; data recipient",
+     "x": 630,
+     "y": 50,
+     "nodeW": 300,
+     "cols": 1,
+     "tone": "service",
+     "gapY": 80
+    }
    ],
    "nodes": [
-    {"id": "r-pi", "group": "g-r-profile", "label": "Pi", "sub": "{{pi_bin}}", "kind": "runtime",
-     "summary": "The Pi process of the profile. It loads each enabled component as a normal extension or skill through one package entry with a filter.",
-     "tags": ["one process, one profile"], "doc": "docs/launcher.md"},
-    {"id": "r-settings", "group": "g-r-profile", "label": "settings.json", "sub": "packages, models", "kind": "output",
-     "summary": "The package entries and the model defaults that the kit generated.",
-     "tags": ["generated"], "files": ["{{profile}}/settings.json"], "doc": "docs/profile-write.md"},
-    {"id": "r-state", "group": "g-r-profile", "label": "Profile state", "sub": "auth.json, sessions/, stores", "kind": "runtime",
-     "summary": "The login, the sessions and the local memory stores. Host-only: Pi writes them at run time.",
-     "tags": ["host-only"], "files": ["{{profile}}/auth.json", "{{profile}}/sessions/"], "doc": "docs/profile-lifecycle.md"},
-
-    {"id": "r-codex", "group": "g-r-gateway", "label": "Routing client", "sub": "codex-accounts extension", "kind": "comp-tenantext",
-     "summary": "The Tenantext routing client. It sends the model requests of the profile to the gateway.",
-     "tags": ["unverified"], "files": ["packages/tenantext/extensions/codex-accounts/routing.ts"], "doc": "docs/model-routes.md"},
-    {"id": "r-env", "group": "g-r-gateway", "label": "Launch line and key", "sub": "TENANTEXT_LITELLM_*", "kind": "input",
-     "summary": "TENANTEXT_LITELLM_BASE_URL goes in front of the launch line. TENANTEXT_LITELLM_API_KEY stays in the launching shell. The kit never stores the key.",
-     "tags": ["no stored key"], "doc": "docs/model-routes.md"},
-    {"id": "r-gateway", "group": "g-r-gateway", "label": "The gateway", "sub": "{{gateway_url}}", "kind": "service",
-     "summary": "The gateway route ends at {{gateway}}. The endpoint is HTTPS and ends in /v1. It is a host service, and the kit does not check it.",
-     "tags": ["host service", "HTTPS"], "doc": "docs/model-routes.md"},
-    {"id": "r-aliases", "group": "g-r-gateway", "label": "Model aliases", "sub": "provider + model id", "kind": "service",
-     "summary": "The models that the gateway offers: {{aliases}}. The overlay names one for each role, and the registry holds the evidence.",
-     "tags": ["roles"], "doc": "docs/model-routes.md"},
-    {"id": "r-provider", "group": "g-r-gateway", "label": "Model provider", "sub": "{{provider}}", "kind": "service",
-     "summary": "The upstream of the gateway. It answers the model requests.",
-     "tags": ["upstream"], "doc": "docs/guides/providers.md"},
-
-    {"id": "r-hermes", "group": "g-r-memory", "label": "Hermes memory", "sub": "hermes-memory-config.json", "kind": "comp-memory",
-     "summary": "Local memory in the profile. backgroundReview permits independent model calls and needs roles.memory.",
-     "tags": ["consent"], "files": ["{{profile}}/hermes-memory-config.json"], "doc": "docs/memory-modules.md"},
-    {"id": "r-wiki", "group": "g-r-memory", "label": "LLM Wiki", "sub": "@zosmaai/pi-llm-wiki", "kind": "comp-memory",
-     "summary": "A personal wiki of pages that the agent writes and recalls.",
-     "tags": ["consent"], "doc": "docs/memory-modules.md"},
-    {"id": "r-vault", "group": "g-r-memory", "label": "Wiki vault", "sub": "{{wiki_vault}}", "kind": "output",
-     "summary": "The vault of the account, outside the target. WIKI_HOME selects another wiki home. The kit refuses a target inside a vault.",
-     "tags": ["HOME state"], "files": ["{{wiki_vault}}"], "doc": "docs/memory-modules.md"},
-    {"id": "r-openviking", "group": "g-r-memory", "label": "OpenViking extension", "sub": "packages/openviking-pi", "kind": "comp-memory",
-     "summary": "The vendored extension. It reads its endpoint and key from OPENVIKING_* variables or ~/.openviking/, never from the kit.",
-     "tags": ["consent", "remote writes"], "files": ["packages/openviking-pi/README.md"], "doc": "docs/memory-modules.md"},
-    {"id": "r-ov-server", "group": "g-r-memory", "label": "OpenViking server", "sub": "{{ov_server}}", "kind": "service",
-     "summary": "The server keeps the sessions and the memories: {{ov_server}}. It needs viking:// home alias support.",
-     "tags": ["server"], "doc": "docs/memory-modules.md"},
-
-    {"id": "r-mcp", "group": "g-r-tools", "label": "MCP adapter", "sub": "mcp-adapter.json", "kind": "comp-mcp",
-     "summary": "pi-mcp-adapter with the definitions of the private input file. PI_MCP_CONFIG_MODE=exclusive on the launch line.",
-     "tags": ["exclusive mode"], "files": ["{{profile}}/mcp-adapter.json"], "doc": "docs/workflow-modules.md"},
-    {"id": "r-knowledge", "group": "g-r-tools", "label": "Knowledge skills", "sub": "knowledge-skills", "kind": "comp-skills",
-     "summary": "Skills that read and write OpenKnowledge projects.",
-     "tags": ["skills"], "files": ["packages/tenantext/skills/knowledge-skills/README.md"], "doc": "docs/guides/modules.md"},
-    {"id": "r-herdr-skill", "group": "g-r-tools", "label": "Herdr skill", "sub": "skills/herdr", "kind": "comp-herdr",
-     "summary": "Finds, reads and prompts agent panes, and starts new ones.",
-     "tags": ["skill"], "files": ["packages/tenantext/skills/herdr/SKILL.md"], "doc": "docs/herdr-setup.md"},
-    {"id": "r-mcp-servers", "group": "g-r-tools", "label": "MCP servers", "sub": "{{mcp_servers}}", "kind": "service",
-     "summary": "The adapter calls {{mcp_servers}}. Tokens can use the keyring of the operating system.",
-     "tags": ["host services"], "doc": "docs/workflow-modules.md"},
-    {"id": "r-ok", "group": "g-r-tools", "label": "OpenKnowledge", "sub": "{{ok_service}}", "kind": "service",
-     "summary": "A markdown knowledge base with an MCP server and the ok command: {{ok_service}}. The kit installs neither.",
-     "tags": ["host tool"], "doc": "docs/guides/modules.md"},
-    {"id": "r-herdr", "group": "g-r-tools", "label": "Herdr application", "sub": "{{herdr_bin}}", "kind": "service",
-     "summary": "A terminal workspace manager for coding agents. A host tool: check-herdr reports it, and the kit does not install it.",
-     "tags": ["host tool"], "doc": "docs/herdr-setup.md"},
-
-    {"id": "r-seat", "group": "g-r-seat", "label": "Compose seat", "sub": "deploy/compose", "kind": "comp-deploy",
-     "summary": "One generated profile in a container. The gateway key reaches the seat account through a file in a tmpfs, never through the image.",
-     "tags": ["not qualified"], "files": ["deploy/compose/compose.yaml", "deploy/compose/entrypoint.sh"], "doc": "docs/guides/compose-seat.md"},
-    {"id": "r-ssh", "group": "g-r-seat", "label": "SSH login", "sub": "{{seat_address}}", "kind": "runtime",
-     "summary": "Key-only sshd for the one seat account. The login opens a tmux shell with Pi and Herdr.",
-     "tags": ["key only"], "files": ["deploy/compose/sshd_config"], "doc": "docs/guides/compose-seat.md"},
-    {"id": "r-lab", "group": "g-r-seat", "label": "Test machine", "sub": "{{lab_vm}}", "kind": "host",
-     "summary": "Optional. You can run a hands-on trial on {{lab_vm}} with a clean account. Never run a trial on the profile of your daily work.",
-     "tags": ["optional", "trial"], "doc": "docs/guides/release-checklist.md"}
+    {
+     "id": "r-native",
+     "group": "r-clients",
+     "label": "A. Native provider",
+     "sub": "Built-in provider; /login or key",
+     "kind": "runtime",
+     "summary": "Pi can use its native provider directly, without codex-accounts or a gateway. Login state belongs to the selected profile; a shell API key is another credential source.",
+     "doc": "docs/guides/providers.md"
+    },
+    {
+     "id": "r-direct",
+     "group": "r-clients",
+     "label": "B. Direct inference",
+     "sub": "Owner-managed models.json",
+     "kind": "runtime",
+     "summary": "Pi reads custom provider registrations from {{profile}}/models.json. llama-swap and vLLM are examples. Neither needs the optional Tenantext gateway. Registration does not prove reachability.",
+     "doc": "docs/guides/providers.md",
+     "files": [
+      "{{profile}}/models.json"
+     ]
+    },
+    {
+     "id": "r-codex",
+     "group": "r-clients",
+     "label": "C. Gateway client",
+     "sub": "Optional codex-accounts",
+     "kind": "comp-tenantext",
+     "summary": "This optional route reads TENANTEXT_LITELLM_BASE_URL and TENANTEXT_LITELLM_API_KEY from its process environment. The gateway key is not the native provider login. The supported route uses an HTTPS endpoint ending in /v1.",
+     "doc": "docs/model-routes.md",
+     "files": [
+      "packages/tenantext/extensions/codex-accounts/routing.ts"
+     ]
+    },
+    {
+     "id": "r-mcp",
+     "group": "r-clients",
+     "label": "MCP adapter",
+     "sub": "Only when selected and configured",
+     "kind": "comp-mcp",
+     "summary": "MCP means Model Context Protocol. The adapter exposes tools from configured servers. Exclusive mode uses the profile definitions and disables built-in MCP. Lazy servers connect on use; eager servers can connect at startup. OAuth can use the shared OS keyring.",
+     "doc": "docs/workflow-modules.md",
+     "files": [
+      "{{profile}}/mcp-adapter.json"
+     ]
+    },
+    {
+     "id": "r-knowledge",
+     "group": "r-clients",
+     "label": "Knowledge and workflow skills",
+     "sub": "Optional Promptr / skill modules",
+     "kind": "comp-skills",
+     "summary": "Selected knowledge and workflow tools can use OpenKnowledge and a Gitea tracker. A skill file does not install its tools or services. Requests carry the task or page content needed for that operation.",
+     "doc": "docs/packages.md"
+    },
+    {
+     "id": "r-usage",
+     "group": "r-clients",
+     "label": "Usage and decision clients",
+     "sub": "Optional Tenantext behavior",
+     "kind": "comp-tenantext",
+     "summary": "Enabled usage modules and doctor can send account tokens to provider usage endpoints. A configured context-meter nextMoveUrl can receive session counters and the last 300 characters of the user message. Its default URL is empty.",
+     "doc": "docs/guides/modules.md",
+     "files": [
+      "docs/packages.md"
+     ]
+    },
+    {
+     "id": "r-provider",
+     "group": "r-services",
+     "label": "Native model provider",
+     "sub": "Prompt context; model reply",
+     "kind": "service",
+     "summary": "The selected native provider receives prompt context, including tool results and recalled memory included by the session. No gateway is required. Credentials and model availability need a live check.",
+     "doc": "docs/guides/providers.md",
+     "tags": [
+      "selected route",
+      "not verified here"
+     ]
+    },
+    {
+     "id": "r-inference",
+     "group": "r-services",
+     "label": "Direct inference server",
+     "sub": "llama-swap or vLLM, for example",
+     "kind": "service",
+     "summary": "A local or LAN inference endpoint receives model requests directly from Pi. Its authentication and transport follow the owner registration. A local endpoint can still forward data elsewhere.",
+     "doc": "docs/guides/providers.md",
+     "tags": [
+      "selected route",
+      "not verified here"
+     ]
+    },
+    {
+     "id": "r-gateway",
+     "group": "r-services",
+     "label": "Gateway and its upstream",
+     "sub": "{{gateway_url}}",
+     "kind": "service",
+     "summary": "On route C only, {{gateway}} receives the request and forwards it to {{provider}}. It resolves {{aliases}}. Both gateway and upstream receive model data. The kit installs neither service.",
+     "doc": "docs/model-routes.md",
+     "tags": [
+      "optional route",
+      "not verified here"
+     ]
+    },
+    {
+     "id": "r-mcp-servers",
+     "group": "r-services",
+     "label": "Configured MCP servers",
+     "sub": "{{mcp_servers}}",
+     "kind": "service",
+     "summary": "The adapter passes tool arguments to the selected server and returns its results to Pi. A server can run as a local stdio process or a remote HTTP service. Disabled definitions never connect.",
+     "doc": "docs/workflow-modules.md",
+     "tags": [
+      "optional"
+     ]
+    },
+    {
+     "id": "r-ok",
+     "group": "r-services",
+     "label": "Knowledge / tracker services",
+     "sub": "OpenKnowledge and Gitea",
+     "kind": "service",
+     "summary": "Knowledge calls use {{ok_service}} through its tools. Tracker calls use the configured repository service. These services receive selected pages, task text or issue content; none is implied by a core install.",
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional"
+     ]
+    },
+    {
+     "id": "r-usage-endpoint",
+     "group": "r-services",
+     "label": "Usage / decision endpoints",
+     "sub": "Quota requests; optional prompt suffix",
+     "kind": "service",
+     "summary": "Provider usage endpoints can receive an existing account credential. A separately configured decision server receives the counters and prompt suffix described by context-meter. These are not model-route dependencies.",
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional",
+      "configuration-dependent"
+     ]
+    }
    ],
    "edges": [
-    {"from": "r-pi", "to": "r-settings", "label": "reads", "style": "reads"},
-    {"from": "r-pi", "to": "r-state", "label": "writes", "style": "writes"},
-    {"from": "r-pi", "to": "r-codex", "label": "loads"},
-    {"from": "r-env", "to": "r-codex", "label": "base URL and key"},
-    {"from": "r-codex", "to": "r-gateway", "label": "HTTPS /v1"},
-    {"from": "r-gateway", "to": "r-aliases", "label": "resolves the alias"},
-    {"from": "r-aliases", "to": "r-provider", "label": "upstream request"},
-    {"from": "r-pi", "to": "r-hermes", "label": "loads"},
-    {"from": "r-hermes", "to": "r-state", "label": "memory files", "style": "writes"},
-    {"from": "r-pi", "to": "r-wiki", "label": "loads"},
-    {"from": "r-wiki", "to": "r-vault", "label": "writes pages", "style": "writes"},
-    {"from": "r-pi", "to": "r-openviking", "label": "loads"},
-    {"from": "r-openviking", "to": "r-ov-server", "label": "remote memory writes"},
-    {"from": "r-pi", "to": "r-mcp", "label": "loads"},
-    {"from": "r-mcp", "to": "r-mcp-servers", "label": "tool calls"},
-    {"from": "r-pi", "to": "r-knowledge", "label": "loads"},
-    {"from": "r-knowledge", "to": "r-ok", "label": "ok command, MCP"},
-    {"from": "r-pi", "to": "r-herdr-skill", "label": "loads"},
-    {"from": "r-herdr-skill", "to": "r-herdr", "label": "herdr command"},
-    {"from": "r-seat", "to": "r-pi", "label": "holds one profile"},
-    {"from": "r-ssh", "to": "r-seat", "label": "login"},
-    {"from": "r-seat", "to": "r-gateway", "label": "one key, tmpfs file"},
-    {"from": "r-lab", "to": "r-seat", "label": "trial host", "style": "optional"}
+    {
+     "from": "r-native",
+     "to": "r-provider",
+     "label": "A: model request",
+     "style": "model",
+     "points": [
+      [
+       340,
+       134
+      ],
+      [
+       650,
+       134
+      ]
+     ],
+     "labelAt": [
+      495.0,
+      122
+     ]
+    },
+    {
+     "from": "r-direct",
+     "to": "r-inference",
+     "label": "B: model request",
+     "style": "model",
+     "points": [
+      [
+       340,
+       266
+      ],
+      [
+       650,
+       266
+      ]
+     ],
+     "labelAt": [
+      495.0,
+      254
+     ]
+    },
+    {
+     "from": "r-codex",
+     "to": "r-gateway",
+     "label": "C: model request",
+     "style": "model",
+     "points": [
+      [
+       340,
+       398
+      ],
+      [
+       650,
+       398
+      ]
+     ],
+     "labelAt": [
+      495.0,
+      386
+     ]
+    },
+    {
+     "from": "r-mcp",
+     "to": "r-mcp-servers",
+     "label": "tool arguments / results",
+     "style": "optional",
+     "points": [
+      [
+       340,
+       530
+      ],
+      [
+       650,
+       530
+      ]
+     ],
+     "labelAt": [
+      495.0,
+      518
+     ]
+    },
+    {
+     "from": "r-knowledge",
+     "to": "r-ok",
+     "label": "page / tracker operation",
+     "style": "optional",
+     "points": [
+      [
+       340,
+       662
+      ],
+      [
+       650,
+       662
+      ]
+     ],
+     "labelAt": [
+      495.0,
+      650
+     ]
+    },
+    {
+     "from": "r-usage",
+     "to": "r-usage-endpoint",
+     "label": "usage / configured call",
+     "style": "optional",
+     "points": [
+      [
+       340,
+       794
+      ],
+      [
+       650,
+       794
+      ]
+     ],
+     "labelAt": [
+      495.0,
+      782
+     ]
+    }
+   ]
+  },
+  {
+   "id": "memory",
+   "label": "Memory & data",
+   "summary": "All four memory modules are optional. Local storage does not mean local-only model context: recalled text can enter the chosen model request. Configuration and consent permit behavior; they do not prove that a live operation succeeds.",
+   "groups": [
+    {
+     "id": "m-client",
+     "label": "Enabled memory module",
+     "sub": "Selection + explicit consent + choices",
+     "x": 40,
+     "y": 50,
+     "nodeW": 300,
+     "cols": 1,
+     "tone": "runtime",
+     "gapY": 80
+    },
+    {
+     "id": "m-store",
+     "label": "Destination and scope",
+     "sub": "Local files versus remote service",
+     "x": 670,
+     "y": 50,
+     "nodeW": 310,
+     "cols": 1,
+     "tone": "profile",
+     "gapY": 80
+    }
+   ],
+   "nodes": [
+    {
+     "id": "m-hermes",
+     "group": "m-client",
+     "label": "Hermes",
+     "sub": "Optional; local session indexing",
+     "kind": "comp-memory",
+     "summary": "Enabling Hermes indexes sessions and provides memory tools. Automatic review defaults off in the recommended choices. Enabling review needs roles.memory; explicit model-backed commands can still call a model.",
+     "doc": "docs/memory-modules.md"
+    },
+    {
+     "id": "m-wiki",
+     "group": "m-client",
+     "label": "LLM Wiki",
+     "sub": "Optional; pages and recall",
+     "kind": "comp-memory",
+     "summary": "Wiki tools read and write pages. With ambientPersonalVault on, vault text can enter each prompt. A trusted project vault or settings override changes scope. Ingest can use the session model or a configured task model.",
+     "doc": "docs/memory-modules.md"
+    },
+    {
+     "id": "m-ov",
+     "group": "m-client",
+     "label": "OpenViking client",
+     "sub": "Optional; both memory consents",
+     "kind": "comp-memory",
+     "summary": "The enabled client asks for memories before user prompts and can send session turns to its server. Tool-result output is included only with captureToolResults true. Credentials and identity come from external configuration, not this kit.",
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "packages/openviking-pi/README.md"
+     ]
+    },
+    {
+     "id": "m-agentcore",
+     "group": "m-client",
+     "label": "AgentCore client",
+     "sub": "Optional; recall and confirmed propose",
+     "kind": "comp-memory",
+     "summary": "AgentCore recall sends each typed prompt to AWS as the search query. The tool agentcore_propose writes one proposal only after the person confirms the text and the target namespace. The extension has no capture path. Both memory consents are required. It uses the AWS profile of the person config, else the AWS SDK credential chain. It imports the shared core packages/agentcore-memory-core; the Claude Code plugin packages/agentcore-claude uses the same core. The owner's reviewed submit to /shared/ and /actor/ is a separate approval-gated path.",
+     "doc": "docs/memory-modules.md#agentcore-memory",
+     "files": [
+      "packages/agentcore-pi/README.md",
+      "packages/agentcore-memory-core/README.md",
+      "packages/agentcore-claude/README.md"
+     ]
+    },
+    {
+     "id": "m-embedding",
+     "group": "m-client",
+     "label": "Wiki embeddings",
+     "sub": "Separate text-transfer consent",
+     "kind": "comp-memory",
+     "summary": "An embedding is a numeric representation used for similarity search. Embeddings are off unless explicitly configured with embeddingTextTransfer consent. Backfill is a separate operation, not a consequence of installing the kit.",
+     "doc": "docs/memory-modules.md#wiki-embeddings"
+    },
+    {
+     "id": "m-model",
+     "group": "m-client",
+     "label": "Context and background work",
+     "sub": "Model data can leave local storage",
+     "kind": "runtime",
+     "summary": "Recall added to a prompt reaches the selected model route. Hermes review and wiki synthesis can make additional model calls. Turning automatic review off does not prevent a model call from an explicitly invoked tool.",
+     "doc": "docs/memory-modules.md",
+     "drill": "runtime"
+    },
+    {
+     "id": "m-hermes-store",
+     "group": "m-store",
+     "label": "Profile-local memory",
+     "sub": "MEMORY.md; USER.md; sessions.db",
+     "kind": "output",
+     "summary": "Hermes writes memory files, project memories and pi-hermes-memory/sessions.db under {{profile}}. A new profile starts with a different store; no migration is implied.",
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "{{profile}}/pi-hermes-memory/"
+     ]
+    },
+    {
+     "id": "m-vault",
+     "group": "m-store",
+     "label": "Account or project wiki",
+     "sub": "{{wiki_vault}}",
+     "kind": "output",
+     "summary": "A project .llm-wiki vault can win over the personal vault. Personal state normally lives outside the profile. Profiles of the same account can use the same vault, so switching profiles does not roll its data back.",
+     "doc": "docs/memory-modules.md",
+     "files": [
+      "{{wiki_vault}}"
+     ]
+    },
+    {
+     "id": "m-server",
+     "group": "m-store",
+     "label": "OpenViking server",
+     "sub": "{{ov_server}}",
+     "kind": "service",
+     "summary": "The server stores sessions and memories and returns recall. Client pending queues, ledgers and logs stay under ~/.openviking/, shared by the account. Server-side processing and its downstream services depend on the server configuration.",
+     "doc": "docs/memory-modules.md",
+     "tags": [
+      "optional remote store",
+      "not verified here"
+     ]
+    },
+    {
+     "id": "m-aws",
+     "group": "m-store",
+     "label": "AWS AgentCore Memory",
+     "sub": "Recall queries; confirmed proposals",
+     "kind": "service",
+     "summary": "AWS stores the records and returns matches from the namespaces of the person's policy. A recall sends the prompt as the query. A propose call writes one confirmed text to the proposals namespace of the person; a maintainer of the project reviews it. No capture path exists. The owner tool packages/agentcore-memory-admin renders the IAM policy of each person. Live AWS behavior remains unverified.",
+     "doc": "packages/agentcore-pi/README.md",
+     "files": [
+      "docs/shared-memory-security.md",
+      "packages/agentcore-memory-admin/README.md"
+     ],
+     "tags": [
+      "optional remote store",
+      "no capture path"
+     ]
+    },
+    {
+     "id": "m-embed-server",
+     "group": "m-store",
+     "label": "Chosen embedding endpoint",
+     "sub": "Page text / search queries",
+     "kind": "service",
+     "summary": "The selected endpoint receives page text at write time and search queries during vector recall. Vectors stay in meta/embeddings.json. Endpoint compatibility and retrieval quality need separate verification.",
+     "doc": "docs/memory-modules.md#wiki-embeddings",
+     "tags": [
+      "optional endpoint",
+      "text-transfer consent"
+     ]
+    },
+    {
+     "id": "m-provider",
+     "group": "m-store",
+     "label": "Chosen model route",
+     "sub": "Recalled text / task input",
+     "kind": "service",
+     "summary": "A native provider, direct inference server or optional gateway receives the model context. Local memory storage does not keep that context on this host. Background tasks can use roles.memory when configured.",
+     "doc": "docs/model-routes.md",
+     "drill": "runtime"
+    }
+   ],
+   "edges": [
+    {
+     "from": "m-hermes",
+     "to": "m-hermes-store",
+     "label": "index / recall / capture",
+     "style": "memory",
+     "points": [
+      [
+       360,
+       134
+      ],
+      [
+       690,
+       134
+      ]
+     ],
+     "labelAt": [
+      525.0,
+      122
+     ]
+    },
+    {
+     "from": "m-wiki",
+     "to": "m-vault",
+     "label": "read / write pages",
+     "style": "memory",
+     "points": [
+      [
+       360,
+       266
+      ],
+      [
+       690,
+       266
+      ]
+     ],
+     "labelAt": [
+      525.0,
+      254
+     ]
+    },
+    {
+     "from": "m-ov",
+     "to": "m-server",
+     "label": "recall / capture turns",
+     "style": "memory",
+     "points": [
+      [
+       360,
+       398
+      ],
+      [
+       690,
+       398
+      ]
+     ],
+     "labelAt": [
+      525.0,
+      386
+     ]
+    },
+    {
+     "from": "m-agentcore",
+     "to": "m-aws",
+     "label": "prompt / proposal / records",
+     "style": "memory",
+     "points": [
+      [
+       360,
+       530
+      ],
+      [
+       690,
+       530
+      ]
+     ],
+     "labelAt": [
+      525.0,
+      518
+     ]
+    },
+    {
+     "from": "m-embedding",
+     "to": "m-embed-server",
+     "label": "page text / query",
+     "style": "optional",
+     "points": [
+      [
+       360,
+       662
+      ],
+      [
+       690,
+       662
+      ]
+     ],
+     "labelAt": [
+      525.0,
+      650
+     ]
+    },
+    {
+     "from": "m-model",
+     "to": "m-provider",
+     "label": "model context / task",
+     "style": "model",
+     "points": [
+      [
+       360,
+       794
+      ],
+      [
+       690,
+       794
+      ]
+     ],
+     "labelAt": [
+      525.0,
+      782
+     ]
+    }
+   ]
+  },
+  {
+   "id": "components",
+   "label": "Module catalog",
+   "summary": "Available modules, not a detected installation. Core is required; every other module is optional. Manifest status and source checks are not proof of a working client. Select a card for inputs, consent, dependencies and readiness gaps.",
+   "groups": [
+    {
+     "id": "g-c-core",
+     "label": "Core & model defaults",
+     "sub": "Only core is required",
+     "x": 40,
+     "y": 50,
+     "cols": 1,
+     "tone": "neutral",
+     "nodeW": 320
+    },
+    {
+     "id": "g-c-tenantext",
+     "label": "Tenantext extensions",
+     "sub": "packages/tenantext/extensions",
+     "x": 430,
+     "y": 50,
+     "cols": 1,
+     "tone": "actions",
+     "nodeW": 320
+    },
+    {
+     "id": "g-c-promptr",
+     "label": "Promptr",
+     "sub": "packages/promptr",
+     "x": 820,
+     "y": 50,
+     "cols": 1,
+     "nodeW": 320,
+     "tone": "private"
+    },
+    {
+     "id": "g-c-memory",
+     "label": "Memory",
+     "sub": "consent needed",
+     "x": 40,
+     "y": 290,
+     "cols": 1,
+     "tone": "runtime",
+     "nodeW": 320
+    },
+    {
+     "id": "g-c-skills",
+     "label": "Skills",
+     "sub": "packages/tenantext/skills",
+     "x": 820,
+     "y": 510,
+     "cols": 1,
+     "tone": "profile",
+     "nodeW": 320
+    },
+    {
+     "id": "g-c-herdr",
+     "label": "Herdr and questions",
+     "sub": "coordination",
+     "x": 40,
+     "y": 700,
+     "cols": 1,
+     "tone": "private",
+     "nodeW": 320
+    },
+    {
+     "id": "g-c-mcp",
+     "label": "MCP",
+     "sub": "npm pi-mcp-adapter",
+     "x": 430,
+     "y": 810,
+     "cols": 1,
+     "tone": "service",
+     "nodeW": 320
+    }
+   ],
+   "nodes": [
+    {
+     "id": "core",
+     "component": "core",
+     "group": "g-c-core",
+     "label": "core",
+     "kind": "comp-core",
+     "summary": "Pi itself at the pin. The only component that is always on. Each other component requires it.",
+     "inputs": "target.agentDir",
+     "consent": "none",
+     "doc": "docs/guides/modules.md"
+    },
+    {
+     "id": "model-routing",
+     "component": "model-routing",
+     "group": "g-c-core",
+     "label": "model-routing",
+     "kind": "comp-core",
+     "summary": "Builtin Pi settings for the default provider, model and thinking level, and the model cycle.",
+     "inputs": "roles, optional modelRoutes; --registry when modelRoutes names a model",
+     "consent": "none",
+     "doc": "docs/model-routes.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "tenantext",
+     "component": "tenantext",
+     "group": "g-c-tenantext",
+     "label": "tenantext",
+     "kind": "comp-tenantext",
+     "summary": "The base Tenantext extension of the in-tree package.",
+     "inputs": "none",
+     "consent": "none",
+     "files": [
+      "packages/tenantext/README.md"
+     ],
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "codex-accounts",
+     "component": "codex-accounts",
+     "group": "g-c-tenantext",
+     "label": "codex-accounts",
+     "kind": "comp-tenantext",
+     "summary": "Optional gateway routing client. Native provider login and direct inference work without this module. The supported kit gateway configuration uses an environment key, not the native login.",
+     "inputs": "modelRoutes.gateway {auth: env}, endpoints.codex-accounts, env.codex-accounts",
+     "consent": "none",
+     "files": [
+      "packages/tenantext/extensions/codex-accounts/routing.ts",
+      "packages/tenantext/extensions/codex-accounts/settings.ts"
+     ],
+     "doc": "docs/model-routes.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "slopscore",
+     "component": "slopscore",
+     "group": "g-c-tenantext",
+     "label": "slopscore",
+     "kind": "comp-tenantext",
+     "summary": "A spend readout by model, role and tool.",
+     "inputs": "none",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "context-meter",
+     "component": "context-meter",
+     "group": "g-c-tenantext",
+     "label": "context-meter",
+     "kind": "comp-tenantext",
+     "summary": "Shows the context use of the session. ops-footer needs it.",
+     "inputs": "none",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "ops-footer",
+     "component": "ops-footer",
+     "group": "g-c-tenantext",
+     "label": "ops-footer",
+     "kind": "comp-tenantext",
+     "summary": "A footer with usage readings and health checks. It receives the readings of the usage components.",
+     "inputs": "context-meter enabled",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "copilot-usage",
+     "component": "copilot-usage",
+     "group": "g-c-tenantext",
+     "label": "copilot-usage",
+     "kind": "comp-tenantext",
+     "summary": "Reads the Copilot quota. It reads login files and environment tokens of the account and sends one to the usage endpoint.",
+     "inputs": "none",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "anthropic-usage",
+     "component": "anthropic-usage",
+     "group": "g-c-tenantext",
+     "label": "anthropic-usage",
+     "kind": "comp-tenantext",
+     "summary": "Reads the Claude quota with an active login, read-only. Mode off sends nothing.",
+     "inputs": "none",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "doctor",
+     "component": "doctor",
+     "group": "g-c-tenantext",
+     "label": "doctor",
+     "kind": "comp-tenantext",
+     "summary": "Checks the setup of the Tenantext extensions and reports on the extensions that are not enabled.",
+     "inputs": "none",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "resources",
+     "component": "resources",
+     "group": "g-c-tenantext",
+     "label": "resources",
+     "kind": "comp-tenantext",
+     "summary": "Manages the resource selections of the profile: toggles in settings.json.",
+     "inputs": "none",
+     "consent": "none",
+     "doc": "docs/resources.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "promptr",
+     "component": "promptr",
+     "group": "g-c-promptr",
+     "label": "promptr",
+     "kind": "comp-promptr",
+     "summary": "The Promptr extension. It needs npm ci and npm run build in packages/promptr before the first start. It keeps state in the profile and in the project.",
+     "inputs": "npm ci --ignore-scripts and npm run build in packages/promptr",
+     "consent": "none",
+     "files": [
+      "packages/promptr/README.md",
+      "packages/promptr/package.json"
+     ],
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "promptr-generate-task-prompt",
+     "component": "promptr-generate-task-prompt",
+     "group": "g-c-promptr",
+     "label": "generate-task-prompt",
+     "kind": "comp-promptr",
+     "summary": "A Promptr skill that writes a task prompt from a packet.",
+     "inputs": "promptr",
+     "consent": "none",
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "promptr-handoff",
+     "component": "promptr-handoff",
+     "group": "g-c-promptr",
+     "label": "handoff",
+     "kind": "comp-promptr",
+     "summary": "A Promptr skill that writes a handoff file from evidence.",
+     "inputs": "promptr",
+     "consent": "none",
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "promptr-openknowledge-project-pages",
+     "component": "promptr-openknowledge-project-pages",
+     "group": "g-c-promptr",
+     "label": "openknowledge-project-pages",
+     "kind": "comp-promptr",
+     "summary": "A Promptr skill that reads and writes shared project pages through the OpenKnowledge API.",
+     "inputs": "promptr, an OpenKnowledge service",
+     "consent": "none",
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "promptr-watch-herdr-agents",
+     "component": "promptr-watch-herdr-agents",
+     "group": "g-c-promptr",
+     "label": "watch-herdr-agents",
+     "kind": "comp-promptr",
+     "summary": "A Promptr skill that watches Herdr agent panes. It needs the herdr command.",
+     "inputs": "promptr, the herdr tool",
+     "consent": "none",
+     "doc": "docs/packages.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "hermes",
+     "component": "hermes",
+     "group": "g-c-memory",
+     "label": "hermes",
+     "kind": "comp-memory",
+     "summary": "Local memory in the profile: hermes-memory-config.json and runtime memory files. It uses the native module better-sqlite3.",
+     "inputs": "memory.hermes; roles.memory when backgroundReview is true",
+     "consent": "consent.memoryCapture: true",
+     "doc": "docs/memory-modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "wiki",
+     "component": "wiki",
+     "group": "g-c-memory",
+     "label": "wiki",
+     "kind": "comp-memory",
+     "summary": "LLM Wiki: profile settings and a personal vault outside the target. An existing vault is used as it is.",
+     "inputs": "memory.wiki",
+     "consent": "consent.memoryCapture: true",
+     "doc": "docs/memory-modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "openviking",
+     "component": "openviking",
+     "group": "g-c-memory",
+     "label": "openviking",
+     "kind": "comp-memory",
+     "summary": "The vendored OpenViking extension. It writes sessions and memories to a separately configured OpenViking server.",
+     "inputs": "memory.openviking; npm ci --ignore-scripts in packages/openviking-pi; a server",
+     "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
+     "files": [
+      "packages/openviking-pi/README.md",
+      "packages/openviking-pi/package.json"
+     ],
+     "doc": "docs/memory-modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "agentcore",
+     "component": "agentcore",
+     "group": "g-c-memory",
+     "label": "agentcore",
+     "kind": "comp-memory",
+     "summary": "Optional shared AgentCore Memory on the memory core: recall before each typed prompt and the confirmed propose tool agentcore_propose. OpenViking stays primary. The extension has no capture path.",
+     "inputs": "memory.agentcore.configFile; npm ci --ignore-scripts in packages/agentcore-memory-core; an AWS resource",
+     "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
+     "files": [
+      "packages/agentcore-pi/README.md",
+      "packages/agentcore-memory-core/package.json"
+     ],
+     "doc": "docs/memory-modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "coordinator-skills",
+     "component": "coordinator-skills",
+     "group": "g-c-skills",
+     "label": "coordinator-skills",
+     "kind": "comp-skills",
+     "summary": "Skills for a coordinator: grilling, wayfinder, research, prototype, specs and tickets, review, status. They name host tools that the kit does not install.",
+     "inputs": "a Gitea tracker for to-spec, to-tickets and wayfinder",
+     "consent": "none",
+     "files": [
+      "packages/tenantext/skills/coordinator-skills/README.md"
+     ],
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "knowledge-skills",
+     "component": "knowledge-skills",
+     "group": "g-c-skills",
+     "label": "knowledge-skills",
+     "kind": "comp-skills",
+     "summary": "Skills for OpenKnowledge and the Open Knowledge Format. The MCP server and the ok command are external tools.",
+     "inputs": "the OpenKnowledge MCP server and the ok command",
+     "consent": "none",
+     "files": [
+      "packages/tenantext/skills/knowledge-skills/README.md"
+     ],
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "slopscore-pr",
+     "component": "slopscore-pr",
+     "group": "g-c-skills",
+     "label": "slopscore-pr",
+     "kind": "comp-skills",
+     "summary": "A skill that puts the slopscore block into a pull request.",
+     "inputs": "the host tools of the skill",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "tracker-site",
+     "component": "tracker-site",
+     "group": "g-c-skills",
+     "label": "tracker-site",
+     "kind": "comp-skills",
+     "summary": "A skill that builds a tracker brief and site from the repository and its issue tracker.",
+     "inputs": "Python 3.11 and Git on PATH; PYTHONPATH set to packages/tenantext",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "herdr",
+     "component": "herdr",
+     "group": "g-c-herdr",
+     "label": "herdr",
+     "kind": "comp-herdr",
+     "summary": "The Herdr skill. Agent fan-out goes through it. It does not install the Herdr application.",
+     "inputs": "the herdr tool on PATH",
+     "consent": "none",
+     "doc": "docs/herdr-setup.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "herdr-relay",
+     "component": "herdr-relay",
+     "group": "g-c-herdr",
+     "label": "herdr-relay",
+     "kind": "comp-herdr",
+     "summary": "Runs a shell command through a standing worker pane. Optional and off by default.",
+     "inputs": "herdr enabled, the herdr tool, Python 3",
+     "consent": "none",
+     "doc": "docs/herdr-setup.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "questions",
+     "component": "questions",
+     "group": "g-c-herdr",
+     "label": "questions",
+     "kind": "comp-herdr",
+     "summary": "The Pi question extension at an exact version. It gives Pi the ask_user_question tool.",
+     "inputs": "none",
+     "consent": "none",
+     "doc": "docs/herdr-setup.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
+     "id": "mcp",
+     "component": "mcp",
+     "group": "g-c-mcp",
+     "label": "mcp",
+     "kind": "comp-mcp",
+     "summary": "The MCP adapter with definitions from a private input file. It disables the native Pi MCP and runs in exclusive mode.",
+     "inputs": "inputs.mcpFile and that file under --local-dir",
+     "consent": "none",
+     "doc": "docs/workflow-modules.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    }
+   ],
+   "edges": [
+    {
+     "from": "ops-footer",
+     "to": "context-meter",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "herdr-relay",
+     "to": "herdr",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "promptr-generate-task-prompt",
+     "to": "promptr",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "promptr-handoff",
+     "to": "promptr",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "promptr-openknowledge-project-pages",
+     "to": "promptr",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "promptr-watch-herdr-agents",
+     "to": "promptr",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "model-routing",
+     "to": "codex-accounts",
+     "label": "the gateway route needs it",
+     "style": "optional",
+     "detailOnly": true
+    },
+    {
+     "from": "copilot-usage",
+     "to": "ops-footer",
+     "label": "usage readings",
+     "style": "optional",
+     "detailOnly": true
+    },
+    {
+     "from": "anthropic-usage",
+     "to": "ops-footer",
+     "label": "usage readings",
+     "style": "optional",
+     "detailOnly": true
+    },
+    {
+     "from": "doctor",
+     "to": "codex-accounts",
+     "label": "imports its files",
+     "style": "optional",
+     "detailOnly": true
+    },
+    {
+     "from": "coordinator-skills",
+     "to": "questions",
+     "label": "asks through ask_user_question",
+     "style": "optional",
+     "detailOnly": true
+    },
+    {
+     "from": "coordinator-skills",
+     "to": "herdr",
+     "label": "fan-out",
+     "style": "optional",
+     "detailOnly": true
+    }
    ]
   }
  ],
  "tour": [
-  {"view": "overview", "node": "manifest", "title": "Two inputs: the manifest", "text": "The manifest in the clone is public and reviewed. It names each component, its source, its pin and its status."},
-  {"view": "overview", "node": "overlay", "title": "Two inputs: your overlay", "text": "Your overlay in the private directory holds your choices. A kit update changes the manifest and never your overlay."},
-  {"view": "overview", "node": "plan", "title": "A pure plan", "text": "The plan follows from the manifest and the overlay only. It writes nothing and prints each command that changes the machine as display text."},
-  {"view": "overview", "node": "generate", "title": "New directories only", "text": "The writer creates a new, absent target or stops. The kit has no code that edits an existing profile."},
-  {"view": "overview", "node": "launcher", "title": "The launcher file", "text": "The launcher starts Pi with PI_CODING_AGENT_DIR set to the target. A profile is a directory, not a sandbox."},
-  {"view": "overview", "node": "live", "title": "The live profile is refused", "text": "The kit refuses a target in the live profile. baseline and check-baseline show any change of it."},
-  {"view": "pipeline", "node": "p-validate", "title": "Validate", "text": "validate checks the overlay against the manifest offline. A refusal prints rule: field and never a value."},
-  {"view": "pipeline", "node": "p-gaps", "title": "Gaps, not promises", "text": "The kit cannot prove offline that Pi loads a package or that a model replies. It lists each such fact as a readiness gap."},
-  {"view": "pipeline", "node": "p-install", "title": "Your stages", "text": "You install Node, Pi and the packages, you log in, and you launch. The kit runs none of these commands."},
-  {"view": "pipeline", "node": "p-compare", "title": "Update by comparison", "text": "An update is a new candidate from the same overlay. compare shows the drift, and carry prints the overlay patches."},
-  {"view": "components", "node": "core", "title": "Core is always on", "text": "Each other component is optional. You move its id from selection.disable to selection.enable in the overlay."},
-  {"view": "components", "node": "codex-accounts", "title": "The gateway route", "text": "codex-accounts sends model requests to an HTTPS gateway. The key stays in the launching shell."},
-  {"view": "components", "node": "hermes", "title": "Memory needs consent", "text": "All four memory modules need consent.memoryCapture. OpenViking and AgentCore also need consent.remoteMemoryWrites."},
-  {"view": "devrel", "node": "d-publish-check", "title": "The publish check", "text": "Each tracked file is published, excluded or development-only. The public reader rules keep private content out of the snapshot."},
-  {"view": "devrel", "node": "d-publisher", "title": "A reviewed snapshot", "text": "publish_portable.py builds the snapshot from a clean HEAD, with only the publish set, and tags it portable/<yyyymmdd>-<sha>."},
-  {"view": "runtime", "node": "r-gateway", "title": "Services stay outside the kit", "text": "The gateway, the memory servers and the host tools are services of your host. The kit writes references, never a key."},
-  {"view": "runtime", "node": "r-seat", "title": "The Compose seat", "text": "The same profile in a container that you reach over SSH. Not qualified."}
+  {
+   "view": "overview",
+   "node": "terminal",
+   "title": "Start with the terminal",
+   "text": "Use a plain terminal or an optional Herdr workspace. Your launcher chooses the Pi profile for that process."
+  },
+  {
+   "view": "overview",
+   "node": "pi",
+   "title": "One process, one selected profile",
+   "text": "The profile selects settings and state. It is not an operating-system sandbox; tools retain the account permissions."
+  },
+  {
+   "view": "overview",
+   "node": "modules",
+   "title": "Only selected modules",
+   "text": "Core Pi needs no optional module. Extensions add behavior; skills add instructions. The catalog is not a report of what this host installed."
+  },
+  {
+   "view": "runtime",
+   "node": "r-native",
+   "title": "Model routes are alternatives",
+   "text": "Native provider login, direct inference and the optional gateway are three routes. A request does not have to pass through all three."
+  },
+  {
+   "view": "profile",
+   "node": "p-state",
+   "title": "Authentication stays in its profile",
+   "text": "A new candidate does not get the old auth.json or sessions. Log in again. The launcher can still inherit shell credentials."
+  },
+  {
+   "view": "memory",
+   "node": "m-vault",
+   "title": "Some state is shared",
+   "text": "The personal wiki and OpenViking client state live outside the profile. Switching profiles is not a rollback of that shared data."
+  },
+  {
+   "view": "memory",
+   "node": "m-agentcore",
+   "title": "Know each data recipient",
+   "text": "Remote recall sends prompts to the chosen memory service. AgentCore has no capture path; its propose tool writes only a confirmed text. Recalled text can then reach the model provider."
+  },
+  {
+   "view": "profile",
+   "node": "compose-seat",
+   "title": "A seat is optional",
+   "text": "A Compose seat changes where the account and profile run. It is not a required layer of a host installation and remains unqualified."
+  },
+  {
+   "view": "components",
+   "node": "core",
+   "title": "Configuration is not verification",
+   "text": "Manifest status, selected resources and reachable endpoints are different evidence. Record live checks separately; this offline page does not run them."
+  }
  ]
 }

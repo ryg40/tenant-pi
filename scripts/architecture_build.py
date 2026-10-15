@@ -33,7 +33,7 @@ LOCAL_OUT = "docs/architecture-local.html"
 NODE_W, NODE_H, GAP_X, GAP_Y, PAD, HEAD = 180, 52, 20, 22, 20, 58
 MARGIN = 40
 TOKEN = re.compile(r"\{\{([a-z0-9_]+)\}\}")
-EDGE_STYLES = ("flow", "writes", "reads", "optional", "requires", "refuses")
+EDGE_STYLES = ("flow", "writes", "reads", "optional", "requires", "refuses", "interaction", "loads", "model", "memory")
 NODE_KEYS = {"id", "group", "label", "sub", "kind", "summary", "tags", "files", "doc", "script", "drill",
              "component", "inputs", "consent"}
 STATUS_LABEL = {"tested": "unverified", "unverified": "unverified", "blocked": "blocked"}
@@ -96,7 +96,10 @@ def merge_local(model, local):
     views = {view["id"]: view for view in merged["views"]}
     for view_id, extra in sorted(local.get("views", {}).items()):
         if view_id not in views:
-            fail("unknown_view", f"local.views.{view_id}")
+            if extra.get("id") != view_id or not all(key in extra for key in ("label", "summary", "groups", "nodes", "edges")):
+                fail("unknown_view", f"local.views.{view_id}")
+            merged["views"].append(copy.deepcopy(extra))
+            continue
         for key in ("groups", "nodes", "edges"):
             views[view_id][key] = views[view_id][key] + list(extra.get(key, []))
     merged["tour"] = merged["tour"] + list(local.get("tour", []))
@@ -133,7 +136,7 @@ def component_node(node, component, root):
     files += node.get("files", [])
     node["files"] = [path for index, path in enumerate(files) if path not in files[:index]
                      and (not is_repo_path(path) or (root / path).exists())]
-    node.setdefault("sub", f"{kind} source, {status}")
+    node.setdefault("sub", f"{'required' if cid == 'core' else 'optional'}; manifest {status}")
     node["status"] = status
     node["tags"] = [f"manifest {status}", f"{kind} source", f"owner {component['owner']}"] + [
         f"requires {item}" for item in requires] + node.get("tags", [])
@@ -166,11 +169,12 @@ def layout(view):
         cols, width = group.get("cols", 1), group.get("nodeW", NODE_W)
         nodes = members[group["id"]]
         rows = -(-len(nodes) // cols)
+        gap_y = group.get("gapY", GAP_Y)
         group["w"] = cols * width + (cols - 1) * GAP_X + 2 * PAD
-        group["h"] = HEAD + rows * NODE_H + max(rows - 1, 0) * GAP_Y + PAD
+        group["h"] = HEAD + rows * NODE_H + max(rows - 1, 0) * gap_y + PAD
         for index, node in enumerate(nodes):
             row, col = divmod(index, cols)
-            node.update(x=group["x"] + PAD + col * (width + GAP_X), y=group["y"] + HEAD + row * (NODE_H + GAP_Y),
+            node.update(x=group["x"] + PAD + col * (width + GAP_X), y=group["y"] + HEAD + row * (NODE_H + gap_y),
                         w=width, h=NODE_H)
     boxes = view["groups"]
     for index, first in enumerate(boxes):
@@ -178,8 +182,9 @@ def layout(view):
             if (first["x"] < second["x"] + second["w"] and second["x"] < first["x"] + first["w"]
                     and first["y"] < second["y"] + second["h"] and second["y"] < first["y"] + first["h"]):
                 fail("group_overlap", f"{view['id']}.{first['id']}")
-    view["width"] = max(group["x"] + group["w"] for group in boxes) + MARGIN
-    view["height"] = max(group["y"] + group["h"] for group in boxes) + MARGIN
+    extent = boxes + view.get("boundaries", [])
+    view["width"] = max(group["x"] + group["w"] for group in extent) + MARGIN
+    view["height"] = max(group["y"] + group["h"] for group in extent) + MARGIN
 
 
 def check(graph, root):
@@ -210,8 +215,25 @@ def check(graph, root):
                 if is_repo_path(path) and not (root / path.partition("#")[0].rstrip("/")).exists():
                     fail("file_missing", where)
         for index, edge in enumerate(view["edges"]):
+            where = f"{view['id']}.edges[{index}]"
             if edge["from"] not in ids or edge["to"] not in ids:
-                fail("edge_endpoint", f"{view['id']}.edges[{index}]")
+                fail("edge_endpoint", where)
+            if not edge.get("detailOnly"):
+                points = edge.get("points", [])
+                if len(points) < 2 or any(len(p) != 2 or any(type(c) not in (int, float) for c in p) for p in points):
+                    fail("edge_route", where)
+                if any(a[0] != b[0] and a[1] != b[1] for a, b in zip(points, points[1:])):
+                    fail("edge_orthogonal", where)
+                if not edge.get("label") or len(edge.get("labelAt", [])) != 2:
+                    fail("edge_label", where)
+                endpoints = {node["id"]: node for node in view["nodes"]}
+                for point, key in ((points[0], "from"), (points[-1], "to")):
+                    node = endpoints[edge[key]]
+                    x, y = point
+                    on_horizontal = y in (node["y"], node["y"] + node["h"]) and node["x"] <= x <= node["x"] + node["w"]
+                    on_vertical = x in (node["x"], node["x"] + node["w"]) and node["y"] <= y <= node["y"] + node["h"]
+                    if not (on_horizontal or on_vertical):
+                        fail("edge_attachment", where)
             if edge.get("style", "flow") not in EDGE_STYLES:
                 fail("edge_style", f"{view['id']}.edges[{index}]")
     nodes = {(view["id"], node["id"]) for view in graph["views"] for node in view["nodes"]}
@@ -231,8 +253,9 @@ def build(root=ROOT, local=False):
     values = dict(placeholders)
     if local:
         extra = load_json(root / LOCAL_REL, LOCAL_REL)
+        local_tokens = tokens([extra.get("views", {}), extra.get("tour", [])])
         for name in sorted(extra.get("values", {})):
-            if name not in placeholders:
+            if name not in placeholders and name not in local_tokens:
                 fail("local_value_unknown", name)
         values.update(extra.get("values", {}))
         model = merge_local(model, extra)
@@ -349,7 +372,7 @@ __CSS__
    <p id="tour-text"></p>
    <div class="tour-nav"><button type="button" id="tour-prev" class="btn">Back</button><button type="button" id="tour-next" class="btn primary">Next</button></div>
   </div>
-  <noscript><p class="noscript">This diagram needs JavaScript. EXPLAINER.md has the same diagrams as text.</p></noscript>
+  <noscript><p class="noscript">This diagram needs JavaScript. Read docs/architecture.md for the runtime map in text.</p></noscript>
  </section>
  <aside id="panel" aria-label="Details">
   <details id="pathfinder">
@@ -428,7 +451,10 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 390px;min-height:0}
 .edge.st-optional .eline{stroke:#56627a;stroke-dasharray:7 5;marker-end:url(#m-optional)}
 .edge.st-requires .eline{stroke:#c9a24b;stroke-dasharray:2 4;marker-end:url(#m-requires)}
 .edge.st-refuses .eline{stroke:#ff6b6b;stroke-dasharray:7 4;marker-end:url(#m-refuses)}
-.edge .elabel{font:600 11px var(--sans);fill:#dfe7f3;paint-order:stroke;stroke:#0b1019;stroke-width:5px;stroke-linejoin:round;opacity:0;pointer-events:none;transition:opacity .15s}
+.edge .elabel{font:600 11px var(--sans);fill:#dfe7f3;paint-order:stroke;stroke:#0b1019;stroke-width:5px;stroke-linejoin:round;pointer-events:none}
+.boundary rect{fill:none;stroke:#43516a;stroke-dasharray:5 5}
+.boundary .glabel{fill:#bac8dc;letter-spacing:.06em}
+.evidence{font-size:12px;color:var(--muted);border-left:2px solid var(--accent);padding-left:10px}
 .edge:hover .elabel,.edge.on .elabel{opacity:1}
 .edge:hover .eline{stroke-width:2.4}
 .edge.on .eline{stroke:var(--accent);stroke-width:2.2;marker-end:url(#m-hl)}
@@ -467,7 +493,7 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 390px;min-height:0}
 #tour p{margin:0 0 10px;color:#c9d3e2}
 #tour .tour-nav{display:flex;justify-content:flex-end;gap:8px}
 .noscript{position:absolute;inset:40% 0 auto;text-align:center;color:var(--muted)}
-#panel{border-left:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column;min-height:0}
+#panel{min-width:0;border-left:1px solid var(--line);background:var(--panel);overflow:auto;display:flex;flex-direction:column;min-height:0}
 #pathfinder{border-bottom:1px solid var(--line);padding:0 18px}
 #pathfinder summary{cursor:pointer;padding:12px 0;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);list-style:none}
 #pathfinder summary::-webkit-details-marker{display:none}
@@ -476,7 +502,7 @@ main{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 390px;min-height:0}
 #pathfinder[open] summary{color:var(--accent)}
 .pf{display:grid;gap:8px;padding-bottom:14px}
 .pf label{display:grid;grid-template-columns:44px 1fr;align-items:center;font-size:12px;color:var(--muted)}
-.pf select{width:100%;padding:6px 8px;border-radius:8px;border:1px solid var(--line2);background:#0b111b;color:var(--text)}
+.pf select{width:100%;min-width:0;padding:6px 8px;border-radius:8px;border:1px solid var(--line2);background:#0b111b;color:var(--text)}
 .pf-actions{display:flex;gap:6px}
 #pf-result ol{margin:6px 0 0;padding-left:20px}
 #pf-result li{margin:3px 0}
@@ -515,9 +541,10 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line2);background:#121b29;border-radius:8px;padding:3px 8px;font-size:12px;cursor:pointer}
 .chip:hover{border-color:var(--sky)}
 .foot{padding:12px 18px 16px;border-top:1px solid var(--line);font-size:11.5px;color:var(--faint)}
-.foot code{font-size:11px;color:var(--muted)}
+.foot code{font-size:11px;color:var(--muted);overflow-wrap:anywhere}
 .ed-local header.top{box-shadow:inset 0 -2px 0 #6b3b2a}
-@media (max-width:980px){body{overflow:auto}main{grid-template-columns:1fr;grid-template-rows:62vh auto}#panel{border-left:0;border-top:1px solid var(--line)}#search{width:180px}#results{width:300px}}
+@media (max-width:980px){body{overflow:auto;height:auto;min-height:100%}main{flex:none;grid-template-columns:minmax(0,1fr);grid-template-rows:62vh auto}#panel{border-left:0;border-top:1px solid var(--line);overflow:visible}#search{width:180px}#results{width:300px}}
+@media (max-width:600px){header.top{gap:10px;padding:12px}#tabs{width:100%}#tabs button{padding:6px 8px;font-size:12px}.tools{width:100%;margin:0}.searchbox{flex:1;min-width:0}#search{width:100%}#results{left:0;right:auto;width:min(340px,calc(100vw - 24px))}main{grid-template-rows:540px auto}#crumbs{max-width:calc(100% - 125px);font-size:11px;flex-wrap:wrap;gap:2px 6px}#crumbs span{display:none}#legend{max-width:calc(100% - 28px);font-size:10px;gap:4px 10px}#tour{bottom:12px;font-size:12px}#panel-body{padding:14px}}
 @media (prefers-reduced-motion:reduce){#viewport.anim{transition:none}.pathing .edge.on .eline{animation:none}}
 """
 
@@ -528,14 +555,19 @@ JS = r"""
   const NS = "http://www.w3.org/2000/svg";
   const VIEWS = new Map(DATA.views.map((v) => [v.id, v]));
   const ORDER = DATA.views.map((v) => v.id);
-  const STYLE_LABEL = { flow: "flow", writes: "writes or creates", reads: "reads", optional: "optional or by hand", requires: "requires", refuses: "refuses or excludes" };
-  const STYLE_COLOR = { flow: "#5d6d8a", writes: "#4fae72", reads: "#5f86bd", optional: "#56627a", requires: "#c9a24b", refuses: "#ff6b6b" };
-  const STYLE_DASH = { flow: "", writes: "", reads: "5 4", optional: "7 5", requires: "2 4", refuses: "7 4" };
+  const STYLE_LABEL = { flow: "flow", writes: "local read / write", reads: "reads", optional: "optional service / interaction", requires: "requires", refuses: "refuses", interaction: "user interaction", loads: "load / configure", model: "model request", memory: "optional recall / capture" };
+  const STYLE_COLOR = { flow: "#5d6d8a", writes: "#4fae72", reads: "#5f86bd", optional: "#8b98ad", requires: "#c9a24b", refuses: "#ff6b6b", interaction: "#f2b84b", loads: "#5f86bd", model: "#ff8fc7", memory: "#b39dff" };
+  const STYLE_DASH = { flow: "", writes: "", reads: "5 4", optional: "7 5", requires: "2 4", refuses: "7 4", interaction: "", loads: "3 4", model: "", memory: "7 5" };
   const state = { view: ORDER[0], selected: null, drill: null, path: null, tour: -1, k: 1, tx: 0, ty: 0, hit: -1, found: [] };
   const byId = (id) => document.getElementById(id);
   const svgRoot = byId("canvas"), viewport = byId("viewport");
   const layers = { groups: byId("layer-groups"), edges: byId("layer-edges"), nodes: byId("layer-nodes") };
   const panel = byId("panel-body"), search = byId("search"), results = byId("results");
+  for (const [style, color] of Object.entries(STYLE_COLOR)) {
+    const marker = byId("m-flow").cloneNode(true);
+    marker.id = "route-" + style; marker.querySelector("path").setAttribute("fill", color);
+    svgRoot.querySelector("defs").append(marker);
+  }
 
   function h(tag, attrs, ...kids) {
     const e = document.createElement(tag);
@@ -614,7 +646,8 @@ JS = r"""
       groups.push({ id: "drill-" + ci, label: title, sub: ci === 1 ? kindOf(node.kind).label : items.length + (items.length === 1 ? " node" : " nodes"),
         x: xs[ci], y: top - 58, w: CW + 40, h: items.length * (H + GAP) - GAP + 78, tone });
     });
-    for (const e of view.edges) if ((e.to === node.id) !== (e.from === node.id)) edges.push(Object.assign({}, e));
+    // Context columns expose relationships in the details panel without reusing view-specific routes.
+    for (const e of view.edges) if ((e.to === node.id) !== (e.from === node.id)) edges.push(Object.assign({}, e, { detailOnly: true }));
     let bottom = TOP + rows * (H + GAP) - GAP + 20, width = xs[2] + CW + 80;
     const files = node.files || [];
     if (files.length) {
@@ -639,32 +672,20 @@ JS = r"""
       groups, nodes, edges, width, height: bottom + 60 };
   }
 
-  /* Edge geometry: a cubic curve between the nearest sides of two boxes. */
-  function curve(a, b) {
-    const ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2, dx = bx - ax, dy = by - ay;
-    let x1, y1, x2, y2, c1x, c1y, c2x, c2y;
-    if (Math.abs(dx) > Math.abs(dy) * 1.6 || Math.abs(dy) < a.h) {
-      const sx = dx >= 0 ? 1 : -1;
-      x1 = sx > 0 ? a.x + a.w : a.x; y1 = ay; x2 = sx > 0 ? b.x : b.x + b.w; y2 = by;
-      const off = Math.max(40, Math.abs(x2 - x1) / 2) * sx;
-      c1x = x1 + off; c1y = y1; c2x = x2 - off; c2y = y2;
-    } else {
-      const sy = dy >= 0 ? 1 : -1;
-      x1 = ax; y1 = sy > 0 ? a.y + a.h : a.y; x2 = bx; y2 = sy > 0 ? b.y : b.y + b.h;
-      const off = Math.max(34, Math.abs(y2 - y1) / 2) * sy;
-      c1x = x1; c1y = y1 + off; c2x = x2; c2y = y2 - off;
-    }
-    return { d: `M${x1},${y1} C${c1x},${c1y} ${c2x},${c2y} ${x2},${y2}`,
-      mx: (x1 + 3 * c1x + 3 * c2x + x2) / 8, my: (y1 + 3 * c1y + 3 * c2y + y2) / 8 };
-  }
-
   function render() {
     const g = graph();
     for (const layer of Object.values(layers)) layer.replaceChildren();
+    for (const boundary of g.boundaries || []) {
+      const title = s("text", { class: "glabel", x: boundary.x + 16, y: boundary.y + 22 }, boundary.label);
+      const sub = s("text", { class: "gsub", x: boundary.x + 16, y: boundary.y + 40 }, boundary.sub);
+      layers.groups.append(s("g", { class: "grp boundary", "data-id": boundary.id },
+        s("rect", { x: boundary.x, y: boundary.y, width: boundary.w, height: boundary.h, rx: 12 }), title, sub));
+      fitText(title, boundary.label, boundary.w - 32); fitText(sub, boundary.sub, boundary.w - 32);
+    }
     for (const grp of g.groups) {
       const tone = DATA.tones[grp.tone] || DATA.tones.neutral;
       const title = s("text", { class: "glabel", x: grp.x + 18, y: grp.y + 25, fill: tone }), sub = grp.sub ? s("text", { class: "gsub", x: grp.x + 18, y: grp.y + 43 }) : null;
-      layers.groups.append(s("g", { class: "grp" },
+      layers.groups.append(s("g", { class: "grp", "data-id": grp.id },
         s("rect", { x: grp.x, y: grp.y, width: grp.w, height: grp.h, rx: 18, fill: tone, "fill-opacity": 0.055, stroke: tone, "stroke-opacity": 0.4 }),
         title, sub, s("title", null, grp.label + (grp.sub ? "\n" + grp.sub : ""))));
       fitTitle(title, grp.label.toUpperCase(), grp.w - 36);
@@ -673,11 +694,12 @@ JS = r"""
     const nodes = new Map(g.nodes.map((n) => [n.id, n]));
     g.edges.forEach((e, i) => {
       const a = nodes.get(e.from), b = nodes.get(e.to);
-      if (!a || !b) return;
-      const c = curve(a, b), style = e.style || "flow";
+      if (!a || !b || e.detailOnly) return;
+      const d = e.points.map(([x, y], i) => `${i ? "L" : "M"}${x},${y}`).join(" "), style = e.style || "flow";
       layers.edges.append(s("g", { class: "edge st-" + style, "data-i": i },
-        s("path", { class: "ehit", d: c.d }), s("path", { class: "eline", d: c.d }),
-        e.label ? s("text", { class: "elabel", x: c.mx, y: c.my - 5, "text-anchor": "middle" }, e.label) : null,
+        s("path", { class: "ehit", d }), s("path", { class: "eline", d,
+          style: `stroke:${STYLE_COLOR[style]};stroke-dasharray:${STYLE_DASH[style]};marker-end:url(#route-${style})` }),
+        s("text", { class: "elabel", x: e.labelAt[0], y: e.labelAt[1], "text-anchor": "middle" }, e.label),
         s("title", null, a.label + " → " + b.label + (e.label ? ": " + e.label : ""))));
     });
     for (const n of g.nodes) {
@@ -715,7 +737,13 @@ JS = r"""
     svgRoot.classList.toggle("focus", focus);
     svgRoot.classList.toggle("pathing", !!state.path);
     for (const el of layers.nodes.children) { el.classList.toggle("on", on.has(el.dataset.id)); el.classList.toggle("sel", el.dataset.id === state.selected); }
-    for (const el of layers.edges.children) el.classList.toggle("on", onEdges.has(Number(el.dataset.i)));
+    for (const el of layers.edges.children) {
+      const onEdge = onEdges.has(Number(el.dataset.i)), line = el.querySelector(".eline");
+      const style = g.edges[Number(el.dataset.i)].style || "flow";
+      el.classList.toggle("on", onEdge);
+      line.style.stroke = onEdge ? "#f2b84b" : STYLE_COLOR[style];
+      line.style.markerEnd = `url(#${onEdge ? "m-hl" : "route-" + style})`;
+    }
   }
 
   /* Pan and zoom. */
@@ -774,6 +802,10 @@ JS = r"""
     else if (state.selected || state.path) { state.path = null; showPathResult(); select(null); }
   });
   svgRoot.addEventListener("dblclick", (ev) => { const n = ev.target.closest(".node"); if (n) drill(n.dataset.id); });
+  layers.nodes.addEventListener("keyup", (ev) => {
+    const n = ev.target.closest(".node");
+    if (ev.key === "Tab" && n && window.innerWidth <= 600) centerOn(n.dataset.id, false);
+  });
   layers.nodes.addEventListener("keydown", (ev) => {
     const n = ev.target.closest(".node");
     if (!n) return;
@@ -806,6 +838,7 @@ JS = r"""
     if (!n) return;
     state.drill = { graph: drillGraph(base, n), from: id };
     state.selected = id; state.path = null; showPathResult(); render(); fit(true); syncHash();
+    layers.nodes.querySelector(`[data-id="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
   }
   function undrill() {
     const id = state.drill ? state.drill.from : null;
@@ -823,10 +856,10 @@ JS = r"""
     const box = byId("crumbs"), view = VIEWS.get(state.view);
     if (state.drill) box.replaceChildren(h("button", { type: "button", class: "link", onclick: undrill, title: "Back to the view (Esc)" }, "← " + view.label),
       h("span", null, "/"), h("b", null, state.drill.graph.label), h("span", null, "context and files"));
-    else box.replaceChildren(h("b", null, view.label), h("span", null, view.nodes.length + " nodes, " + view.edges.length + " edges"));
+    else box.replaceChildren(h("b", null, view.label), h("span", null, view.nodes.length + " nodes, " + view.edges.length + " relationships"));
   }
   function renderLegend() {
-    const g = graph(), kinds = new Set(g.nodes.map((n) => n.kind)), styles = new Set(g.edges.map((e) => e.style || "flow"));
+    const g = graph(), kinds = new Set(g.nodes.map((n) => n.kind)), styles = new Set(g.edges.filter((e) => !e.detailOnly).map((e) => e.style || "flow"));
     const items = Object.keys(DATA.kinds).filter((k) => kinds.has(k)).map((k) =>
       h("span", { class: "li" }, h("span", { class: "sw", style: "background:" + DATA.kinds[k].color }), DATA.kinds[k].label));
     const lines = Object.keys(STYLE_LABEL).filter((k) => styles.has(k)).map((k) => {
@@ -865,7 +898,9 @@ JS = r"""
     const view = VIEWS.get(state.view);
     panel.append(h("div", { class: "kindrow" }, state.drill ? "Drill-down" : "View " + (ORDER.indexOf(state.view) + 1) + " of " + ORDER.length),
       h("h2", null, state.drill ? g.label : view.label), h("p", { class: "summary" }, g.summary || ""),
-      h("div", { class: "stats" }, g.nodes.length + " nodes, " + g.edges.length + " edges"));
+      h("div", { class: "stats" }, g.nodes.length + " nodes, " + g.edges.length + " relationships"),
+      h("p", { class: "evidence" }, DATA.meta.intro));
+    if (g.edges.some((e) => e.detailOnly)) panel.append(h("p", { class: "stats" }, "Select a node for all connections. Secondary relationships appear in its details, not as crossing lines."));
     for (const grp of g.groups) {
       const members = g.nodes.filter((n) => (n.group || "") === grp.id || (state.drill && sameColumn(g, grp, n)));
       panel.append(h("div", { class: "groupcard" },
@@ -878,7 +913,7 @@ JS = r"""
       h("li", null, "Double-click a node, or press ", h("kbd", null, "Enter"), " on a selected node, to see its context and files."),
       h("li", null, "Press ", h("kbd", null, "/"), " to search all views. Press ", h("kbd", null, "1"), " to ", h("kbd", null, String(ORDER.length)), " to change the view."),
       h("li", null, "Drag to pan. Scroll to zoom. Press ", h("kbd", null, "f"), " to fit and ", h("kbd", null, "Esc"), " to go back."),
-      h("li", null, "Hover an edge to read its label.")));
+      h("li", null, "Arrow labels name the operation. Returned data is described in the node details. On a narrow screen, use the node buttons here or zoom the diagram.")));
   }
   function sameColumn(g, grp, n) { return n.x >= grp.x && n.x < grp.x + grp.w && n.y >= grp.y && n.y < grp.y + grp.h; }
   function renderNode(g, n) {
@@ -949,12 +984,14 @@ JS = r"""
   function showPathResult() {
     const g = graph(), p = state.path;
     if (!p) { pf.out.replaceChildren(); return; }
+    const hidden = p.edges.some((i) => g.edges[i].detailOnly);
     const items = p.nodes.map((id, i) => {
       const n = nodeIn(g, id), e = i > 0 ? g.edges[p.edges[i - 1]] : null;
       return h("li", null, e ? h("span", { class: "via" }, (e.from === id ? "← " : "→ ") + (e.label || "")) : null,
         h("a", { href: "#", onclick: (ev) => { ev.preventDefault(); centerOn(id, true); } }, n ? n.label : id));
     });
-    pf.out.replaceChildren(h("p", { class: "note" }, (p.edges.length ? p.edges.length + " steps" : "The same node") + (p.directed ? ", along the edge direction." : ", in either direction: no directed path exists.")), h("ol", null, items));
+    pf.out.replaceChildren(h("p", { class: "note" }, (p.edges.length ? p.edges.length + " steps" : "The same node") + (p.directed ? ", along the edge direction." : ", in either direction: no directed path exists.")),
+      hidden ? h("p", { class: "note" }, "This path includes relationships listed in details rather than drawn lines.") : null, h("ol", null, items));
   }
   byId("pf-go").addEventListener("click", runPath);
   byId("pf-swap").addEventListener("click", () => { const a = pf.from.value; pf.from.value = pf.to.value; pf.to.value = a; if (pf.out.firstChild) runPath(); });
@@ -1078,6 +1115,7 @@ JS = r"""
   window.addEventListener("hashchange", () => { if (location.hash !== "#" + currentHash()) fromHash(); });
   let resizeTimer = 0;
   window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => (state.selected ? centerOn(state.selected, false) : fit(false)), 120); });
+
 
   byId("foot").append("Built by ", h("code", null, DATA.meta.build), " from ", h("code", null, DATA.meta.model), " and ", h("code", null, "config/manifest.json"), ". ",
     DATA.meta.edition === "local" ? "This local edition holds the values of one host. It is development-only." : "This public edition uses placeholders: replace them with your values.");

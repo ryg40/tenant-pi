@@ -5,7 +5,6 @@ No file, environment, subprocess, or network access. Every diagnostic is a stati
 """
 import copy
 import ipaddress
-import json
 import re
 import shlex
 from urllib.parse import parse_qsl, unquote, urlsplit
@@ -19,7 +18,12 @@ MEMORY = tuple(sorted(_MEMORY, key=lambda cid: "openviking~" if cid == "agentcor
 MODULE_FIELDS = {"hermes": (("backgroundReview",), ("reviewTransport", "childExtensionPaths")),
                  "wiki": (("ambientPersonalVault", "backgroundTasks"), ("wikiHome", "embedding")),
                  "openviking": (("captureToolResults",), ("recallContextTimeoutMs",)),
-                 "agentcore": (("memoryId", "region", "namespaces", "topK", "capture"), ("actorId", "recallTimeoutMs"))}
+                 "agentcore": (("configFile",), ())}
+# The fields of the single-person AgentCore prototype. They live in the person config file now, which the
+# registry script renders; an overlay that still names one fails with one static rule.
+AGENTCORE_LEGACY = frozenset(("memoryId", "region", "namespaces", "topK", "capture", "actorId", "recallTimeoutMs"))
+# The shared core beside the extension. Its lock file installs the AWS SDK; the extension has no dependency.
+AGENTCORE_CORE = "packages/agentcore-memory-core"
 HERMES_CONFIG = "hermes-memory-config.json"
 HERMES_PACKAGE = "pi-hermes-memory"
 WIKI_PACKAGE = "@zosmaai/pi-llm-wiki"
@@ -173,30 +177,11 @@ def _openviking(overlay, choice):
 
 def _agentcore(overlay, choice):
     at = "overlay.memory.agentcore"
+    if isinstance(choice, dict) and AGENTCORE_LEGACY & choice.keys():
+        fail("agentcore_legacy_fields", at)
     fields(choice, *MODULE_FIELDS["agentcore"], at)
-    text(choice["memoryId"], at + ".memoryId")
-    if not choice["memoryId"].strip():
-        fail("text", at + ".memoryId")
-    if type(choice["region"]) is not str or not re.fullmatch(r"[a-z]{2}(?:-[a-z]+)+-\d+", choice["region"]):
-        fail("aws_region", at + ".region")
-    namespaces = choice["namespaces"]
-    if type(namespaces) is not list or not namespaces:
-        fail("namespaces", at + ".namespaces")
-    for namespace in namespaces:
-        if (type(namespace) is not str or not namespace.startswith("/") or not namespace.endswith("/")
-                or any(c.isspace() or not c.isprintable() for c in namespace)
-                or re.search(r"[{}]", namespace.replace("{actorId}", ""))):
-            fail("namespace", at + ".namespaces")
-    if len(set(namespaces)) != len(namespaces):
-        fail("duplicate_namespace", at + ".namespaces")
-    if type(choice["topK"]) is not int or not 1 <= choice["topK"] <= 100:
-        fail("top_k", at + ".topK")
-    if type(choice["capture"]) is not bool:
-        fail("boolean", at + ".capture")
-    if "actorId" in choice and (type(choice["actorId"]) is not str or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", choice["actorId"])):
-        fail("actor_id", at + ".actorId")
-    if "recallTimeoutMs" in choice and (type(choice["recallTimeoutMs"]) is not int or not 1 <= choice["recallTimeoutMs"] <= 600000):
-        fail("timeout_ms", at + ".recallTimeoutMs")
+    # Only the shape: the kit never opens the file. An absolute path keeps a checkout from supplying it.
+    absolute(choice["configFile"], at + ".configFile")
 
 
 def validate_memory(overlay, components):
@@ -271,12 +256,14 @@ def render_memory(overlay, components):
         result["packages"].append(_package(components, cid))
         if cid == "agentcore":
             result["gaps"].extend({"code": gap["code"], "subject": cid} for gap in components[cid].get("gaps", []))
-            config = {"actorId": "", "recallTimeoutMs": 3000, **choice}
-            value = json.dumps(config, sort_keys=True, separators=(",", ":"))
-            result["setup"].append({"kind": "process_environment", "name": "AGENTCORE_MEMORY_CONFIG",
-                                    "instruction": "AGENTCORE_MEMORY_CONFIG=" + shlex.quote(value)})
+            result["setup"].append({"kind": "process_environment", "name": "AGENTCORE_MEMORY_CONFIG_FILE",
+                                    "instruction": "AGENTCORE_MEMORY_CONFIG_FILE=" + shlex.quote(choice["configFile"])})
+            # The core reads an inline `AGENTCORE_MEMORY_CONFIG` before the file, so the launch line removes an
+            # inherited one. `AGENTCORE_MEMORY_DISABLE` and `AGENTCORE_PROJECT` pass through on purpose.
+            result["unset"].append("AGENTCORE_MEMORY_CONFIG")
+            # The one remote write is a proposal that the person confirms in the propose tool. There is no capture.
             result["activation"][cid] = {"enabled": True, "localCapture": False, "backgroundModelCalls": False,
-                                         "remoteWrites": choice["capture"], "capture": choice["capture"]}
+                                         "remoteWrites": True, "capture": False}
             continue
         if cid == "openviking":
             # A tree package: its gaps are the manifest gaps, and it lists no host module as a dependency.

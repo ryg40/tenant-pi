@@ -49,6 +49,7 @@ PUBLISH = (
     "tests/test_candidate_compare.py", "docs/candidate-compare.md", "scripts/memory_modules.py",
     "tests/test_memory_modules.py", "docs/memory-modules.md", "skills/tenant-pi-install/SKILL.md",
     "scripts/memory_submit.py", "tests/test_memory_submit.py", "config/memory-candidates.example.md",
+    "docs/shared-memory-security.md",
     "scripts/publish_portable.py", "tests/test_publish_portable.py", "docs/publishing.md",
     "scripts/workflow_modules.py", "tests/test_workflow_modules.py", "docs/workflow-modules.md",
     "scripts/scan.sh", ".gitleaks.toml", "scripts/host-values.deny", "scripts/host-values.allow",
@@ -96,6 +97,7 @@ PUBLISH = (
 # Package directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.
 PUBLISH_DIRS = (
+    (".okf", ()),
     ("packages/tenantext", ("node_modules/", "extensions/doctor/wiki.ts", "test/doctor-wiki.test.ts",
                             "skills/herdr-relay/SKILL.md", "skills/herdr-relay/install.sh",
                             "skills/herdr-relay/relay.example.json", "skills/herdr-relay/scripts/relay.py",
@@ -109,6 +111,9 @@ PUBLISH_DIRS = (
     # A vendored copy. Its `shared/` directory is committed source, not build output.
     ("packages/openviking-pi", ("node_modules/", "LICENSE")),
     ("packages/agentcore-pi", ("node_modules/",)),
+    ("packages/agentcore-memory-core", ("node_modules/",)),
+    ("packages/agentcore-claude", ("node_modules/",)),
+    ("packages/agentcore-memory-admin", ("node_modules/",)),
 )
 # Optional list of repository-relative files or directory prefixes ending in "/".
 # The list excludes itself. A portable copy has neither the list nor its excluded files.

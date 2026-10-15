@@ -34,6 +34,7 @@ The second line is `exec env `, then the `commands.launchDisplayOnly` line of th
 - `exec` replaces the shell with `pi`. No shell process stays.
 - The line holds a second `env`, with `-u PI_CODING_AGENT_SESSION_DIR`. It removes that variable for the one `pi` process; see "The session directory" below. The file has `env` two times because the file and the typed line hold the same text.
 - With the `wiki` component and no `memory.wiki.wikiHome`, the same `env` also holds `-u WIKI_HOME`; see "The wiki home" below.
+- With the `agentcore` component, the same `env` also holds `-u AGENTCORE_MEMORY_CONFIG`, before any `-u WIKI_HOME`; see [AgentCore launch and setup](memory-modules.md#launch-and-setup).
 - When the gateway is enabled, the line holds the `TENANTEXT_LITELLM_BASE_URL` assignment. The URL is public configuration, not a key.
 - The file holds no API key and no other secret value. `TENANTEXT_LITELLM_API_KEY` reaches `pi` only from the environment of the shell that runs the file. Export it in that shell, or start the file from a secret store you already use.
 - The file passes no arguments: it does not contain `"$@"`. To give Pi an argument, run the plan line by hand.
@@ -62,7 +63,7 @@ Why the line removes the variable and does not set a directory:
 - The line does not hold the target path a second time. The quoting of a target with a space or a quote character stays in one place.
 - An empty assignment (`PI_CODING_AGENT_SESSION_DIR=`) also gives the default in Pi 1.0.2, but only because the source tests the value for truth. No Pi document states it, so the kit does not use it.
 
-`env -u` is in GNU coreutils. Not verified: BusyBox, the BSDs and macOS. POSIX.1-2018 does not list the option; not verified: POSIX.1-2024. The launch line has the form `[assignments] env -u PI_CODING_AGENT_SESSION_DIR [-u WIKI_HOME] PI_CODING_AGENT_DIR=<quoted target> pi --no-approve`.
+`env -u` is in GNU coreutils. Not verified: BusyBox, the BSDs and macOS. POSIX.1-2018 does not list the option; not verified: POSIX.1-2024. The launch line has the form `[assignments] env -u PI_CODING_AGENT_SESSION_DIR [-u AGENTCORE_MEMORY_CONFIG] [-u WIKI_HOME] PI_CODING_AGENT_DIR=<quoted target> pi --no-approve`.
 
 Pi variables and settings that move a state path out of the agent directory, from Pi 1.0.2 (`docs/environment-variables.md` and a search of `dist/` for `process.env`):
 

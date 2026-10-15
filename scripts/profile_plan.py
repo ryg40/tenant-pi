@@ -10,7 +10,7 @@ import shlex
 # Only the pure grammar of the runtime check is used here; this module starts no process.
 from scripts.check_runtime import (HERDR, HERDR_STATUSES, STATUSES, TOOLS, in_range, parse_range, parse_version,
                                    pi_status)
-from scripts.memory_modules import MEMORY, render_memory
+from scripts.memory_modules import AGENTCORE_CORE, MEMORY, render_memory
 from scripts.model_routes import BASE_NAME, KEY_NAME, render
 from scripts.validate import ENV, OWNER_RESOURCES, ROLE_NAMES, ROOT, fail, fields, manifest, npm_name, overlay
 from scripts.workflow_modules import render_mcp, workflow_record
@@ -297,8 +297,10 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
         setup.append(peer_override_line(target))
     for cid in ("openviking", "agentcore"):
         if cid in enabled:
-            # Dependencies stay beside the local-file extension, outside the tracked tree.
-            setup.append("npm --prefix " + shlex.quote(_package_source(components[cid]["source"])) + " ci --ignore-scripts")
+            # Dependencies stay beside the local-file extension, outside the tracked tree. The AgentCore
+            # extension has none: the shared core that it imports installs the AWS SDK.
+            directory = str(ROOT / AGENTCORE_CORE) if cid == "agentcore" else _package_source(components[cid]["source"])
+            setup.append("npm --prefix " + shlex.quote(directory) + " ci --ignore-scripts")
     if route and overlay_data["modelRoutes"]["gateway"] is not None:
         base = next(item["instruction"] for item in route["setup"] if item["kind"] == "process_environment")
         launch = base + " " + launch

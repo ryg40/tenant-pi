@@ -1,96 +1,159 @@
-# Architecture diagrams
+# Installed environment architecture
 
-[docs/architecture.html](architecture.html) shows the architecture of the kit as one interactive page.
-To see the page, clone or download the kit. Then open `docs/architecture.html` from disk in a browser.
-A web view of the repository shows only the HTML source of the file, not the page.
-The page needs no network and no server. It loads no other file.
-The explainer shows the same diagrams as text, in [its overview](../EXPLAINER.md#overview) and in [its components section](../EXPLAINER.md#components).
+[architecture.html](architecture.html) shows the environment that a selected Pi profile uses after installation.
+Open `docs/architecture.html` from disk in a browser. The page needs no server, network, font download or other file.
+A repository web view can show HTML source instead of the rendered page.
 
-## What the page shows
+This is a runtime map, not a scan of your machine or an installer pipeline.
+[The installation explainer](../EXPLAINER.md) describes how the kit prepares a profile.
+The architecture page describes the resulting process, files and possible data recipients.
 
-The page has five views. The tabs at the top select a view.
+## Runtime map
 
-| View | What it shows |
+You interact with Pi in a terminal, optionally inside a Herdr workspace.
+The launcher selects a profile through `PI_CODING_AGENT_DIR` and starts the `pi` command from your shell.
+Pi reads that profile's settings and loads its enabled extensions and skills.
+Core Pi does not require any optional module.
+
+A profile is a configuration directory, not an operating-system sandbox.
+Pi tools keep the account's file and shell permissions. Trusted project settings can override profile settings.
+A Compose seat is an optional container deployment, not a layer of every installation. It remains unqualified.
+
+| Scope | What lives there |
 | --- | --- |
-| System overview | The clone, the private directory, the generated profile, the Pi runtime and the live profile, with the flows between them. |
-| Pipeline | The stages from the manifest and the overlay to a running profile, and the update path. Each node names its script and its document. |
-| Components | Each component of `config/manifest.json`, grouped by kind, with its status, its source, its inputs and its readiness gaps. |
-| Development and release | The checks, the scans and hooks, the publish set, the portable snapshot and its tags. |
-| Runtime and services | The services that a generated profile uses at run time: the gateway route, memory, tools and the Compose seat. |
+| Selected profile | Settings, native login in `auth.json`, sessions, installed npm modules, caches and optional Hermes memory. |
+| Clone | Optional in-tree runtime modules. Generated profiles refer to absolute paths inside the clone. |
+| Account or project | The LLM Wiki vault, OpenViking client state, the OS keyring and working project files. Their exact scopes differ. |
+| Service endpoint | A chosen model provider, direct inference server, optional gateway, remote memory store or tool service. |
 
-The public page uses the placeholders of the explainer, for example `$HOME/tenant-pi` and "the gateway". Read each placeholder as the value of your host.
+A new candidate gets no copied authentication, sessions or profile-local memory.
+Other profiles can share account state outside their directories. Switching profiles does not roll that data back.
+The launcher can inherit provider keys from its shell, independently of a native login.
 
-## How to use the page
+Native provider login, direct inference and an optional gateway are alternative model routes.
+Only the gateway route forwards through that gateway to its upstream provider.
+The model receives prompt context, including recalled memory and tool results included in the conversation.
+Local memory storage therefore does not mean that recalled content stays local.
 
-- Click a node. The right panel shows its summary, tags, facts, files and connections.
-- Double-click a node to drill in. The drill-down shows the nodes before the node, the nodes after it and its files.
-- Press `/` to search the nodes of all views. Press a number key to select a view.
-- Press "Path" and choose two nodes. The page shows the shortest path between them. When no path connects the two nodes, the panel tells you so.
-- Press "Tour" for a guided tour of the main ideas. The arrow keys move between the steps. A click on a view tab ends the tour.
-- Drag to pan the diagram. Scroll to zoom. Press `f` to fit the view. Press `Esc` to go back.
-- A label that is too long for its box ends with "…". Hover the node to read the full label, or click the node to see it in the panel.
+Optional services receive data only through their enabled, configured clients and the relevant operation.
+Some modules make automatic calls, not just explicit tool calls.
+OpenViking can capture turns. AgentCore sends each typed prompt to AWS as a recall query and has no capture path. Its propose tool sends a text to AWS only after the person confirms it.
+Wiki embeddings need separate text-transfer consent. Usage modules can send account tokens to provider usage endpoints.
+The node details link to the current source documents for these conditions.
 
-A file link opens the file in your clone. The link works when the page is in the `docs/` directory of the clone.
-The address of the page holds the view and the node, for example `architecture.html#view=components&node=mcp`.
+## Views and evidence
 
-## How to rebuild the page
+The public page has five progressively detailed views.
 
-`scripts/architecture_build.py` writes the page from `docs/architecture/model.json` and `config/manifest.json`. The script uses only the Python standard library.
+| View | Purpose |
+| --- | --- |
+| Installed environment | Terminal, selected profile, local state, runtime code and service boundaries. This is the default. |
+| Profile & files | The process and its configuration, profile-owned state, project files and shared account state. Includes the optional Compose seat. |
+| Models & services | Three alternative model routes, followed by optional MCP, knowledge, tracker and usage calls. |
+| Memory & data | Each memory module, its storage scope, transfer conditions and model-context implications. |
+| Module catalog | Every manifest component, with source, inputs, consent, dependencies and readiness gaps. This is availability, not detected selection. |
+
+| Term | Meaning on this page |
+| --- | --- |
+| Core | Required for a Pi session. |
+| Optional | Available only when selected and supplied with its prerequisites. The page does not imply installation. |
+| Configured | Settings, references and credentials have been supplied. This does not prove a successful connection. |
+| Verified | A recorded check proves a stated behavior for a stated version. This page performs no live verification. |
+| Manifest status | The repository's status for a component, not a health result for your machine. |
+
+The public page uses portable placeholders such as `$HOME/tenant-pi` and `$HOME/.pi/profiles/main`.
+Neither those paths nor an example endpoint identify a detected installation.
+The development-only edition also retains a separate Local records view. Its recorded values are not a fresh host scan.
+
+## Navigation
+
+1. Select a tab, or press its number key, to change the view.
+2. Click a node to read its summary, conditions, files and connections.
+3. Double-click a node to open its context and files. A selected node also opens with `Enter`.
+4. Press `/` to search all views. Use the arrow keys and `Enter` to choose a result.
+5. Select Path and two nodes to inspect their relationship path. Reverse traversal is explicitly identified.
+6. Select Tour for the runtime walkthrough. Use the arrow keys to move; changing a tab ends the tour.
+7. Drag to pan, scroll to zoom, or press `f` to fit. Press `Esc` to leave a selection, path or drill-down.
+
+On narrow screens, details appear below the diagram. The node buttons there provide readable navigation without precise diagram taps.
+Arrow labels stay visible and name the operation. Colors distinguish interaction, loading, model requests, local writes and optional memory or service calls.
+An arrow identifies the operation's direction; node details describe returned data.
+Secondary relationships and catalog dependencies appear in the connection panel rather than as crossing arrows.
+Drill-down uses context columns and the same connection panel, without copying routes from the parent view.
+
+A shortened card label ends with an ellipsis. The tooltip and details retain its complete text.
+A repository file link works when this page stays in the clone's `docs/` directory.
+The address preserves the view and node, for example `architecture.html#view=components&node=mcp`.
+
+## Rebuild and checks
+
+The Python standard-library builder reads `docs/architecture/model.json` and `config/manifest.json`.
+Edit the model or renderer, then regenerate. Do not edit generated HTML alone.
 
 ```sh
 python3 scripts/architecture_build.py
 python3 scripts/architecture_build.py --check
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_architecture_build -q
+python3 scripts/doc_check.py
+python3 scripts/publish_check.py
+python3 scripts/publish_check.py --public
 ```
 
-The first command writes `docs/architecture.html`. The second command writes nothing. It exits with code 1 when the page is not current.
-The unit tests compare the page with a new build. Thus, a change of the model or of the manifest needs a rebuild in the same commit.
+The `--check` command writes nothing and fails when generated bytes differ.
+The tests check determinism, manifest coverage, file references and public-content rules.
+They also check connector routes against cards and group frames.
 
-A private copy of the kit can also have a local edition with the real values of one host:
+The optional browser checks require an existing Python Playwright installation and its Chromium browser.
+They render both available editions at desktop and narrow sizes, inspect actual text geometry and test navigation.
+They install nothing. Missing browser capability is a failed check when explicitly requested.
 
-1. Write `docs/architecture/local-values.json`. Its `values` object holds a value for each placeholder name of the model. Its `views` object can add groups, nodes and edges to a view. Its `tour` list can add tour steps.
-2. Optional: put a name in the `planned` list of the file when its value is a plan, not a record. An example is the address of a trial that has not run. The build adds the tag "planned value, not a record" to each node that uses the value.
-3. List `docs/architecture/local-values.json` and `docs/architecture-local.html` in `scripts/dev-only-files.txt`. A portable snapshot then holds neither file.
-4. Run `python3 scripts/architecture_build.py --local`. The command writes `docs/architecture-local.html`.
+```sh
+ARCHITECTURE_BROWSER_TESTS=1 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tests.test_architecture_build -q
+```
 
-Warning: the local edition holds the values of your host. Never publish it.
+Set `ARCHITECTURE_SCREENSHOT_DIR` to an existing external directory to retain screenshots from that check.
+The browser tests block network requests and open the generated files directly.
+Negative controls prove that card collisions, frame-border lanes, border-crossing labels and overlapping labels are detected.
 
-## How to add a node
+## Local edition
 
-1. Add one object to the `nodes` list of a view in `docs/architecture/model.json`.
+1. Keep host values in `docs/architecture/local-values.json`, never in the public model.
+2. Use `values` for placeholder replacements, `views` for additions and `tour` for extra steps.
+3. Add a complete view with its own `id`, `label`, `summary`, `groups`, `nodes` and `edges` when local records need a separate tab.
+4. Mark planned placeholder names in `planned`. A node using one receives the tag `planned value, not a record`.
+5. Keep both local files in `scripts/dev-only-files.txt` so portable publication excludes them.
+6. Build and check the local page with these commands.
 
-   ```json
-   {"id": "my-node", "group": "g-actions", "label": "My node", "sub": "scripts/my_script.py", "kind": "action",
-    "summary": "One sentence about the node.", "tags": ["offline"], "files": ["scripts/my_script.py"],
-    "script": "scripts/my_script.py", "doc": "docs/generator.md"}
-   ```
+```sh
+python3 scripts/architecture_build.py --local
+python3 scripts/architecture_build.py --local --check
+```
 
-2. Add the edges of the node to the `edges` list of the same view, for example `{"from": "my-node", "to": "validate", "label": "the overlay"}`.
-3. Rebuild the page and run the unit tests.
+The local file can define a placeholder used only by its added views or tour.
+The public model must use every public placeholder. Unknown placeholder names fail the build.
 
-| Key | Use |
+Warning: the local edition holds host values. Never publish it.
+
+## Model and geometry
+
+| Field | Contract |
 | --- | --- |
-| `id` | A name that is unique in the view. |
-| `group` | The group box of the node. The nodes of a group fill its grid in list order. The `cols` key of the group sets the number of columns. The `nodeW` key of the group sets the width of its nodes in pixels, for long labels. |
-| `label`, `sub` | The two lines of the node. The page measures each line. A line that is too long ends with "…" on the diagram. The tooltip and the panel show the full text. |
-| `kind` | A key of `kinds`. The kind sets the color and the legend entry. |
-| `summary`, `tags` | The text and the labels of the panel. |
-| `files`, `script`, `doc` | Paths. A path relative to the clone becomes a link. The path must exist in the publish set. |
-| `drill` | Optional: the id of a view that the panel can open. |
-| `component` | Only in the Components view: the id of a manifest component. The build reads the status, the source, the requirements and the gaps from the manifest. |
+| Group `x`, `y`, `cols`, `nodeW`, `gapY` | Position and grid dimensions. Groups must not overlap. |
+| View `boundaries` | Optional outer scope frames with explicit dimensions. These describe scope, not sandbox enforcement. |
+| Node `id`, `group`, `kind` | Unique identity, containing group and legend color. |
+| Node `label`, `sub`, `summary`, `tags` | Card text and detailed explanation. |
+| Node `files`, `doc`, `script` | Evidence paths. Public repository paths must exist in the publish set. |
+| Node `drill` | Related view offered in the details panel. |
+| Node `component` | Manifest ID. Exactly one catalog node represents each manifest component. |
+| Edge `from`, `to`, `label`, `style` | Endpoints, operation and line style. |
+| Edge `points`, `labelAt` | Orthogonal route coordinates and label baseline. Required for a visible connection. |
+| Edge `detailOnly` | Keep a secondary relationship in details, search context and path finding without drawing it. |
 
-An edge has `from`, `to`, an optional `label` and an optional `style`: `flow`, `writes`, `reads`, `optional`, `requires` or `refuses`.
-A text can hold a placeholder in the form `{{name}}`. A name has lowercase letters, digits and underscores. The `placeholders` object of the model holds the public value of each name.
+Visible connectors use explicit lanes, not curves that pass through unrelated cards.
+A connector can cross its source or destination frame at right angles.
+It must not run along a frame border or pass through another card, frame title or label.
+Labels must clear cards, all frame borders and other labels.
+The browser checks use actual SVG text bounds; component-card collision checks alone do not satisfy this contract.
 
-The model is public text. Write placeholders, never a value of your host. The unit tests apply the public reader rules of `scripts/publish_check.py` to the page.
-
-The build refuses a bad model with an error. It then writes nothing.
-
-| Error | Meaning |
-| --- | --- |
-| `edge_endpoint` | An edge names a node that the view does not have. |
-| `file_missing` | A path of a node does not exist in the clone. |
-| `group_overlap` | Two group boxes of a view overlap. Move a group with its `x` and `y` keys. |
-| `component_missing`, `unknown_component` | The Components view does not have exactly one node for each component of the manifest. |
-| `unknown_placeholder`, `placeholder_unused` | A text names a placeholder that the model does not define, or the model defines a placeholder that no text uses. |
-| `local_value_unknown`, `local_planned_unknown` | The local values name a placeholder that the model does not define, or the `planned` list names a value that the file does not have. |
-| `unknown_kind`, `unknown_group`, `unknown_drill`, `tour_target` | A node or a tour step names a kind, a group, a view or a node that does not exist. |
+Build refusals include `edge_endpoint`, `edge_route`, `edge_orthogonal`, `edge_label`, `edge_attachment`, `file_missing`, `group_overlap` and invalid references.
+The builder exits with code 2 before writing a refused model.

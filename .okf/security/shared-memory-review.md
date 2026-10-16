@@ -4,7 +4,7 @@ title: The shared memory security review
 description: docs/shared-memory-security.md reviews each interaction of the shared AgentCore memory - why it is secure, what cannot happen and why it is maintainable - with rules R1 to R10, a threat table and the open items.
 tags: [security, agentcore, review, threats, iam]
 resource: ../../docs/shared-memory-security.md
-generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T18:00:00Z}
+generated: {by: claude-code/claude-opus-5-5, at: 2026-10-16T00:45:00Z}
 sources:
   - id: security
     resource: ../../docs/shared-memory-security.md
@@ -24,7 +24,8 @@ The security review is the authority for every rule of the shared memory. It is 
 | The interactions | Provisioning, key handoff, recall in Pi and in Claude Code, propose, approve, reject, purge, the global submit, project resolution, offboarding, worker reads and the migration. |
 | Threat table | Each threat with its control and its residual risk. |
 | Data that leaves the machine | Each flow, its data, its recipient and its time. |
-| Limits, maintenance duties, sources, not verified | The open questions, who updates which section, and the AWS sources `S1` and onwards. |
+| The behaviour of the live store | The lag of the list index and the store keys. |
+| Limits, maintenance duties, sources, verified, not verified | The open questions, who updates which section, the AWS sources `S1` and onwards, the facts of each round of the live proof, and the open items. |
 
 Each interaction has the same parts: an example, the IAM rule, the namespace rule, why it is secure, what cannot happen, and why it is maintainable.
 
@@ -46,12 +47,23 @@ Each interaction has the same parts: an example, the IAM rule, the namespace rul
 | A prompt carries a secret | The prompt text reaches AWS as a search query. |
 | Rejected records accumulate | Rejected text stays in AWS until the purge. |
 
+## Verified by the live proof
+
+The live proof ran the design on the real store in rounds 0 to 4. The review names the round of each fact.
+
+- The read form with the single-valued `StringLike`, and the denial of a read outside the policy (rounds 0 and 1).
+- The prefix semantics of `ListMemoryRecords`: the live store reads the `namespace` of a list as an exact match, so a list of a proposals tree returns no record (round 1; the review now lists one exact namespace).
+- Propose, show, approve and reject with the proposer; the move under the namespace condition key; an update without `content` keeps the text (rounds 1 to 3).
+- Provisioning, the migration apply, the purge of one person's rejected namespace and offboarding (rounds 1, 3 and 4).
+- The error of a deleted key: `UnrecognizedClientException` on the service, `aws_failed` in the core (round 4).
+- The list index lags one to five minutes behind a write, and the store adds its own metadata keys (rounds 0 to 4).
+
 ## Not verified
 
-- The read form with the single-valued `StringLike`.
-- The move under the namespace condition key, and the denial of a mixed batch.
-- The prefix semantics of `ListMemoryRecords` on a proposals tree.
-- Every live step of the design, until the live proof with a test person.
+- The denial of a mixed batch.
+- A move by a member, a move into another project, and which values the condition key holds for a move.
+- Whether the metadata map of an update replaces or merges the stored map.
+- Recall, propose and review in Claude Code on the live store.
 
 A wrong fact in the review goes to its maintainer; this bundle changes no sentence of it.
 

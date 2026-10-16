@@ -77,4 +77,12 @@ One test loads `index.ts` with the real core in a separate process when `../agen
 
 See [the memory module guide](../../docs/memory-modules.md#agentcore-memory) for the owner steps.
 
-Not verified: live AWS recall or propose, IAM enforcement, clean-client installation, or a generated Pi session using this package.
+Rounds 0 to 2 of the live proof verified the extension against the live store.
+Recall added the hidden block in a real turn, and the model quoted its records (rounds 0 and 2).
+`agentcore_propose` showed the confirmation dialog and wrote one record after the answer yes (round 1).
+IAM denied each namespace outside the policy. In round 0 the extension logged one static `aws_denied` line for each such namespace, and the turn continued.
+In round 0 a confirmed proposal outside the policy also ended with `aws_denied`, and nothing was written.
+In round 1 a person key got `AccessDeniedException` on the private and the proposals namespaces of another person.
+Without a project, propose ended with `project_none` and made no AWS call (round 0).
+
+Not verified: clean-client installation, or a generated Pi session using this package. The live proof started Pi with its own launch values.

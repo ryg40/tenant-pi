@@ -68,9 +68,9 @@ Every rendered policy follows these rules. The registry script renders each poli
 | R9 | The core sends the request field `namespace`, never `namespacePath`. Each recall query names one exact namespace. Show, approve and reject list one exact proposals namespace: the live store reads the `namespace` of a list as an exact match. | `S5`, `S6`, live proof |
 | R10 | No policy uses the condition key `bedrock-agentcore:namespacePath`. The service authorization data lists `bedrock-agentcore:namespace` only. The developer guide shows `namespacePath` in one example. The design does not depend on it. | `S2`, `S4` |
 
-Not verified: the read form with the single-valued `StringLike` (R2). The live check of the owner used `ForAllValues:StringLike` for the read policy and for the write policy. The live proof of the project repeats the read check with the `StringLike` form. If a read is denied with that form, the fallback is `ForAllValues:StringLike` with the `Null` companion of R4.
+The read form with the single-valued `StringLike` (R2) is verified in round 1 of the live proof. A person policy of this form allowed the reads of the person's own scope. It denied a `RetrieveMemoryRecords` call on another person's private namespace and on another person's proposals namespace with `AccessDeniedException`. Round 0 showed the same denial with the older read identity: a namespace outside its list ended with `aws_denied`.
 
-Not verified: the move under the namespace condition key (R3a): which values the key holds for `BatchUpdateMemoryRecords`, and that a move by a member into a shared namespace and a move by a maintainer of another project are denied. The live proof tests the three cases. The fallback is the delete form of the first draft: approve creates a copy in the shared namespace and deletes the proposal, reject deletes, and only a maintainer holds `DeleteMemoryRecord`. The fallback is a contract change that needs the coordinator's word.
+The move of a maintainer under the namespace condition key (R3a) is verified in rounds 2 and 3 of the live proof. Approve moved a proposal to the shared namespace of the project, and reject moved one to the rejected namespace of its actor. Each move was one `BatchUpdateMemoryRecords` call with `sourceNamespaces`. Not verified: which values the key holds for `BatchUpdateMemoryRecords`. The `Move` list holds all three trees of the project, so the allowed move does not show it. Not verified: that a move by a member into a shared namespace and a move by a maintainer into another project are denied. If a later check shows a move into another project, the fallback is the delete form of the first draft: approve creates a copy in the shared namespace and deletes the proposal, reject deletes, and only a maintainer holds `DeleteMemoryRecord`. The fallback is a contract change that needs the coordinator's word.
 
 Example: the inline policy of Chen. Chen is a member of two projects and a maintainer of none. The placeholders `<account>` and `<memoryId>` stand for the values of the private registry.
 
@@ -296,7 +296,7 @@ IAM rule: the admin login does the deletes. No person policy holds a delete acti
 
 Namespace rule: `/actor/{actorId}/`, `/project/*/proposals/{actorId}/` and `/project/*/rejected/{actorId}/` of the person. Nothing in a shared namespace. A record that also names a namespace outside these trees stays, and the dry run reports it.
 
-Why it is secure: the access key is deleted in the same step, before the user, so a copy of the key is useless after the step. The private records leave the store. The dry run shows every id before the apply step. The apply step refuses before the first delete when the user holds an item that the script never creates, for example console access, a group or an attached managed policy (`S15`).
+Why it is secure: the access key is deleted in the same step, before the user, so a copy of the key is useless after the step. A call with the deleted key fails with `UnrecognizedClientException` ("The security token included in the request is invalid"), for example on `RetrieveMemoryRecords`. The core logs it as `AgentCore Memory: recall failed (aws_failed); turn continues`, one line for each namespace of the recall set, and gives no record. This is verified in round 4 of the live proof. The private records leave the store. The dry run shows every id before the apply step. The apply step refuses before the first delete when the user holds an item that the script never creates, for example console access, a group or an attached managed policy (`S15`).
 
 What cannot happen: offboarding cannot delete a shared record. It cannot remove the author name from an approved record; that record is project knowledge. The last maintainer of a project cannot be offboarded; the owner names another maintainer first.
 
@@ -347,7 +347,7 @@ Why it is maintainable: the script runs once. The dry run output is the record o
 | Rejected records accumulate and hold stale or wrong text | Recall never reads the rejected tree. Only the maintainers of the project list it. The owner purges it with the admin tool. | Rejected text stays in AWS until the purge. |
 | An id with a wildcard | The id rule refuses it in the registry and in the core. | None. |
 | A policy above the IAM size limit | The renderer refuses it (R8). | A person with many projects needs an owner decision: fewer projects or a managed policy. |
-| A batch with mixed namespaces | `ForAllValues` denies the batch when one value is outside the list. | None. Not verified until the live proof. |
+| A batch with mixed namespaces | `ForAllValues` denies the batch when one value is outside the list. | None. Not verified: the live proof sent no mixed batch. |
 | A crash during a move | The move is one call; the record is in the source or in the target namespace, never in both. The ledger line before the call names the intent. | A second approve finds no proposal and stops with a static code; the maintainer checks the shared list. |
 | A former member keeps local copies | Out of scope. | The person keeps what their agent already read. |
 | The admin login is misused | Only the coordinator uses it, after a dry run and the owner's word. CloudTrail logs the calls. | A wrong apply step after a wrong dry run. |
@@ -371,12 +371,22 @@ AWS logs the API calls with the identity, the action and the time in CloudTrail 
 ## Limits of the controls
 
 - The delete actions have no namespace condition key in the service authorization data (`S2`), while the API reference says that the `namespace` of a delete request is used for IAM condition key authorization (`S8`). The design grants no delete to any person, so the question is open only for the admin login and for the fallback of R3a.
-- The move of a maintainer rests on the condition key value of `BatchUpdateMemoryRecords`. The API reference names `sourceNamespaces` as the value for IAM condition key authorization (`S27`); the service authorization data lists the key on the action (`S2`). The live proof tests the three cases. Until then the move is not verified.
+- The move of a maintainer rests on the condition key value of `BatchUpdateMemoryRecords`. The API reference names `sourceNamespaces` as the value for IAM condition key authorization (`S27`); the service authorization data lists the key on the action (`S2`). The allowed move is verified in rounds 2 and 3 of the live proof. The two denials are not verified: a move by a member and a move into another project.
 - `GetMemoryRecord` has no namespace condition key (`S2`). The design grants it to nobody.
 - The service authorization data does not list `bedrock-agentcore:namespacePath` (`S2`). The developer guide shows it in an example (`S4`). The design uses `bedrock-agentcore:namespace` only.
 - The request field `namespace` on list calls: the API reference describes it as a prefix (`S6`). The live store reads it as an exact match (live proof). A list on the proposals tree of a project returns no record. So the review lists one exact proposals namespace per member: `listProposals` with an `actorId`, the CLI flag `--actor`, the `actorId` of the MCP review tools. Show, approve and reject take the proposer and never list the whole tree. `proposals list` without `--actor` keeps the prefix form and gets no record from the live store. The person configuration holds no member list, so the maintainer names the members. The admin tool lists exact namespaces only: offboarding the namespaces of the person, the purge of a project the rejected namespace of each person of the registry, and the migration its known namespaces and each `--old-namespace`.
 - An inline policy of one user has a size limit (`S13`). A person with many projects reaches it.
 - The context block tells the model that records are reference data. A model can still follow text in a record. The review gate is the main control.
+
+## The behaviour of the live store
+
+### The lag of the list index
+
+The list index of the store lags one to five minutes behind a write. Rounds 2 to 4 of the live proof show it. Show, approve and reject find the proposal through a list, so right after a propose they give `proposal_missing`. Right after a move, a list of the proposals namespace still shows the record, and a list of the target namespace does not show it yet. Right after a delete, a list still shows the deleted record; the admin tool names the effect on its deletes in [its lag section](../packages/agentcore-memory-admin/README.md#the-lag-of-the-list-index). Wait a few minutes and run the step again. Not verified: the upper bound of five minutes. The longest lag that the live proof measured was about two minutes (round 4).
+
+### The store keys
+
+The store adds its own keys to the metadata of each record. A list and a retrieve return two of them as text values: `x-amz-agentcore-memory-recordType` with the value `BASE` and `x-amz-agentcore-memory-strategyType` with the value `NONE`. The core keeps each metadata value of text type. So the two keys reach the recall block (round 0 of the live proof), the lines of `proposals list` (round 1) and the intent line of the ledger (rounds 2 and 3). The preview of approve and reject shows the listed proposal with the same keys; this part comes from the code. The end line of the ledger holds the metadata of the move only. A move never sends a store key: it sends the seven propose keys and the two review keys. After a move, a `GetMemoryRecord` read with the admin login showed four store keys: the two above, `x-amz-agentcore-memory-createdAt` and `x-amz-agentcore-memory-updatedAt` (round 2). The two text keys hold fixed words, not record data. Not verified: the value type of the two time keys. The core output does not show them.
 
 ## Maintenance duties
 
@@ -424,20 +434,45 @@ The AWS pages of the service authorization reference and of some developer guide
 | `S28` | [CreateUser](https://docs.aws.amazon.com/IAM/latest/APIReference/API_CreateUser.html), [CreateLoginProfile](https://docs.aws.amazon.com/IAM/latest/APIReference/API_CreateLoginProfile.html), [PutUserPolicy](https://docs.aws.amazon.com/IAM/latest/APIReference/API_PutUserPolicy.html), [GetUserPolicy](https://docs.aws.amazon.com/IAM/latest/APIReference/API_GetUserPolicy.html), [TagUser](https://docs.aws.amazon.com/IAM/latest/APIReference/API_TagUser.html) and [CreateAccessKey](https://docs.aws.amazon.com/IAM/latest/APIReference/API_CreateAccessKey.html), IAM API reference. | A password from `CreateLoginProfile` gives console access, so a user without it has none; the inline policy and the tags of a user; a stored policy comes back URL-encoded; the secret key is shown only in the response of `CreateAccessKey` (provisioning, key handoff). |
 | `S29` | [Versioning IAM policies](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_managed-versioning.html), IAM User Guide, and [CreatePolicyVersion](https://docs.aws.amazon.com/IAM/latest/APIReference/API_CreatePolicyVersion.html) and [DeletePolicyVersion](https://docs.aws.amazon.com/IAM/latest/APIReference/API_DeletePolicyVersion.html), IAM API reference. | A managed policy has at most five versions; a new version can become the default; the default version cannot be deleted (migration). |
 | Live check | The owner's checks on the real store, recorded in the private tracker. | A memory with no strategy accepts `BatchCreateMemoryRecords`. `ForAllValues:StringLike` on `bedrock-agentcore:namespace` denied a write outside the list and allowed a write inside it. A retrieval with a read policy of the same form returned the record. A list of ten records by exact namespace matched the send. |
-| Live proof | The live proof of the design on 2026-10-15, rounds 1 and 4, recorded in the private tracker. | `ListMemoryRecords` with the proposals tree of a project as `namespace` returned no record. The same call with the proposals namespace of the one proposer returned the proposal. The core and the AWS CLI gave the same answers. Before the correction of the exact namespace, approve by the record id alone ended with `proposal_missing`. The purge dry run of the admin tool with the rejected tree of a project listed no record; with the rejected namespace of one person it listed the rejected record. One minute after the purge deleted that record, an offboarding still listed it, and its delete failed: the list index lagged behind the write. |
+| Live proof | The live proof of the design, rounds 0 to 4, recorded in the private tracker. It used a test member and a test maintainer of one project, and the person users of the registry script. | `ListMemoryRecords` with the proposals tree of a project as `namespace` returned no record. The same call with the proposals namespace of the one proposer returned the proposal. The core and the AWS CLI gave the same answers. Before the correction of the exact namespace, approve by the record id alone ended with `proposal_missing`. The purge dry run of the admin tool with the rejected tree of a project listed no record; with the rejected namespace of one person it listed the rejected record. One minute after the purge deleted that record, an offboarding still listed it, and its delete failed: the list index lagged behind the write. The other facts of each round are in [the section "Verified by the live proof"](#verified-by-the-live-proof). |
 | Service model | The `bedrock-agentcore` API model of the AWS SDK for Python, API version 2024-02-28. | The shapes and limits in this document that the API reference pages state: the id patterns, the 16,000 character text, the 20 metadata keys, `topK` from 1 to 100, the filter operators. |
+
+## Verified by the live proof
+
+The live proof ran the design on the real store in five rounds. The rounds used a test member and a test maintainer of one project. Each row names the round that showed the fact.
+
+| Fact | Source |
+| --- | --- |
+| Recall in a Pi turn: the extension adds the hidden recall block, and the model quotes a record of it. | Round 0; round 2 for an approved record |
+| The local refusal `project_none` of a propose without a project. The core makes no AWS call. | Round 0 |
+| The read form with the single-valued `StringLike` (R2): a person reads the own private namespace, the project shared namespace and `/shared/`. | Round 1 |
+| The denial of `RetrieveMemoryRecords` on a namespace outside the policy: `AccessDeniedException` on the service, `aws_denied` in the core. | Rounds 0 and 1 |
+| Provisioning with the apply step: the user, the inline policy, the tags and one key file with mode 0600. | Round 1 |
+| Propose in Pi: the confirmation dialog, then one record in the proposals namespace of the person with the seven propose keys. | Round 1 |
+| The denial of a direct write of a person into a project shared namespace: `AccessDeniedException` on `BatchCreateMemoryRecords`. | Round 3 |
+| Show, approve and reject with the proposer, on the exact proposals namespace of the proposer. | Rounds 2 and 3 |
+| The move of a maintainer under the namespace condition key (R3a), with `sourceNamespaces`. After the move, the record has one namespace: the target. | Rounds 2 and 3 |
+| An update without `content` keeps the text and the record id. | Round 2 |
+| The record after a move holds the seven propose keys and the two review keys. The reason stays in the ledger and does not reach the record. | Rounds 2 and 3 |
+| The proposer cannot read the rejected namespace (`AccessDeniedException`), and recall does not return the rejected text. | Round 3 |
+| The migration apply: the test records and the smoke record deleted, a new default version of the two service policies, the old versions deleted. The worker identity then reads a project shared namespace and is denied on the old owner tree. | Round 3 |
+| The purge of the rejected namespace of one person with `--person`. | Round 4 |
+| Offboarding with the apply step: the records, the access key, the inline policy, the user and the registry change. | Round 4 |
+| The error of a deleted key: `UnrecognizedClientException` on `RetrieveMemoryRecords`, and `recall failed (aws_failed)` in the core. | Round 4 |
+| [The lag of the list index](#the-lag-of-the-list-index). | Rounds 2 to 4 |
+| [The store keys](#the-store-keys). | Rounds 0 to 3 |
 
 ## Not verified
 
-- The read form with a single-valued `StringLike` on `bedrock-agentcore:namespace` (R2). The live check used `ForAllValues`.
-- The denial of a `RetrieveMemoryRecords` call on a namespace outside the policy. The live check used an allowed namespace only.
-- The value of the condition key when a request names several namespaces in one batch, and the denial of a mixed batch.
-- The move under the namespace condition key: the value of the condition key for `BatchUpdateMemoryRecords` (the source namespace, the target, or both); that a move by a member into a shared namespace and a move by a maintainer of another project are denied; that an update without `content` keeps the text; whether the metadata map of an update replaces or merges the stored map.
-- Show, approve and reject with the proposer on the live store, after the correction of the exact namespace. The offline tests use a fake store with the exact match of the live store.
-- The purge of a project with one exact list for each person, and the migration with `--old-namespace`, on the live store. The offline tests of the admin tool use a fake store with the exact match of the live store.
-- The error code of a delete of a record that is gone. The admin tool counts the error code 404 as done, from the HTTP status of `ResourceNotFoundException` in the service model; any other code stops the step and is printed. The lag of the list index, one to five minutes, comes from one observation.
+- The value of the condition key when a request names several namespaces in one batch, and the denial of a mixed batch. The live proof sent no mixed batch.
+- The move under the namespace condition key: the value of the condition key for `BatchUpdateMemoryRecords` (the source namespace, the target, or both); that a move by a member into a shared namespace and a move by a maintainer into another project are denied; whether the metadata map of an update replaces or merges the stored map. The store keys stay after a move that does not send them. This does not settle the question for the other keys, because the move sends the whole map of the proposal.
+- The purge of a whole project with one exact list for each person, on a project with rejected records. The live proof purged the rejected namespace of one person. The offline tests of the admin tool use a fake store with the exact match of the live store.
+- The migration move and `--old-namespace` on the live store. The migration of round 3 had no record to move.
+- The error code of a delete of a record that is gone. The admin tool counts the error code 404 as done, from the HTTP status of `ResourceNotFoundException` in the service model; any other code stops the step and is printed. The failed delete of round 4 ran the code before this output and named no code.
+- The upper bound of the list index lag; see [the lag of the list index](#the-lag-of-the-list-index).
 - The behaviour of `DeleteMemoryRecord` when the request `namespace` does not match the record, and whether the delete actions evaluate a namespace condition key: the API reference says the request namespace is used for IAM condition key authorization; the service authorization data lists no key.
 - The text of the script-rendered pages `S1` and `S4`, read through the machine-readable copy and a search summary.
 - Whether a CloudTrail record holds the search query text.
 - The inline policy size of a person with many projects, before the renderer exists.
-- Every live step of this design: provisioning, recall, propose, approve, reject, offboarding and migration. The live proof of the project covers them.
+- One Bitwarden Send with the key file and the configuration file. The live proof made no Send. The Bitwarden help does not say that one file Send holds two files.
+- The live steps that the live proof did not run: recall, propose and review in Claude Code; the key rotation; the global submit with the narrowed submit policy; a recall timeout and the kill switch in a live session.

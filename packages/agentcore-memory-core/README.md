@@ -40,7 +40,7 @@ The security review of the whole design is [the shared memory security document]
 - The context block holds one JSON line per record. A line break in a record text stays inside its JSON string, so a record cannot add a line of its own to the block.
 - Propose counts the text in Unicode code points. The `requestIdentifier` is the SHA-256 of the actor, the project, the text and the time. The `clientToken` is the SHA-256 of the canonical JSON of the request without the token.
 - The project resolution compares Git remotes after normalization: no scheme, no user, no `.git`, no trailing slash, the host in lower case. `git@host:path` and `ssh://git@host/path` give the same value. A port and the case of the path stay. The directory rule compares real paths. The longest configured directory wins.
-- The live store reads the request field `namespace` of `ListMemoryRecords` as an exact match. The API reference describes it as a prefix. The live proof of 2026-10-15 showed the exact match: a list on the proposals tree of a project returned no record, and a list on the proposals namespace of the proposer returned the proposal. The AWS CLI gave the same answer.
+- The live store reads the request field `namespace` of `ListMemoryRecords` as an exact match. The API reference describes it as a prefix. Round 1 of the live proof showed the exact match: a list on the proposals tree of a project returned no record, and a list on the proposals namespace of the proposer returned the proposal. The AWS CLI gave the same answer.
 - The live form of the proposal list is `listProposals({ projectId, actorId })`: one `ListMemoryRecords` on the exact namespace `/project/<p>/proposals/<actorId>/`, with 100 records per page and at most 10 pages. The CLI flag `--actor` uses it. The person config holds no member list, so the maintainer names each member.
 - `listProposals({ projectId })` without an actor sends the prefix form `/project/<p>/proposals/`. The live store answers it with no record. Only the CLI command `proposals list` without `--actor` uses it. Both forms go through the one function `proposalListNamespaces`.
 - The list keeps a record only when the record has exactly one namespace and that namespace is `/project/<p>/proposals/<actorId>/`. With an actor, it also drops a proposal of another actor.
@@ -69,6 +69,16 @@ node packages/agentcore-memory-core/bin/agentcore-memory.mjs scope --registry pa
 
 `--actor` names the proposer: the `actorId` of a line of `proposals list`. Show, approve and reject without `--actor` are a usage error. `--config <file>` sets the config file for one run. The preview and the question go to standard error. The result goes to standard output. The question reads one line from the terminal. Without a terminal the answer is no, and no flag skips the question, so an agent cannot confirm through a pipe. An error prints one line `agentcore-memory: <code>` and exits with 1. A usage error exits with 2.
 
+## The live store
+
+### The lag of the list index
+
+The list index of the store lags one to five minutes behind a write (rounds 2 to 4 of the live proof). Show, approve and reject find the proposal through a list. So right after a propose, `proposals show`, `proposals approve` and `proposals reject` print `agentcore-memory: proposal_missing`. Right after a move, a list of the proposals namespace still shows the record, and a list of the target namespace does not show it yet. Wait a few minutes and run the command again. The security document names the whole effect in [the lag of the list index](../../docs/shared-memory-security.md#the-lag-of-the-list-index). Not verified: the upper bound of five minutes; the longest measured lag was about two minutes.
+
+### The store keys
+
+The store adds keys of its own to the metadata of each record. A list and a retrieve return two of them as text values: `x-amz-agentcore-memory-recordType` (`BASE`) and `x-amz-agentcore-memory-strategyType` (`NONE`). The core keeps each metadata value of text type, so the two keys reach the recall block, the lines of `proposals list`, the preview of approve and reject, and the intent line of the ledger. A move does not send them: its map holds the seven propose keys and the review keys only. The store keeps its four keys after a move: the two above, `x-amz-agentcore-memory-createdAt` and `x-amz-agentcore-memory-updatedAt`. Rounds 0 to 3 of the live proof show these facts; the preview part comes from the code. See [the store keys](../../docs/shared-memory-security.md#the-store-keys).
+
 ## The example people
 
 The tests and the documentation use four fake people: Alice (`alice`, owner, maintainer of `example-project`), Bruno (`bruno`, member of `example-project`, maintainer of `example-site`), Chen (`chen`, member of both) and Dana (`dana`, member of `example-project`). The e-mail domain of the examples is `example.com`.
@@ -84,6 +94,6 @@ node --test packages/agentcore-memory-core/tests/
 
 Node `>=24.0.0 <25`, as the kit requires. The tests use fake clients. They need no AWS credential and no network.
 
-Not verified: the core against a live store. The live proof of the project covers it after the four tickets merge. The open items: the move under the namespace condition key; whether an update without `content` keeps the text; whether the metadata map of an update replaces or merges.
+The live proof ran the core against the live store. Recall worked in round 0, propose in round 1, show and approve with the proposer in round 2, and reject with the proposer in round 3. The move with `sourceNamespaces` passed under the namespace condition key, and an update without `content` kept the text (round 2). A call with a deleted key gives `recall failed (aws_failed)` on each namespace and no record (round 4).
 
-Not verified: show, approve and reject with the proposer on the live store, after the correction of the exact namespace. The offline tests use a fake store with the exact match of the live store.
+Not verified: whether the metadata map of an update replaces or merges the stored map. The move sends the whole map of the proposal, so both forms give the same keys.

@@ -172,7 +172,10 @@ test("the person config holds the memberships and no key, profile or ledger", ()
   assert.deepEqual(config.projects.map((project) => [project.projectId, project.role]),
     [["example-project", "member"], ["example-site", "maintainer"]]);
   assert.deepEqual(Object.keys(config).sort(), ["actorId", "memoryId", "projects", "region", "schemaVersion"]);
-  assert.match(renderPerson(example(), "bruno", {}).note, /"profile": "pi-memory-person-bruno"/);
+  // The dry run prints this config without `profile`; the provision apply writes its config file with it.
+  assert.ok(renderPerson(example(), "bruno", {}).note.split("\n").includes("2. Save the person config as "
+    + "~/.config/agentcore-memory/config.json. The config file of the provision apply has \"profile\": "
+    + "\"pi-memory-person-bruno\"; a config from a dry run needs that line."));
 });
 
 test("the count is the real policy without white space, and a large policy passes the limit", () => {

@@ -79,7 +79,7 @@ export function handoffNote(actorId, config) {
   return [
     `Handoff for ${actorId}:`,
     `1. Store the access key in the AWS profile "${profile}" of ~/.aws/credentials (file mode 0600).`,
-    `2. Save the person config as ~/.config/agentcore-memory/config.json and add "profile": "${profile}".`,
+    `2. Save the person config as ~/.config/agentcore-memory/config.json. The config file of the provision apply has "profile": "${profile}"; a config from a dry run needs that line.`,
     ...(maintainer ? [`3. Add "ledgerPath" with a private file outside every repository for the review ledger.`] : []),
     `${maintainer ? 4 : 3}. Delete the Bitwarden Send message after the copy. The config file holds no key.`,
   ].join("\n");

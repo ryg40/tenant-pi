@@ -1,9 +1,9 @@
 ---
 type: Workflow
 title: The review flow
-description: A person proposes a record after a confirmation, a maintainer approves or rejects it by a move with a ledger line before and after, and the owner's admin login purges rejected records after a dry run.
+description: A person proposes a record after a confirmation, a maintainer approves or rejects it by a move with a ledger line before and after, and the owner's admin login purges the rejected namespace of each person after a dry run.
 tags: [agentcore, propose, approve, reject, purge, ledger]
-generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T18:00:00Z}
+generated: {by: claude-code/claude-opus-5-5, at: 2026-10-16T00:45:00Z}
 sources:
   - id: security
     resource: ../../docs/shared-memory-security.md
@@ -41,6 +41,7 @@ Example: Alice approves Dana's proposal. Bruno rejects a proposal of Chen in `ex
 - The core takes `actorId` and `projectId` from the proposal namespace, not from the metadata that the proposer wrote, and drops every other key.
 - A wrong approve or reject is reversible: a maintainer or the owner moves the record back.
 - Recall never reads the rejected namespace. Only the maintainers of the project list it.
+- Show, approve and reject find the proposal through a list of the proposer's exact namespace. The list index lags one to five minutes behind a write, so right after a propose they give `proposal_missing`. Wait a few minutes and run the command again.
 
 ## The private ledger
 
@@ -56,9 +57,9 @@ Each move writes a journal line before the call and a second line after it. The 
 
 ## 3. Purge
 
-The owner purges the rejected tree of a project with the admin tool. The dry run lists every record. The coordinator runs the apply step with the admin login after the owner's word, and the records are deleted in batches of 100.
+The owner purges the rejected records of a project with the admin tool. The dry run lists one exact rejected namespace for each person of the registry, `/project/{projectId}/rejected/{actorId}/`, and shows each record. A rejected record of an actor outside the registry needs `--person` with that actor. The coordinator runs the apply step with the admin login after the owner's word, and the records are deleted in batches of 100.
 
-Not verified: every live step of this flow, until the live proof.
+The live proof ran each step of this flow: propose in round 1, show and approve in round 2, reject in round 3, and the purge of one person's rejected namespace in round 4. Not verified: the purge of a whole project with rejected records of several people.
 
 ## Links
 

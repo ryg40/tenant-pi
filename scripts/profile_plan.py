@@ -101,7 +101,7 @@ def _package_identity(source):
 
 
 def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), credential_names=frozenset(),
-            mcp_definitions=None):
+            mcp_definitions=None, models_definitions=None):
     """Build an offline plan from explicit capability evidence, never host state.
 
     `mcp_definitions` is the loaded `inputs.mcpFile` document; the CLI supplies it and the
@@ -115,8 +115,11 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
     declared_names = {name for cid in enabled for name in components[cid]["env"]}
     if type(credential_names) not in (set, frozenset) or any(type(n) is not str or not ENV.fullmatch(n) for n in credential_names) or not credential_names <= declared_names:
         fail("credential_names", "credential_names")
-    if overlay_data["inputs"]["modelsFile"] is not None:
-        fail("unsupported_models_file", "overlay.inputs.modelsFile")
+    if (overlay_data["inputs"]["modelsFile"] is None) != (models_definitions is None):
+        fail("models_input_required", "overlay.inputs.modelsFile")
+    if models_definitions is not None:
+        from scripts.models_input import validate as validate_models
+        models_definitions = validate_models(models_definitions)
     if mcp_definitions is not None and "mcp" not in enabled:
         fail("mcp_definitions_without_module", "mcp.file")
     if "mcp" in enabled and mcp_definitions is None:
@@ -313,6 +316,9 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
                "roleStatus": role_status, "pendingPackages": pending_packages,
                "memory": {"activation": memory["activation"], "setup": memory["setup"]} if memory else None,
                "workflow": workflow_record(components, mcp, "promptr" in enabled), "mcpDefinitions": copy.deepcopy(mcp_definitions)}
+    if models_definitions is not None:
+        choices["modelsDefinitions"] = copy.deepcopy(models_definitions)
+        files["models.json"] = {"mode": "0600", "content": copy.deepcopy(models_definitions)}
     files[".tenant-pi/choices.json"] = {"mode": "0600", "content": choices}
     return {"schemaVersion": 1, "targetAgentDir": target, "files": files,
             "commands": {"launch": launch, "setup": setup}, "readinessGaps": gaps}

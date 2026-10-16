@@ -8,7 +8,7 @@ This guide adds three providers to one generated Pi profile. Use each part that 
 | llama-swap | A local proxy that starts and stops model servers. It serves an OpenAI-compatible API. | A provider that you register in `models.json` of the profile. |
 | vLLM | A local or LAN inference server. It serves an OpenAI-compatible API. | A provider that you register in `models.json` of the profile. |
 
-The kit runs none of these steps. `validate`, `plan` and `generate` write no credential and no `models.json`. You do each step by hand, or an agent does it after you say yes.
+The kit runs none of these steps. `validate`, `plan` and `generate` write no credential. `generate` can now emit validated non-secret `models.json` input; see [the wizard contract](wizard.md#direct-providers). You do each step by hand, or an agent does it after you say yes.
 
 ## Words in this guide
 
@@ -129,7 +129,7 @@ Each `id` in the reply is one model alias. Use the exact text of the one you wan
 
 A direct provider in `models.json` accepts the address that you give: `http` or `https`, a loopback address, a LAN address, and each port. Pi does not restrict it.
 
-This is not the gateway contract. The Tenantext gateway route of the kit accepts only a credential-free HTTPS address on port 443 that ends in `/v1`, and that rule does not change. See [model routes](../model-routes.md). The difference in one line: the kit checks a gateway address in the overlay, and the kit does not read or check an address in `models.json`.
+This is not the gateway contract. The Tenantext gateway route of the kit accepts only a credential-free HTTPS address on port 443 that ends in `/v1`, and that rule does not change. See [model routes](../model-routes.md). The difference in one line: the kit checks a gateway address in the overlay, and the direct-provider input validates a credential-free HTTP or HTTPS endpoint separately.
 
 Warning: plain HTTP sends the prompt, the reply and the key without encryption. Use it on the loopback address or on a network that you trust.
 
@@ -226,7 +226,7 @@ The two numbers are examples, not values for your model. Not verified in this ki
 
 ### Write the file
 
-Pi reads `models.json` from `<target>` only. `generate` creates `<target>` and must find it absent, so you write the file after generation.
+Pi reads `models.json` from `<target>` only. Prefer the validated `inputs/models.json` path described in [the wizard guide](wizard.md#direct-providers). The following manual route is for Pi features outside that closed subset.
 
 1. Keep the master copy in the private directory, with mode 600. The private directory must exist first. The subshell keeps the `umask` of your shell unchanged:
 
@@ -256,9 +256,9 @@ Pi reads the file again when you open `/model`. A restart is not necessary.
 
 ### Registration and a new candidate
 
-The kit has no input for this file. `inputs.modelsFile` of the overlay must stay `null`: `plan` and `generate` stop with `unsupported_models_file` for another value. `generate` writes no `models.json`, and `compare`, `carry` and `inventory` do not open it.
+Set `inputs.modelsFile` to `inputs/models.json` and pass `--local-dir` to preserve supported direct providers during regeneration. Generation writes the validated file with mode `0600`. Comparison includes redacted change markers. Unsupported custom Pi fields require the manual route and do not migrate automatically.
 
-So the registration does not move to a new candidate by itself. After each generation into a new target:
+For the manual route only, after each generation into a new target:
 
 1. Copy the master copy into the new target with the `install` line above and the new path.
 2. Log in to Codex again in the new candidate. The kit copies no `auth.json`.

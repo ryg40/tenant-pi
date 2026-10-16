@@ -13,7 +13,7 @@ from scripts.workflow_modules import MCP_CONFIG
 from scripts.validate import Invalid, absolute, fail, relative
 
 STATE = ".tenant-pi/state.json"  # Writer-owned; not a planner output.
-OPTIONAL_OUTPUTS = (HERMES_CONFIG, MCP_CONFIG)  # Whole extra profile files an optional module may own.
+OPTIONAL_OUTPUTS = (HERMES_CONFIG, MCP_CONFIG, "models.json")  # Whole extra profile files an optional module may own.
 _DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 GENERATED_AT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _FILE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -90,7 +90,8 @@ def _validated_bytes(plan, target):
             fail("file_mode", "plan.files.entry.mode")
     choices = plan["files"][".tenant-pi/choices.json"]["content"]
     _shape(choices, ("overlay", "manifest", "registry", "registryDigest", "requiredRoles", "credentialNames",
-                     "routes", "roleStatus", "pendingPackages", "memory", "workflow", "mcpDefinitions"),
+                     "routes", "roleStatus", "pendingPackages", "memory", "workflow", "mcpDefinitions",
+                     *(("modelsDefinitions",) if "models.json" in plan["files"] else ())),
            "plan.files.choices.content")
     # A digest detects accidental edits to the declared registry, not fabricated evidence.
     import hashlib
@@ -103,7 +104,7 @@ def _validated_bytes(plan, target):
     expected = prepare(choices["manifest"], choices["overlay"], registry=choices["registry"],
                        required_roles=choices["requiredRoles"],
                        credential_names=frozenset(choices["credentialNames"]),
-                       mcp_definitions=choices["mcpDefinitions"])
+                       mcp_definitions=choices["mcpDefinitions"], models_definitions=choices.get("modelsDefinitions"))
     if (type(choices["credentialNames"]) is not list or
             len(choices["credentialNames"]) != len(set(choices["credentialNames"])) or
             choices["credentialNames"] != sorted(choices["credentialNames"])):

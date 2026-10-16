@@ -27,7 +27,7 @@ A memory module gives the agent recall of earlier work. Four modules exist: `her
 
 `openviking` and `agentcore` write to a remote store. They also need `consent.remoteMemoryWrites`. Consent alone activates nothing: `consent.memoryCapture` with no enabled module fails with `memory_disabled`.
 
-The install flow marks `hermes` and `wiki` in its checklist and asks for the consent with one sentence. The user keeps or removes each mark.
+The fresh wizard leaves the memory modules unchecked and keeps the choices of a loaded overlay. Storage and recall need explicit consent.
 
 ## The four modules
 

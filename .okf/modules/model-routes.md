@@ -25,7 +25,7 @@ A model route is the way a profile reaches a model. The kit selects no model by 
 | Route | What it is |
 | --- | --- |
 | Native | A provider of Pi with Pi's own `/login`. Pi stores the result in its `auth.json`. |
-| Direct | A direct inference server, for example llama-swap or vLLM, as a provider that the user registers in `models.json` of the profile. The kit writes no `models.json`. |
+| Direct | A direct inference server, for example llama-swap or vLLM, as a provider that the user registers in `models.json` of the profile. The kit writes `models.json` only from a validated `inputs.modelsFile` input. |
 | Gateway | An optional gateway that forwards to an upstream provider. It needs the `codex-accounts` component. |
 
 ## The overlay block

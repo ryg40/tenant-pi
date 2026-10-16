@@ -60,7 +60,7 @@ class UnitTests(unittest.TestCase):
     def test_cli_tree_is_the_real_parser(self):
         top, actions = cli_tree()
         self.assertIn("--help", top)
-        self.assertEqual({"compare", "carry", "inventory", "list", "check-runtime", "check-herdr", "check-wiki-vault", "remote-plan", "compose-plan", "components",
+        self.assertEqual({"wizard", "compare", "carry", "inventory", "list", "check-runtime", "check-herdr", "check-wiki-vault", "remote-plan", "compose-plan", "components",
                           "init-private", "baseline", "check-baseline", "results", "validate", "plan", "generate"}, set(actions))
         self.assertIn("--launcher", actions["generate"])
         self.assertIn("--launcher", actions["plan"])
@@ -491,7 +491,7 @@ class InstallFlowTests(unittest.TestCase):
     # The commands of the flow, and the texts that an edit must keep.
     TEXT = ("tenant_pi.py components --format text", "tenant_pi.py components --select ",
             "tenant_pi.py check-wiki-vault", "tenant_pi.py results --facts ", "--replace",
-            "Do not open a question dialog after the list", "Remove no line and change no line",
+            "Fresh wizard defaults select only required core items", "Review the complete plan before saving",
             "`added`", "`second_vault`", "`doubled`", "Never set `memory.wiki.embedding` on your own",
             "wiki-vault-baseline.json", '"modified":["meta"]', "INSTALLER_KIT_RESULTS.md", "results-facts.json",
             "The last line is the full path of the results file", "POST_INSTALL.md#switch-a-memory-module-on")
@@ -593,7 +593,7 @@ class InstallFlowTests(unittest.TestCase):
                          "tenant_pi.py check-wiki-vault", "Both store text of your sessions on this machine.",
                          "With the default setting, `wiki` also adds text from your vault to each prompt in each directory, "
                          "and that text goes to your model provider.",
-                         "`npm warn install-scripts`", "`npm warn deprecated`", "The order differs from",
+                         "`npm warn install-scripts`", "`npm warn deprecated`", "require scan, selection and full-plan review before changes",
                          "`models-store.json`", "`lastChangelogVersion`", "`pi update` does not write it.",
                          '--out-dir "$HOME/.config/tenant-pi"'):
             with self.subTest(text=expected):
@@ -653,7 +653,7 @@ class TreeTests(unittest.TestCase):
     def test_clean_tree(self):
         findings, counts = self.run_check()
         self.assertEqual([], findings)
-        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": 17}, counts)
+        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": 18}, counts)
 
     def test_each_rule(self):
         cases = {

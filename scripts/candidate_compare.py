@@ -12,11 +12,11 @@ from scripts.profile_plan import prepare, source_pin
 from scripts.validate import HEX, ID, OWNER_RESOURCES, REVIEWED_SOURCES, ROLE_NAMES, Invalid, fail, npm_name, npm_parts, unmanaged
 from scripts.workflow_modules import LIFECYCLES, MCP_CONFIG, SERVER_NAME
 
-FILES = ("settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json", HERMES_CONFIG, MCP_CONFIG)
+FILES = ("settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json", HERMES_CONFIG, MCP_CONFIG, "models.json")
 REQUIRED_FILES = FILES[:3]  # The Hermes and adapter files exist only when their modules are enabled.
 OPTIONAL_FILES = FILES[3:]
 CHOICES_KEYS = ("overlay", "manifest", "registry", "registryDigest", "requiredRoles",
-                "credentialNames", "routes", "roleStatus", "pendingPackages", "memory", "workflow", "mcpDefinitions")
+                "credentialNames", "routes", "roleStatus", "pendingPackages", "memory", "workflow", "mcpDefinitions", "modelsDefinitions")
 THINKING = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 # Every value policy names a closed public form. Anything else is a marker or unsupported.
 ENUMS = {
@@ -422,6 +422,8 @@ def _choices(side, data):
     side.put(file, "/memory", _memory_record(choices.get("memory", MISSING)), "marker")
     side.put(file, "/workflow", choices.get("workflow", MISSING), "marker")
     side.put(file, "/mcpDefinitions", choices.get("mcpDefinitions", MISSING), "marker")
+    if "modelsDefinitions" in choices:
+        side.put(file, "/modelsDefinitions", choices["modelsDefinitions"], "marker")
     side.id_map(file, "/roleStatus", choices.get("roleStatus", MISSING), "roleStatus")
     pending = choices.get("pendingPackages", MISSING)
     if type(pending) is list and all(type(p) is dict for p in pending):
@@ -479,7 +481,7 @@ def _drift(files):
         expected = prepare(choices["manifest"], choices["overlay"], registry=choices["registry"],
                            required_roles=choices["requiredRoles"],
                            credential_names=frozenset(names) if type(names) is list else names,
-                           mcp_definitions=choices["mcpDefinitions"])
+                           mcp_definitions=choices["mcpDefinitions"], models_definitions=choices.get("modelsDefinitions"))
     except Invalid as exc:
         return {"status": "not_computable", "rule": str(exc)}
     except (KeyError, TypeError, ValueError, RecursionError):
@@ -536,6 +538,8 @@ def describe(name, files):
         _hermes(side, files[HERMES_CONFIG])
     if files[MCP_CONFIG] is not None:
         _mcp(side, files[MCP_CONFIG])
+    if files.get("models.json") is not None:
+        side.put("models.json", "", files["models.json"], "marker")
     if choices is None and state is None:
         kind = "settings_only"
     elif choices is None or state is None:

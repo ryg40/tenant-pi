@@ -16,7 +16,7 @@ python3 scripts/tenant_pi.py carry --report /private/report.json --overlay /priv
 - `--right` is the right side of the report. It must be the exact `right.path` string of the report, or the action stops with `report_right_mismatch: report.right.path`.
 - `--manifest` is optional and defaults to the kit manifest. The action validates `--overlay` and the right overlay copy against it.
 
-The report, the overlay and the manifest load through the bounded no-follow loader of the other actions (regular file, 1 MiB, 64 nesting levels, unique keys). From `--right`, the action opens only the declared files that `compare` opens, through the same loader. It never opens `auth.json`, `models.json`, sessions, memory stores, or any other file. It starts no process and makes no network request; the CLI test blocks sockets and subprocesses. The `carry` code path has no environment read. Disposable embedding fixtures guard credential environment reads during compare, carry, validate, plan, and regeneration. Offline diagnostics never check credential values.
+The report, the overlay and the manifest load through the bounded no-follow loader of the other actions (regular file, 1 MiB, 64 nesting levels, unique keys). From `--right`, the action opens only the declared files that `compare` opens, through the same loader. It never opens `auth.json`, undeclared `models.json`, sessions, memory stores, or any other file. It starts no process and makes no network request; the CLI test blocks sockets and subprocesses. The `carry` code path has no environment read. Disposable embedding fixtures guard credential environment reads during compare, carry, validate, plan, and regeneration. Offline diagnostics never check credential values.
 
 ## Output
 

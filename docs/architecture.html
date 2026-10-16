@@ -1073,7 +1073,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      "kind": "output",
      "label": "Selected profile settings",
      "sub": "$HOME/.pi/profiles/main/settings.json",
-     "summary": "Settings hold package sources, filters and defaults. Optional mcp-adapter.json and hermes-memory-config.json live beside them. Owner-managed models.json registers direct inference. .tenant-pi/ holds generation records, not a runtime daemon.",
+     "summary": "Settings hold package sources, filters and defaults. Optional mcp-adapter.json and hermes-memory-config.json live beside them. models.json registers direct inference, from the owner or from a validated inputs.modelsFile. .tenant-pi/ holds generation records, not a runtime daemon.",
      "w": 320,
      "x": 610,
      "y": 108
@@ -1343,15 +1343,16 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
     {
      "doc": "docs/guides/providers.md",
      "files": [
-      "$HOME/.pi/profiles/main/models.json"
+      "$HOME/.pi/profiles/main/models.json",
+      "scripts/models_input.py"
      ],
      "group": "r-clients",
      "h": 52,
      "id": "r-direct",
      "kind": "runtime",
      "label": "B. Direct inference",
-     "sub": "Owner-managed models.json",
-     "summary": "Pi reads custom provider registrations from $HOME/.pi/profiles/main/models.json. llama-swap and vLLM are examples. Neither needs the optional Tenantext gateway. Registration does not prove reachability.",
+     "sub": "models.json of the profile",
+     "summary": "Pi reads custom provider registrations from $HOME/.pi/profiles/main/models.json. generate writes it only from a validated inputs.modelsFile; the owner can also write it. llama-swap and vLLM are examples. Neither needs the optional Tenantext gateway. Registration does not prove reachability.",
      "w": 280,
      "x": 60,
      "y": 240

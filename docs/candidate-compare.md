@@ -25,7 +25,7 @@ Each side is an absolute path that the user names explicitly. The command opens 
 | `hermes-memory-config.json` | Nothing; the file exists only with the Hermes module | Switches and enumerations compared by value; model and child paths as markers |
 | `mcp-adapter.json` | Nothing; the file exists only with the MCP module | `disabled`, `lifecycle`, transport kind, and `settings` by value; every server definition as a marker |
 
-The command never lists a directory. `auth.json`, `models.json`, `mcp.json`, sessions, memory stores, queues, caches, and every other file stay unread. The test suite proves this with an audit hook that records every file open of the process while private canary files sit beside the declared files. A missing `.tenant-pi` directory is not an error: an unmanaged Pi profile with only `settings.json` compares as `settings_only`. A `.tenant-pi` that is a file or a symlink is an `input_path_unsafe` error.
+The command never lists a directory. `auth.json`, undeclared `models.json`, `mcp.json`, sessions, memory stores, queues, caches, and every other file stay unread. The test suite proves this with an audit hook that records every file open of the process while private canary files sit beside the declared files. A missing `.tenant-pi` directory is not an error: an unmanaged Pi profile with only `settings.json` compares as `settings_only`. A `.tenant-pi` that is a file or a symlink is an `input_path_unsafe` error.
 
 Two sides with the same path fail with `same_directory`. A relative path fails with `absolute_path`.
 
@@ -223,3 +223,5 @@ Limits:
 ## Test coverage
 
 `tests/test_unmanaged.py` covers the `accepted` list. `tests/test_candidate_compare.py` covers the `markers` list, also for an older `state.json` without the two fields. Offline tests in `tests/test_candidate_compare.py` cover unchanged generation, a changed source pin, added and removed modules, user edits, malformed shapes, unknown schema versions, settings-only and incomplete sides, nested secret canaries in every value position, the overlay `memory` block field by field with canary paths, hostile `memory` shapes, and an older `choices.json` and `state.json` without a memory block. `tests/test_cli.py` runs the command in a disposable HOME with private canary files beside the declared files, an audit hook that records every file open, blocked sockets and subprocesses, and a source and fixture inventory check before and after. Not verified: comparison against a real candidate with another pin; the fixture simulates it with an edited pin.
+
+A candidate with `modelsDefinitions` in its kit choices also declares `models.json`. Compare reads that file through the bounded loader and emits only change markers. An unmanaged model file stays unread.

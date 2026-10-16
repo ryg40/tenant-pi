@@ -164,7 +164,13 @@ def _preview(plan, *, generated, launcher_path=None, report=None, key_warning=No
 def _candidate(directory, field):
     """Open only the three declared kit files of one explicitly named directory."""
     absolute(directory, field)
-    return {name: _load_input(directory + "/" + name, field + "." + name, optional=True) for name in FILES}
+    files = {name: _load_input(directory + "/" + name, field + "." + name, optional=True)
+             for name in FILES if name != "models.json"}
+    choices = files.get(".tenant-pi/choices.json")
+    declared = type(choices) is dict and "modelsDefinitions" in choices
+    files["models.json"] = (_load_input(directory + "/models.json", field + ".models.json", optional=True)
+                            if declared else None)
+    return files
 
 
 def _open_dir(path):
@@ -667,6 +673,8 @@ def _components(args):
 def main(argv=None, *, clock=utc_now):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
+    from scripts import wizard
+    wizard.arguments(subs, ROOT)
     cmp = subs.add_parser("compare", help="redacted field comparison of two explicit profile directories")
     cmp.add_argument("--left", required=True, help="absolute path of the previous candidate or profile")
     cmp.add_argument("--right", required=True, help="absolute path of the new candidate")
@@ -767,6 +775,10 @@ def main(argv=None, *, clock=utc_now):
     args = parser.parse_args(argv)
     code = 0
     try:
+        if args.action == "wizard":
+            output = wizard.run(args, sys.modules[__name__])
+            print(json.dumps(output, sort_keys=True, ensure_ascii=True))
+            return 0 if output["status"] in ("saved_handoff", "data_only", "handoff") else 1
         if args.action == "compare":
             if args.left == args.right:
                 fail("same_directory", "compare.right")
@@ -856,12 +868,17 @@ def main(argv=None, *, clock=utc_now):
         if (slot := _mcp_slot(overlay_data)) is not None:
             absolute(args.local_dir, "local_dir")
             mcp_data = _load_input(args.local_dir + "/" + slot, "mcp.file")
+        models_data = None
+        inputs = overlay_data.get("inputs") if type(overlay_data) is dict else None
+        if type(inputs) is dict and inputs.get("modelsFile") == "inputs/models.json":
+            absolute(args.local_dir, "local_dir")
+            models_data = _load_input(args.local_dir + "/inputs/models.json", "models.file")
         # `plan` and `generate` start no process: the caller gives the report of `check-runtime` as a file.
         report = getattr(args, "runtime_report", None)
         if report is not None:
             report = _load_input(report, "runtime_report.file")
         plan = prepare(manifest_data, overlay_data, registry=registry_data, required_roles=args.require_role,
-                       mcp_definitions=mcp_data)
+                       mcp_definitions=mcp_data, models_definitions=models_data)
         if report is not None:
             runtime_report(report, manifest_data["runtime"])
         herdr = getattr(args, "herdr_report", None)

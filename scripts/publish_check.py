@@ -67,6 +67,8 @@ PUBLISH = (
     "scripts/remote_plan.py", "tests/test_remote_plan.py",
     "scripts/compose_plan.py", "tests/test_compose_plan.py",
     "scripts/components.py", "tests/test_components.py",
+    "scripts/models_input.py", "scripts/wizard.py", "scripts/wizard_state.py",
+    "scripts/wizard_scan.py", "scripts/wizard_terminal.py", "tests/test_wizard.py", "docs/guides/wizard.md",
     "tests/test_owner_packages.py", "docs/owner-packages.md",
     "tests/test_unmanaged.py", "docs/accepted-drift.md",
     "tests/test_owner_resources.py", "docs/owner-resources.md",

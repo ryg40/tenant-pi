@@ -719,7 +719,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual({"candidate_created": False, "error": "input_unreadable: overlay.file"}, json.loads(result.stderr))
 
     def test_unsupported_inputs_blocked_modules_and_injection(self):
-        cases = ((lambda d: d["inputs"].update(modelsFile="inputs/models.json"), "unsupported_models_file"),
+        cases = ((lambda d: d["inputs"].update(modelsFile="inputs/models.json"), "input_missing: models.file"),
                  (lambda d: d["selection"]["enable"].append("tracker-site"), "selection_conflict"),
                  (lambda d: d["roles"].update(review={"provider": "p", "model": "$(touch /tmp/INJECTED)", "thinking": "low"}), "shell_or_template"),
                  (lambda d: d["target"].update(agentDir="/tmp/../outside"), "absolute_path"))

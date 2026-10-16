@@ -4,7 +4,7 @@ This file is for an agent that a user points at this repository: Claude Code, Pi
 
 The kit prepares a separate Pi profile in a new directory. It never writes into an existing Pi profile directory. The companion guide `skills/tenant-pi-install/SKILL.md` follows the same order and asks a question at each stage. Its stage names and numbers differ from the ones here.
 
-The order differs from `docs/guides/setup.md`, the guide for a person without an agent. That guide does the offline stages of the kit first, and it installs Node, Pi and the package dependencies after `generate`. This file installs first, so that `plan` and `generate` get a runtime report with the measured versions. Both orders give the same generated files.
+The order differs from `docs/guides/setup.md` in its reference stage numbering. Both flows now scan, select and review before changes. Install commands below require the approved plan.
 
 `<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
 
@@ -18,6 +18,16 @@ Words used below:
 - `<clone>`: the directory of this repository, for example `~/tenant-pi`.
 - `<private dir>`: a directory outside the clone that only the user can read, for example `~/.config/tenant-pi`. It holds the overlay, the input files, the install log and the results file.
 - `<target>`: the absolute path of the new profile directory from `target.agentDir` in the overlay.
+
+## Scan and review before changes
+
+Use [the scan-driven wizard](docs/guides/wizard.md) before any installation or persistent configuration change.
+Confirm the target and account first. Run `python3 scripts/tenant_pi.py wizard` with its required identity and output paths.
+Fresh wizard defaults select only required core items. Optional features start unchecked; saved overlay selections remain unchanged.
+Review the complete plan before saving its private handoff. Saving is not installation approval.
+The guided agent rechecks target facts, then obtains execution approval and separate approval for privileged actions.
+The stages below are reference procedures for that approved plan, not permission to install before selection.
+The deterministic numbered fallback remains available through `components`.
 
 ## Rules for the agent
 
@@ -197,7 +207,7 @@ Done when `check-runtime` reports `match` or `untested_in_range` for `pi` in the
 
 ## Stage 4: package dependencies
 
-Goal: the in-tree Tenantext package can load. Run this stage now. The recommended set of the checklist of Stage 5 enables Tenantext components. Skip it only if the user later switches every Tenantext component off in Stage 5.
+Goal: the selected in-tree Tenantext package can load. Run this stage only after selection and full-plan approval. Skip it when no Tenantext component is selected.
 
 ```sh
 cd ~/tenant-pi/packages/tenantext && npm ci --ignore-scripts
@@ -559,11 +569,11 @@ The command prints `JSON valid`, or the line and the column of the first syntax 
 Edit `overlay.json` for the other answers of the user. A core-only profile needs none of them:
 
 1. `target.agentDir`: `--target` sets it. Change it by hand only as described above.
-2. `selection`: do "The checklist" below. The action `components` is the one source of the component list, and this file holds no copy of it. The action marks the recommended set. That set holds the core, the in-tree extensions and skills for daily work, and the two local memory modules. Each in-tree component is `unverified`: no test of the kit loads it with the kit pin. `promptr` needs the build step of Stage 4. Stage 4a has the questions for `herdr` and `questions`.
+2. `selection`: do "The checklist" below. The action `components` is the one source of the component list, and this file holds no copy of it. The wizard starts with core only. The legacy `components` output retains recommended marks but does not set wizard defaults. Each in-tree component is `unverified`: no test of the kit loads it with the kit pin. `promptr` needs the build step of Stage 4. Stage 4a has the questions for `herdr` and `questions`.
 3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/model-routes.md`.
 4. Gateway, only when the user routes through the Tenantext gateway: `modelRoutes.gateway` is `{"auth": "env"}`; `endpoints.codex-accounts` is the gateway URL that ends in `/v1`; `env.codex-accounts` is `${TENANTEXT_LITELLM_API_KEY}`. The user exports the key themselves.
-5. `hermes`, `wiki`, `openviking`, and `agentcore` are the memory modules. The checklist marks `hermes` and `wiki`. It leaves `openviking` and `agentcore` unmarked. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
-   - For `hermes` and `wiki`, the answer of the user to the checklist is the consent. Ask no second question. With both modules on, the overlay gets these two keys:
+5. `hermes`, `wiki`, `openviking`, and `agentcore` are the memory modules. The fresh wizard leaves every memory module unchecked. Saved selections retain their memory choices. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
+   - For `hermes` and `wiki`, selection is not consent. Ask explicitly about storage and recall before setting consent. With both modules on, the overlay gets these two keys:
 
    ```json
    {
@@ -592,7 +602,7 @@ Edit `overlay.json` for the other answers of the user. A core-only profile needs
 
 ### The checklist
 
-The checklist replaces a question with options. It shows each component of the kit, so that no component is hidden from the user.
+The wizard checklist supports arrows, Space, details and scrolling. It shows every manifest component. The following numbered commands remain a manual fallback.
 
 1. Run the action. For a new overlay:
 
@@ -601,12 +611,12 @@ The checklist replaces a question with options. It shows each component of the k
    ```
 
    For an overlay that exists, add `--overlay <file>`. The marks are then the `selection.enable` list of that file.
-2. Print the complete output to the user as plain text. Remove no line and change no line. The last line of the output says how to answer.
+2. For the numbered fallback, print every row. For a fresh setup, use only core as the proposed selection. Retain the choices of a loaded overlay.
 3. When the list marks `hermes` and `wiki`, print this sentence directly below the list: "`hermes` and `wiki` are marked. Both store text of your sessions on this machine. With the default setting, `wiki` also adds text from your vault to each prompt in each directory, and that text goes to your model provider. Keep a mark only when you agree to that. Switch off the number of a module that you do not want." When the list marks only one of the two, name that one. Without a mark at `wiki`, leave out the sentence about the vault.
    When the list marks `copilot-usage`, `anthropic-usage` or `doctor`, also print this sentence. Name only the marked components.
    "`copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider. Keep these components only when you agree to that."
    The module guide gives their mode and provider conditions.
-4. Stop and wait for the answer of the user. Do not open a question dialog after the list: a dialog can hide the text before it. The user answers `ok`, or names the numbers to switch on and the numbers to switch off.
+4. Wait for explicit selection. The wizard returns to the list with `/back` and retains answers. The numbered fallback accepts numbers; EOF is never approval.
 5. Turn the answer into the list of each component that is on: each marked line, plus each number that the user switched on, minus each number that the user switched off. `--select` takes that complete list, as IDs or as numbers, not only the changes. Run:
 
    ```sh
@@ -733,7 +743,7 @@ Done when `generate` prints `"filesComplete":true` and `<target>` holds `setting
 
 ## Stage 7: declared npm packages
 
-Only when `mcp`, `hermes`, `wiki` or `questions` is enabled. The recommended set of the checklist holds `hermes` and `wiki`, so this stage applies to it. The plan prints one `pi install` line for each declared `npm:` source, in the order of `packages` in `settings.json`. It prints the last line, the peer override, only with `hermes`, `wiki` or `questions`.
+Only when `mcp`, `hermes`, `wiki` or `questions` is enabled. Fresh wizard selections do not include these modules. The plan prints one `pi install` line for each declared `npm:` source, in the order of `packages` in `settings.json`. It prints the last line, the peer override, only with `hermes`, `wiki` or `questions`.
 
 Record the baseline of the live agent directory first, and with `wiki` the baseline of the vault: see the two "Before the first launch" parts of Stage 9. The first `pi install` line is the first Pi command that names `<target>`.
 
@@ -803,7 +813,7 @@ Ask which of the three the user wants. `docs/guides/providers.md` has the comple
 - Codex: a provider that Pi includes. The user runs `/login` inside Pi and selects the model with `/model`. The login is separate from the gateway key.
 - llama-swap and vLLM: ask for the base address, the exact model alias, and whether the server needs a key. Use no default. Register the provider in `<target>/models.json` after generation. A key is a `$NAME` reference to an environment variable, never a value.
 - A direct provider accepts local HTTP, a LAN address and each port. The gateway route stays HTTPS only: `docs/model-routes.md`.
-- The kit writes no `models.json` and has no input for it: `inputs.modelsFile` stays `null`. Keep the master copy in `<private dir>` and copy it into each new target.
+- Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` for validated non-secret direct providers. The wizard guide defines the supported subset and regeneration rules.
 - Do not replace a `models.json` that exists, and do not copy `auth.json` between profiles.
 
 Done when the user approved and ran the two verification steps of the provider guide, or the install log says "not run" and names the provider as unverified.

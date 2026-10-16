@@ -626,7 +626,7 @@
      "label": "Selected profile settings",
      "sub": "{{profile}}/settings.json",
      "kind": "output",
-     "summary": "Settings hold package sources, filters and defaults. Optional mcp-adapter.json and hermes-memory-config.json live beside them. Owner-managed models.json registers direct inference. .tenant-pi/ holds generation records, not a runtime daemon.",
+     "summary": "Settings hold package sources, filters and defaults. Optional mcp-adapter.json and hermes-memory-config.json live beside them. models.json registers direct inference, from the owner or from a validated inputs.modelsFile. .tenant-pi/ holds generation records, not a runtime daemon.",
      "doc": "docs/profile-lifecycle.md",
      "files": [
       "{{profile}}/settings.json",
@@ -850,12 +850,13 @@
      "id": "r-direct",
      "group": "r-clients",
      "label": "B. Direct inference",
-     "sub": "Owner-managed models.json",
+     "sub": "models.json of the profile",
      "kind": "runtime",
-     "summary": "Pi reads custom provider registrations from {{profile}}/models.json. llama-swap and vLLM are examples. Neither needs the optional Tenantext gateway. Registration does not prove reachability.",
+     "summary": "Pi reads custom provider registrations from {{profile}}/models.json. generate writes it only from a validated inputs.modelsFile; the owner can also write it. llama-swap and vLLM are examples. Neither needs the optional Tenantext gateway. Registration does not prove reachability.",
      "doc": "docs/guides/providers.md",
      "files": [
-      "{{profile}}/models.json"
+      "{{profile}}/models.json",
+      "scripts/models_input.py"
      ]
     },
     {

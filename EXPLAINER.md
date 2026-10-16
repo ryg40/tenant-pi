@@ -1540,7 +1540,7 @@ The launcher sets `PI_MCP_CONFIG_MODE=exclusive`. Tokens can use the operating-s
 ### Hermes memory
 
 Status: manifest `tested`, runtime `unverified`. Hermes adds `hermes-memory-config.json`, then runtime memory files under the profile.
-Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together. The checklist of the install flow marks `hermes`; the consent key is written only when you keep the mark.
+Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together. The fresh wizard leaves `hermes` unchecked. Selection and storage consent are separate decisions.
 It needs `pi-hermes-memory`, which uses the native module `better-sqlite3`. A compiler toolchain is necessary only when no prebuilt binary fits the platform and the Node version.
 `backgroundReview: true` also needs `roles.memory` and permits independent model calls.
 

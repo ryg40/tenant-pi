@@ -77,7 +77,7 @@ Facts that hold for every row:
 - The relay directory can be absent while the relay stays disabled. Enabling an absent relay reports `tree_resource_missing`.
 - A module that the user leaves disabled contributes no file, no key and no launch-line assignment.
 
-To see all components as one numbered checklist, with the recommended set marked, run:
+Use [the wizard](wizard.md) for scan-driven selection. To print the legacy numbered reference, run:
 
 ```sh
 python3 scripts/tenant_pi.py components --format text
@@ -85,7 +85,7 @@ python3 scripts/tenant_pi.py components --format text
 
 The action reads the manifest and writes nothing. With `--select` it prints the `selection` object for the IDs or the numbers that you choose. See [the CLI contract](../generator.md#components-the-checklist-of-the-components).
 
-The recommended set holds the core, the in-tree extensions and skills for daily work, and the two local memory modules `hermes` and `wiki`. The marks are a proposal: the action enables nothing. The marked `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider (source reading). The install flow of [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay) prints this list and waits for the answer of the user.
+The legacy recommended set is not the fresh wizard selection. The wizard selects only core and retains loaded overlay choices. The marks are a proposal: the action enables nothing. The marked `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider (source reading). The install flow of [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay) prints this list and waits for the answer of the user.
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [workflow modules](../workflow-modules.md), [model routes](../model-routes.md).
 
@@ -131,7 +131,7 @@ Give the file with `--registry` to `validate`, `plan` and `generate`. Without th
 
 ## Optional modules in short
 
-- **Memory** (`hermes`, `wiki`): three parts together enable a module: the ID in `selection.enable`, `consent.memoryCapture: true`, and a `memory` block. Consent alone enables nothing. The checklist marks both modules, and the install flow writes the consent key only when the user keeps a mark. Both store text of the sessions on this machine. Before `wiki` goes on, run `python3 scripts/tenant_pi.py check-wiki-vault`: the profile uses an existing vault as it is. Read [memory modules](../memory-modules.md) first. Hermes with `backgroundReview: true` makes model calls on its own; the install flow writes `false`.
+- **Memory** (`hermes`, `wiki`): three parts together enable a module: the ID in `selection.enable`, `consent.memoryCapture: true`, and a `memory` block. Consent alone enables nothing. The wizard starts with both modules unchecked. Selection and storage/recall consent are separate decisions. Both store text of the sessions on this machine. Before `wiki` goes on, run `python3 scripts/tenant_pi.py check-wiki-vault`: the profile uses an existing vault as it is. Read [memory modules](../memory-modules.md) first. Hermes with `backgroundReview: true` makes model calls on its own; the install flow writes `false`.
 - **MCP** (`mcp`): the server list goes into `inputs/mcp-adapter.json` of the private directory. Every `validate`, `plan` and `generate` then needs `--local-dir "$HOME/.config/tenant-pi"`. The kit disables the native Pi MCP with `-builtin:mcp`. Read [workflow modules](../workflow-modules.md) first.
 - **Owner packages and directories**: `ownerPackages` adds a Pi package that you maintain. `ownerResources` adds a skills or prompts directory. See [owner packages](../owner-packages.md) and [owner resources](../owner-resources.md). Each entry adds a permanent `owner_package_unqualified` or `owner_resource_unqualified` gap.
 - **Agent fan-out**: no subagents module exists. Use the `herdr` component or the Herdr skill installer. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.

@@ -271,7 +271,7 @@ python3 scripts/tenant_pi.py check-runtime > '<private dir>/runtime.json'
 Details: [the provider guide](docs/guides/providers.md).
 
 - A login to a provider that Pi includes: launch the candidate and use `/login`. The login stays in that candidate.
-- A local provider (llama-swap, vLLM): the registration is `models.json` of the candidate. The kit does not write it, and `inputs.modelsFile` of the overlay stays `null`. After each generation, copy your master copy: `install -m 600 '<private dir>/models.json' '<new target>/models.json'`.
+- A local provider (llama-swap, vLLM): the registration is `models.json` of the candidate. Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` to regenerate the supported non-secret format. See [the wizard contract](docs/guides/wizard.md#direct-providers). Unsupported Pi registration fields still need a separately reviewed manual copy.
 - A default model for each new candidate: enable `model-routing` and set `roles.interactive` in `<overlay>`. With `modelRoutes`, give `--registry` to `validate`, `plan` and `generate`. Then do the loop.
 
 ## Update a Compose seat

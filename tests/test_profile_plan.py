@@ -180,7 +180,7 @@ class PlanTests(unittest.TestCase):
 
     def test_fail_unsupported_and_invalid(self):
         self.overlay["inputs"]["modelsFile"] = "inputs/models.json"
-        with self.assertRaisesRegex(Invalid, "unsupported_models_file"):
+        with self.assertRaisesRegex(Invalid, "models_input_required"):
             prepare(self.manifest, self.overlay)
         self.overlay["inputs"]["modelsFile"] = None
         self.overlay["inputs"]["mcpFile"] = "inputs/mcp-adapter.json"

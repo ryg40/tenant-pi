@@ -1,6 +1,7 @@
 # Bundle update log
 
 ## 2026-10-16
+* **Update**: Updated the [model routes](modules/model-routes.md) and the [memory modules](modules/memory-modules.md) pages for the wizard: the kit writes `models.json` only from a validated `inputs.modelsFile` input, and the fresh wizard leaves the memory modules unchecked.
 * **Update**: Updated the [security review](security/shared-memory-review.md) and the [review flow](shared-memory/review-flow.md) pages from rounds 0 to 4 of the live proof: the settled items leave "Not verified", the purge lists one rejected namespace for each person of the registry, and the list index lag gives `proposal_missing` right after a propose.
 
 ## 2026-10-15

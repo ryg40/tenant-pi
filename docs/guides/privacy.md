@@ -44,7 +44,7 @@ python3 scripts/tenant_pi.py check-wiki-vault
 
 The wiki extension itself writes into the vault when the agent uses a wiki tool; see [an existing vault](../memory-modules.md#an-existing-vault).
 
-The sample overlay enables no memory module. The install flow marks the two local memory modules `hermes` and `wiki` in its checklist and asks for the consent with one sentence. Both store text of the sessions on this machine: Hermes below the profile, the wiki in the vault. With the value of the install flow, `ambientPersonalVault: true`, the wiki also adds text from the vault to each prompt in each directory, and that text goes to the model provider of the session. Without `consent.memoryCapture: true`, nothing is captured.
+The sample overlay enables no memory module. The fresh wizard leaves optional memory unchecked and asks separately for storage and recall consent. Both store text of the sessions on this machine: Hermes below the profile, the wiki in the vault. With the explicit choice `ambientPersonalVault: true`, the wiki also adds text from the vault to each prompt in each directory, and that text goes to the model provider of the session. Without `consent.memoryCapture: true`, nothing is captured.
 
 Keep each generated profile outside the live profile. `validate`, `plan` and `generate` refuse a `target.agentDir` that is `~/.pi/agent` or is under it, with `under_pi_agent: overlay.target.agentDir`. The kit does not read `PI_CODING_AGENT_DIR`: a live profile that only this variable names is not protected.
 
@@ -67,7 +67,7 @@ None of them:
 - starts, stops or configures a service, a timer or a daemon;
 - runs `pi`, except `pi --version` inside `check-runtime` with an empty temporary `PI_CODING_AGENT_DIR`;
 - opens a network connection or makes a model call;
-- reads `auth.json`, `models.json`, a session or a memory store. `inventory`, `compare` and `carry` can read `settings.json` in a directory that the user names. `baseline` and `check-baseline` read entry metadata and open no file; see [the directory baseline](../directory-baseline.md);
+- reads `auth.json`, a session or a memory store. Explicit validated model inputs and kit-declared candidate model files are the only model-registration reads. `inventory`, `compare` and `carry` can read `settings.json` in a directory that the user names. `baseline` and `check-baseline` read entry metadata and open no file; see [the directory baseline](../directory-baseline.md);
 - copies auth, sessions, memory, queues, keyring state or installed packages between profiles;
 - writes, prints or resolves a secret value.
 
@@ -105,7 +105,7 @@ The kit limits above do not apply to components after launch. The [module table]
 | `ops-footer` | Sends unauthenticated GET requests to configured health URLs from `OPS_FOOTER_OK_HEALTH_URL`, `OPS_FOOTER_OV_HEALTH_URL` or its settings. Empty URLs disable requests. Receives usage readings from other components, not their login files. | Writes `<target>/ops-footer/settings.json` and `settings.example.jsonc`. |
 | `tracker-site` | Reads `GITEA_TOKEN`, the configured token variable or token file for GET headers to `issues.api` or `TRACKER_ISSUES_API`. Publication reads a credential file for Bearer-authenticated HTML POST or PUT requests. Updates also send the receipt edit token; a GET checks the share URL. OpenKnowledge detection reads `~/.claude.json` and `~/.pi/agent/mcp.json`; the store adapter makes no remote writes. | Writes the repository brief and, by default, `~/.pi/agent/tracker-state/<repo-slug>/`. Writes publication receipts with edit tokens under `~/.pi/agent/tracker-publications/`. Both defaults are in the live profile, not the selected target. |
 
-The checklist marks `copilot-usage`, `anthropic-usage` and `doctor`. Their login reads and token requests need the user's agreement before selection, alongside the memory consent text.
+The fresh wizard leaves `copilot-usage`, `anthropic-usage` and `doctor` unchecked. Their login reads and token requests need the user's agreement before selection, alongside the memory consent text.
 
 Observed with Pi 1.1.0: the first launch downloaded `fd` and `ripgrep` into `<target>/bin/`.
 

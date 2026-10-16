@@ -16,7 +16,7 @@ The stages stay separate and keep this order:
 
 Stages 1 to 5 are offline and the kit runs them. Stages 6 to 9 are the user's. The kit runs none of their commands.
 
-The order differs from [INSTALL.md](../../INSTALL.md), the walk-through for an agent. `INSTALL.md` installs Node, Pi and the package dependencies before `plan` and `generate`. This guide does the offline stages of the kit first, and the installs come in Stage 6. Both orders give the same generated files. The difference is in the gaps that `plan` and `generate` print: see [Stage 4](#stage-4-plan). To use the order of `INSTALL.md`, do the parts "Node and Python", "Pi" and "In-tree packages" of Stage 6 before Stage 4.
+Both this guide and [INSTALL.md](../../INSTALL.md) require scan, selection and full-plan review before changes. Use [the wizard](wizard.md) for the interactive path; its `wizard` command saves a private handoff, not installation authority.
 
 The plan prints some commands as display text. `commands.setupDisplayOnly` holds the Pi install line, one `pi install` line for each declared npm source when `mcp`, `hermes`, `wiki` or `questions` is enabled, and the peer-override line when `hermes`, `wiki` or `questions` is enabled. With a `--runtime-report` that has `match`, `untested_in_range` or `mismatch` for Pi, the Pi install line is not there; `commands.piInstall` always holds it, with a mark. `commands.launchDisplayOnly` holds the launch line. The plan does not print the Node and Python installs. Stage 6 supplies those installs. The `npm ci` commands for Tenantext and Promptr come from Stage 6 of this guide, not from the plan. When `openviking` is enabled, the plan adds its `npm ci` line to `commands.setupDisplayOnly`. [The memory modules document](../memory-modules.md#generated-outputs) describes this line.
 
@@ -159,15 +159,15 @@ Goal: a private directory with an overlay that names a new target.
    }
    ```
 
-4. Select the components. Print the checklist of all components first:
+4. Select components with the [wizard](wizard.md), or use this numbered fallback:
 
    ```sh
    python3 scripts/tenant_pi.py components --format text
    ```
 
-   Each line has a number, a mark, the ID, the names of the extensions and the skills, the status, the required components and what the component needs. `[x]` marks the recommended set: the core, the in-tree extensions and skills for daily work, and the two local memory modules `hermes` and `wiki`. The marks are a proposal. The action reads the manifest, writes nothing and enables nothing. With `--overlay "$HOME/.config/tenant-pi/overlay.json"`, the marks are the selection of your overlay.
+   Each line has a number, a mark, the ID, the names of the extensions and the skills, the status, the required components and what the component needs. `[x]` marks the legacy recommended set of `components`. Fresh wizard defaults use only core; optional features start unchecked. The marks are a proposal. The action reads the manifest, writes nothing and enables nothing. With `--overlay "$HOME/.config/tenant-pi/overlay.json"`, the marks are the selection of your overlay.
 
-   The list marks `hermes` and `wiki`. Both store text of your sessions on this machine. With the default setting, `wiki` also adds text from your vault to each prompt in each directory, and that text goes to your model provider. Keep them in your selection only when you agree to that.
+   The legacy numbered list marks `hermes` and `wiki`; the fresh wizard does not. Both store text of your sessions on this machine. With the default setting, `wiki` also adds text from your vault to each prompt in each directory, and that text goes to your model provider. Keep them in your selection only when you agree to that.
 
    `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider. Keep these components only when you agree to that. The module guide gives their mode and provider conditions.
 
@@ -444,7 +444,7 @@ The kit writes no credential and requires no credential store.
 | Tenantext gateway (`auth: "env"`) | Export `TENANTEXT_LITELLM_API_KEY` in the shell that launches Pi. The launch line carries `TENANTEXT_LITELLM_BASE_URL`. |
 | Tenantext gateway (`auth: "login"`) | `blocked` at this pin. `generate` refuses it with `pi_login_blocked`. |
 | Codex, direct | A provider that Pi includes: `/login` inside Pi, then `/model`. See [the provider guide](providers.md#codex). |
-| llama-swap or vLLM, direct | Register the server in `<target>/models.json` after generation. The kit does not write that file. See [the provider guide](providers.md#local-providers-llama-swap-and-vllm). |
+| llama-swap or vLLM, direct | Use the validated `inputs/models.json` slot so generation preserves the registration. See [the provider guide](providers.md#local-providers-llama-swap-and-vllm). |
 | MCP server tokens | Export each `${NAME}` that `inputs/mcp-adapter.json` references. |
 
 How the key reaches the process is your choice. Examples:

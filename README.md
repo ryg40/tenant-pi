@@ -57,6 +57,7 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 | `carry` | Prints overlay patches from a `compare` report. Writes nothing. | [carrying drift into the overlay](docs/carry.md) |
 | `inventory` | Names-only list of the resources of one profile. Read-only. | [profile inventory](docs/profile-inventory.md) |
 | `list` | Lists the candidates under one parent directory. Read-only. | [the candidate list](docs/candidate-list.md) |
+| `wizard` | Scans the confirmed target, opens a terminal checklist and saves only an explicitly approved private handoff. | [wizard guide](docs/guides/wizard.md) |
 | `components` | Prints the checklist of all components: as data, as a numbered list, or as a selection. Read-only. | [the CLI contract](docs/generator.md#components-the-checklist-of-the-components) |
 | `check-runtime` | Compares the installed Pi, Node and Python with the pins. | [the runtime version check](docs/check-runtime.md) |
 | `check-herdr` | Reports the `herdr` command of the host: present with its version, or missing. Installs nothing. | [Herdr and the question tool](docs/herdr-setup.md) |
@@ -81,7 +82,7 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 
 - The Python 3.11+ offline validator checks versioned module sources and a local JSON overlay. Only synthetic examples are tracked.
 - Core Pi is the only enabled example component. Model routes need an explicit offline registry file. The kit imports no host defaults.
-- The sample overlay enables no memory module. The install flow marks `wiki` and `hermes` in the checklist and asks for the consent with one sentence. Without the consent key, nothing is captured. Hermes and LLM Wiki need selection, `consent.memoryCapture` and a `memory` block together. OpenViking needs `consent.remoteMemoryWrites` too, because it writes to a server.
+- The sample overlay enables no memory module. The wizard leaves optional memory unchecked and asks separately for storage and recall consent. Saved selections remain unchanged. Without the consent key, nothing is captured. Hermes and LLM Wiki need selection, `consent.memoryCapture` and a `memory` block together. OpenViking needs `consent.remoteMemoryWrites` too, because it writes to a server.
 - The MCP module uses `pi-mcp-adapter` with definitions from a private input file and disables the native Pi MCP. Promptr is `unverified` with a readiness matrix: it needs a build step, and no session with a model is verified.
 - No pi-subagents module exists. Agent fan-out uses the Herdr skill of the `herdr` component. The Herdr application is a host tool that the kit does not install.
 - The `questions` component declares the Pi question extension at an exact version. It is `unverified`, and the checklist does not mark it. See [Herdr and the question tool](docs/herdr-setup.md).

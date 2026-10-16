@@ -14,9 +14,19 @@ The Pi install line stays a plain command with `not_needed`, not `replaces_insta
 
 This is guidance, not a script. Each stage names a goal, what to look at, the questions to ask, the commands the kit already provides, and the check that proves the stage is done. Adapt the order to what exists on the machine. Do not invent commands that the kit or Pi do not document.
 
+## Scan and review before changes
+
+Use [the scan-driven wizard](../../docs/guides/wizard.md) before any installation or persistent configuration change.
+Confirm the target and account first. Run `python3 scripts/tenant_pi.py wizard` with its required identity and output paths.
+Fresh wizard defaults select only required core items. Optional features start unchecked; saved overlay selections remain unchanged.
+Review the complete plan before saving its private handoff. Saving is not installation approval.
+The guided agent rechecks target facts, then obtains execution approval and separate approval for privileged actions.
+The stages below are reference procedures for that approved plan, not permission to install before selection.
+The deterministic numbered fallback remains available through `components`.
+
 Rules that hold at every stage:
 
-- Ask before you change something the user owns: a directory, a shell file, a credential, a service. Use your question tool (`AskUserQuestion` in Claude Code, or a plain question in another agent). Offer two to four concrete options; put the recommended one first. Exception: the checklist of Stage 3 is plain text with no dialog and no options.
+- Ask before you change something the user owns: a directory, a shell file, a credential, a service. Use your question tool (`AskUserQuestion` in Claude Code, or a plain question in another agent). Offer two to four concrete options; put the recommended one first. Use the wizard checklist or its numbered fallback during bootstrap.
 - Never write, print, or paste a secret value. Refer to credentials by environment variable name. The kit has no field for a secret and rejects `$`, backticks, and `{{`.
 - Never touch the user's existing agent directory (`~/.pi/agent` or the current `PI_CODING_AGENT_DIR`). The kit generates into a new, absent directory only.
 - Every check below is offline unless it says "live". Say which checks you ran, which you skipped, and why.
@@ -165,14 +175,14 @@ The command prints `JSON valid`, or the line and the column of the first syntax 
 Ask, one at a time, and write the other answers into the overlay:
 
 1. The target: `--target` sets `target.agentDir`. Change it by hand only as described above.
-2. The components: do "The checklist" below. The action `components` is the one source of the component list, and this skill holds no copy of it. The action marks the recommended set. That set holds the core, the in-tree extensions and skills for daily work, and the two local memory modules.
+2. The components: do "The checklist" below. The action `components` is the one source of the component list, and this skill holds no copy of it. The wizard starts with core only. The legacy `components` output retains recommended marks but does not set wizard defaults.
 3. "Native provider or the Tenantext gateway?" See Stage 5 before answering. A model route needs `model-routing` and a `roles.interactive` choice. The gateway needs `codex-accounts` and a `modelRoutes` block.
 4. Memory modules: the marks of the checklist decide. Before the first `validate`, write the consent key and the `memory` block, and do the vault part: see "The memory keys" and "The LLM Wiki vault" below.
 5. "MCP servers through the adapter?" Only when the user switched `mcp` on. See Stage 6a. The checklist does not mark `mcp`.
 
 ### The checklist
 
-The checklist replaces a question with options. It shows each component of the kit, so that no component is hidden from the user.
+The wizard checklist supports arrows, Space, details and scrolling. It shows every manifest component. The following numbered commands remain a manual fallback.
 
 1. Run the action. For a new overlay:
 
@@ -181,12 +191,12 @@ The checklist replaces a question with options. It shows each component of the k
    ```
 
    For an overlay that exists, add `--overlay <file>`. The marks are then the `selection.enable` list of that file.
-2. Print the complete output to the user as plain text. Remove no line and change no line. The last line of the output says how to answer.
+2. For the numbered fallback, print every row. For a fresh setup, use only core as the proposed selection. Retain the choices of a loaded overlay.
 3. When the list marks `hermes` and `wiki`, print this sentence directly below the list: "`hermes` and `wiki` are marked. Both store text of your sessions on this machine. With the default setting, `wiki` also adds text from your vault to each prompt in each directory, and that text goes to your model provider. Keep a mark only when you agree to that. Switch off the number of a module that you do not want." When the list marks only one of the two, name that one. Without a mark at `wiki`, leave out the sentence about the vault.
    When the list marks `copilot-usage`, `anthropic-usage` or `doctor`, also print this sentence. Name only the marked components.
    "`copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider. Keep these components only when you agree to that."
    The module guide gives their mode and provider conditions.
-4. Stop and wait for the answer of the user. Do not open a question dialog after the list: a dialog can hide the text before it. The user answers `ok`, or names the numbers to switch on and the numbers to switch off.
+4. Wait for explicit selection. The wizard returns to the list with `/back` and retains answers. The numbered fallback accepts numbers; EOF is never approval.
 5. Turn the answer into the list of each component that is on: each marked line, plus each number that the user switched on, minus each number that the user switched off. `--select` takes that complete list, as IDs or as numbers, not only the changes. Run:
 
    ```sh
@@ -214,7 +224,7 @@ Tell the user these facts about the checklist:
 
 Do this part before the first `validate`, when a memory module is on. A selection with a memory module and no `memory` block stops `validate` and `plan` with `memory_choices_required: overlay.memory`, with each value of the consent key. With the block and `consent.memoryCapture: false`, they stop with `memory_consent_required: overlay.consent.memoryCapture`.
 
-The checklist marks `hermes` and `wiki`. It leaves `openviking` and `agentcore` unmarked. The answer of the user to the checklist, with the sentence below the list, is the consent for `hermes` and `wiki`. Ask no second question for them. When the user asks what a module does at this pin, answer from `docs/memory-modules.md`:
+The fresh wizard leaves every memory module unchecked. Saved selections retain their memory choices. Selection is not consent. Ask explicitly about storage and recall before setting consent for either module. When the user asks what a module does at this pin, answer from `docs/memory-modules.md`:
 
 - Hermes indexes every session into a SQLite store under the profile and keeps memory files there. With `backgroundReview: true` it also makes model calls on its own: review every 10 turns or 15 tool calls, correction detection, flush on compaction and shutdown, consolidation. That costs tokens on the `roles.memory` model.
 - LLM Wiki keeps a vault under HOME (`~/.llm-wiki/`), not under the profile. With `ambientPersonalVault: true` it creates that vault on first start when none exists, and it injects recall in every directory.
@@ -359,7 +369,7 @@ llama-swap and vLLM, the same questions for each:
 
 Rules for the registration:
 
-- The file is `<target>/models.json`. The kit does not write it, and `inputs.modelsFile` stays `null`. Write it after Stage 4, with the user's yes.
+- Use the validated `inputs/models.json` slot for durable direct-provider choices. Generation writes `<target>/models.json`; the wizard guide defines the supported subset.
 - If `<target>/models.json` exists, add the provider and keep each other provider. Show the change before you write it.
 - Keep the master copy in the private directory. Tell the user that each new candidate of Stage 10 needs the copy step and the Codex login again.
 - Do not use `/login llama.cpp` or `/llama` for llama-swap.
@@ -398,7 +408,7 @@ Done when the plan shows the adapter package, `extensions: ["-builtin:mcp"]`, an
 
 Goal: Pi has the packages the profile declares, without startup warnings.
 
-Only when the profile declares an npm package (Hermes, wiki, MCP adapter, the question extension). The recommended set of the checklist holds Hermes and the wiki, so this stage applies to it. Record the baseline of the live agent directory first, and with the wiki the baseline of the vault (Stage 9): the first `pi install` line is the first Pi command that names the target. The plan prints one `pi install` line for each declared `npm:` source, in the order of `packages` in `settings.json`, and the peer override line last. Show the lines of the plan, then ask before running. With all four components they are:
+Only when the profile declares an npm package (Hermes, wiki, MCP adapter, the question extension). Fresh wizard selections do not include these modules. Record the baseline of the live agent directory first, and with the wiki the baseline of the vault (Stage 9): the first `pi install` line is the first Pi command that names the target. The plan prints one `pi install` line for each declared `npm:` source, in the order of `packages` in `settings.json`, and the peer override line last. Show the lines of the plan, then ask before running. With all four components they are:
 
 ```sh
 PI_CODING_AGENT_DIR='<target>' pi install npm:pi-hermes-memory

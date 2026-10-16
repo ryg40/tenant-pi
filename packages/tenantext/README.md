@@ -2,7 +2,7 @@
 
 Tenantext provides Pi extensions, skills and a Claude Code plugin. **slopscore** measures model effort and Git provenance from local traces and repository history. See [slopscore](#slopscore) for the scoring rules and commands.
 
-Nine Pi extensions form the installable suite. Each extension can also load alone. A Claude Code plugin lives under `claude-code/`.
+Ten Pi extensions form the installable suite. Each extension can also load alone. A Claude Code plugin lives under `claude-code/`.
 
 - **tenantext**: Simplified English output rules, a startup guard, and a context report.
 - **slopscore**: Trace-based spend, model effort, Git provenance, PR reports, and OKF checks.
@@ -13,6 +13,7 @@ Nine Pi extensions form the installable suite. Each extension can also load alon
 - **anthropic-usage**: An Anthropic subscription quota meter that reads an active Claude Code or Pi login and feeds the footer.
 - **doctor**: `/tenantext-doctor` checks what this machine has and writes the matching settings.
 - **resources**: `/resources` lists extensions, skills, prompts and MCP servers, with enable controls and saved profiles.
+- **herdr-watch**: `herdr_watch_start` waits on a Herdr pane in the background and delivers its reply as a task notification. See [docs/herdr-watch.md](docs/herdr-watch.md).
 
 The suite also ships the **tracker-site** skill: restart briefs that tell you where a repository stands after a long session or days away. It is a Python package in `tracker/`, not a Pi extension.
 
@@ -69,6 +70,7 @@ The suite loads these stable resources:
 | anthropic-usage | `extensions/anthropic-usage/index.ts` |
 | doctor | `extensions/doctor/index.ts` |
 | resources | `extensions/resources/index.ts` |
+| herdr-watch | `extensions/herdr-watch/index.ts` |
 | slopscore-pr skill | `skills/slopscore-pr/SKILL.md` |
 | herdr skill | `skills/herdr/SKILL.md` |
 | coordinator skills (the table in [skills/coordinator-skills/README.md](skills/coordinator-skills/README.md)) | `skills/coordinator-skills/<skill>/SKILL.md` |

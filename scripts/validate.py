@@ -97,7 +97,7 @@ def _tree_resources(kind, item):
 # Reviewed anchors are independent of editable manifest claims. Pins are intentionally
 # repeated here so an altered manifest cannot bless an unrelated upstream source.
 REVIEWED_SOURCES = {
-    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.2.0"},
+    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.3.0"},
     "model-routing": {"kind": "builtin"},
     # A tree component has no upstream pin: its anchor is the tree of this kit. The `openviking`
     # memory module is one of them: `packages/openviking-pi` is a vendored copy.
@@ -106,7 +106,7 @@ REVIEWED_SOURCES = {
     "hermes": {"kind": "npm", "spec": "pi-hermes-memory"},
     "wiki": {"kind": "npm", "spec": "@zosmaai/pi-llm-wiki"},
     # The question extension keeps an exact version: its registry metadata was read at this version.
-    "questions": {"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.11.0"},
+    "questions": {"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.13.8"},
 }
 # File/key claims are only for native Pi settings documented at this version.
 REVIEWED_CLAIMS = {

@@ -242,7 +242,7 @@ class UpdateTests(unittest.TestCase):
             def latest(name):
                 calls.append(name)
                 # The question extension has its own pin; without a new version the registry names that pin.
-                return "2.11.0" if name == QUESTIONS and code == 0 else newest
+                return "2.13.8" if name == QUESTIONS and code == 0 else newest
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(update.main(["detect"], latest=latest), code)
@@ -252,13 +252,13 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(report["new"], code == 10)
             self.assertEqual(len(report["modules"]), 4)
             pinned = [row for row in report["modules"] if row["pinned"] is not None]
-            self.assertEqual([("questions", QUESTIONS, "2.11.0", code == 10)],
+            self.assertEqual([("questions", QUESTIONS, "2.13.8", code == 10)],
                              [(row["component"], row["package"], row["pinned"], row["different"]) for row in pinned])
             self.assertTrue(all(row["different"] is None for row in report["modules"] if row["pinned"] is None))
         # A new version of the pinned module alone sets `new`; the core row stays equal.
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            self.assertEqual(update.main(["detect"], latest=lambda name: "2.12.0" if name == QUESTIONS else PIN), 10)
+            self.assertEqual(update.main(["detect"], latest=lambda name: "2.14.0" if name == QUESTIONS else PIN), 10)
         report = json.loads(out.getvalue())
         self.assertEqual((False, True), (report["core"]["different"], report["new"]))
 

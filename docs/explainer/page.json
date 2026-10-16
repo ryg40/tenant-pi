@@ -357,7 +357,7 @@
     }
   ],
   "notVerified": [
-    "The frames that the table below names. No live run produced them. Their shapes come from the code and the offline tests of the packages, from the code of Pi 1.2.0 (the Pi version of the kit pin), and from the documentation of the AWS CLI and of the Claude Code plugin.",
+    "The frames that the table below names. No live run produced them. Their shapes come from the code and the offline tests of the packages, from the code of Pi 1.2.0 (the Pi version of the kit pin when the frames were made), and from the documentation of the AWS CLI and of the Claude Code plugin.",
     "Every value, also in a frame with a live shape. The memory id, the account, the record ids, the dates, the session ids, the texts and the answers of the agents are examples.",
     "The open items of the design that the live proof did not test: a batch with mixed namespaces, a move by a member and a move by a maintainer of another project. The [security document](docs/shared-memory-security.md#not-verified) lists the open items.",
     "Whether the store replaces or merges the metadata map of an update. The core sends the complete map, so the live proof cannot tell.",

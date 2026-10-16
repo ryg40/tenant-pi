@@ -145,7 +145,7 @@ Goal: a private directory with an overlay that names a new target.
      "selection": {
        "enable": ["core"],
        "disable": ["agentcore", "anthropic-usage", "codex-accounts", "context-meter", "coordinator-skills", "copilot-usage", "doctor", "herdr",
-                   "herdr-relay", "hermes", "knowledge-skills", "mcp",
+                   "herdr-relay", "herdr-watch", "hermes", "knowledge-skills", "mcp",
                    "model-routing", "openviking", "ops-footer", "promptr", "promptr-generate-task-prompt",
                    "promptr-handoff", "promptr-openknowledge-project-pages", "promptr-watch-herdr-agents", "questions",
                    "resources", "slopscore", "slopscore-pr", "tenantext", "tracker-site", "wiki"]
@@ -367,7 +367,7 @@ Do not use `npm config set prefix`. It changes the npm configuration for every l
 
 When `openviking` is enabled, run `npm --prefix "$HOME/tenant-pi/packages/openviking-pi" ci --ignore-scripts`. The plan prints the same line under `commands.setupDisplayOnly`, and [the memory modules document](../memory-modules.md#generated-outputs) describes it. The kit prints this line but does not run it.
 
-Only when you enabled a Tenantext component (`tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `coordinator-skills`, `knowledge-skills`, `slopscore-pr`):
+Only when you enabled a Tenantext component (`tenantext`, `codex-accounts`, `slopscore`, `context-meter`, `ops-footer`, `copilot-usage`, `anthropic-usage`, `doctor`, `resources`, `herdr`, `herdr-watch`, `coordinator-skills`, `knowledge-skills`, `slopscore-pr`):
 
 ```sh
 cd "$HOME/tenant-pi/packages/tenantext" && npm ci --ignore-scripts
@@ -393,7 +393,7 @@ The plan prints one `pi install` line for each declared npm source, in the order
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8
 ```
 
 Only when you enabled `hermes`, `wiki` or `questions`, also, after the `pi install` lines:
@@ -405,10 +405,10 @@ PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patc
 The plan prints the last line only with a memory module or with `questions`. The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it. `pi-mcp-adapter` lists no host module under `dependencies`, so `mcp` alone needs no peer override.
 
 - Use each source string as the plan prints it. `pi install` leaves `settings.json` unchanged only when the string is identical to the declared string. With a different string, or with a source that the profile does not declare, Pi rewrites `settings.json`.
-- `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. A newer version is not verified. The facts of an existing vault are from `@zosmaai/pi-llm-wiki` 0.12.5. After an install or an update of the `wiki` package, check 7 of Stage 9 is the proof for the installed version. The `pi install` line of `wiki` prints an audit summary of npm: read [the audit summary of npm](#the-audit-summary-of-npm) before you run that line. `questions` has the exact version 2.11.0; its line installs that version.
+- `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. A newer version is not verified. The facts of an existing vault are from `@zosmaai/pi-llm-wiki` 0.12.5. After an install or an update of the `wiki` package, check 7 of Stage 9 is the proof for the installed version. The `pi install` line of `wiki` prints an audit summary of npm: read [the audit summary of npm](#the-audit-summary-of-npm) before you run that line. `questions` has the exact version 2.13.8; its line installs that version.
 - `pi update --extensions` is not a setup command. With Pi `<pin>` it does not install or change a source with an exact version. It only moves an installed source without a version to the newest registry version.
 - The last command corrects the host-provided peers in the installed manifests of the memory packages and of the question extension. See [host peer overrides](../host-peer-overrides.md).
-- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. With `questions`, the first run prints the line of `@juicesharp/rpiv-ask-user-question`. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
+- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. The registry manifest of `@juicesharp/rpiv-ask-user-question` 2.13.8 lists `typebox` under `peerDependencies` with the range `*`, so the script makes no change for `questions` either. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
 - The packages are installed when `pi list` with the same `PI_CODING_AGENT_DIR` prints a path line that starts with the profile directory and `/npm/node_modules/` below each declared `npm:` source, the override script ends with exit code 0, and a second run of it prints nothing. A run that prints nothing does not show that a manifest was correct before. The proof for such a package is check 2 of [Stage 9](#stage-9-test): Pi starts with no peer warning. `pi list` prints a declared source also when the package is not installed. With `questions`, `python3 scripts/tenant_pi.py inventory --dir "$HOME/.pi/profiles/main"` also shows `coordination.questionExtension` as `installed`. Limit: no part of this check compares the installed version with the declared version.
 - The package `pi-hermes-memory` uses the native module `better-sqlite3`. Observed with `better-sqlite3` 13.0.3 and npm 11.19.0 on Linux x64: the module holds a prebuilt binary, `prebuilds/linux-x64.node`. npm runs no install script, nothing is compiled, and the module loads from that file. Not verified: a prebuilt binary for macOS and for other platforms. Only when no prebuilt binary fits the platform and the Node version, a build from source needs a compiler toolchain for the Node that runs Pi. On macOS that is the Xcode command line tools. With npm 11, npm does not start that build on its own. Observed with npm 11.19.0: the `npm warn install-scripts` line of the `wiki` install names `better-sqlite3`, and npm runs no install script. If the module does not load, the README of the package names `npm rebuild better-sqlite3` in the npm directory of the profile as the fallback. Not verified: a build from source in a profile.
 

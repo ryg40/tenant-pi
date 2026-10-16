@@ -743,17 +743,17 @@ Run the lines of `commands.setupDisplayOnly` that name `<target>`, in the order 
 PI_CODING_AGENT_DIR='<target>' pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR='<target>' pi install npm:@zosmaai/pi-llm-wiki
 PI_CODING_AGENT_DIR='<target>' pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR='<target>' pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0
+PI_CODING_AGENT_DIR='<target>' pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8
 PI_CODING_AGENT_DIR='<target>' node <clone>/scripts/patch_extension_peers.mjs
 ```
 
 - Use each source string as the plan prints it. `pi install` leaves `settings.json` unchanged only when the string is identical to the declared string. With a different string, or with a source that the profile does not declare, Pi rewrites `settings.json`, and `compare` shows the change as drift.
 - `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. The facts of an existing vault are from `@zosmaai/pi-llm-wiki` 0.12.5. After an install or an update of the `wiki` package, check 8 of Stage 9 is the proof for the installed version.
 - The `pi install` line of `wiki` prints an audit summary of npm. Read "The audit summary of npm" below before you run that line.
-- `questions` is declared at the exact version 2.11.0, and its line installs that version.
+- `questions` is declared at the exact version 2.13.8, and its line installs that version.
 - `pi update --extensions` is not a setup command. With the kit pin it does not install or change a source with an exact version. It only moves an installed source without a version to the newest registry version.
 - The last command corrects host-provided peers in the installed manifests. Run it after the `pi install` lines. The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it.
-- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. With `questions`, the first run prints the line of `@juicesharp/rpiv-ask-user-question`. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
+- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. The registry manifest of `@juicesharp/rpiv-ask-user-question` 2.13.8 lists `typebox` under `peerDependencies` with the range `*`, so the script makes no change for `questions` either. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
 
 To reapply the correction after each update, `docs/host-peer-overrides.md` describes an `npmCommand` wrapper.
 

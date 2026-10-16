@@ -22,6 +22,7 @@ Each extension and each skill of the packages is one component in `config/manife
 | `resources` | `packages/tenantext` | `extensions/resources/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `kit_test_missing` |
 | `herdr` | `packages/tenantext` | `skills/herdr` | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
 | `herdr-relay` | `packages/tenantext` | `skills/herdr-relay` | `core`, `herdr` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
+| `herdr-watch` | `packages/tenantext` | `extensions/herdr-watch/index.ts` | `core`, `herdr` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
 | `coordinator-skills` | `packages/tenantext` | Each skill directory below `skills/coordinator-skills/`. `config/manifest.json` names them; [the component README](../packages/tenantext/skills/coordinator-skills/README.md) lists them | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
 | `knowledge-skills` | `packages/tenantext` | Each skill directory below `skills/knowledge-skills/`. [The component README](../packages/tenantext/skills/knowledge-skills/README.md) lists them | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
 | `slopscore-pr` | `packages/tenantext` | `skills/slopscore-pr` | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
@@ -38,10 +39,11 @@ Facts for a selection:
 
 - The `components` action prints one line for each component of the manifest, with the names of its extensions and skills, its required IDs and its prerequisites. See [the CLI contract](generator.md#components-the-checklist-of-the-components).
 - `herdr-relay` is optional and disabled by default. No component requires it. Enable `herdr` too when you select it. A kit without the relay directory remains valid while the relay stays disabled. Enabling an absent relay fails with `tree_resource_missing`.
+- `herdr-watch` adds the tools `herdr_watch_start`, `herdr_watch_status` and `herdr_watch_stop`, and the command `/herdr-watch`. A watch runs `ask.py` of the herdr skill in the background, and the reply of the pane arrives as a task notification. The `herdr` command, Python 3 and the herdr skill scripts are host tools that the kit does not install. See [the extension document](../packages/tenantext/docs/herdr-watch.md). Not verified: a load of the component with the kit pin, and a live session with a Herdr pane.
 - An `unverified` component can be enabled. The plan lists each of its gaps as a readiness gap with the component ID as the subject.
 - `openviking` is a memory module: it also needs `consent.memoryCapture`, `consent.remoteMemoryWrites` and a `memory.openviking` block. Its local-file package declaration names `packages/openviking-pi/index.ts` and comes after the other in-tree packages. See [the memory modules](memory-modules.md).
 - `herdr` holds the skill only. The Herdr application is a host tool: the kit does not install it, and the `check-herdr` action reports the `herdr` command. See [Herdr and the question tool](herdr-setup.md).
-- `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.11.0` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
+- `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.13.8` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
 - A `blocked` component cannot be enabled. The validator fails with `blocked_component`.
 - A generated profile declares each package one time in `settings.packages`. The `source` is the absolute package directory path, except OpenViking and AgentCore, whose sources are their `index.ts` files. For a directory source, each enabled component adds its own `extensions` or `skills` filter entry. An empty directory filter loads nothing of that kind.
 - The profile depends on the location of the kit. If you move the kit, generate a new profile.
@@ -125,7 +127,7 @@ Promptr is a Pi extension: a prompt queue, progress checkpoints, staged handoffs
 | License | MIT, `packages/promptr/LICENSE`; declared in `packages/promptr/package.json`. |
 | Skills | `packages/promptr/skills/`: `promptr-generate-task-prompt`, `promptr-handoff`, `openknowledge-project-pages` and `watch-herdr-agents` |
 | Publish rule | `("packages/promptr", ("node_modules/", "dist/", "LICENSE"))`; `packages/promptr/LICENSE` is explicit in `PUBLISH`. |
-| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.2.0`. The build, the 783 tests, the typecheck and `npm run smoke` pass with both dependencies at 1.2.0. Not verified on 1.2.0: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
+| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.3.0`. The build, the 783 tests, the typecheck and `npm run smoke` pass with both dependencies at 1.3.0. Not verified on 1.3.0: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
 
 ### Build and test
 
@@ -143,8 +145,8 @@ npm run typecheck
 
 Warning: `npm run install:local` and `npm run doctor` read or change the Pi directory of the host. Do not run them as a repository check. `npm run smoke:installed` installs into a new directory under the temporary directory and starts `pi` there without a prompt.
 
-A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now pins 1.2.0, matching the kit pin. Pi's caret dependency can still select a later `pi-tui`.
-The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on 1.2.0.
+A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now pins 1.3.0, matching the kit pin. Pi 1.3.0 declares its `pi-tui` dependency at that exact version.
+The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on 1.3.0.
 The kit pin move does not change an installed Promptr copy or resolve its dependency drift. A live reinstall needs separate approval.
 
 ### Placeholder defaults
@@ -342,7 +344,7 @@ The files under `scripts/` are not repository checks: `e2e-live.mjs` and `e2e-li
 
 Historical evidence from Pi 1.1.0: the generated local-file `packages` entry resolves and loads the OpenViking extension.
 At that version, the kit test checks the installed resolver and rejects the former directory form. A no-model start confirms `/viking` registration.
-With Pi 1.2.0, isolated qualification passes all 295 package tests and a network-blocked resolver and factory-load check.
+With Pi 1.3.0, isolated qualification passes all 295 package tests and a network-blocked resolver and factory-load check.
 It checks the selected file source, rejects the directory source, and confirms registration without starting a live session.
 The package stays at its kit path for dependency resolution. The generated profile needs no wrapper or extra file.
 Full strict OpenViking typing still reports four baseline diagnostics: two missing JavaScript declarations, recall-option typing, and MCP schema typing.

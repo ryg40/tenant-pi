@@ -57,7 +57,7 @@ Tests read the current pin from the manifest. Guides point to `runtime.piVersion
 Historical observations and package-specific dependency pins stay fixed; review them before qualifying a new release.
 Run the offline gates on the candidate copy before accepting the move.
 
-The `questions` component has its own pin: the exact version 2.11.0 of `@juicesharp/rpiv-ask-user-question`. It is not a version range.
+The `questions` component has its own pin: the exact version 2.13.8 of `@juicesharp/rpiv-ask-user-question`. It is not a version range.
 The source of that version was not reviewed.
 `scripts/pi_update.py detect` exits 10 while the registry has a newer version.
 This continues until the maintainer of the release reviews the newer version and moves the pin.

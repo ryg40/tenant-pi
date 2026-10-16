@@ -69,11 +69,11 @@ def rule(call, *args):
 class ChecklistTests(unittest.TestCase):
     def test_count_and_order_are_the_manifest(self):
         result = report(KNOWN)
-        self.assertEqual(28, len(MANIFEST["components"]))
+        self.assertEqual(29, len(MANIFEST["components"]))
         self.assertEqual(list(MANIFEST["components"]), [item["id"] for item in result["components"]])
-        self.assertEqual(list(range(1, 29)), [item["number"] for item in result["components"]])
+        self.assertEqual(list(range(1, 30)), [item["number"] for item in result["components"]])
         self.assertEqual({"count", "marks", "components", "scope"}, set(result))
-        self.assertEqual((28, "recommended"), (result["count"], result["marks"]))
+        self.assertEqual((29, "recommended"), (result["count"], result["marks"]))
         fields = {"number", "id", "kind", "status", "extensions", "skills", "requires", "prerequisites",
                   "recommended", "marked", "locked"}
         self.assertTrue(all(set(item) == fields for item in result["components"]))
@@ -84,7 +84,7 @@ class ChecklistTests(unittest.TestCase):
                           "requires": [], "prerequisites": [], "recommended": True, "marked": True, "locked": True},
                          row("core"))
         skills = row("coordinator-skills")
-        self.assertEqual((14, "tree", "unverified", [], ["core"], True, True, False),
+        self.assertEqual((15, "tree", "unverified", [], ["core"], True, True, False),
                          tuple(skills[key] for key in ("number", "kind", "status", "extensions", "requires",
                                                        "recommended", "marked", "locked")))
         self.assertEqual(["grilling", "grill-me", "wayfinder", "research", "prototype", "domain-modeling", "to-spec",
@@ -94,7 +94,7 @@ class ChecklistTests(unittest.TestCase):
         self.assertEqual({"number": 7, "id": "ops-footer", "kind": "tree", "status": "unverified",
                           "extensions": ["ops-footer"], "skills": [], "requires": ["core", "context-meter"],
                           "prerequisites": [], "recommended": True, "marked": True, "locked": False}, row("ops-footer"))
-        self.assertEqual({"number": 26, "id": "wiki", "kind": "npm", "status": "tested",
+        self.assertEqual({"number": 27, "id": "wiki", "kind": "npm", "status": "tested",
                           "extensions": ["llm-wiki"], "skills": [], "requires": ["core"],
                           "prerequisites": ["overlay:consent.memoryCapture", "overlay:memory.wiki",
                                             "gap:peer_override_required", "setup:pi install npm:@zosmaai/pi-llm-wiki",
@@ -212,7 +212,7 @@ class PrerequisiteTests(unittest.TestCase):
                         self.assertIn(code[4:], gaps)
         peer = "node scripts/patch_extension_peers.mjs"
         self.assertEqual({"mcp": ["pi install npm:pi-mcp-adapter"],
-                          "questions": ["pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0", peer],
+                          "questions": ["pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8", peer],
                           "hermes": ["pi install npm:pi-hermes-memory", peer],
                           "wiki": ["pi install npm:@zosmaai/pi-llm-wiki", peer],
                           "openviking": ["npm --prefix packages/openviking-pi ci --ignore-scripts"]},
@@ -226,7 +226,7 @@ class TextTests(unittest.TestCase):
         self.assertEqual(output, text(report(KNOWN)))
         self.assertTrue(output.endswith("\n") and not output.endswith("\n\n"))
         lines = output.splitlines()
-        self.assertEqual(29, len(lines))
+        self.assertEqual(30, len(lines))
         self.assertEqual(components.ANSWER, lines[-1])
         self.assertIn("`ok`", lines[-1])
         for number, (line, cid) in enumerate(zip(lines, KNOWN), 1):
@@ -239,18 +239,18 @@ class TextTests(unittest.TestCase):
                 for needed in KNOWN[cid]["requires"]:
                     if needed not in LOCKED:
                         self.assertIn(needed, line.split("requires: ", 1)[1])
-        self.assertEqual(16, sum("[x]" in line for line in lines[:28]))
+        self.assertEqual(16, sum("[x]" in line for line in lines[:29]))
         self.assertEqual(" 1 [x] core (locked) | tested", lines[0])
         self.assertEqual(" 7 [x] ops-footer | extension: ops-footer | unverified | requires: context-meter", lines[6])
-        self.assertEqual(14, lines[13].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
-        self.assertEqual(4, lines[14].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
-        self.assertEqual("26 [x] wiki | extension: llm-wiki | tested | needs: consent.memoryCapture, "
-                         "memory.wiki, peer_override_required, 2 setup lines", lines[25])
+        self.assertEqual(14, lines[14].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
+        self.assertEqual(4, lines[15].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
+        self.assertEqual("27 [x] wiki | extension: llm-wiki | tested | needs: consent.memoryCapture, "
+                         "memory.wiki, peer_override_required, 2 setup lines", lines[26])
         self.assertTrue(output.isascii())
 
     def test_marks_follow_an_overlay(self):
         lines = text(report(KNOWN, ["core", "herdr"])).splitlines()
-        self.assertEqual([1, 12], [number for number, line in enumerate(lines[:28], 1) if "[x]" in line])
+        self.assertEqual([1, 12], [number for number, line in enumerate(lines[:29], 1) if "[x]" in line])
 
 
 class SelectionTests(unittest.TestCase):
@@ -270,13 +270,13 @@ class SelectionTests(unittest.TestCase):
 
     def test_numbers_and_ids_name_the_same_components(self):
         self.assertEqual(["ops-footer", "herdr-relay"], parse_select("7,13", KNOWN))
-        self.assertEqual(["ops-footer", "herdr-relay", "wiki"], parse_select(" 7 , herdr-relay,26,ops-footer,7", KNOWN))
+        self.assertEqual(["ops-footer", "herdr-relay", "wiki"], parse_select(" 7 , herdr-relay,27,ops-footer,7", KNOWN))
         self.assertEqual(dump(selection(KNOWN, parse_select("7,13", KNOWN))),
                          dump(selection(KNOWN, parse_select("herdr-relay,ops-footer", KNOWN))))
-        self.assertEqual(list(KNOWN), parse_select(",".join(str(number) for number in range(1, 29)), KNOWN))
+        self.assertEqual(list(KNOWN), parse_select(",".join(str(number) for number in range(1, 30)), KNOWN))
 
     def test_unknown_id_or_number_is_refused_without_its_value(self):
-        for value in ("nope", "0", "29", "7,,13", "", "7;13", "-1", "1.5", "9999999", "٧", CANARY, "core," + CANARY):
+        for value in ("nope", "0", "30", "7,,13", "", "7;13", "-1", "1.5", "9999999", "٧", CANARY, "core," + CANARY):
             with self.subTest(value=value):
                 self.assertEqual("undeclared_component: components.select", rule(parse_select, value, KNOWN))
 
@@ -295,7 +295,7 @@ class SelectionTests(unittest.TestCase):
     def test_recommended_selection_validates_with_consent_and_memory(self):
         result = selection(KNOWN, list(RECOMMENDED))
         self.assertEqual(["core", *sorted(set(RECOMMENDED) - {"core"})], result["selection"]["enable"])
-        self.assertEqual(12, len(result["selection"]["disable"]))
+        self.assertEqual(13, len(result["selection"]["disable"]))
         self.assertEqual({"codex-accounts", "doctor", "coordinator-skills", "knowledge-skills", "slopscore-pr",
                           "hermes", "wiki"}, set(result["prerequisites"]))
         data = load(EXAMPLE)
@@ -351,7 +351,7 @@ class ComponentsCliTests(unittest.TestCase):
         (self.base / "bad.json").write_text('{"selection": "' + CANARY)
         (self.base / "other.json").write_text(json.dumps({"selection": {"enable": ["core", "absent-id"]}}))
         for args, error in ((("--select", "nope"), "undeclared_component: components.select"),
-                            (("--select", "29"), "undeclared_component: components.select"),
+                            (("--select", "30"), "undeclared_component: components.select"),
                             (("--select", CANARY), "undeclared_component: components.select"),
                             (("--select", "7", "--format", "text"), "option_conflict: components.select"),
                             (("--select", "7", "--overlay", str(EXAMPLE)), "option_conflict: components.select"),

@@ -14,6 +14,8 @@ The question extension is a Pi extension. Claude Code has its own question tool.
 
 The third-party package `@ogulcancelik/pi-herdr` is not a part of this kit.
 
+The component `herdr-watch` is a Pi extension of this kit. It waits on a Herdr pane in the background and delivers the reply as a task notification; see [its document](../packages/tenantext/docs/herdr-watch.md).
+
 ## The Herdr check
 
 ```sh
@@ -170,19 +172,19 @@ Limits:
 | Field | Value |
 | --- | --- |
 | Component ID | `questions` |
-| Source | npm `@juicesharp/rpiv-ask-user-question@2.11.0` |
+| Source | npm `@juicesharp/rpiv-ask-user-question@2.13.8` |
 | License | MIT |
 | Requires | `core` |
 | Resource filter | `extensions`: `index.ts` |
 | Status | `unverified` |
 | Default | Disabled in `config/config.example.json` |
 
-The registry metadata of version 2.11.0 was read: the name, the license, the one extension entry `./index.ts`, and the dependency lists. The source files of that version were not reviewed.
+The registry metadata of version 2.13.8 was read: the name, the license, the one extension entry `./index.ts`, and the dependency lists. The source files of that version were not reviewed.
 
 With `questions` in `selection.enable`, the plan does this:
 
-- It adds one entry to `packages` of `settings.json`: the source `npm:@juicesharp/rpiv-ask-user-question@2.11.0` with the filter `extensions: ["index.ts"]`. The entry comes after the in-tree packages, the memory packages and the MCP package, and before owner packages.
-- It adds two setup lines: `pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0` with the target directory, then `node <kit>/scripts/patch_extension_peers.mjs` with the target directory and the absolute path of the script. The first line installs the package under `<target>/npm/`. `pi update --extensions` does not install it, because the source has an exact version. The second line moves `typebox` to `peerDependencies` in the installed manifest; see [host peer overrides](host-peer-overrides.md).
+- It adds one entry to `packages` of `settings.json`: the source `npm:@juicesharp/rpiv-ask-user-question@2.13.8` with the filter `extensions: ["index.ts"]`. The entry comes after the in-tree packages, the memory packages and the MCP package, and before owner packages.
+- It adds two setup lines: `pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8` with the target directory, then `node <kit>/scripts/patch_extension_peers.mjs` with the target directory and the absolute path of the script. The first line installs the package under `<target>/npm/`. `pi update --extensions` does not install it, because the source has an exact version. The second line corrects host-provided peers in the installed manifest. The registry manifest of version 2.13.8 lists `typebox` under `peerDependencies` with the range `*`, so the line makes no change for this version; see [host peer overrides](host-peer-overrides.md).
 - It writes no other file. The extension reads its guidance file below the configuration directory of the user. The kit does not write or check that file.
 
 The plan lists these gaps with the subject `questions`:
@@ -191,8 +193,8 @@ The plan lists these gaps with the subject `questions`:
 | --- | --- |
 | `package_runtime_unverified` | No session loaded the package from a generated profile. |
 | `pi_line_unqualified` | No test in this repository loads the component with the kit pin. |
-| `package_source_unreviewed` | Only the registry metadata of version 2.11.0 was read. |
-| `peer_package_unverified` | The package names the peer package `@juicesharp/rpiv-i18n`. No install of version 2.11.0 with the kit pin was observed. |
+| `package_source_unreviewed` | Only the registry metadata of version 2.13.8 was read. |
+| `peer_package_unverified` | The package names the peer package `@juicesharp/rpiv-i18n`. No install of version 2.13.8 with the kit pin was observed. |
 | `question_ui_unverified` | The tool needs an interactive Pi session. A loaded extension does not prove that the question dialog works. |
 | `shared_config_outside_profile` | The guidance file of the extension is outside the profile. Every profile of the user shares it. |
 | `kit_test_missing` | No test in this repository loads the component in a generated profile. |

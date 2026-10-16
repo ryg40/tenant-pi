@@ -1860,6 +1860,20 @@
      ]
     },
     {
+     "id": "herdr-watch",
+     "component": "herdr-watch",
+     "group": "g-c-herdr",
+     "label": "herdr-watch",
+     "kind": "comp-herdr",
+     "summary": "A Pi extension that waits on a Herdr pane in the background and delivers the reply as a task notification.",
+     "inputs": "herdr enabled, the herdr tool, Python 3, the herdr skill scripts",
+     "consent": "none",
+     "doc": "packages/tenantext/docs/herdr-watch.md",
+     "tags": [
+      "optional; not a detected selection"
+     ]
+    },
+    {
      "id": "questions",
      "component": "questions",
      "group": "g-c-herdr",
@@ -1898,6 +1912,13 @@
     },
     {
      "from": "herdr-relay",
+     "to": "herdr",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "herdr-watch",
      "to": "herdr",
      "label": "requires",
      "style": "requires",

@@ -114,8 +114,8 @@ function ownership(probe: DoctorProbe, id: string, label: string, dir: string): 
     : check(id, "ok", `${label}: ${dir} (owner-only, uid ${String(facts.uid)})`);
 }
 
-/** The tested Pi release line; pi-tui and pi-coding-agent are pinned to 1.2.0. */
-export const TESTED_PI_LINE = "1.2";
+/** The tested Pi release line; pi-tui and pi-coding-agent are pinned to 1.3.0. */
+export const TESTED_PI_LINE = "1.3";
 const testedPi = (version: string) => version === TESTED_PI_LINE || version.startsWith(`${TESTED_PI_LINE}.`);
 
 export function runDoctor(probe: DoctorProbe): DoctorReport {

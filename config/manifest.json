@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "runtime": {
-    "piVersion": "1.2.0",
-    "piAcceptedRange": ">=1.2.0 <1.3",
+    "piVersion": "1.3.0",
+    "piAcceptedRange": ">=1.3.0 <1.4",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
@@ -10,7 +10,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.2.0"
+        "spec": "@earendil-works/pi-coding-agent@1.3.0"
       },
       "status": "tested",
       "reason": null,
@@ -581,6 +581,53 @@
         "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
       }
     },
+    "herdr-watch": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "reason": null,
+      "requires": [
+        "core",
+        "herdr"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/herdr-watch/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The extension starts ask.py of the herdr skill with Python 3, and ask.py needs the herdr CLI. The herdr CLI, Python 3 and the herdr skill scripts (HERDR_SKILL_DIR, else ~/.agents/skills/herdr, else the kit copy) are host tools; the kit does not install or check them."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No test in this repository loads the component in a generated profile."
+        }
+      ],
+      "configOwnership": {
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/tenantext:extensions/herdr-watch/index.ts"
+          }
+        ],
+        "status": "reviewed",
+        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      }
+    },
     "coordinator-skills": {
       "source": {
         "kind": "tree",
@@ -875,7 +922,7 @@
         },
         {
           "code": "host_module_dependency",
-          "fact": "packages/promptr/package.json pins @earendil-works/pi-tui at 1.2.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.2.0, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.2.0 are not verified."
+          "fact": "packages/promptr/package.json pins @earendil-works/pi-tui at 1.3.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.3.0, and Pi 1.3.0 declares its pi-tui dependency at that exact version. Interactive key handling and the warning on Pi 1.3.0 are not verified."
         },
         {
           "code": "placeholder_defaults",
@@ -1128,7 +1175,7 @@
     "questions": {
       "source": {
         "kind": "npm",
-        "spec": "@juicesharp/rpiv-ask-user-question@2.11.0"
+        "spec": "@juicesharp/rpiv-ask-user-question@2.13.8"
       },
       "status": "unverified",
       "reason": null,
@@ -1153,11 +1200,11 @@
         },
         {
           "code": "package_source_unreviewed",
-          "fact": "The registry metadata of version 2.11.0 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
+          "fact": "The registry metadata of version 2.13.8 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
         },
         {
           "code": "peer_package_unverified",
-          "fact": "The package lists typebox under dependencies and names the peer package @juicesharp/rpiv-i18n; no install of version 2.11.0 with the kit pin was observed."
+          "fact": "Version 2.13.8 lists typebox under peerDependencies with the range * and names the optional peer package @juicesharp/rpiv-i18n; no install of version 2.13.8 with the kit pin was observed."
         },
         {
           "code": "question_ui_unverified",
@@ -1287,7 +1334,7 @@
         },
         {
           "code": "package_runtime_unverified",
-          "fact": "Pi 1.2.0 isolated qualification checks the file-source resolver, factory loading and all package tests with candidate dependencies. Capture, recall and tools against a live server remain unverified."
+          "fact": "Pi 1.3.0 isolated qualification checks the file-source resolver, factory loading and all package tests with candidate dependencies. Capture, recall and tools against a live server remain unverified."
         },
         {
           "code": "capture_cost_unmeasured",
@@ -1306,21 +1353,47 @@
       }
     },
     "agentcore": {
-      "source": {"kind": "tree", "path": "packages/agentcore-pi"},
+      "source": {
+        "kind": "tree",
+        "path": "packages/agentcore-pi"
+      },
       "status": "unverified",
       "reason": null,
-      "requires": ["core"],
+      "requires": [
+        "core"
+      ],
       "owner": "agentcore",
       "license": "MIT",
-      "resources": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
+      "resources": {
+        "extensions": [
+          "index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
       "env": [],
       "gaps": [
-        {"code": "install_step_required", "fact": "Run npm ci --ignore-scripts in packages/agentcore-memory-core before loading the extension. The extension imports that shared core, and the lock file of the core installs the AWS SDK."},
-        {"code": "aws_resource_required", "fact": "The owner supplies the AgentCore Memory resource, the IAM user of the person with its namespace-scoped inline policy, the access key and the person config file. A generated profile creates none of them; the owner tool packages/agentcore-memory-admin renders the policy and the person config."},
-        {"code": "package_runtime_unverified", "fact": "Offline fake-core tests cover the recall hook, the propose tool and its confirmation. Not verified: a generated Pi session with live AWS recall or propose."}
+        {
+          "code": "install_step_required",
+          "fact": "Run npm ci --ignore-scripts in packages/agentcore-memory-core before loading the extension. The extension imports that shared core, and the lock file of the core installs the AWS SDK."
+        },
+        {
+          "code": "aws_resource_required",
+          "fact": "The owner supplies the AgentCore Memory resource, the IAM user of the person with its namespace-scoped inline policy, the access key and the person config file. A generated profile creates none of them; the owner tool packages/agentcore-memory-admin renders the policy and the person config."
+        },
+        {
+          "code": "package_runtime_unverified",
+          "fact": "Offline fake-core tests cover the recall hook, the propose tool and its confirmation. Not verified: a generated Pi session with live AWS recall or propose."
+        }
       ],
       "configOwnership": {
-        "claims": [{"file": "settings.json", "key": "package:packages/agentcore-pi:index.ts"}],
+        "claims": [
+          {
+            "file": "settings.json",
+            "key": "package:packages/agentcore-pi:index.ts"
+          }
+        ],
         "status": "reviewed",
         "boundary": "One local-file package entry and the process-local AGENTCORE_MEMORY_CONFIG_FILE launch value; the launch line removes an inherited AGENTCORE_MEMORY_CONFIG. The kit never reads the person config file. Credentials stay in the AWS profile that the person config names, else in the default AWS SDK credential chain."
       }

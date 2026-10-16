@@ -6,7 +6,7 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 const readJson = (path: string) => JSON.parse(readFileSync(new URL(path, root), "utf8"));
 
-test("suite exposes nine stable individual resources", () => {
+test("suite exposes ten stable individual resources", () => {
   const manifest = readJson("package.json");
   assert.equal(manifest.version, "1.0.0");
   assert.deepEqual(manifest.pi.extensions, [
@@ -19,6 +19,7 @@ test("suite exposes nine stable individual resources", () => {
     "./extensions/anthropic-usage/index.ts",
     "./extensions/doctor/index.ts",
     "./extensions/resources/index.ts",
+    "./extensions/herdr-watch/index.ts",
   ]);
   for (const resource of manifest.pi.extensions) {
     assert.ok(existsSync(fileURLToPath(new URL(resource, root))), resource);

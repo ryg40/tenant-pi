@@ -1886,6 +1886,13 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
     },
     {
      "detailOnly": true,
+     "from": "herdr-watch",
+     "label": "requires",
+     "style": "requires",
+     "to": "herdr"
+    },
+    {
+     "detailOnly": true,
      "from": "promptr-generate-task-prompt",
      "label": "requires",
      "style": "requires",
@@ -2018,7 +2025,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
     },
     {
      "cols": 1,
-     "h": 278,
+     "h": 352,
      "id": "g-c-herdr",
      "label": "Herdr and questions",
      "nodeW": 320,
@@ -2041,7 +2048,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      "y": 810
     }
    ],
-   "height": 1018,
+   "height": 1092,
    "id": "components",
    "label": "Module catalog",
    "nodes": [
@@ -2059,7 +2066,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
       ],
       [
        "Source",
-       "npm @earendil-works/pi-coding-agent@1.2.0"
+       "npm @earendil-works/pi-coding-agent@1.3.0"
       ],
       [
        "Owner",
@@ -2949,7 +2956,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
       ],
       [
        "host_module_dependency",
-       "packages/promptr/package.json pins @earendil-works/pi-tui at 1.2.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.2.0, but Pi's caret dependency permits a later copy. Interactive key handling and the warning on Pi 1.2.0 are not verified."
+       "packages/promptr/package.json pins @earendil-works/pi-tui at 1.3.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.3.0, and Pi 1.3.0 declares its pi-tui dependency at that exact version. Interactive key handling and the warning on Pi 1.3.0 are not verified."
       ],
       [
        "placeholder_defaults",
@@ -3502,7 +3509,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
       ],
       [
        "package_runtime_unverified",
-       "Pi 1.2.0 isolated qualification checks the file-source resolver, factory loading and all package tests with candidate dependencies. Capture, recall and tools against a live server remain unverified."
+       "Pi 1.3.0 isolated qualification checks the file-source resolver, factory loading and all package tests with candidate dependencies. Capture, recall and tools against a live server remain unverified."
       ],
       [
        "capture_cost_unmeasured",
@@ -4116,6 +4123,88 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      "y": 832
     },
     {
+     "component": "herdr-watch",
+     "doc": "packages/tenantext/docs/herdr-watch.md",
+     "fields": [
+      [
+       "Component",
+       "herdr-watch"
+      ],
+      [
+       "Status",
+       "manifest unverified; label unverified when enabled"
+      ],
+      [
+       "Source",
+       "tree packages/tenantext"
+      ],
+      [
+       "Owner",
+       "tenantext"
+      ],
+      [
+       "License",
+       "MIT"
+      ],
+      [
+       "Requires",
+       "core, herdr"
+      ],
+      [
+       "Inputs",
+       "herdr enabled, the herdr tool, Python 3, the herdr skill scripts"
+      ],
+      [
+       "Consent",
+       "none"
+      ],
+      [
+       "Environment",
+       "none"
+      ],
+      [
+       "Boundary",
+       "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
+      ]
+     ],
+     "files": [
+      "config/manifest.json",
+      "packages/tenantext/extensions/herdr-watch/index.ts"
+     ],
+     "gaps": [
+      [
+       "pi_line_unqualified",
+       "No test in this repository loads the component with the kit pin."
+      ],
+      [
+       "host_tool_required",
+       "The extension starts ask.py of the herdr skill with Python 3, and ask.py needs the herdr CLI. The herdr CLI, Python 3 and the herdr skill scripts (HERDR_SKILL_DIR, else ~/.agents/skills/herdr, else the kit copy) are host tools; the kit does not install or check them."
+      ],
+      [
+       "kit_test_missing",
+       "No test in this repository loads the component in a generated profile."
+      ]
+     ],
+     "group": "g-c-herdr",
+     "h": 52,
+     "id": "herdr-watch",
+     "kind": "comp-herdr",
+     "label": "herdr-watch",
+     "status": "unverified",
+     "sub": "optional; manifest unverified",
+     "summary": "A Pi extension that waits on a Herdr pane in the background and delivers the reply as a task notification.",
+     "tags": [
+      "manifest unverified",
+      "tree source",
+      "owner tenantext",
+      "requires herdr",
+      "optional; not a detected selection"
+     ],
+     "w": 320,
+     "x": 60,
+     "y": 906
+    },
+    {
      "component": "questions",
      "doc": "docs/herdr-setup.md",
      "fields": [
@@ -4129,7 +4218,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
       ],
       [
        "Source",
-       "npm @juicesharp/rpiv-ask-user-question@2.11.0"
+       "npm @juicesharp/rpiv-ask-user-question@2.13.8"
       ],
       [
        "Owner",
@@ -4170,11 +4259,11 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
       ],
       [
        "package_source_unreviewed",
-       "The registry metadata of version 2.11.0 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
+       "The registry metadata of version 2.13.8 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
       ],
       [
        "peer_package_unverified",
-       "The package lists typebox under dependencies and names the peer package @juicesharp/rpiv-i18n; no install of version 2.11.0 with the kit pin was observed."
+       "Version 2.13.8 lists typebox under peerDependencies with the range * and names the optional peer package @juicesharp/rpiv-i18n; no install of version 2.13.8 with the kit pin was observed."
       ],
       [
        "question_ui_unverified",
@@ -4205,7 +4294,7 @@ ul.links .via{margin-left:auto;font-size:11px;color:var(--faint);text-align:righ
      ],
      "w": 320,
      "x": 60,
-     "y": 906
+     "y": 980
     },
     {
      "component": "mcp",

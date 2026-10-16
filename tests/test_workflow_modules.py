@@ -204,12 +204,12 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertIn("Pi 1.0.2 and Pi 1.0.3 load", facts["local_package_load"])
         self.assertIn("16 commands", facts["local_package_load"])
         self.assertIn("four skills", facts["local_package_load"])
-        self.assertIn("pins pi-tui and pi-coding-agent 1.2.0", facts["pi_line_build_and_tests"])
-        self.assertIn("With both dependencies at 1.2.0, the build, the 783 tests, the typecheck and `npm run smoke` pass.",
+        self.assertIn("pins pi-tui and pi-coding-agent 1.3.0", facts["pi_line_build_and_tests"])
+        self.assertIn("With both dependencies at 1.3.0, the build, the 783 tests, the typecheck and `npm run smoke` pass.",
                       facts["pi_line_build_and_tests"])
-        self.assertIn("`npm run smoke:installed` and a package load on Pi 1.2.0 are not verified.",
+        self.assertIn("`npm run smoke:installed` and a package load on Pi 1.3.0 are not verified.",
                       facts["pi_line_build_and_tests"])
-        self.assertEqual("@earendil-works/pi-tui@1.2.0", next(
+        self.assertEqual("@earendil-works/pi-tui@1.3.0", next(
             p["subject"] for p in PROMPTR_PREREQUISITES if p["code"] == "host_module_dependency"))
         self.assertIn("Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning", facts["host_module_dependency"])
         self.assertNotIn("No build or test on the kit pin is verified", " ".join(facts.values()))
@@ -313,7 +313,7 @@ class WorkflowPlanTests(unittest.TestCase):
         npm = [source for source in sources if source.startswith("npm:")]
         # The order of `packages`: the memory modules, the MCP adapter, the question extension.
         self.assertEqual(["npm:pi-hermes-memory", "npm:@zosmaai/pi-llm-wiki", "npm:pi-mcp-adapter",
-                          "npm:@juicesharp/rpiv-ask-user-question@2.11.0"], npm)
+                          "npm:@juicesharp/rpiv-ask-user-question@2.13.8"], npm)
         self.assertEqual([owner, "/home/example/git/owner-tools"], sources[-2:])
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
         setup = plan["commands"]["setup"]

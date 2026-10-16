@@ -183,7 +183,7 @@ Warning: Extension package ".../package.json": Host-provided extension packages 
 peerDependencies with a "*" range, not dependencies: typebox.
 ```
 
-An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 lists `typebox` under `dependencies`. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
+An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 listed `typebox` under `dependencies`; the registry manifest of 2.13.8, the kit pin, lists it under `peerDependencies` with the range `*`. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"

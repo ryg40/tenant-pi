@@ -1655,7 +1655,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         expected = [{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": ["skills/herdr"],
                      "prompts": [], "themes": []},
-                    {"source": "npm:@juicesharp/rpiv-ask-user-question@2.11.0", "extensions": ["index.ts"], "skills": [],
+                    {"source": "npm:@juicesharp/rpiv-ask-user-question@2.13.8", "extensions": ["index.ts"], "skills": [],
                      "prompts": [], "themes": []}]
         for candidate in (first, second):
             with self.subTest(candidate=candidate.name):

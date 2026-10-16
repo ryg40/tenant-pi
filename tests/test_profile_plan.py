@@ -248,7 +248,7 @@ class PlanTests(unittest.TestCase):
     def test_question_extension_is_declared_as_an_npm_package_with_its_setup_lines(self):
         self.enable("questions")
         result = prepare(self.manifest, self.overlay)
-        package = {"source": "npm:@juicesharp/rpiv-ask-user-question@2.11.0",
+        package = {"source": "npm:@juicesharp/rpiv-ask-user-question@2.13.8",
                    "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}
         self.assertEqual([package], result["files"]["settings.json"]["content"]["packages"])
         choices = result["files"][".tenant-pi/choices.json"]["content"]
@@ -293,7 +293,7 @@ class PlanTests(unittest.TestCase):
         self.enable("herdr")
         self.overlay["ownerPackages"] = ["/home/Test User/owner package"]
         packages = prepare(self.manifest, self.overlay)["files"]["settings.json"]["content"]["packages"]
-        self.assertEqual([TENANTEXT_PACKAGE, "npm:@juicesharp/rpiv-ask-user-question@2.11.0", "/home/Test User/owner package"],
+        self.assertEqual([TENANTEXT_PACKAGE, "npm:@juicesharp/rpiv-ask-user-question@2.13.8", "/home/Test User/owner package"],
                          [entry if type(entry) is str else entry["source"] for entry in packages])
         self.assertEqual(["skills/herdr"], packages[0]["skills"])
 

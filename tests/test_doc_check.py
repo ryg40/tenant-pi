@@ -809,7 +809,7 @@ class HerdrStageTests(unittest.TestCase):
 
     def test_the_fact_document_names_each_part_and_the_unverified_claims(self):
         text = (ROOT / "docs/herdr-setup.md").read_text(encoding="utf-8")
-        for expected in ("The kit does not install, update or start it.", "@juicesharp/rpiv-ask-user-question@2.11.0",
+        for expected in ("The kit does not install, update or start it.", "@juicesharp/rpiv-ask-user-question@2.13.8",
                          "installs no Pi extension into Claude Code", "the agent asks in plain text"):
             self.assertIn(expected, text)
         # Each value of the code is in the document, so a new value needs a new line there.

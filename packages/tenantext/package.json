@@ -28,7 +28,8 @@
       "./extensions/copilot-usage/index.ts",
       "./extensions/anthropic-usage/index.ts",
       "./extensions/doctor/index.ts",
-      "./extensions/resources/index.ts"
+      "./extensions/resources/index.ts",
+      "./extensions/herdr-watch/index.ts"
     ],
     "skills": [
       "./skills"

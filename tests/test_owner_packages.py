@@ -126,7 +126,7 @@ class OwnerPackageTests(unittest.TestCase):
         self.overlay["selection"]["enable"].append("questions")
         plan = prepare(self.manifest, self.overlay)
         agent = "PI_CODING_AGENT_DIR=" + self.overlay["target"]["agentDir"]
-        self.assertEqual([agent + " pi install npm:@juicesharp/rpiv-ask-user-question@2.11.0",
+        self.assertEqual([agent + " pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8",
                           agent + " node " + PEER_SCRIPT], plan["commands"]["setup"][1:])
         self.assertEqual([FILTERED, PLAIN, {"source": "/srv/only source"}],
                          plan["files"]["settings.json"]["content"]["packages"][2:])

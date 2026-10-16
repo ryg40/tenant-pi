@@ -59,6 +59,11 @@ herdr pane neighbor --pane "$HERDR_PANE_ID" --direction right | jq -r .result.ne
 
 ### A2. Send a prompt and collect the reply
 
+In Pi with the `herdr_watch_start` tool (the `herdr-watch` extension), send the
+prompt with that tool. It returns at once, and the reply arrives later as a
+`<herdr-task-notification>` message. Its `status:` line gives the meaning of the
+exit code in the table below. Use the blocking call only in the cases of section B.
+
 Write the prompt to a file, then make one blocking call. For a prompt of one line, `--text "<prompt>"` replaces `--file`.
 
 ```bash
@@ -87,6 +92,7 @@ python3 $S/last-reply.py <pane-id-or-name>
 
 - The job is complete when you have the reply and you used it, not when the prompt is sent.
 - Do not end your turn with "the pane is working on it" unless the user asked you only to send the prompt.
+  A watch of `herdr_spawn` or `herdr_watch_start` is the exception: end the turn or do other work. The notification starts the next turn; finish the job there.
 - Never close, interrupt or clear a pane that you did not start.
 
 ## B. Start a new agent
@@ -96,6 +102,18 @@ One command, four inputs. Read `SPAWN.md` in this skill directory before the fir
 ```bash
 python3 $S/spawn.py --harness <pi|claude> --role <role> [--model <name>] [--thinking <level>] --cwd "$PWD"
 ```
+
+In Pi with the `herdr_spawn` tool (the `herdr-watch` extension), start every
+task session with `herdr_spawn`. It takes the same four inputs, the working
+directory and the task. One call spawns the pane, sends the task and watches
+it. The call returns when `spawn.py` has started the pane (about 10 to 60
+seconds, at most 180). Then the watch runs in the background. The reply
+arrives later as a `<herdr-task-notification>` message. For a pane that
+exists, use `herdr_watch_start`. Use the blocking `ask.py` only in these cases:
+
+- In Claude Code. There, run it in the background of the shell tool.
+- In a session without the tools.
+- When the user says to wait for the reply, or not to use the watch.
 
 | Input | Values | If the user does not give it |
 | --- | --- | --- |
@@ -125,7 +143,9 @@ MCP server and a desktop browser skill are optional entries of a machine file;
 - A new coordinator (a handoff) goes below the active coordinator pane.
 - The name is `<project>-<role>-<n>`, for example `proj-scout-2`. Use it as the handle.
 
-Then: send the task with `ask.py` (A2), verify the result, and close the pane
+Then send the task, verify the result, and close the pane. `herdr_spawn` sends
+the task itself, and the `close:` line of its notification closes the pane by
+its ID. Without the tool, send the task with `ask.py` (A2) and close the pane
 with `python3 $S/close.py <name>`. Details are in `SPAWN.md`.
 
 ## Rules from observed failures
@@ -139,6 +159,7 @@ with `python3 $S/close.py <name>`. Details are in `SPAWN.md`.
 | `herdr pane read` for a long reply | `last-reply.py` | The screen of a TUI holds only the last page. |
 | Run `herdr pane list` or `herdr agent list` with no filter | `panes.py` | The output holds all workspaces. |
 | Read `--help` of each subcommand | `herdr --skill` one time | One call prints the full reference for the installed version. |
+| `ask.py` from a Pi session that has `herdr_spawn` | `herdr_spawn` for a new pane, `herdr_watch_start` for a pane that exists | The turn blocks until the pane finishes. An interrupt leaves the pane open. |
 | Write `pi ...` or `claude ...` launch commands by hand | `spawn.py` | `spawn.py` checks the model and sets the flags, the role prompt and the layout. |
 | `herdr pane split`, `herdr tab create` or `herdr pane rename` by hand | `spawn.py` | The layout and the names follow `LAYOUT.md`. |
 | Write "use only X, no replacement" in a task | "Prefer X. If X fails, use Y and say so." | An agent stops with no result when the task and the role each forbid the other method. |

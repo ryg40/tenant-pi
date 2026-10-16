@@ -610,7 +610,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "The extension starts ask.py of the herdr skill with Python 3, and ask.py needs the herdr CLI. The herdr CLI, Python 3 and the herdr skill scripts (HERDR_SKILL_DIR, else ~/.agents/skills/herdr, else the kit copy) are host tools; the kit does not install or check them."
+          "fact": "The extension starts spawn.py and ask.py of the herdr skill with Python 3, and both need the herdr CLI. The herdr CLI, Python 3 and the herdr skill scripts (HERDR_SKILL_DIR, else ~/.agents/skills/herdr, else the kit copy) are host tools; the kit does not install or check them."
         },
         {
           "code": "kit_test_missing",

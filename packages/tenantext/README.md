@@ -13,7 +13,7 @@ Ten Pi extensions form the installable suite. Each extension can also load alone
 - **anthropic-usage**: An Anthropic subscription quota meter that reads an active Claude Code or Pi login and feeds the footer.
 - **doctor**: `/tenantext-doctor` checks what this machine has and writes the matching settings.
 - **resources**: `/resources` lists extensions, skills, prompts and MCP servers, with enable controls and saved profiles.
-- **herdr-watch**: `herdr_watch_start` waits on a Herdr pane in the background and delivers its reply as a task notification. See [docs/herdr-watch.md](docs/herdr-watch.md).
+- **herdr-watch**: `herdr_spawn` starts a task session in a new Herdr pane and sends its task; `herdr_watch_start` prompts a pane that exists. Both wait on the pane in the background and deliver its reply as a task notification. See [docs/herdr-watch.md](docs/herdr-watch.md).
 
 The suite also ships the **tracker-site** skill: restart briefs that tell you where a repository stands after a long session or days away. It is a Python package in `tracker/`, not a Pi extension.
 

@@ -5,7 +5,7 @@ Set `S` to the absolute `scripts` directory beside the loaded `SKILL.md`, includ
 ## 1. Before you start a pane
 
 - Start a pane only when the user asks for one.
-- Run `python3 $S/panes.py`. If an agent for the same task runs already, use it with `ask.py`. Do not start a second one.
+- Run `python3 $S/panes.py`. If an agent for the same task runs already, use it with `herdr_watch_start` in Pi, else with `ask.py`. Do not start a second one.
 
 ## 2. Roles
 
@@ -90,6 +90,12 @@ The skill ships no model choice. Invalid files stop the launch with their path a
 
 ## 3. Start
 
+In Pi with the `herdr_spawn` tool (the `herdr-watch` extension), start every
+task session with `herdr_spawn`. One call does sections 3 and 4: it runs
+`spawn.py`, sends the task with `ask.py` and watches the pane in the background.
+Section 4 gives its parameters. Use the commands below for a dry run, for a
+coordinator handoff, and in a session without the tool.
+
 ```bash
 python3 $S/spawn.py --harness pi --role researcher --model example-model --thinking medium --cwd "$PWD" --dry-run   # shows the resolved values
 python3 $S/spawn.py --harness pi --role researcher --model example-model --thinking medium --cwd "$PWD"
@@ -120,6 +126,12 @@ To hand your work to the next coordinator session:
 | 4 | The agent stopped at a startup question, for example folder trust | `herdr agent read <pane-id> --source visible`. Show the question to the user. Wait for the decision. |
 | 1 | The start failed. The new pane is closed again | Read the error. |
 
+`herdr_spawn` gives the same exit codes. On exit 1, 2 or 4 it returns an error
+result with the exit code, its meaning, and the last lines of the standard error
+and the output of `spawn.py`. It starts no watch then. On exit 4 the error
+result also names the pane ID and the name. It has no `close:` command, because
+the pane waits for the decision of the user.
+
 `spawn.py` sets the role prompt and the result format. Do not add them to the
 task file.
 
@@ -148,6 +160,36 @@ Forbid a method only when the user forbade it. Then say that the user did.
 When an agent reports a blocker, read its error, correct the task or the
 method, and send it again before you ask the user.
 
+### In Pi: `herdr_spawn`
+
+| Parameter | Value |
+| --- | --- |
+| `harness`, `role`, `model`, `thinking` | As for `spawn.py`. `model` and `thinking` are optional. `herdr_spawn` refuses the role `coordinator`: a coordinator is a primary session. |
+| `cwd` | The absolute working directory of the new agent |
+| `prompt` or `prompt_file` | The task. Give exactly one. |
+| `timeout_seconds` | Seconds that `ask.py` waits for the reply. Default 1500. |
+| `label` | Optional. A short label for the notification. |
+| `unattended`, `strict` | The options `--unattended` and `--strict` of `spawn.py`. Default false. |
+| `extra_args` | Optional. Native arguments of the harness. `spawn.py` gets them after `--`. |
+
+The call returns when `spawn.py` has started the pane (about 10 to 60 seconds,
+at most 180). It names the pane ID, the name, the model and a task ID. Then the
+watch runs in the background.
+Tell the user the name, harness, role, model and thinking level. Then continue
+with other work or end the turn. Do not wait, sleep or poll.
+
+When the pane finishes, a `<herdr-task-notification>` message starts a turn:
+
+- The `pane:` line names the pane ID and the name: `pane: <pane_id> (<name>)`.
+- The `status:` line gives the meaning of the exit code of `ask.py`, as in the table of `SKILL.md`, section A2.
+- The `close:` line is the command that closes the pane by its ID (section 5). After a timeout or a blocked status, the notification has no `close:` line: the pane still works.
+
+### Without the tool: `ask.py`
+
+Use the blocking `ask.py` only in Claude Code (there, run it in the background
+of the shell tool), in a session without the tools, or when the user says to
+wait for the reply or not to use the watch.
+
 ```bash
 python3 $S/ask.py <name> --file /tmp/<task>.md --timeout 600
 ```
@@ -155,7 +197,10 @@ python3 $S/ask.py <name> --file /tmp/<task>.md --timeout 600
 From a task session, use only the `FINAL_COMPRESSED_CONTEXT` block. Do not give the
 raw transcript to the user.
 
-Fan-out. Start all agents first, then run the prompts in parallel in one shell call:
+Fan-out in Pi: call `herdr_spawn` one time for each task, all in one turn. Then
+continue. The notifications arrive one by one, each with its pane ID.
+
+Fan-out without the tool. Start all agents first, then run the prompts in parallel in one shell call:
 
 ```bash
 python3 $S/ask.py proj-scout-1    --file /tmp/scout.md    --timeout 600 > /tmp/scout.out 2>&1 &
@@ -167,6 +212,8 @@ wait; tail -n +1 /tmp/scout.out /tmp/reviewer.out
 
 - An idle agent is not proof of a result. Check that the files or the facts that you asked for exist.
 - Close task panes after you have the result: `python3 $S/close.py <name> [<name> ...]`.
+- After a notification of `herdr_spawn`, run the command of its `close:` line. It closes the pane by its ID, not by its name. A name can come back for a later pane.
+- Do not close a pane after the status `timeout, the pane still works` or `blocked on a question, read the screen`. The pane still works on the task or waits for the user.
 - `close.py` refuses coordinator panes, interactive sessions, and panes that `spawn.py` did not start. That is correct.
 - Leave the pane open when the user says "leave open", "HITL" or "I'll review". Report the pane ID and the name.
 
@@ -178,7 +225,7 @@ example Haiku) asks before each shell command. When an agent asks, it shows the
 status `blocked`, and `ask.py` exits with 4. Show the question to the user and
 wait.
 
-Only when the user asks for an unattended worker, add `--unattended`. It allows
-all shell commands and edits in advance. It does not permit deploys, restarts,
-deletion of live data, force-push, or output of secrets. State these limits in
-the task file.
+Only when the user asks for an unattended worker, add `--unattended` (with
+`herdr_spawn`: `unattended` true). It allows all shell commands and edits in
+advance. It does not permit deploys, restarts, deletion of live data,
+force-push, or output of secrets. State these limits in the task file.

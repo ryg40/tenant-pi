@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import herdrWatch, { CUSTOM_TYPE, REPLY_LIMIT, findAskScript, firstReplyLine, formatElapsed } from "../extensions/herdr-watch/index.ts";
+import herdrWatch, { CUSTOM_TYPE, REPLY_LIMIT, SPAWN_KILL_GRACE_MS, findAskScript, findSkillScript, firstReplyLine, formatElapsed, lastJsonLine } from "../extensions/herdr-watch/index.ts";
 
 // A fake ask.py. The prompt file is a JSON spec of the run; the script records its arguments beside it.
 const FAKE_ASK = `import json, sys, time
@@ -17,6 +17,39 @@ time.sleep(spec.get("sleep", 0.05))
 sys.stdout.write("x" * spec["size"] if "size" in spec else spec.get("reply", ""))
 sys.stderr.write(spec.get("stderr", ""))
 sys.exit(spec.get("exit", 0))
+`;
+
+// A fake spawn.py. It records each call beside itself and reads its behaviour from spawn-spec.json there.
+const FAKE_SPAWN = `import json, os, signal, sys, time
+here = os.path.dirname(os.path.abspath(__file__))
+spec_file = os.path.join(here, "spawn-spec.json")
+spec = json.load(open(spec_file)) if os.path.exists(spec_file) else {}
+if spec.get("ignore_term"):
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+args = sys.argv[1:]
+with open(os.path.join(here, "spawn-calls.jsonl"), "a") as f:
+    f.write(json.dumps({"argv": args, "cwd": os.getcwd()}) + "\\n")
+own = args[:args.index("--")] if "--" in args else args
+def opt(name):
+    return own[own.index(name) + 1] if name in own else None
+time.sleep(spec.get("sleep", 0))
+thinking = opt("--thinking")
+if thinking is not None and thinking not in ("off", "minimal", "low", "medium", "high", "xhigh", "max"):
+    print("error: --thinking must be one of: off, minimal, low, medium, high, xhigh, max", file=sys.stderr)
+    sys.exit(2)
+model, role = opt("--model"), opt("--role")
+print("model: " + (model + " (from request)" if model else "harness default"), file=sys.stderr)
+facts = {"name": "proj-" + role + "-1", "pane_id": "w7:p3", "model": model, "model_source": "request" if model else "harness default",
+         "thinking": thinking, "placement": "new tab '" + role + "'"}
+if spec.get("exit") == 1:
+    print("error: agent start failed and the new pane was closed: no agent", file=sys.stderr)
+    sys.exit(1)
+if spec.get("exit") == 4:
+    print(json.dumps(dict(facts, status="blocked")))
+    print("The agent stopped at a startup question (for example folder trust).", file=sys.stderr)
+    sys.exit(4)
+print("a line that is not JSON")
+print(json.dumps(dict(facts, status="idle")))
 `;
 
 interface Sent { message: { customType: string; content: string; display: boolean; details: any }; options: unknown }
@@ -35,6 +68,7 @@ function fixture(t: test.TestContext) {
 	mkdirSync(join(skill, "scripts"), { recursive: true });
 	mkdirSync(tmp);
 	writeFileSync(join(skill, "scripts/ask.py"), FAKE_ASK);
+	writeFileSync(join(skill, "scripts/spawn.py"), FAKE_SPAWN);
 	const saved = { HERDR_SKILL_DIR: process.env.HERDR_SKILL_DIR, TMPDIR: process.env.TMPDIR };
 	process.env.HERDR_SKILL_DIR = skill;
 	process.env.TMPDIR = tmp;
@@ -63,15 +97,18 @@ function fixture(t: test.TestContext) {
 		}
 		rmSync(root, { recursive: true, force: true });
 	});
-	const run = (name: string, params: object) => tools.get(name).execute("call-1", params, undefined, undefined, ctx);
+	const run = (name: string, params: object, signal?: AbortSignal) => tools.get(name).execute("call-1", params, signal, undefined, ctx);
 	const start = (pane: string, spec: object, extra: object = {}) => run("herdr_watch_start", { pane, prompt: JSON.stringify(spec), ...extra });
 	const status = async (id?: string) => (await run("herdr_watch_status", id === undefined ? {} : { id })).content[0].text as string;
-	return { root, skill, tmp, tools, commands, renderers, handlers, messages, notices, ctx, exitListeners, emit, run, start, status };
+	const calls = join(skill, "scripts/spawn-calls.jsonl");
+	const spawnCalls = () => existsSync(calls) ? readFileSync(calls, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line)) : [];
+	const spawnSpec = (spec: object) => writeFileSync(join(skill, "scripts/spawn-spec.json"), JSON.stringify(spec));
+	return { root, skill, tmp, tools, commands, renderers, handlers, messages, notices, ctx, exitListeners, emit, run, start, status, spawnCalls, spawnSpec };
 }
 
 test("the factory registers the tools, the command, the renderer and two handlers, and starts nothing", t => {
 	const f = fixture(t);
-	assert.deepEqual([...f.tools.keys()], ["herdr_watch_start", "herdr_watch_status", "herdr_watch_stop"]);
+	assert.deepEqual([...f.tools.keys()], ["herdr_spawn", "herdr_watch_start", "herdr_watch_status", "herdr_watch_stop"]);
 	assert.deepEqual([...f.commands.keys()], ["herdr-watch"]);
 	assert.deepEqual([...f.renderers.keys()], [CUSTOM_TYPE]);
 	assert.deepEqual([...f.handlers.keys()].sort(), ["session_shutdown", "session_start"]);
@@ -184,6 +221,177 @@ test("findAskScript takes HERDR_SKILL_DIR alone, else the installed skill, else 
 	mkdirSync(join(own, "scripts"), { recursive: true });
 	writeFileSync(join(own, "scripts/ask.py"), "");
 	assert.equal(findAskScript({ HERDR_SKILL_DIR: own }, home, kit).path, join(own, "scripts/ask.py"));
+	assert.deepEqual(findSkillScript("spawn.py", {}, home, kit).searched, [join(home, ".agents/skills/herdr/scripts/spawn.py"), join(kit, "spawn.py")]);
+	assert.deepEqual(findSkillScript("spawn.py", { HERDR_SKILL_DIR: own }, home, kit), { path: undefined, searched: [join(own, "scripts/spawn.py")] });
+});
+
+const spawnTask = (root: string, reply: object, extra: object = {}) =>
+	({ harness: "pi", role: "worker", model: "prov/model-a", thinking: "high", cwd: root, prompt: JSON.stringify(reply), ...extra });
+
+test("herdr_spawn starts the pane with spawn.py, watches it, and returns the spawn facts and the task id", async t => {
+	const f = fixture(t);
+	const reply = "pane=w7:p3 agent=pi\n--- reply ---\nDone: the change\n";
+	const before = Date.now();
+	const result = await f.run("herdr_spawn", spawnTask(f.root, { sleep: 0.5, reply }, { label: "fix" }));
+	assert.ok(Date.now() - before < 5000);
+	assert.equal(result.isError, undefined);
+	assert.equal(f.messages.length, 0);
+	const close = `python3 ${join(f.skill, "scripts/close.py")} w7:p3`;
+	const lines = result.content[0].text.split("\n");
+	assert.equal(lines[0], "Started pane w7:p3 (proj-worker-1): harness pi, role worker, model prov/model-a (request), thinking high, placement new tab 'worker'.");
+	assert.match(lines[1], /^Started watch w1 \(fix\) on pane w7:p3 \(pid \d+, timeout 1500s\)\.$/);
+	assert.ok(lines.includes("Do not wait or poll: continue with other work."));
+	assert.ok(lines.includes(`After you verify the result, close the pane: ${close}`));
+	const { spawn, id, pane, name, pid, files } = result.details;
+	assert.deepEqual([id, pane, name, typeof pid], ["w1", "w7:p3", "proj-worker-1", "number"]);
+	assert.deepEqual(spawn, { name: "proj-worker-1", pane_id: "w7:p3", model: "prov/model-a", model_source: "request", thinking: "high", placement: "new tab 'worker'", status: "idle" });
+	assert.deepEqual(f.spawnCalls(), [{ argv: ["--harness", "pi", "--role", "worker", "--model", "prov/model-a", "--thinking", "high", "--cwd", f.root], cwd: f.root }]);
+	assert.match(await f.status(), /^w1  running  pane=w7:p3  name=proj-worker-1  label=fix  elapsed=\d+s  pid=\d+$/);
+	await until(() => f.messages.length === 1, "the notification");
+	assert.deepEqual(JSON.parse(readFileSync(`${files.prompt}.argv.json`, "utf8")), ["w7:p3", "--file", files.prompt, "--timeout", "1500", "--max-chars", "1000000"]);
+	const { message } = f.messages[0];
+	assert.equal(message.content, [
+		"<herdr-task-notification>",
+		"task: w1 (fix)",
+		"pane: w7:p3 (proj-worker-1)",
+		"status: reply",
+		"exit: 0",
+		`output file: ${files.stdout}`,
+		`reply (first ${reply.length} characters):`,
+		"pane=w7:p3 agent=pi\n--- reply ---\nDone: the change",
+		`close: ${close}`,
+		"</herdr-task-notification>",
+	].join("\n"));
+	assert.equal(message.details.name, "proj-worker-1");
+	assert.deepEqual(f.notices, ["herdr-watch w1 (fix): pane w7:p3 (proj-worker-1) finished: reply (exit 0)"]);
+	const theme = { fg: (_color: string, value: string) => value, bg: (_color: string, value: string) => value };
+	const rendered = (f.renderers.get(CUSTOM_TYPE)(message, { expanded: false, outputPad: 0 }, theme).render(120) as string[]).map(line => line.trimEnd()).filter(Boolean);
+	assert.match(rendered[0], /^herdr-watch w1 \(fix\) · pane w7:p3 \(proj-worker-1\) · reply · exit 0 · \d+s$/);
+	assert.equal(rendered[1], "Done: the change");
+});
+
+test("herdr_spawn passes unattended, strict and extra_args to spawn.py, and the native arguments after --", async t => {
+	const f = fixture(t);
+	const result = await f.run("herdr_spawn", spawnTask(f.root, { reply: "ok" }, {
+		harness: "claude", model: undefined, thinking: undefined, unattended: true, strict: true, extra_args: ["--allowedTools", "Bash(git log:*)"],
+	}));
+	assert.match(result.content[0].text, /^Started pane w7:p3 \(proj-worker-1\): harness claude, role worker, model harness default, thinking harness default, placement new tab 'worker'\.\n/);
+	assert.deepEqual(f.spawnCalls().map(call => call.argv), [
+		["--harness", "claude", "--role", "worker", "--cwd", f.root, "--strict", "--unattended", "--", "--allowedTools", "Bash(git log:*)"],
+	]);
+	await until(() => f.messages.length === 1, "the notification");
+	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {}, { extra_args: ["--unattended"] })), /--unattended is an option of spawn\.py, not a native argument\. Set unattended to true\./);
+	assert.equal(f.spawnCalls().length, 1);
+});
+
+test("a failed start gives an error result with the exit code and the output tails, and starts no watch", async t => {
+	const f = fixture(t);
+	const bad = await f.run("herdr_spawn", spawnTask(f.root, { reply: "never" }, { thinking: "huge" }));
+	assert.equal(bad.isError, true);
+	const text = bad.content[0].text;
+	assert.match(text, /^spawn\.py failed: exit 2 \(an input is not valid, nothing was started\)\. No watch was started\.\n/);
+	assert.match(text, /\nstderr \(last \d+ characters\):\nerror: --thinking must be one of: off, minimal, low, medium, high, xhigh, max\n/);
+	assert.match(text, /\nstdout \(last 0 characters\):\n\(empty\)$/);
+	assert.doesNotMatch(text, /close:/);
+	assert.deepEqual(bad.details, { spawn: null, exitCode: 2, signal: null, timedOut: false, aborted: false });
+
+	f.spawnSpec({ exit: 1 });
+	const failed = await f.run("herdr_spawn", spawnTask(f.root, { reply: "never" }));
+	assert.equal(failed.isError, true);
+	assert.match(failed.content[0].text, /^spawn\.py failed: exit 1 \(the start failed, spawn\.py closed the new pane again\)\. No watch was started\.\n/);
+	assert.match(failed.content[0].text, /\nmodel: prov\/model-a \(from request\)\nerror: agent start failed and the new pane was closed: no agent\n/);
+
+	f.spawnSpec({ exit: 4 });
+	const blocked = await f.run("herdr_spawn", spawnTask(f.root, { reply: "never" }));
+	const lines = blocked.content[0].text.split("\n");
+	assert.equal(blocked.isError, true);
+	assert.equal(lines[0], "spawn.py failed: exit 4 (the agent stopped at a startup question, the pane stays open). No watch was started.");
+	assert.match(lines[1], /^Read the question with `herdr agent read w7:p3 --source visible`, show it to the user/);
+	assert.equal(lines[2], "pane: w7:p3 (proj-worker-1)");
+	assert.match(lines[3], /^stderr \(last \d+ characters\):$/);
+	assert.doesNotMatch(blocked.content[0].text, /close:/);
+	assert.match(blocked.content[0].text, /\nstdout \(last \d+ characters\):\n\{"name": "proj-worker-1", "pane_id": "w7:p3".*"status": "blocked"\}$/);
+	assert.equal(blocked.details.spawn.pane_id, "w7:p3");
+
+	assert.equal(f.spawnCalls().length, 3);
+	assert.equal(await f.status(), "No herdr watches in this session.");
+	assert.deepEqual(readdirSync(f.tmp), []);
+	await new Promise(done => setTimeout(done, 200));
+	assert.equal(f.messages.length, 0);
+});
+
+test("a herdr_spawn notification has no close line after a timeout (124) or a blocked status (4)", async t => {
+	const f = fixture(t);
+	const exits = [124, 4, 3, 5, 6];
+	for (const exit of exits) await f.run("herdr_spawn", spawnTask(f.root, { exit, reply: `exit ${exit}\n` }));
+	await until(() => f.messages.length === exits.length, "five notifications");
+	const byExit = Object.fromEntries(f.messages.map(sent => [sent.message.details.exitCode, sent.message.content as string]));
+	assert.deepEqual(Object.keys(byExit).map(Number).sort((a, b) => a - b), [3, 4, 5, 6, 124]);
+	const close = `\nclose: python3 ${join(f.skill, "scripts/close.py")} w7:p3\n</herdr-task-notification>`;
+	for (const exit of [124, 4]) {
+		assert.match(byExit[exit], /\npane: w7:p3 \(proj-worker-1\)\n/, `exit ${exit}`);
+		assert.doesNotMatch(byExit[exit], /\nclose: /, `exit ${exit}`);
+	}
+	for (const exit of [3, 5, 6]) assert.ok(byExit[exit].endsWith(close), `exit ${exit}`);
+});
+
+test("herdr_spawn refuses the coordinator role and bad inputs before any process starts", async t => {
+	const f = fixture(t);
+	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {}, { role: "coordinator" })),
+		/^Error: herdr_spawn starts task sessions only\. A coordinator is a primary session, not a task session\. For a coordinator handoff, run spawn\.py/);
+	await assert.rejects(f.run("herdr_spawn", spawnTask("relative/dir", {})), /cwd must be an absolute path/);
+	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {}, { prompt_file: "task.md" })), /exactly one of prompt and prompt_file/);
+	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {}, { timeout_seconds: 0 })), /timeout_seconds must be a whole number/);
+	const empty = join(f.root, "empty-skill");
+	mkdirSync(empty);
+	process.env.HERDR_SKILL_DIR = empty;
+	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {})), new RegExp(`spawn\\.py of the herdr skill was not found\\. Searched: ${join(empty, "scripts/spawn.py")}\\.`));
+	mkdirSync(join(empty, "scripts"));
+	writeFileSync(join(empty, "scripts/spawn.py"), FAKE_SPAWN);
+	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {})), /ask\.py of the herdr skill was not found beside spawn\.py/);
+	assert.deepEqual(f.spawnCalls(), []);
+	assert.equal(existsSync(join(empty, "scripts/spawn-calls.jsonl")), false);
+	assert.deepEqual(readdirSync(f.tmp), []);
+});
+
+test("an abort while spawn.py runs stops it, and no watch starts", async t => {
+	const f = fixture(t);
+	f.spawnSpec({ sleep: 30 });
+	const control = new AbortController();
+	const before = Date.now();
+	const pending = f.run("herdr_spawn", spawnTask(f.root, { reply: "never" }), control.signal);
+	await until(() => f.spawnCalls().length === 1, "spawn.py runs");
+	control.abort();
+	const result = await pending;
+	assert.ok(Date.now() - before < 10000);
+	assert.equal(result.isError, true);
+	assert.match(result.content[0].text, /^The tool call was stopped while spawn\.py ran\. No watch was started\.\nA new pane can be open without a task/);
+	assert.equal(result.details.aborted, true);
+	assert.equal(await f.status(), "No herdr watches in this session.");
+	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {}), control.signal), /stopped before spawn\.py started/);
+	assert.equal(f.spawnCalls().length, 1);
+});
+
+test("a spawn.py that ignores SIGTERM gets SIGKILL after the grace time", async t => {
+	const f = fixture(t);
+	f.spawnSpec({ sleep: 30, ignore_term: true });
+	const control = new AbortController();
+	const pending = f.run("herdr_spawn", spawnTask(f.root, { reply: "never" }), control.signal);
+	await until(() => f.spawnCalls().length === 1, "spawn.py runs");
+	const before = Date.now();
+	control.abort();
+	const result = await pending;
+	const waited = Date.now() - before;
+	assert.ok(waited >= SPAWN_KILL_GRACE_MS - 100 && waited < SPAWN_KILL_GRACE_MS + 5000, `waited ${waited} ms`);
+	assert.equal(result.isError, true);
+	assert.deepEqual([result.details.aborted, result.details.exitCode, result.details.signal], [true, null, "SIGKILL"]);
+	assert.equal(await f.status(), "No herdr watches in this session.");
+});
+
+test("lastJsonLine takes the last line that is a JSON object", () => {
+	assert.deepEqual(lastJsonLine('{"a": 1}\nnoise\n{"b": 2}\n\n'), { b: 2 });
+	assert.deepEqual(lastJsonLine('{"a": 1}\n[1, 2]\n{broken\n'), { a: 1 });
+	assert.equal(lastJsonLine("no json"), undefined);
 });
 
 test("status lists running and done watches, and one watch with the tail of its output", async t => {

@@ -1865,7 +1865,7 @@
      "group": "g-c-herdr",
      "label": "herdr-watch",
      "kind": "comp-herdr",
-     "summary": "A Pi extension that waits on a Herdr pane in the background and delivers the reply as a task notification.",
+     "summary": "A Pi extension that starts a task session in a Herdr pane or prompts a pane that exists, waits on it in the background, and delivers the reply as a task notification.",
      "inputs": "herdr enabled, the herdr tool, Python 3, the herdr skill scripts",
      "consent": "none",
      "doc": "packages/tenantext/docs/herdr-watch.md",

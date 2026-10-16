@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { visibleWidth } from '@earendil-works/pi-tui';
+import { resetCapabilitiesCache, setCapabilities, visibleWidth } from '@earendil-works/pi-tui';
 import {
   ABSENT_FINGERPRINT, applySidebarSettingsCommand, defaultSidebarSettings, loadSidebarSettings, movePanel,
   parseSidebarSettingsCommand, resolvePanelRef, runSidebarSettingsCommand, saveSidebarSettings, sidebarSettingsPath,
@@ -289,7 +289,11 @@ test('settings actions leave notebook, draft, queue revision and footer data unt
   assert.deepEqual(promptrFiles.filter(name => !name.startsWith('projects')), ['sidebar.json'], 'only sidebar.json is written');
 });
 
-test('chartGraphics reaches the subagent graph; a suspended plot keeps its rows and restores afterwards', () => {
+/** A terminal without an image protocol, so the test does not depend on the terminal: in Herdr (`TERM_PROGRAM=herdr`) pi-tui selects kitty images. */
+const plainTerminal = t => { setCapabilities({ images: null, trueColor: false, hyperlinks: false }); t.after(resetCapabilitiesCache); };
+
+test('chartGraphics reaches the subagent graph; a suspended plot keeps its rows and restores afterwards', t => {
+  plainTerminal(t);
   const telemetry = { ...createUnavailableTelemetry('/tmp/promptr-fixture').snapshot(), subagentUsage: {
     runs: [{ id: 'r1:0', runId: 'r1', agent: 'scout', metadataPath: '/tmp/none', input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.02, pricedRuns: 1 }],
     totals: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, cost: 0.02, pricedRuns: 1 }, unavailable: 0, pending: 0, limited: false,

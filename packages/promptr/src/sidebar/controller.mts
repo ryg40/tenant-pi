@@ -1,7 +1,7 @@
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type { ExtensionAPI, ExtensionContext, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
-import { isKeyRelease, isKeyRepeat, matchesKey, type AutocompleteItem, type OverlayHandle, type TUI } from "@earendil-works/pi-tui";
+import { isKeyRelease, isKeyRepeat, matchesKey, type AutocompleteItem, type TUI } from "@earendil-works/pi-tui";
 import { PasteGuard } from "../companion/view.mts";
 import type { PendingQueue } from "../queue/pending.mts";
 import { loadTrackerBinding, nodeBindingIoDeps } from "../tracking/binding-io.mts";
@@ -72,75 +72,12 @@ export function sidebarChartGraphics(tui: Parameters<typeof hasCapturingOverlay>
   return { imageOwner, suspendPlot: hasCapturingOverlay(tui) };
 }
 
-type HideOverlayHost = { hideOverlay(): void };
 type OverlayStackHost = { overlayStack?: unknown };
 
 /** Entries of the renderer's overlay stack, or undefined when the renderer does not expose them. */
 function overlayEntries(tui: TUI | undefined): readonly unknown[] | undefined {
   const stack = (tui as OverlayStackHost | undefined)?.overlayStack;
   return Array.isArray(stack) ? stack : undefined;
-}
-
-const RENDERER_PROBE = Symbol("promptr.renderer");
-
-/**
- * The renderer object behind `tui`, or undefined when it cannot be reached safely. Pi 0.87.1 gives extensions
- * a stable Proxy (`createInteractiveTuiReference`): each read returns a fresh forwarding function, writes go to
- * the current renderer, and it has no own-property or delete traps. A method called through it runs with
- * `this` bound to the current renderer, so a temporary symbol-keyed method returns that object; the probe is
- * then deleted from it. A raw renderer returns itself. The result is accepted only when the probe is visible
- * as its own property, i.e. property identity, descriptors and delete behave normally on it.
- */
-function currentRenderer(tui: TUI): object | undefined {
-  const host = tui as unknown as Record<symbol, unknown>;
-  const probe = function (this: unknown) { return this; };
-  let target: unknown;
-  try {
-    host[RENDERER_PROBE] = probe;
-    target = (host[RENDERER_PROBE] as () => unknown)();
-  } catch { target = undefined; }
-  const real = typeof target === "object" && target !== null
-    && Object.getOwnPropertyDescriptor(target, RENDERER_PROBE)?.value === probe ? target : undefined;
-  try {
-    if (real) delete (real as Record<symbol, unknown>)[RENDERER_PROBE];
-    else host[RENDERER_PROBE] = undefined;
-  } catch { /* best effort; a symbol key is invisible to Pi */ }
-  return real;
-}
-
-/**
- * Pi 0.87.1 completes a `ctx.ui.custom(..., { overlay: true })` interaction by calling `tui.hideOverlay()`,
- * which pops the TOP overlay even when it belongs to another extension. During this overlay's own
- * completion only, route that single synchronous call to this overlay's `OverlayHandle.hide()`
- * (removal by identity), then restore the previous method exactly. A completion before the overlay was
- * shown removes nothing. No other overlay operation is patched and nothing outlives the call.
- *
- * The patch is applied to the renderer object that is current at completion (Pi calls `hideOverlay` on the
- * current renderer), never through Pi's stable proxy: its reads have no identity and it cannot delete. If the
- * renderer cannot be reached, completion is left to Pi unchanged. A routing function that outlives its call
- * (someone replaced it meanwhile) forwards to the previous method, so a leak can never swallow `hideOverlay`.
- */
-function completeOwnedOverlay(tui: TUI, handle: () => OverlayHandle | undefined, complete: () => void): void {
-  const renderer = currentRenderer(tui);
-  if (!renderer) { complete(); return; }
-  const host = renderer as HideOverlayHost;
-  const hadOwn = Object.prototype.hasOwnProperty.call(host, "hideOverlay");
-  const previous = host.hideOverlay;
-  let routing = true;
-  const removeOwn = () => {
-    if (!routing) return Reflect.apply(previous, renderer, []);
-    routing = false;
-    handle()?.hide();
-  };
-  host.hideOverlay = removeOwn;
-  try { complete(); }
-  finally {
-    routing = false;
-    if (host.hideOverlay === removeOwn) {
-      if (hadOwn) host.hideOverlay = previous;
-      else delete (host as Partial<HideOverlayHost>).hideOverlay;
-    }
-  }
 }
 
 export interface OwnedOverlayOptions {
@@ -153,16 +90,15 @@ export interface OwnedOverlayOptions {
 }
 
 /**
- * A UI whose overlay `custom()` interactions (a) remove only their own overlay on completion and (b) never
- * stay mounted above any other overlay entry, capturing or passive. The stack is checked when the factory
- * runs and again at `onHandle`, right after Pi shows the overlay; a foreign overlay shown in between cancels
- * the interaction there: the own entry is removed by identity and the promise resolves with `cancelValue`.
- * Non-overlay calls pass through unchanged.
+ * A UI whose overlay `custom()` interactions never stay mounted above any other overlay entry, capturing or
+ * passive. Pi 1.3.0 completes an overlay interaction with the handle of that overlay, so a completion removes
+ * only its own entry. The stack is checked when the factory runs and again at `onHandle`, right after Pi shows
+ * the overlay; a foreign overlay shown in between cancels the interaction there: the own entry is removed by
+ * identity and the promise resolves with `cancelValue`. Non-overlay calls pass through unchanged.
  */
 export function ownedOverlayUi<U extends Pick<ExtensionUIContext, "custom">>(ui: U, policy: OwnedOverlayOptions = {}): U {
   const custom: ExtensionUIContext["custom"] = (factory, options) => {
     if (!options?.overlay) return ui.custom(factory, options);
-    let handle: OverlayHandle | undefined;
     let host: TUI | undefined;
     let finish: ((result: unknown) => void) | undefined;
     let blocked = false;
@@ -175,7 +111,7 @@ export function ownedOverlayUi<U extends Pick<ExtensionUIContext, "custom">>(ui:
     return ui.custom((tui, theme, keybindings, done) => {
       host = tui;
       policy.onTui?.(tui);
-      finish = (result) => completeOwnedOverlay(tui, () => handle, () => (done as (value: unknown) => void)(result));
+      finish = done as (value: unknown) => void;
       if (others(tui, 0)) {
         // Not shown yet: completing now removes nothing, and Pi never shows a closed interaction.
         block();
@@ -183,7 +119,6 @@ export function ownedOverlayUi<U extends Pick<ExtensionUIContext, "custom">>(ui:
       }
       return factory(tui, theme, keybindings, (result) => finish!(result));
     }, { ...options, onHandle: (next) => {
-      handle = next;
       if (blocked) return;
       if (others(host, 1)) { block(); return; }
       options.onHandle?.(next);
@@ -539,7 +474,7 @@ export function registerSidebar(pi: ExtensionAPI, hooks: SidebarHooks) {
       if (waitTimer) clearInterval(waitTimer);
       waitTimer = undefined;
     };
-    /** Never stack the passive sidebar above another overlay: Pi's pop-top completion would remove the wrong one. */
+    /** Never stack the passive sidebar above another overlay; wait until it closes, as `ownedOverlayUi` does for dialogs. */
     const waitForOverlays = () => {
       if (waitTimer) return;
       waitTimer = setInterval(() => {

@@ -1,6 +1,6 @@
-// Overlay ownership. Pi 0.87.1 completes a ctx.ui.custom overlay by calling tui.hideOverlay(),
-// which pops the TOP overlay. The harness reproduces that exact behavior on a real pi-tui overlay stack.
-// Promptr must remove only its own overlays and leave a foreign dialog's entry, promise, focus and input alone.
+// Overlay ownership. Pi 1.3.0 completes a ctx.ui.custom overlay with the handle of that overlay. The harness
+// reproduces that behavior on a real pi-tui overlay stack. Promptr must remove only its own overlays, never
+// mount above a foreign dialog, and leave the entry, promise, focus and input of that dialog alone.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -187,14 +187,15 @@ for (const mode of ['regular', 'fullscreen']) test(`${mode}: own dialog transiti
 test('ownedOverlayUi removes only its own entry and never stays mounted above another overlay', async () => {
   assert.equal(typeof controller.ownedOverlayUi, 'function', 'ownedOverlayUi is exported');
   const tui = new TuiMainScreen(terminal()); tui.requestRender = () => {};
-  // Pi 0.87.1 showExtensionCustom, verbatim in behavior: close() pops the top overlay.
+  // Pi 1.3.0 showExtensionCustom, verbatim in behavior: close() hides the handle of its own overlay.
   const ui = { custom(factory, options) {
     return new Promise(resolve => {
       let closed = false;
-      const close = value => { if (closed) return; closed = true; if (options?.overlay) tui.hideOverlay(); resolve(value); };
+      let handle;
+      const close = value => { if (closed) return; closed = true; if (options?.overlay) handle?.hide(); resolve(value); };
       Promise.resolve(factory(tui, theme, {}, close)).then(component => {
         if (closed || !options?.overlay) return; // non-overlay custom replaces the editor instead
-        const handle = tui.showOverlay(component, typeof options.overlayOptions === 'function' ? options.overlayOptions() : options.overlayOptions);
+        handle = tui.showOverlay(component, typeof options.overlayOptions === 'function' ? options.overlayOptions() : options.overlayOptions);
         options?.onHandle?.(handle);
       });
     });

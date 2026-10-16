@@ -99,6 +99,7 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    The work directory needs an existing parent and cannot be a symlink, the clone, the live agent directory, or their ancestors.
    Qualification installs into a private run directory and edits only a candidate copy.
    It checks runtime versions, repository checks, package tests, generation, and one core-only loopback print reply.
+   Before the repository checks, it rebuilds the architecture pages and the explainer of the candidate copy with the new pin: the steps `pages-architecture`, `pages-architecture-local` and `pages-explainer`.
    A failure blocks the move unless the proposed pin change itself fixes it and a fresh qualification proves that fix.
 
 2. Inspect the isolation fields separately from the test result.
@@ -138,6 +139,16 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    Check the tested version, core npm spec, validator anchor, and accepted range from the new pin to the next minor line.
    See the [pin move rule](release-checklist.md#gates) for separately reviewed ranges and prerelease pins.
 
+   Then rebuild the pages that hold the core spec, like the `pages-*` steps of the qualification:
+
+   ```sh
+   PYTHONDONTWRITEBYTECODE=1 python3 scripts/architecture_build.py
+   PYTHONDONTWRITEBYTECODE=1 python3 scripts/architecture_build.py --local
+   PYTHONDONTWRITEBYTECODE=1 python3 scripts/explainer_build.py
+   ```
+
+   Run the local build only when `docs/architecture/local-values.json` exists; a published copy does not have it.
+
    Warning: the pin editor replaces both tracked files; preserve unrelated edits before running it.
 
 2. Move Promptr's two exact package pins and regenerate its lock file.
@@ -165,6 +176,7 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    | Files | Review |
    | --- | --- |
    | `config/manifest.json`, `scripts/validate.py` | Core pin, range, core anchor, and Promptr readiness fact. |
+   | `docs/architecture.html`, `EXPLAINER.html`, and `docs/architecture-local.html` when it exists | Rebuilt pages only; no hand edit. |
    | `packages/promptr/package.json`, `packages/promptr/package-lock.json` | Exact package pins and resolved dependencies. |
    | `docs/packages.md`, `docs/workflow-modules.md` | Core and Promptr rows, package readiness, and version-scoped warnings. |
    | The foundation table of the development repository, if your copy has one | Core and Promptr rows. |

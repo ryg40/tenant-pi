@@ -86,10 +86,10 @@ The changelog has no `Breaking Changes` heading. That does not prove compatibili
 | The `kimi-coding` provider uses OpenAI Chat Completions; a `models.json` override of its base URL must include `/v1` | The kit writes `models.json` only from a validated `inputs.modelsFile` input; see [direct providers](guides/wizard.md#direct-providers). A base URL in that input or in a user `models.json` with such an override needs `/v1`. | No `kimi-coding` request verified. |
 | `--model` prefers the provider with credentials when several providers offer the model; `--models` and `enabledModels` add a model for each such provider and warn | Generated `enabledModels` entries are `provider/model` patterns from the overlay. The qualification print launch names its provider and model. | No interactive model cycling verified. |
 | A resumed session restores its active tools; `--tools +name` and `-name` apply to them | Promptr's generator start passes `--tools read,write` to a new session. Its Herdr pane starts pass no `--tools`. | No resumed session verified. |
-| `done()` of `ctx.ui.custom({ overlay: true })` closes its own overlay, not the top overlay | Pi now closes the overlay through its handle. Promptr's sidebar keeps its workaround for the old `hideOverlay` call; Pi 1.3.0 does not reach that route. | Promptr tests pass; no interactive overlay check verified. |
+| `done()` of `ctx.ui.custom({ overlay: true })` closes its own overlay, not the top overlay | Pi now closes the overlay through its handle. Promptr's sidebar no longer patches `hideOverlay` for the old call, and its test fixtures close an overlay through its handle. | Promptr tests pass; no interactive overlay check verified. |
 | Model switching drops thinking blocks of another model; provider, retry and catalog fixes; malformed tool-call JSON fails validation; `sessionShareDestination` for `/share` | No kit provider, profile, setting or key binding default changes. | Provider and model behavior remain unverified. |
 
-Promptr's build, 783 tests, typecheck and offline smoke pass with both exact dependencies at `1.3.0`.
+Promptr's build, 781 tests, typecheck and offline smoke pass with both exact dependencies at `1.3.0`.
 OpenViking's 295 package tests and its network-blocked resolver and factory-load check pass with Pi `1.3.0` candidate dependencies.
 The earlier interactive no-model start at `1.1.0` remains historical evidence, not a `1.3.0` interactive trial.
 A kit dependency change does not update an installed Promptr copy or resolve its drift.

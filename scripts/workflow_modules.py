@@ -54,7 +54,7 @@ PROMPTR_PREREQUISITES = (
     {"code": "local_package_load", "subject": "promptr", "status": "met",
      "fact": "Pi 1.0.2 and Pi 1.0.3 load the built packages/promptr as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills."},
     {"code": "pi_line_build_and_tests", "subject": "promptr", "status": "met",
-     "fact": "The package pins pi-tui and pi-coding-agent 1.3.0. With both dependencies at 1.3.0, the build, the 783 tests, the typecheck and `npm run smoke` pass. `npm run smoke:installed` and a package load on Pi 1.3.0 are not verified."},
+     "fact": "The package pins pi-tui and pi-coding-agent 1.3.0. With both dependencies at 1.3.0, the build, the 781 tests, the typecheck and `npm run smoke` pass. `npm run smoke:installed` and a package load on Pi 1.3.0 are not verified."},
     {"code": "build_step_required", "subject": "promptr", "status": "open",
      "fact": "packages/promptr/index.ts re-exports dist/src/extension/index.mjs; dist/ is ignored and absent in the tree, so `npm ci` and `npm run build` must run first."},
     {"code": "host_module_dependency", "subject": "@earendil-works/pi-tui@1.3.0", "status": "open",

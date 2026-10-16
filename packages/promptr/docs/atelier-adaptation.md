@@ -61,7 +61,7 @@ Not imported: `extensions/index.ts` (installs the Atelier footer, editor and `/a
 - `src/sidebar/controller.mts` owns the lifecycle:
   - One session per Pi session; telemetry attaches disabled and runs only while the sidebar is shown.
   - Input is read only while focused. Each focus session gets a fresh paste parser; pasted text is dropped while focused.
-  - Promptr overlays close only their own entry. Observed with Pi 0.87.1: extensions receive a stable TUI proxy (`createInteractiveTuiReference`). Completion resolves the real renderer and patches `hideOverlay` there for one call, then restores it by identity. If the renderer cannot be reached, Pi's normal completion runs and nothing is patched.
+  - Promptr overlays close only their own entry. Pi 1.3.0 completes a `ctx.ui.custom(..., { overlay: true })` interaction with the handle of that overlay, also below another overlay (source reading). Promptr patches nothing on the renderer. Before Pi 1.3.0, a completion closed the top overlay, and Promptr patched `hideOverlay` for one call. With a Pi version before 1.3.0, the completion of a Promptr overlay can close the overlay of another extension above it.
   - The sidebar never mounts above another overlay; it waits (250 ms polling) and `/promptr status` says so. Panels and usage are refused while another extension's overlay is open.
   - No `git status` snapshot runs at startup; tracker binding inference runs `git remote` only in trusted projects.
 

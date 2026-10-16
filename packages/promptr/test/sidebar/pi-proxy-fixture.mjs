@@ -1,4 +1,4 @@
-// Pi 0.87.1's stable TUI reference. InteractiveMode passes `createInteractiveTuiReference(() => this.renderer)`
+// Pi's stable TUI reference. InteractiveMode passes `createInteractiveTuiReference(() => this.renderer)`
 // to extension factories, not the renderer: each read returns a fresh forwarding function, writes reach the current
 // renderer, and it has no own-property or delete traps. It is not a package export, so load the pinned devDependency file.
 import { TuiAltScreen, TuiMainScreen } from '@earendil-works/pi-tui';
@@ -16,17 +16,18 @@ export function fullscreenExitLoop(renderer, limit = 100) {
   return { spins, terminated: !renderer.hasOverlayEntries };
 }
 
-/** A Pi-faithful `showExtensionCustom` over a stable reference: factory now, show in a microtask, close pops the top. */
+/** A Pi 1.3.0-faithful `showExtensionCustom` over a stable reference: factory now, show in a microtask, close hides its own handle. */
 export function piCustomUi(ref, theme = {}) {
   return {
     custom(factory, options) {
       return new Promise(resolve => {
         let closed = false;
-        const close = value => { if (closed) return; closed = true; if (options?.overlay) ref.hideOverlay(); resolve(value); };
+        let handle;
+        const close = value => { if (closed) return; closed = true; if (options?.overlay) handle?.hide(); resolve(value); };
         Promise.resolve(factory(ref, theme, {}, close)).then(component => {
           if (closed || !options?.overlay) return;
           const overlayOptions = typeof options.overlayOptions === 'function' ? options.overlayOptions() : options.overlayOptions;
-          const handle = ref.showOverlay(component, overlayOptions);
+          handle = ref.showOverlay(component, overlayOptions);
           options.onHandle?.(handle);
         });
       });

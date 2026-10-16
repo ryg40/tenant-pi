@@ -6,8 +6,9 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
-// Pi 0.99 supplies these modules at runtime and warns when a package lists them under
-// `dependencies`. An npm install or update restores the upstream manifest.
+// Pi supplies these modules at runtime. Since Pi 0.99.0 it warns when a package lists them under
+// `dependencies`; Pi 1.3.0 still does (source reading). An npm install or update restores the
+// upstream manifest.
 const packages = {
   "pi-hermes-memory": ["@earendil-works/pi-tui"],
   "@juicesharp/rpiv-ask-user-question": ["typebox"],

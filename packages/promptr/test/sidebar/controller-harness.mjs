@@ -53,9 +53,9 @@ export function controllerHarness(t, mode = 'tui', options = {}) {
       select: async (_title, labels, opts) => options.select ? options.select(labels, opts) : labels[0],
       input: async () => undefined,
       confirm: async (_title, _message, opts) => { confirms++; return options.confirm ? options.confirm(opts) : true; },
-      // Mirrors Pi 0.87.1 showExtensionCustom: the factory runs synchronously, the overlay is shown in a
-      // microtask, onHandle receives its handle, and every overlay done() calls tui.hideOverlay(), which pops
-      // the TOP overlay whether or not it belongs to the caller (and even if it was never shown).
+      // Mirrors Pi 1.3.0 showExtensionCustom: the factory runs synchronously, the overlay is shown in a
+      // microtask, onHandle receives its handle, and an overlay done() hides that handle: it removes its own
+      // entry, also below another overlay, and nothing when the overlay was never shown.
       custom(factory, opts) {
         active++;
         return new Promise(resolve => {
@@ -64,7 +64,7 @@ export function controllerHarness(t, mode = 'tui', options = {}) {
           const component = factory(ui, theme, {}, value => {
             if (finished) return; finished = true; closed++; active--;
             const i = overlays.indexOf(entry); if (i >= 0) overlays.splice(i, 1);
-            if (opts?.overlay) ui.hideOverlay();
+            if (opts?.overlay) entry.handle?.hide();
             resolve(value);
           });
           entry.component = component;

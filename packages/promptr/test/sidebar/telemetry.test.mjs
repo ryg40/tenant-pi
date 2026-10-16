@@ -7,7 +7,7 @@ import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { visibleWidth } from '@earendil-works/pi-tui';
+import { resetCapabilitiesCache, setCapabilities, visibleWidth } from '@earendil-works/pi-tui';
 import {
   attachSidebarTelemetry, reconstructTodos, STATUS_SOURCE_GAP_ALERT, todosFromToolResult, unavailableTelemetrySnapshot,
 } from '../../dist/src/sidebar/telemetry.mjs';
@@ -529,7 +529,11 @@ test('snapshot and render perform no Git, file, process or network work', async 
   telemetry.dispose();
 });
 
+/** A terminal without an image protocol, so the test does not depend on the terminal: in Herdr (`TERM_PROGRAM=herdr`) pi-tui selects kitty images. */
+const plainTerminal = t => { setCapabilities({ images: null, trueColor: false, hyperlinks: false }); t.after(resetCapabilitiesCache); };
+
 test('usage dialog keeps release interactions, text fallback, trust gate and session lifetime', async t => {
+  plainTerminal(t);
   const root = tempRoot(t);
   const asyncRoot = path.join(root, 'async');
   const sessionFile = path.join(root, 'sessions', 'session-a.jsonl');

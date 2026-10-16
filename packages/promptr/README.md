@@ -36,7 +36,7 @@ The live Pi pilot, its measurements and the Claude path are not proved.
 | Piece | Required | Checked by |
 | --- | --- | --- |
 | Node | `>=24.0.0 <25` (`engines`) | `promptr-doctor` |
-| Pi (`@earendil-works/pi-coding-agent`) | 1.3.x. The build, 783 tests, typecheck and offline smoke pass with the 1.3.0 pins. A start without a model is historical evidence from 1.0.2. The sidebar uses private Pi renderer adapters. A package load or a session with a model on 1.3.0 is not verified | `promptr-doctor`, `/promptr-doctor` |
+| Pi (`@earendil-works/pi-coding-agent`) | 1.3.x. The build, 781 tests, typecheck and offline smoke pass with the 1.3.0 pins. A start without a model is historical evidence from 1.0.2. The sidebar uses private Pi renderer adapters. A package load or a session with a model on 1.3.0 is not verified | `promptr-doctor`, `/promptr-doctor` |
 | Herdr | 0.9.x; needed for `/coordinatr-herdr`, Start fresh and the standalone generator. The sidebar works without it | `promptr-doctor` |
 | OpenKnowledge | an HTTPS origin plus `OPENKNOWLEDGE_USERNAME` / `OPENKNOWLEDGE_PASSWORD` exported in the shell that launches Pi and the companion. Optional: everything works locally without it | `promptr-doctor` (presence only), `--online` reads the bound brief |
 | Tracker | Gitea (default) or GitHub, read-only, chosen per project or machine with `promptr-tracker-init` / `/promptr-tracker init`; tokens `GITEA_TOKEN` / `GITHUB_TOKEN` for private repositories | `promptr-doctor`, `/promptr-tracker status`, `--online` reads page 1 |

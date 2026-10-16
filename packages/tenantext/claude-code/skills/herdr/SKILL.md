@@ -75,7 +75,7 @@ state the task, the limits (read-only or not), and the shape of the answer.
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | The reply is printed | Use the reply. Continue the task of the user. A line `note: reply was an API error` means that the text is the last assistant message that the agent wrote after the prompt, not a final reply. When the note ends with `; from before this prompt`, the text is from an earlier turn. |
+| 0 | The reply is printed | Use the reply. Continue the task of the user. A line `note: reply was an API error` means that the text is the last assistant message that the agent wrote after the prompt, not a final reply. When the note ends with `; from before this prompt`, the text is from an earlier turn. A line `NO NEW REPLY in the transcript` means that the agent wrote no new reply: read the screen tail that follows it, and do not send the prompt again before you know why. The `herdr-watch` status of this case is `no new reply, read the screen`. |
 | 3 | The target works on another turn. Nothing was sent | `herdr agent wait <pane-id> --timeout 600000`, then call `ask.py` again. Or ask the user. |
 | 4 | The target waits on a question or an approval | Show the screen text to the user. Do not answer it yourself. |
 | 5 | Herdr wrote the prompt but no turn started | Read the screen. Do not send the prompt again before you know why. |

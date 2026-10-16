@@ -321,6 +321,74 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(runtime["pi"]["required"], requested)
         self.assertEqual(runtime["pi"]["status"], "match")
 
+    def test_candidate_pages_are_rebuilt_with_the_new_pin_before_the_unit_tests(self):
+        requested = "99.0.0"
+        npm = self.bin / "npm"
+        npm.write_text(npm.read_text().replace(PIN, requested))
+        report = self.qualify(requested)
+        self.assertTrue(report["passed"], report)
+        names = [row["name"] for row in report["steps"]]
+        pages = [name for name, _ in update.PAGES]
+        self.assertEqual(names[names.index("candidate-copy") + 1:names.index("candidate-copy") + 4], pages)
+        self.assertLess(names.index("pages-explainer"), names.index("offline-fixture"))
+        candidate = Path(report["workdir"]) / "kit"
+        spec = update.PACKAGE + "@"
+        self.assertIn(spec + requested, (candidate / "docs/architecture.html").read_text())
+        self.assertNotIn(spec + PIN, (candidate / "docs/architecture.html").read_text())
+        self.assertIn(spec + PIN, (ROOT / "docs/architecture.html").read_text(), "the checkout keeps its page")
+        checks = [["scripts/architecture_build.py", "--check"], ["scripts/explainer_build.py", "--check"]]
+        if (ROOT / update.LOCAL_VALUES).is_file():
+            checks.append(["scripts/architecture_build.py", "--local", "--check"])
+            self.assertIn(spec + requested, (candidate / "docs/architecture-local.html").read_text())
+        for args in checks:
+            result = subprocess.run([sys.executable, "-B", *args], cwd=candidate, capture_output=True, text=True)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
+    def test_page_builds_see_the_candidate_pin_and_a_copy_without_local_values_skips_the_local_page(self):
+        # A fake candidate: the real copy with fake builders that record their arguments and the pin they read.
+        requested = "99.0.0"
+        npm = self.bin / "npm"
+        npm.write_text(npm.read_text().replace(PIN, requested))
+        calls = self.base / "build-calls.jsonl"
+        fake = ("import json, pathlib, sys\n"
+                "pin = json.loads(pathlib.Path('config/manifest.json').read_text())['runtime']['piVersion']\n"
+                f"with open({str(calls)!r}, 'a') as out:\n"
+                "    out.write(json.dumps([pathlib.Path(sys.argv[0]).name, sys.argv[1:], pin]) + '\\n')\n")
+        real_copy = update.candidate_copy
+        def fake_candidate(run, version, env):
+            candidate = real_copy(run, version, env)
+            for name in ("architecture_build.py", "explainer_build.py"):
+                (candidate / "scripts" / name).write_text(fake)
+            local = candidate / update.LOCAL_VALUES
+            if local.is_file():
+                local.rename(local.with_name("local-values.moved"))
+            return candidate
+        offline = (("unit-tests", ["-c", f"open({str(calls)!r}, 'a').write('[\"unit-tests\"]\\n')"]),)
+        with patch.object(update, "candidate_copy", side_effect=fake_candidate), patch.object(update, "OFFLINE", offline):
+            report = update.qualify(requested, str(self.work))
+        self.assertTrue(report["passed"], report)
+        rows = [json.loads(line) for line in calls.read_text().splitlines()]
+        self.assertEqual(rows, [["architecture_build.py", [], requested], ["explainer_build.py", [], requested], ["unit-tests"]])
+        steps = {row["name"]: row for row in report["steps"]}
+        self.assertEqual(steps["pages-architecture-local"]["exitCode"], 0)
+        self.assertEqual(json.loads(Path(steps["pages-architecture-local"]["log"]).read_text()),
+                         {"build": "not_applicable_without_local_values"})
+
+    def test_a_failed_page_build_fails_qualification_and_the_later_steps_still_run(self):
+        real_copy = update.candidate_copy
+        def broken_candidate(run, version, env):
+            candidate = real_copy(run, version, env)
+            (candidate / "docs/architecture/model.json").write_text("not json")
+            return candidate
+        with patch.object(update, "candidate_copy", side_effect=broken_candidate):
+            report = self.qualify()
+        self.assertFalse(report["passed"])
+        codes = {step["name"]: step["exitCode"] for step in report["steps"]}
+        self.assertEqual(codes["pages-architecture"], 2)
+        self.assertEqual(codes["pages-explainer"], 0)
+        self.assertEqual(codes["offline-fixture"], 0)
+        self.assertEqual(codes["generate"], 0)
+
     def test_baseline_drift_is_informational_unless_strict(self):
         real_scan = update._dir_state
         def changed_scan(path, field):

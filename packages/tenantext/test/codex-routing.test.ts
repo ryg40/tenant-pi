@@ -374,7 +374,8 @@ for (const detail of [
 			assert.equal(calls, 1);
 			assert.equal(isRetryableAssistantError(result), false);
 			assert.equal(result.content.some((part) => part.type === "text" && part.text === "Partial output"), partial);
-			assert.doesNotMatch(JSON.stringify(result), /fixture-secret|private-account|private\.invalid|MidStreamFallbackError|Response payload|503/);
+			// The clock fields are numbers of this run, for example a timestamp with the digits 503. The check reads the text only.
+			assert.doesNotMatch(JSON.stringify({ ...result, timestamp: 0, durationMs: 0 }), /fixture-secret|private-account|private\.invalid|MidStreamFallbackError|Response payload|503/);
 		});
 	}
 }

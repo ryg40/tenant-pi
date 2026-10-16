@@ -1,7 +1,8 @@
-// Promptr overlay completion through Pi 0.87.1's real stable TUI reference (createInteractiveTuiReference).
+// Promptr overlay completion through Pi's real stable TUI reference (createInteractiveTuiReference).
 // Its reads return fresh forwarding functions, writes reach the current renderer, and it cannot report or delete own
-// properties. Completion must never leave an own `hideOverlay` on the renderer: a stale one keeps foreign overlays
-// open and turns Pi's fullscreen quit loop (`while (hasOverlayEntries) hideOverlay()`) into a busy hang.
+// properties. Pi 1.3.0 completes an overlay with the handle of that overlay. Completion must never leave an own
+// `hideOverlay` on the renderer: a stale one keeps foreign overlays open and turns Pi's fullscreen quit loop
+// (`while (hasOverlayEntries) hideOverlay()`) into a busy hang.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ownedOverlayUi } from '../../dist/src/sidebar/controller.mjs';
@@ -13,7 +14,6 @@ const ESC = '\x1b';
 const settle = async (n = 3) => { for (let i = 0; i < n; i++) await tick(); };
 const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const ownHide = object => Object.getOwnPropertyDescriptor(object, 'hideOverlay')?.value;
-const probes = object => Object.getOwnPropertySymbols(object).filter(symbol => symbol.description === 'promptr.renderer');
 const box = name => ({ name, render: () => [], invalidate() {}, handleInput() {} });
 const names = tui => tui.overlayStack.map(entry => entry.component.name);
 
@@ -38,7 +38,6 @@ for (const fullscreen of [false, true]) {
       mine.done(i); assert.equal(await mine.promise, i);
       assert.deepEqual(names(real), []);
       assert.equal(own(real, 'hideOverlay'), false, 'no own hideOverlay is left on the renderer');
-      assert.deepEqual(probes(real), [], 'the renderer probe is removed');
     }
     const foreign = await open(ui, 'foreign');
     foreign.done('f'); assert.equal(await foreign.promise, 'f');
@@ -58,7 +57,7 @@ for (const fullscreen of [false, true]) {
   });
 }
 
-test('an existing instance hideOverlay (the split-pane fullscreen hook) is restored by identity through the proxy', async () => {
+test('an existing instance hideOverlay (the split-pane fullscreen hook) stays in place, and completions remove entries by handle', async () => {
   const real = renderer(false, terminal());
   const base = Object.getPrototypeOf(real).hideOverlay;
   let adapterCalls = 0;
@@ -69,16 +68,15 @@ test('an existing instance hideOverlay (the split-pane fullscreen hook) is resto
   for (let i = 0; i < 2; i++) {
     const mine = await open(owned, 'own');
     mine.done(); await mine.promise;
-    assert.equal(ownHide(real), adapter, 'the adapter is the renderer\'s own method again');
+    assert.equal(ownHide(real), adapter, 'the adapter is still the renderer\'s own method');
   }
-  assert.equal(adapterCalls, 0, 'own completions removed their entry by handle, not by pop-top');
   const foreign = await open(ui, 'foreign');
   foreign.done(); await foreign.promise;
-  assert.equal(adapterCalls, 1, 'a foreign completion reaches the adapter');
+  assert.equal(adapterCalls, 0, 'own and foreign completions removed their entry by handle, not by pop-top');
   assert.deepEqual(names(real), []);
 });
 
-test('the routing goes to the renderer that is current at completion, never to a replaced one', async () => {
+test('a completion after a renderer replacement removes its entry from the renderer that shows it, never from a replaced one', async () => {
   const first = renderer(false, terminal());
   const second = renderer(true, terminal());
   let current = first;
@@ -98,56 +96,6 @@ test('the routing goes to the renderer that is current at completion, never to a
   assert.deepEqual(names(second), ['above']);
   above.done(); await above.promise;
   assert.deepEqual(fullscreenExitLoop(second), { spins: 0, terminated: true });
-});
-
-test('a leaked routing function forwards to the previous method instead of swallowing hideOverlay', async () => {
-  const real = renderer(true, terminal());
-  const ref = createInteractiveTuiReference(() => real);
-  // Pi's close, plus a third party that wraps hideOverlay while the own completion is in progress.
-  const ui = { custom(factory, options) {
-    return new Promise(resolve => {
-      let closed = false;
-      const close = value => {
-        if (closed) return; closed = true;
-        ref.hideOverlay();
-        const captured = real.hideOverlay;
-        real.hideOverlay = function () { return captured.call(this); };
-        resolve(value);
-      };
-      Promise.resolve(factory(ref, theme, {}, close)).then(component => {
-        if (closed) return;
-        options.onHandle?.(ref.showOverlay(component, {}));
-      });
-    });
-  } };
-  const mine = await open(ownedOverlayUi(ui), 'own');
-  mine.done(); await mine.promise;
-  assert.deepEqual(names(real), []);
-  ref.showOverlay(box('a'), {}); ref.showOverlay(box('b'), {});
-  ref.hideOverlay();
-  assert.deepEqual(names(real), ['a'], 'the stale wrapper still pops the top');
-  assert.deepEqual(fullscreenExitLoop(real), { spins: 1, terminated: true });
-});
-
-test('a renderer reference that hides its target falls back to Pi\'s own completion and leaves nothing behind', async () => {
-  for (const variant of ['ignored writes', 'unbound methods']) {
-    const real = renderer(false, terminal());
-    const ref = new Proxy({}, {
-      get: (_target, property) => {
-        const value = Reflect.get(real, property, real);
-        return typeof value === 'function' && variant === 'ignored writes' ? value.bind(real) : value;
-      },
-      set: (_target, property, value) => variant === 'ignored writes' ? true : Reflect.set(real, property, value, real),
-    });
-    const ui = piCustomUi(ref, theme);
-    const mine = await open(ownedOverlayUi(ui), 'own');
-    mine.done('ok'); assert.equal(await mine.promise, 'ok', variant);
-    assert.deepEqual(names(real), [], `${variant}: Pi's pop-top removed the top (own) entry`);
-    assert.equal(own(real, 'hideOverlay'), false, variant);
-    const foreign = await open(ui, 'foreign');
-    foreign.done(); await foreign.promise;
-    assert.deepEqual(names(real), [], variant);
-  }
 });
 
 let foreignCount = 0;
@@ -183,7 +131,6 @@ for (const mode of ['regular', 'fullscreen']) {
     }
     assert.deepEqual(stackOf(h.tui), ['sidebar']);
     assert.equal(ownHide(h.tui), hook, 'the renderer keeps exactly its earlier hideOverlay');
-    assert.deepEqual(probes(h.tui), []);
 
     const f = openForeign(h); await settle();
     assert.deepEqual(stackOf(h.tui), ['sidebar', `foreign${f.id}`]);
@@ -224,7 +171,6 @@ test('renderer replacement through the proxy: completions on the old renderer le
   f.done(); await f.promise;
   assert.deepEqual(stackOf(next), []);
   assert.equal(own(old, 'hideOverlay'), false);
-  assert.deepEqual([probes(old), probes(next)], [[], []]);
   await h.command('promptr', 'on'); await settle();
   openForeign(h); await settle();
   assert.equal(fullscreenExitLoop(next).terminated, true);

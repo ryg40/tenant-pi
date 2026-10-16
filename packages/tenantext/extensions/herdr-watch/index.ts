@@ -15,6 +15,14 @@ const STDERR_LIMIT = 2000;
 const TAIL_LIMIT = 2000;
 /** ask.py clips its reply at 8000 characters by default. The output file keeps the full reply. */
 const ASK_MAX_CHARS = 1_000_000;
+/** A label in the notification has at most this many characters. */
+export const LABEL_LIMIT = 80;
+/** A pane id or an agent name in the notification has at most this many characters. */
+export const PANE_LIMIT = 64;
+/** ask.py exits with 0 and prints this line when the transcript has no new reply. The screen tail follows it. */
+export const NO_NEW_REPLY_LINE = "NO NEW REPLY in the transcript";
+/** The status of that exit 0: the pane gave no reply. */
+export const NO_NEW_REPLY_STATUS = "no new reply, read the screen";
 /** spawn.py waits up to 60 seconds for the agent and runs `pi --list-models` once; this bound covers both. */
 export const SPAWN_TIMEOUT_SECONDS = 180;
 /** After a stop, spawn.py gets this many milliseconds to end on SIGTERM; then its process group gets SIGKILL. */
@@ -114,9 +122,25 @@ export function closeCommand(scripts: string, pane: string): string {
 	return `python3 ${shellWord(join(scripts, "close.py"))} ${shellWord(pane)}`;
 }
 
-export function statusOf(code: number | null | undefined, signal?: string | null): string {
+/** True when the status lines of the output of ask.py, before `--- reply ---` or `--- screen tail ---`, hold the NO NEW REPLY line. */
+export function noNewReply(output: string): boolean {
+	for (const line of output.split("\n")) {
+		if (line === "--- reply ---" || line === "--- screen tail ---") return false;
+		if (line.startsWith(NO_NEW_REPLY_LINE)) return true;
+	}
+	return false;
+}
+
+/** The status word of an ended ask.py. `output` is its standard output: an exit 0 without a new reply has its own word. */
+export function statusOf(code: number | null | undefined, signal?: string | null, output = ""): string {
 	if (code === null || code === undefined) return signal ? `killed by signal ${signal}` : "unknown";
+	if (code === 0 && noNewReply(output)) return NO_NEW_REPLY_STATUS;
 	return EXIT_MEANING[code] ?? "unknown exit code, read the output files";
+}
+
+/** A tool input for one line of the notification: no control character, line break or bidirectional control, at most `limit` characters. */
+export function oneLine(value: string, limit: number): string {
+	return head(value.replace(/[\p{Cc}\p{Zl}\p{Zp}\u200E\u200F\u202A-\u202E\u2066-\u2069]+/gu, " ").replace(/\s+/g, " ").trim(), limit).trimEnd();
 }
 
 export function formatElapsed(ms: number): string {
@@ -137,7 +161,10 @@ function readText(file: string): string {
 }
 
 const titleOf = (watch: Pick<Watch, "id" | "label">) => watch.label ? `${watch.id} (${watch.label})` : watch.id;
-const paneOf = (watch: Pick<Watch, "pane" | "name">) => watch.name ? `${watch.pane} (${watch.name})` : watch.pane;
+const shownPane = (pane: string) => oneLine(pane, PANE_LIMIT);
+const paneOf = (watch: Pick<Watch, "pane" | "name">) => watch.name ? `${shownPane(watch.pane)} (${shownPane(watch.name)})` : shownPane(watch.pane);
+/** The status of a notification that has a reply: the renderer and the notice show it as a success. */
+const isReply = (details: Pick<WatchNotificationDetails, "exitCode" | "status">) => details.exitCode === 0 && details.status === EXIT_MEANING[0];
 /** Exit 124 (timeout) and exit 4 (blocked): the pane still works or waits for the user, so the notification has no close line. */
 const PANE_STILL_WORKS = new Set([124, 4]);
 const exitOf = (watch: Watch) => watch.exitCode !== null && watch.exitCode !== undefined ? String(watch.exitCode) : watch.signal ? `signal ${watch.signal}` : "none";
@@ -146,7 +173,7 @@ const exitOf = (watch: Watch) => watch.exitCode !== null && watch.exitCode !== u
 export function buildNotification(watch: Watch): { content: string; details: WatchNotificationDetails } {
 	const stdout = readText(watch.files.stdout), stderr = readText(watch.files.stderr).trim();
 	const shown = head(stdout, REPLY_LIMIT), rest = stdout.length - shown.length;
-	const status = statusOf(watch.exitCode, watch.signal);
+	const status = statusOf(watch.exitCode, watch.signal, stdout);
 	const lines = [
 		"<herdr-task-notification>",
 		`task: ${titleOf(watch)}`,
@@ -164,7 +191,7 @@ export function buildNotification(watch: Watch): { content: string; details: Wat
 	return {
 		content: lines.join("\n"),
 		details: {
-			id: watch.id, pane: watch.pane, ...(watch.name ? { name: watch.name } : {}), label: watch.label, status,
+			id: watch.id, pane: shownPane(watch.pane), ...(watch.name ? { name: shownPane(watch.name) } : {}), label: watch.label, status,
 			exitCode: watch.exitCode ?? null, signal: watch.signal ?? null,
 			elapsedMs: (watch.endedAt ?? Date.now()) - watch.startedAt,
 			outputFile: watch.files.stdout, stderrFile: watch.files.stderr, truncated: rest > 0,
@@ -174,12 +201,12 @@ export function buildNotification(watch: Watch): { content: string; details: Wat
 
 function summary(watch: Watch, now = Date.now()): string {
 	const elapsed = formatElapsed((watch.endedAt ?? now) - watch.startedAt);
-	const parts = [watch.id, watch.state, `pane=${watch.pane}`];
-	if (watch.name) parts.push(`name=${watch.name}`);
+	const parts = [watch.id, watch.state, `pane=${shownPane(watch.pane)}`];
+	if (watch.name) parts.push(`name=${shownPane(watch.name)}`);
 	if (watch.label) parts.push(`label=${watch.label}`);
 	parts.push(`elapsed=${elapsed}`);
 	if (watch.state === "running") parts.push(`pid=${watch.pid}`);
-	else if (watch.endedAt) parts.push(`exit=${exitOf(watch)} (${statusOf(watch.exitCode, watch.signal)})`);
+	else if (watch.endedAt) parts.push(`exit=${exitOf(watch)} (${statusOf(watch.exitCode, watch.signal, readText(watch.files.stdout))})`);
 	return parts.join("  ");
 }
 
@@ -213,9 +240,14 @@ export function firstReplyLine(content: string): string {
 	return lines.slice(from).find(line => line.trim() && line !== "</herdr-task-notification>") ?? "";
 }
 
+/** Send a signal to the process group of a watch: ask.py and the herdr client. False when no process of the group is left. */
+function signalGroup(pid: number, signal: NodeJS.Signals): boolean {
+	try { process.kill(-pid, signal); return true; } catch { return false; }
+}
+
 /** Stop the process group of the child (ask.py and the herdr client), else the child alone. */
 function terminate(watch: Watch, signal: NodeJS.Signals = "SIGTERM"): void {
-	try { process.kill(-watch.pid, signal); return; } catch { /* no group: fall through */ }
+	if (signalGroup(watch.pid, signal)) return;
 	try { watch.child?.kill(signal); } catch { /* already gone */ }
 }
 
@@ -300,7 +332,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 			pi.sendMessage({ customType: CUSTOM_TYPE, content, display: true, details }, { triggerTurn: true, deliverAs: "followUp" });
 		} catch { /* the runtime is gone */ }
 		try {
-			if (ui?.hasUI) ui.ui.notify(`herdr-watch ${titleOf(watch)}: pane ${paneOf(watch)} finished: ${details.status} (exit ${exitOf(watch)})`, watch.exitCode === 0 ? "info" : "warning");
+			if (ui?.hasUI) ui.ui.notify(`herdr-watch ${titleOf(watch)}: pane ${paneOf(watch)} finished: ${details.status} (exit ${exitOf(watch)})`, isReply(details) ? "info" : "warning");
 		} catch { /* a stale context */ }
 	}
 
@@ -355,12 +387,15 @@ export default function herdrWatch(pi: ExtensionAPI) {
 			throw new Error(`Could not start python3: ${message}`);
 		}
 		const watch: Watch = {
-			id, pane: input.pane, name: input.name, scripts: input.scripts, label: input.label?.trim() || undefined,
+			id, pane: input.pane, name: input.name, scripts: input.scripts, label: oneLine(input.label ?? "", LABEL_LIMIT) || undefined,
 			pid: child.pid, startedAt: Date.now(), files, state: "running", child,
 		};
 		watches.set(id, watch);
 		// The child runs, so "close" follows its exit. An "error" now is a failed kill; the watch goes on.
 		child.on("error", () => {});
+		// A signal from another process can end ask.py alone; SIGTERM to its group then ends the herdr client too.
+		// After a stop or a shutdown the group got SIGTERM already, and a second one does no harm.
+		child.once("exit", (_code, signal) => { if (signal) signalGroup(watch.pid, "SIGTERM"); });
 		child.once("close", (code, signal) => finish(watch, code, signal));
 		if (!exitHook) { process.on("exit", onExit); exitHook = true; }
 		ui = ctx;
@@ -368,7 +403,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 	}
 
 	const watchLines = (watch: Watch, timeout: number) => [
-		`Started watch ${titleOf(watch)} on pane ${watch.pane} (pid ${watch.pid}, timeout ${timeout}s).`,
+		`Started watch ${titleOf(watch)} on pane ${shownPane(watch.pane)} (pid ${watch.pid}, timeout ${timeout}s).`,
 		"Do not wait or poll: continue with other work.",
 		"The reply arrives as a <herdr-task-notification> message when the pane finishes.",
 	];
@@ -474,7 +509,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		const headline = d
 			? `herdr-watch ${titleOf(d)} · pane ${paneOf(d)} · ${d.status} · exit ${d.exitCode ?? d.signal ?? "none"} · ${formatElapsed(d.elapsedMs)}`
 			: "herdr-watch";
-		const color = d?.exitCode === 0 ? "success" : "warning";
+		const color = d && isReply(d) ? "success" : "warning";
 		const replyLine = firstReplyLine(body);
 		const second = expanded ? body : theme.fg("dim", replyLine.length > 160 ? `${replyLine.slice(0, 160)}...` : replyLine);
 		const box = new Box(outputPad, 1, t => theme.bg("customMessageBg", t));
@@ -522,7 +557,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Send a prompt to a pane that exists with herdr_watch_start, not with the blocking ask.py, unless the user says to wait for the reply or not to use the watch.",
 			"After herdr_spawn or herdr_watch_start, do not wait, sleep or poll for the reply. Continue with other work or end the turn; the reply arrives as a <herdr-task-notification> message.",
-			"Act on a <herdr-task-notification> by its status line: a reply, a pane blocked on a question, or a timeout while the pane still works.",
+			"Act on a <herdr-task-notification> by its status line: a reply, no new reply (read the screen), a pane blocked on a question, or a timeout while the pane still works.",
 		],
 		parameters: Type.Object({
 			pane: Type.String({ description: "Pane id or agent name of the Herdr pane" }),
@@ -560,7 +595,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 			if (watch.state !== "running") return { content: text(`Watch ${titleOf(watch)} is ${watch.state} already.`), details: { id: watch.id, state: watch.state } };
 			watch.state = "stopped";
 			terminate(watch);
-			const body = `Stopped watch ${titleOf(watch)}. No notification follows for it. The pane ${watch.pane} keeps running: the prompt can be delivered already. Read its last reply later with last-reply.py of the herdr skill.`;
+			const body = `Stopped watch ${titleOf(watch)}. No notification follows for it. The pane ${shownPane(watch.pane)} keeps running: the prompt can be delivered already. Read its last reply later with last-reply.py of the herdr skill.`;
 			return { content: text(body), details: { id: watch.id, state: watch.state } };
 		},
 	});

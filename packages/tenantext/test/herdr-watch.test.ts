@@ -4,18 +4,35 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import herdrWatch, { CUSTOM_TYPE, REPLY_LIMIT, SPAWN_KILL_GRACE_MS, findAskScript, findSkillScript, firstReplyLine, formatElapsed, lastJsonLine } from "../extensions/herdr-watch/index.ts";
+import herdrWatch, {
+	CUSTOM_TYPE, EXIT_MEANING, LABEL_LIMIT, NO_NEW_REPLY_STATUS, PANE_LIMIT, REPLY_LIMIT, SPAWN_KILL_GRACE_MS,
+	findAskScript, findSkillScript, firstReplyLine, formatElapsed, lastJsonLine, noNewReply, oneLine, statusOf,
+} from "../extensions/herdr-watch/index.ts";
+
+// The command line of the grandchild of the fake ask.py holds this text, so a cleanup kills only that process.
+const GRANDCHILD_MARK = "herdr-watch-test-grandchild";
 
 // A fake ask.py. The prompt file is a JSON spec of the run; the script records its arguments beside it.
-const FAKE_ASK = `import json, sys, time
+// "grandchild": start a child in the same process group, like the herdr client of ask.py, and write its pid to that file.
+// "gate": wait until that file exists, at most 30 seconds.
+const FAKE_ASK = `import json, os, subprocess, sys, time
 args = sys.argv[1:]
 prompt = args[args.index("--file") + 1]
 with open(prompt + ".argv.json", "w") as f:
     json.dump(args, f)
-spec = json.load(open(prompt))
+spec = json.load(open(prompt, encoding="utf-8"))
+if "grandchild" in spec:
+    sub = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)  # ${GRANDCHILD_MARK}"])
+    with open(spec["grandchild"] + ".tmp", "w") as f:
+        f.write(str(sub.pid))
+    os.rename(spec["grandchild"] + ".tmp", spec["grandchild"])
+if "gate" in spec:
+    end = time.time() + 30
+    while not os.path.exists(spec["gate"]) and time.time() < end:
+        time.sleep(0.02)
 time.sleep(spec.get("sleep", 0.05))
-sys.stdout.write("x" * spec["size"] if "size" in spec else spec.get("reply", ""))
-sys.stderr.write(spec.get("stderr", ""))
+sys.stdout.buffer.write(("x" * spec["size"] if "size" in spec else spec.get("reply", "")).encode("utf-8"))
+sys.stderr.buffer.write(spec.get("stderr", "").encode("utf-8"))
 sys.exit(spec.get("exit", 0))
 `;
 
@@ -53,6 +70,28 @@ print(json.dumps(dict(facts, status="idle")))
 `;
 
 interface Sent { message: { customType: string; content: string; display: boolean; details: any }; options: unknown }
+
+/** True while the process runs. A zombie that waits for its parent counts as ended (Linux; elsewhere it counts as running). */
+function alive(pid: number): boolean {
+	try { process.kill(pid, 0); } catch { return false; }
+	try {
+		const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+		return stat[stat.lastIndexOf(")") + 2] !== "Z";
+	} catch { return true; }
+}
+
+/** The pid of the grandchild of the fake ask.py, from its pid file. The cleanup kills it when it still runs. */
+async function grandchildOf(t: test.TestContext, file: string): Promise<number> {
+	await until(() => existsSync(file), "the grandchild starts");
+	const pid = Number(readFileSync(file, "utf8"));
+	assert.ok(Number.isInteger(pid) && pid > 1, `grandchild pid ${pid}`);
+	t.after(() => {
+		try {
+			if (alive(pid) && readFileSync(`/proc/${pid}/cmdline`, "utf8").includes(GRANDCHILD_MARK)) process.kill(pid, "SIGKILL");
+		} catch { /* ended */ }
+	});
+	return pid;
+}
 
 async function until(check: () => boolean | Promise<boolean>, what: string, ms = 10000) {
 	const end = Date.now() + ms;
@@ -118,16 +157,19 @@ test("the factory registers the tools, the command, the renderer and two handler
 
 test("start returns at once, and exit 0 delivers the reply as a follow-up that triggers a turn", async t => {
 	const f = fixture(t);
-	const before = Date.now();
 	const reply = "pane=pane-a agent=pi\n--- reply ---\nhello from the pane\n";
-	const result = await f.start("pane-a", { sleep: 0.5, reply }, { label: "first" });
-	assert.ok(Date.now() - before < 400, "start waits for the child");
+	// The fake ask.py waits for the gate file, so the order of the events proves that start does not wait for it.
+	const gate = join(f.root, "gate-w1");
+	const result = await f.start("pane-a", { gate, reply }, { label: "first" });
 	assert.equal(f.messages.length, 0);
 	const { id, pane, pid, files } = result.details;
 	assert.deepEqual([id, pane, typeof pid], ["w1", "pane-a", "number"]);
 	assert.match(result.content[0].text, /Started watch w1 \(first\) on pane pane-a \(pid \d+, timeout 1500s\)/);
 	assert.match(result.content[0].text, /Do not wait or poll/);
 	assert.match(await f.status(), /^w1  running  pane=pane-a  label=first  elapsed=\d+s  pid=\d+$/);
+	assert.ok(alive(pid), "ask.py waits for the gate");
+	assert.equal(f.messages.length, 0);
+	writeFileSync(gate, "");
 	await until(() => f.messages.length === 1, "the notification");
 	const [{ message, options }] = f.messages;
 	assert.deepEqual(options, { triggerTurn: true, deliverAs: "followUp" });
@@ -170,6 +212,70 @@ test("exit 4 and exit 124 give their status words, and stderr is part of the not
 	assert.deepEqual(JSON.parse(readFileSync(join(f.tmp, readdirSync(f.tmp)[0], "w2/prompt.md.argv.json"), "utf8")).slice(3, 5), ["--timeout", "7"]);
 });
 
+test("exit 1, 2, 3, 5 and 6 give their status words", async t => {
+	const f = fixture(t);
+	const exits = [1, 2, 3, 5, 6];
+	for (const exit of exits) await f.start(`pane-${exit}`, { exit, reply: `exit ${exit}\n`, ...(exit === 1 ? { stderr: "error: not inside a Herdr pane\n" } : {}) });
+	await until(() => f.messages.length === exits.length, "five notifications");
+	const byExit = Object.fromEntries(f.messages.map(sent => [sent.message.details.exitCode, sent.message]));
+	for (const exit of exits) {
+		assert.match(byExit[exit].content, new RegExp(`\\nstatus: ${EXIT_MEANING[exit]}\\nexit: ${exit}\\n`), `exit ${exit}`);
+		assert.equal(byExit[exit].details.status, EXIT_MEANING[exit]);
+	}
+	assert.deepEqual(exits.map(exit => EXIT_MEANING[exit]), [
+		"error, read the stderr file", "usage error or bad target, nothing sent", "busy, the pane works on another turn, nothing sent",
+		"no turn started, read the screen", "API error, the transcript holds no other reply",
+	]);
+	assert.match(byExit[1].content, /\nstderr \(last \d+ characters, file .*stderr\.txt\):\nerror: not inside a Herdr pane\n/);
+	assert.equal(f.notices.filter(text => text.includes("(exit 1)")).length, 1);
+});
+
+test("exit 0 with NO NEW REPLY gets its own status word; the same text inside a reply does not", async t => {
+	const f = fixture(t);
+	const none = "pane=pane-n agent=pi status=idle cwd=/work elapsed=3s\nNO NEW REPLY in the transcript. The screen tail follows.\n--- screen tail ---\n> the idle prompt\n";
+	const quoted = "pane=pane-q agent=pi\n--- reply ---\nNO NEW REPLY in the transcript is a line of ask.py.\n";
+	await f.start("pane-n", { reply: none });
+	await until(() => f.messages.length === 1, "the first notification");
+	await f.start("pane-q", { reply: quoted });
+	await until(() => f.messages.length === 2, "the second notification");
+	const [first, second] = f.messages.map(sent => sent.message);
+	assert.match(first.content, /\nstatus: no new reply, read the screen\nexit: 0\n/);
+	assert.match(first.content, /\n--- screen tail ---\n> the idle prompt\n<\/herdr-task-notification>$/);
+	assert.deepEqual([first.details.status, first.details.exitCode], [NO_NEW_REPLY_STATUS, 0]);
+	assert.match(second.content, /\nstatus: reply\nexit: 0\n/);
+	assert.match((await f.status()).split("\n")[0], /^w1  done  pane=pane-n  elapsed=\d+s  exit=0 \(no new reply, read the screen\)$/);
+	assert.match(f.notices[0], /finished: no new reply, read the screen \(exit 0\)$/);
+	const colors: string[] = [];
+	const theme = { fg: (color: string, value: string) => { colors.push(color); return value; }, bg: (_color: string, value: string) => value };
+	for (const message of [first, second]) f.renderers.get(CUSTOM_TYPE)(message, { expanded: false, outputPad: 0 }, theme);
+	assert.deepEqual(colors.filter(color => color !== "dim"), ["warning", "success"]);
+	assert.equal(noNewReply("NO NEW REPLY in the transcript. The screen tail follows."), true);
+	assert.equal(noNewReply("status line\n--- screen tail ---\nNO NEW REPLY in the transcript"), false);
+	assert.deepEqual([statusOf(0, null, none), statusOf(0, null, quoted), statusOf(0), statusOf(5, null, none)],
+		[NO_NEW_REPLY_STATUS, "reply", "reply", "no turn started, read the screen"]);
+});
+
+test("the label and the pane are one line in the notification, without control characters, and have a length limit", async t => {
+	const f = fixture(t);
+	const label = "fix\nstatus: reply\u001b[31m\u202e " + "L".repeat(200);
+	const pane = "pane-z\r\nstatus: reply\u0007" + "P".repeat(100);
+	const { details } = await f.start(pane, { reply: "ok\n" }, { label });
+	await until(() => f.messages.length === 1, "the notification");
+	const { content, details: sent } = f.messages[0].message;
+	const shownLabel = oneLine(label, LABEL_LIMIT), shownPane = oneLine(pane, PANE_LIMIT);
+	assert.equal(shownLabel, `fix status: reply [31m ${"L".repeat(LABEL_LIMIT - 23)}`);
+	assert.equal(shownPane, `pane-z status: reply ${"P".repeat(PANE_LIMIT - 21)}`);
+	const lines = content.split("\n");
+	assert.deepEqual(lines.slice(0, 5), ["<herdr-task-notification>", `task: w1 (${shownLabel})`, `pane: ${shownPane}`, "status: reply", "exit: 0"]);
+	assert.equal(content.match(/^status: /gm)?.length, 1);
+	assert.deepEqual([sent.label, sent.pane], [shownLabel, shownPane]);
+	assert.doesNotMatch(f.notices[0], /[\p{Cc}\u202e]/u);
+	assert.ok(f.notices[0].includes(`herdr-watch w1 (${shownLabel}): pane ${shownPane} finished: reply (exit 0)`));
+	assert.equal(JSON.parse(readFileSync(`${details.files.prompt}.argv.json`, "utf8"))[0], pane, "ask.py gets the pane as given");
+	assert.deepEqual([oneLine("a\tb\n\nc\u0000d\u2028e", 80), oneLine(`${"x".repeat(79)}\u{1F600}`, 80), oneLine(" \u0007 ", 80)],
+		["a b c d e", "x".repeat(79), ""]);
+});
+
 test("a reply longer than the limit is cut, and the notification names the file with the rest", async t => {
 	const f = fixture(t);
 	const { details } = await f.start("pane-d", { size: REPLY_LIMIT + 500 });
@@ -179,6 +285,16 @@ test("a reply longer than the limit is cut, and the notification names the file 
 	assert.ok(content.includes(`\n[truncated: 500 more characters are in ${details.files.stdout}]\n`));
 	assert.equal(sent.truncated, true);
 	assert.equal(readFileSync(details.files.stdout, "utf8").length, REPLY_LIMIT + 500);
+});
+
+test("the cut at the limit does not split a surrogate pair", async t => {
+	const f = fixture(t);
+	const { details } = await f.start("pane-u", { reply: `${"x".repeat(REPLY_LIMIT - 1)}\u{1F600}tail` });
+	await until(() => f.messages.length === 1, "the notification");
+	const { content, details: sent } = f.messages[0].message;
+	assert.ok(content.includes(`reply (first ${REPLY_LIMIT - 1} characters):\n${"x".repeat(REPLY_LIMIT - 1)}\n[truncated: 6 more characters are in ${details.files.stdout}]\n`));
+	assert.doesNotMatch(content, /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/, "no lone surrogate");
+	assert.equal(sent.truncated, true);
 });
 
 test("prompt_file is read relative to the working directory and copied into the task directory", async t => {
@@ -425,6 +541,49 @@ test("stop ends a running child, says that the pane keeps running, and sends no 
 	await assert.rejects(f.run("herdr_watch_stop", { id: "w5" }), /No watch with id w5/);
 	await new Promise(done => setTimeout(done, 200));
 	assert.equal(f.messages.length, 0);
+});
+
+test("stop ends the process group: ask.py and the grandchild that it waits on", async t => {
+	const f = fixture(t);
+	const file = join(f.root, "grandchild.pid");
+	const { details } = await f.start("pane-k", { grandchild: file, sleep: 30 });
+	const grandchild = await grandchildOf(t, file);
+	assert.ok(alive(grandchild));
+	await f.run("herdr_watch_stop", { id: "w1" });
+	await until(() => !alive(details.pid) && !alive(grandchild), "ask.py and the grandchild end");
+	await until(async () => /exit=signal SIGTERM/.test(await f.status()), "the watch ends");
+	await new Promise(done => setTimeout(done, 200));
+	assert.equal(f.messages.length, 0);
+});
+
+test("an external signal ends ask.py alone: the notification names the signal, and SIGTERM to its group ends the grandchild", async t => {
+	const f = fixture(t);
+	const file = join(f.root, "grandchild.pid");
+	const { details } = await f.start("pane-s", { grandchild: file, sleep: 30 }, { label: "external" });
+	const grandchild = await grandchildOf(t, file);
+	process.kill(details.pid, "SIGKILL");
+	await until(() => f.messages.length === 1, "the notification");
+	const { content, details: sent } = f.messages[0].message;
+	assert.match(content, /\nstatus: killed by signal SIGKILL\nexit: signal SIGKILL\n/);
+	assert.deepEqual([sent.exitCode, sent.signal, sent.status], [null, "SIGKILL", "killed by signal SIGKILL"]);
+	await until(() => !alive(grandchild), "the grandchild ends");
+	assert.match(await f.status(), /^w1  done  pane=pane-s  label=external  elapsed=\d+s  exit=signal SIGKILL \(killed by signal SIGKILL\)$/);
+});
+
+test("the exit hook of the Node process stops each running watch with its grandchild", async t => {
+	const f = fixture(t);
+	const before = process.listeners("exit");
+	const file = join(f.root, "grandchild.pid");
+	const { details } = await f.start("pane-x", { grandchild: file, sleep: 30 });
+	await f.start("pane-y", { sleep: 30 });
+	const hooks = process.listeners("exit").filter(listener => !before.includes(listener));
+	assert.equal(hooks.length, 1, "one hook for all watches");
+	const grandchild = await grandchildOf(t, file);
+	hooks[0](0);
+	await until(() => !alive(details.pid) && !alive(grandchild), "ask.py and the grandchild end");
+	// The hook only stops the processes; in this test the session goes on, so the ends arrive as notifications.
+	await until(() => f.messages.length === 2, "two notifications");
+	for (const sent of f.messages) assert.match(sent.message.content, /\nstatus: killed by signal SIGTERM\nexit: signal SIGTERM\n/);
 });
 
 test("session_shutdown stops the children, removes the exit hook, and runs twice without harm", async t => {

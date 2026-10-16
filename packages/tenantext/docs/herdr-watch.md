@@ -145,6 +145,7 @@ close: python3 <scripts>/close.py <pane_id>
 ```
 
 - The label is in parentheses after the task id, when the watch has one.
+- The label, the pane id and the name are one line each. The extension replaces control characters, line breaks and bidirectional controls with a space. A label has at most 80 characters; a pane id and a name have at most 64. `ask.py` gets the pane as it was given.
 - For a pane that `herdr_spawn` started, the `pane` line names the pane id and the name: `pane: <pane_id> (<name>)`. The last line before `</herdr-task-notification>` gives the command that closes the pane by its id: `close: python3 <scripts>/close.py <pane_id>`. `<scripts>` is the directory of the `spawn.py` that started the pane. Run it after you verify the result.
 - After a timeout (exit 124) or a blocked status (exit 4), the notification has no `close:` line. The pane still works or waits for the user. Do not close it then.
 - A watch from `herdr_watch_start` has only the pane that was given. Its notification has no name and no `close:` line.
@@ -160,6 +161,7 @@ The `status` line gives the meaning of the exit code of `ask.py`:
 | Exit | Status | What to do |
 | --- | --- | --- |
 | 0 | `reply` | Use the reply. |
+| 0 | `no new reply, read the screen` | `ask.py` found no new reply in the transcript. The output holds the screen tail. Read it. Do not send the prompt again before you know why. |
 | 1 | `error, read the stderr file` | Read `stderr.txt`. For example, the session does not run inside a Herdr pane. |
 | 2 | `usage error or bad target, nothing sent` | Check the pane id with `panes.py` of the herdr skill. |
 | 3 | `busy, the pane works on another turn, nothing sent` | Start the watch again later. |
@@ -167,7 +169,7 @@ The `status` line gives the meaning of the exit code of `ask.py`:
 | 5 | `no turn started, read the screen` | Read the screen. Do not send the prompt again before you know why. |
 | 6 | `API error, the transcript holds no other reply` | Read the commit of the agent. Send the task again only in a new pane. |
 | 124 | `timeout, the pane still works` | The prompt was delivered. Wait, then read the reply with `last-reply.py` of the herdr skill. |
-| none | `killed by signal <name>` | Another process ended `ask.py`. |
+| none | `killed by signal <name>` | Another process ended `ask.py`. The extension then sends `SIGTERM` to the process group of `ask.py`, so the `herdr` command that it waited on ends too. |
 
 ## Limits
 
@@ -182,4 +184,4 @@ Not verified: a live Pi session that starts a watch on a Herdr pane, takes a sec
 
 ## Tests
 
-`npm test` runs `test/herdr-watch.test.ts`. The test writes a fake `ask.py` and a fake `spawn.py` and selects them with `HERDR_SKILL_DIR`. The fake `spawn.py` records its arguments and prints a JSON line, or exits with 1, 2 or 4. One case makes it ignore `SIGTERM`, so the `SIGKILL` step runs. No test starts the real `ask.py`, the real `spawn.py` or a `herdr` command.
+`npm test` runs `test/herdr-watch.test.ts`. The test writes a fake `ask.py` and a fake `spawn.py` and selects them with `HERDR_SKILL_DIR`. The fake `ask.py` prints a given output and exits with a given code: 0, 1 to 6 or 124. It can wait for a gate file, and it can start a grandchild in its process group, like the `herdr` command of the real `ask.py`. The cases with a grandchild check that a stop, the exit hook and an external signal end it too. The fake `spawn.py` records its arguments and prints a JSON line, or exits with 1, 2 or 4. One case makes it ignore `SIGTERM`, so the `SIGKILL` step runs. No test starts the real `ask.py`, the real `spawn.py` or a `herdr` command.

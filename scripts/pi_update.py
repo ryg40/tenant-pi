@@ -37,6 +37,15 @@ OFFLINE = (
     ("publish-check", ["scripts/publish_check.py"]),
     ("doc-check", ["scripts/doc_check.py"]),
 )
+# The architecture pages hold the core spec of the manifest, and the unit tests compare each page with
+# its build. The qualifier rebuilds the pages of the candidate copy after the pin edit, before those tests.
+# The local edition needs the development-only values file; a copy without that file has no local page.
+PAGES = (
+    ("pages-architecture", ["scripts/architecture_build.py"]),
+    ("pages-architecture-local", ["scripts/architecture_build.py", "--local"]),
+    ("pages-explainer", ["scripts/explainer_build.py"]),
+)
+LOCAL_VALUES = "docs/architecture/local-values.json"
 
 
 def version(value):
@@ -443,6 +452,14 @@ def print_check(steps, env, generated, requested):
                      0 if passed and len(calls) == 1 and result["exactPartialReply"] and result["warningOnStderr"] else 1)
 
 
+def rebuild_pages(steps, candidate):
+    for name, args in PAGES:
+        if "--local" in args and not (candidate / LOCAL_VALUES).is_file():
+            steps.record(name, {"build": "not_applicable_without_local_values"})
+        else:
+            steps.command(name, [sys.executable, "-B", *args], cwd=candidate)
+
+
 def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
     version(requested)
     run, live = workspace(workdir)
@@ -454,6 +471,7 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
     try:
         candidate = candidate_copy(run, requested, steps.env)
         steps.record("candidate-copy", {"version": requested, "path": str(candidate)})
+        rebuild_pages(steps, candidate)
         installed = install(steps, requested)
         if installed:
             wrapper = pi_wrapper(run, env)

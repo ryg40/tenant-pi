@@ -1,4 +1,4 @@
-"""Small standard-library terminal adapter. JSON remains on stdout; UI uses stderr."""
+"""Small standard-library terminal, shared by every wizard adapter. JSON remains on stdout; UI uses stderr."""
 import contextlib
 import os
 import select
@@ -90,7 +90,7 @@ class Terminal:
             while True:
                 for row in state.rows():
                     self.show(f"{row['group']} {row['number']} [{'x' if row['marked'] else ' '}] {row['id']} | {row['detected']} | {row['action']}")
-                    self.show("  requires: " + ", ".join(row["requires"]) + "; skills: " + ", ".join(row["skills"]))
+                    self.show("  requires: " + ", ".join(row["requires"]) + "; details: " + ", ".join(row["details"]))
                 value = self.ask("Number toggles; c Continue; b Back; q Cancel")
                 if value == "c":
                     return
@@ -116,7 +116,7 @@ class Terminal:
                     lines.append((">" if row is active else " ") + f"{row['number']} [{'x' if row['marked'] else ' '}] {row['id']} | {row['detected']} | {row['action']}")
                 lines += [active["group"] + " | " + active["status"] + " | not verified",
                           "Requires: " + ", ".join(active["requires"]),
-                          "Details (d): " + ", ".join(active["extensions"] + active["skills"]), message]
+                          "Details (d): " + ", ".join(active["details"]), message]
                 lines = lines[:height - 1] + ["c Go b Back q Cancel" if width >= 21 else "cGo bBack qX"]
                 self.output.write("\x1b[H\x1b[2J" + "\r\n".join(line[:width - 1] for line in lines[:height]))
                 self.output.flush()
@@ -136,10 +136,10 @@ class Terminal:
                         message = str(exc)
                 elif key == "d":
                     # Recover all details without truncation through a paged terminal view.
-                    self.page([active["id"], "Selected: " + str(active["marked"]),
+                    self.page([active["id"], *([active["title"]] if active["title"] != active["id"] else []),
+                               "Selected: " + str(active["marked"]),
                                "Detected: " + active["detected"], "Action: " + active["action"],
-                               "Verification: " + active["verification"],
-                               *active["extensions"], *active["skills"], *active["prerequisites"]], raw=True)
+                               "Verification: " + active["verification"], *active["details"]], raw=True)
                 elif key in ("c", "\r", "\n"):
                     return
                 elif key in ("q", "b", "\x1b"):

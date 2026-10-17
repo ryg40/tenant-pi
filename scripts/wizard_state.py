@@ -7,8 +7,7 @@ import shlex
 from scripts import components
 from scripts.profile_plan import prepare, readiness, runtime_report, setup_commands
 from scripts.validate import absolute, fail, fields, manifest, overlay as validate_overlay
-
-STATES = ("compatible", "present", "missing", "incompatible", "unknown")
+from scripts.wizard_adapter import STATES, Approval
 
 
 def digest(value):
@@ -38,7 +37,9 @@ def evidence(data, identity, manifest_data):
     return copy.deepcopy(data)
 
 
-class State:
+class State(Approval):
+    """The tenant-pi checklist state. Its rows have the display fields of the seam rows."""
+
     def __init__(self, manifest_data, identity, data=None, scan=None):
         self.manifest = copy.deepcopy(manifest_data)
         self.known = manifest(manifest_data)
@@ -56,6 +57,7 @@ class State:
         self.registry = None
         self.approval = None
         self.added = []
+        self.private_dir = None
 
     def toggle(self, cid):
         self.approval = None
@@ -73,6 +75,8 @@ class State:
         rows = components.report(self.known, self.selected)["components"]
         for row in rows:
             cid = row["id"]
+            row["title"] = cid
+            row["details"] = [*row["extensions"], *row["skills"], *row["prerequisites"]]
             row["group"] = "Core features" if row["locked"] else "Optional features"
             detected = self.scan["components"][cid] if self.scan else "unknown"
             row["detected"] = detected
@@ -182,11 +186,3 @@ class State:
             result["blocked"].append("shared_skill_requires_separate_plan")
         result["digest"] = digest(result)
         return result
-
-    def approve(self, plan, response):
-        self.approval = plan["digest"] if response == "SAVE " + plan["digest"] else None
-        return self.approval is not None
-
-    def check_approval(self, plan):
-        if self.approval != plan["digest"]:
-            fail("approval_invalidated", "wizard.plan")

@@ -66,6 +66,8 @@ PUBLISH = (
     "scripts/components.py", "tests/test_components.py",
     "scripts/models_input.py", "scripts/wizard.py", "scripts/wizard_state.py",
     "scripts/wizard_scan.py", "scripts/wizard_terminal.py", "tests/test_wizard.py", "docs/guides/wizard.md",
+    "scripts/wizard_adapter.py", "scripts/wizard_adapter_tenant_pi.py", "tests/test_wizard_seam.py",
+    "tests/fixtures/wizard_adapter_example.py", "tests/fixtures/wizard_plan_tenant_pi.json", "docs/wizard-seam.md",
     "tests/test_owner_packages.py", "docs/owner-packages.md",
     "tests/test_unmanaged.py", "docs/accepted-drift.md",
     "tests/test_owner_resources.py", "docs/owner-resources.md",

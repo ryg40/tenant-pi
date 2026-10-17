@@ -101,6 +101,10 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    It checks runtime versions, repository checks, package tests, generation, and one core-only loopback print reply.
    Before the repository checks, it rebuilds the architecture pages and the explainer of the candidate copy with the new pin: the steps `pages-architecture`, `pages-architecture-local` and `pages-explainer`.
    A failure blocks the move unless the proposed pin change itself fixes it and a fresh qualification proves that fix.
+   The wizard plan fixture holds the current pin, so a new pin fails `test_tenant_pi_plan_is_unchanged` in the `unit-tests` step.
+   That is a failure that the pin change fixes: move the pins, regenerate the fixture ([step 4 of Move pins](#move-pins-and-measured-facts)), then qualify again from the pin worktree.
+   The qualifier copies the working-tree bytes, so the fresh qualification uses the moved pin and the new fixture.
+   Check that the log of the first run names no other failed test.
 
 2. Inspect the isolation fields separately from the test result.
 
@@ -184,10 +188,33 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    | `docs/check-runtime.md` | Version-probe evidence; preserve its explicitly defined historical reviewed release. |
    | A private chronology file, if your copy has one | Do not publish a dated machine record. |
    | `packages/promptr/README.md`, `packages/promptr/docs/sidebar-prototype.md`, `packages/promptr/src/doctor/doctor.mts` | Current compatibility statements and comments. |
+   | `tests/fixtures/wizard_plan_tenant_pi.json` | Regenerated plan fixture only; see the next step. |
 
    Add a changelog entry if the repository has a current changelog; do not rewrite archived history.
    Inspect changed key defaults against package bindings and documentation before changing any handler.
    Package tests are not proof of a live package load.
+
+4. Regenerate the wizard plan fixture.
+
+   `tests/fixtures/wizard_plan_tenant_pi.json` is the plan of the tenant-pi wizard for one fixed state, with the kit root as `/KIT_ROOT`.
+   The plan holds the pin, the accepted range, the core spec and the measured facts of `config/manifest.json`.
+   Regenerate it after each reviewed change of the manifest or of the wizard plan, also outside a pin move.
+   Run the command from the worktree root after the edits of steps 1 to 3:
+
+   ```sh
+   PYTHONDONTWRITEBYTECODE=1 python3 - <<'EOF'
+   from tests.test_wizard_seam import PLAN, tenant_pi_plan_text
+
+   PLAN.write_text(tenant_pi_plan_text(), encoding="utf-8")
+   EOF
+   git diff -- tests/fixtures/wizard_plan_tenant_pi.json
+   ```
+
+   Check that each changed line comes from the reviewed change: the core spec, `piVersion`, the accepted range, the `required` and `tested` versions, the runtime `status`, the readiness entries and the measured facts.
+   The `digest` line changes with each other change.
+   A changed line that the reviewed change does not explain is a plan change: stop and review it before the commit.
+   The fixture must hold no host path; the kit root is always `/KIT_ROOT`.
+   See [the pin move in the update checks](../pi-update.md#qualify) for the qualification run.
 
 ## Check, commit, review, and merge
 

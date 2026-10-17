@@ -111,6 +111,43 @@ Offline evidence is caller-supplied, not an attestation. The wizard rechecks the
 `--destination compose` returns the separate `compose-plan` route and its unqualified status.
 It creates no Compose seat. See [the Compose guide](compose-seat.md).
 
+## Another kit
+
+Another kit can start its setup with this wizard. The kit pins a tenant-pi release tag and ships an adapter file.
+The adapter gives the catalog rows, the questions, the scan and the plan of that kit.
+The contract is [the wizard adapter seam](../wizard-seam.md).
+
+```sh
+python3 scripts/tenant_pi.py wizard --adapter "$HOME/other-kit/wizard_adapter.py" \
+  --account "$(id -un)" --home "$HOME" --target "$HOME/new-profile" --private-dir "$HOME/new-private-choices"
+```
+
+- The seam has version 1. The adapter declares `seam_version = 1`. The wizard refuses another version.
+- `--adapter` takes `tenant-pi`, the default, or the absolute path of the adapter file.
+- The wizard refuses an adapter file under `~/.pi/agent` or a wiki vault, like the other inputs. The file does not run then.
+- The wizard checks the adapter file again before save. A changed file stops the save with `input_changed`.
+- The wizard removes terminal escape sequences from the text and the question labels of the adapter, and shows each other control character as `?`.
+- The wizard refuses a results text of the adapter with a control character or a known secret form, like an answer.
+- The terminal, the navigation, the answer checks, the digest, `SAVE <digest>`, the rechecks and the private save stay the same for each kit.
+- `handoff.json` names the adapter in `adapter` and the seam version in `seamVersion`.
+- `--manifest`, `--overlay`, `--local-dir`, `--registry` and `--destination compose` belong to the tenant-pi adapter.
+
+Warning: the adapter file is code. It runs with the rights of your account. Review it like the kit itself.
+
+An adapter must not install, write files, send network or model requests, or read `~/.pi/agent`, authentication files or vault contents.
+It must not put a secret value in a row, a question, a scan or a plan. It asks for variable names only.
+It must not write to standard output or change the digest, the SAVE flow or the fixed file names.
+
+## Changes with the seam
+
+The tenant-pi adapter gives the same plan as the wizard before the seam. These parts of the tenant-pi wizard changed:
+
+- The numbered fallback prints `details:` for each row where it printed `skills:`. The details are the extensions, the skills and the prerequisites of the component.
+- Each row of `--format json` has two new keys, `title` and `details`. The other keys stay.
+- `--manifest` has no default in the parser. Without it, the tenant-pi adapter reads `config/manifest.json` of the kit.
+- The wizard refuses a `--manifest` path under `~/.pi/agent` or a wiki vault, like the other inputs.
+- The wizard shows `Adapter: tenant-pi, seam version 1.` before the SAVE prompt. `handoff.json` has the two new fields `adapter` and `seamVersion`.
+
 ## Limits
 
 - No model listing, inference, account creation, service request, package install or privileged execution occurs here.
@@ -121,3 +158,4 @@ It creates no Compose seat. See [the Compose guide](compose-seat.md).
 - Existing vault discovery and baseline checks remain guided steps through `check-wiki-vault`, `baseline` and `check-baseline`.
 - Partial save recovery is manual. Results distinguish stopped installation and not-run checks; they do not claim runtime success.
 - Automated PTY tests do not prove hands-on usability. Live local, remote and inference trials remain unverified.
+- The tests run the seam with a test adapter and a fake card probe. No adapter of another kit is tested here.

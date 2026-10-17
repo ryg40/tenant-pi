@@ -1,20 +1,28 @@
-"""Wizard orchestration: read, scan, review, then explicitly save a private handoff only."""
+"""Wizard orchestration: read, scan, review, then explicitly save a private handoff only.
+
+The adapter of `--adapter` gives the catalog, questions, scan and plan of one kit (scripts/wizard_adapter.py).
+The terminal, the answer checks, the digest, the SAVE approval and the private save stay here for every adapter.
+"""
+import copy
 import json
 import os
+import re
 import stat
-from pathlib import Path
 
-from scripts import install_results, models_input
+from scripts import wizard_adapter
 from scripts.private_init import check_location
 from scripts.profile_write import WriteError, _ancestors, _create_file, _DIR_FLAGS
 from scripts.validate import Invalid, absolute, fail
-from scripts.wizard_state import State, digest
+from scripts.wizard_adapter import FILE_NAME, FIXED_FILES, OPTIONS, SEAM_VERSION, json_value, secret_free
+from scripts.wizard_state import digest
 from scripts.remote_plan import remote_plan, USER
 
 
 def arguments(subs, root):
     cmd = subs.add_parser("wizard", help="scan-driven checklist; saves only an approved private handoff, never installs")
-    cmd.add_argument("--manifest", default=str(root / "config/manifest.json"))
+    cmd.add_argument("--adapter", default="tenant-pi",
+                     help="adapter ID (tenant-pi) or absolute path of the adapter file of another kit")
+    cmd.add_argument("--manifest", help="kit manifest of the tenant-pi adapter (default: config/manifest.json)")
     cmd.add_argument("--destination", choices=("local", "remote", "compose"), default="local")
     cmd.add_argument("--account", required=True)
     cmd.add_argument("--home", required=True)
@@ -29,11 +37,33 @@ def arguments(subs, root):
     cmd.add_argument("--format", choices=("interactive", "json"), default="interactive")
 
 
+# A terminal escape sequence: CSI, OSC (ended by BEL or ST) or another sequence of two characters.
+ESCAPE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)?|.?)", re.S)
+
+
 def _safe(value):
     # This is a known-form check, not a promise to recognize every possible secret.
-    if any(pattern.search(json.dumps(value, ensure_ascii=True)) for pattern in install_results.SECRET):
-        fail("secret_like", "wizard.input")
-    return value
+    return secret_free(value, "wizard.input")
+
+
+def _control(char, lines=False):
+    return (ord(char) < 32 and not (lines and char == "\n")) or 127 <= ord(char) < 160
+
+
+def _printable(value, lines=False):
+    """Adapter text for the terminal: escape sequences removed, each other control character as `?`."""
+    return "".join("?" if _control(char, lines) else char for char in ESCAPE.sub("", str(value)))
+
+
+def _results(adapter, plan, state, directory, kit):
+    """The INSTALLER_KIT_RESULTS.md text of the adapter, with the checks of an answer. Line breaks stay."""
+    value = adapter.results(plan, state, directory, kit)
+    if type(value) is not str:
+        fail("adapter_results", "wizard.results")
+    if any(_control(char, lines=True) for char in value):
+        fail("control_character", "wizard.results")
+    secret_free(value, "wizard.results")
+    return value.encode("utf-8")
 
 
 def _fingerprint(path, load, field):
@@ -78,118 +108,81 @@ def _save(directory, files):
                     pass
 
 
-def _questions(state, terminal):
+def _asker(state, terminal):
+    """The `ask` of every adapter: it clears approval, refuses controls and secret forms, then validates."""
     def ask(key, label, default="", validate=None):
         state.approval = None
-        value = terminal.ask(label, state.answers.get(key, default))
+        shown = state.answers.get(key, default)
+        # The terminal prints the default; an answer could not hold its controls either.
+        if any(_control(char) for char in str(shown)):
+            fail("control_character", "wizard.default")
+        value = terminal.ask(_printable(label), shown)
         # Never retain terminal controls or known secret forms in a draft answer.
-        if any(ord(char) < 32 or 127 <= ord(char) < 160 for char in value):
+        if any(_control(char) for char in value):
             fail("control_character", "wizard.answer")
         _safe(value)
         if validate is not None:
             validate(value)
         state.answers[key] = value
         return value
-    terminal.show("Only non-secret values. No model listing or inference occurs. /back retains all answers.")
-    if state.scan and state.scan["runtime"]["pi"]["status"] == "missing":
-        prefix = ask("piPrefix", "User-owned Pi installation prefix", state.identity["home"] + "/.npm-global")
-        absolute(prefix, "wizard.piPrefix")
-    launcher = ask("launcher", "Optional new launcher path; blank means none")
-    if launcher:
-        absolute(launcher, "wizard.launcher")
-    enabled = set(state.selected)
-    if "model-routing" in enabled:
-        terminal.show("Existing gateway routes require offline --registry evidence; no credentials or discovery are imported.")
-        if "modelRoutes" not in state.overlay:
-            old = state.overlay["roles"].get("interactive") or {}
-            provider = ask("provider", "Native provider ID, or direct provider ID (llama-swap/vllm)", old.get("provider", ""))
-            model = ask("model", "Served model ID (manual entry; metadata is not guessed)", old.get("model", ""))
-            state.overlay["roles"]["interactive"] = {"provider": provider, "model": model, "thinking": old.get("thinking", "off")}
-            saved_provider = (state.models or {}).get("providers", {}).get(provider, {})
-            url = ask("endpoint", "Direct OpenAI-compatible base URL; /clear for native provider", saved_provider.get("baseUrl", ""),
-                      validate=lambda value: models_input.endpoint(value) if value else None)
-            if url:
-                def key_name(value):
-                    from scripts.validate import ENV
-                    if value and not ENV.fullmatch(value):
-                        fail("env_name", "wizard.keyVar")
-                saved_key = saved_provider.get("apiKey", "none")
-                key = ask("keyVar", "Authentication VARIABLE NAME only; /clear means no authentication",
-                          saved_key.lstrip("$").strip("{}") if saved_key != "none" else "", validate=key_name)
-                saved_model = next((item for item in saved_provider.get("models", []) if item["id"] == model), {})
-                saved_metadata = {key: value for key, value in saved_model.items() if key != "id"}
-                metadata = ask("metadata", "Optional model metadata JSON from server documentation; blank uses Pi defaults",
-                               json.dumps(saved_metadata) if saved_metadata else "")
-                details = json.loads(metadata) if metadata else {}
-                if type(details) is not dict or not set(details) <= {"name", "contextWindow", "maxTokens", "reasoning", "input"}:
-                    fail("metadata_fields", "wizard.models")
-                state.models = models_input.merge(state.models, provider, url, model, key or None, details)
-                state.overlay["inputs"]["modelsFile"] = models_input.SLOT
-    memory_ids = enabled & {"hermes", "wiki", "openviking", "agentcore"}
-    if memory_ids:
-        terminal.show("Memory stores session text. Ambient wiki recall sends vault text to the selected model provider.")
-        consent = ask("memoryConsent", "Permit the selected memory stores? Type yes or no", "yes" if state.overlay["consent"]["memoryCapture"] else "no")
-        state.overlay["consent"]["memoryCapture"] = consent == "yes"
-        memory = state.overlay.setdefault("memory", {"schemaVersion": 1, "hermes": None, "wiki": None, "openviking": None})
-        for cid in sorted(memory_ids):
-            defaults = {"hermes": {"backgroundReview": False}, "wiki": {"ambientPersonalVault": False, "backgroundTasks": False},
-                        "openviking": {"captureToolResults": False}, "agentcore": {}}
-            terminal.show(cid + ": background work stays off unless explicitly configured with a memory role and consent.")
-            text = ask("memory." + cid, cid + " settings JSON (see docs/memory-modules.md)", json.dumps(memory.get(cid) or defaults[cid]))
-            choice = json.loads(text)
-            if type(choice) is not dict:
-                fail("object", "wizard.memory")
-            if choice.get("backgroundReview") or choice.get("backgroundTasks"):
-                terminal.show("Background work sends session text to the memory model and can incur recurring model costs.")
-                if ask("backgroundConsent." + cid, "Permit background model work for " + cid + "? yes/no", "no") != "yes":
-                    fail("background_consent_required", "wizard.memory")
-            memory[cid] = choice
-        if memory_ids & {"openviking", "agentcore"}:
-            state.overlay["consent"]["remoteMemoryWrites"] = ask("remoteConsent", "Permit remote memory text transfer? yes/no", "no") == "yes"
-        if "wiki" in memory_ids:
-            terminal.show("Before launch: check-wiki-vault and baseline checks. Preserve existing and nested vaults; never create or reset them here.")
-    if "mcp" in enabled:
-        from scripts.workflow_modules import validate_mcp
-        value = ask("mcp", "MCP definitions JSON; environment references only", json.dumps(state.mcp) if state.mcp else "",
-                    validate=lambda text: validate_mcp(json.loads(text)))
-        state.mcp = json.loads(value)
-        state.overlay["inputs"]["mcpFile"] = "inputs/mcp-adapter.json"
-    for cid in sorted(enabled):
-        required = state.known[cid]["env"]
-        if required:
-            terminal.show(cid + " requires variable names: " + ", ".join(required) + ". Supply values only outside this wizard.")
-    if "herdr" in enabled:
-        state.answers["herdrSkillScope"] = ask("herdrSkillScope", "Herdr skill scope: profile or shared (shared needs a separate plan)", "profile")
-        terminal.show("Herdr application and a temporary working session are separate checks; no shared skill is copied.")
-    ask("modelListing", "Allow a future separately reviewed model-list check? yes/no (this wizard sends none)", "no")
-    ask("inference", "Allow a future separately reviewed inference check? yes/no (may transfer text and incur cost)", "no")
+    return ask
 
 
-def _result(plan, known, directory, kit):
-    data = {"schemaVersion": 1, "date": "2000-01-01", "installingAgent": "tenant-pi wizard",
-            "status": "stopped", "lastStage": "reviewed private handoff", "nextStep": "Review with the guided agent; no install approval is stored",
-            "account": {"name": plan["identity"]["account"], "createdByInstall": False, "openShell": "Use the existing target account"},
-            "places": {"clone": kit, "privateDirectory": directory},
-            "stages": [{"stage": "installation", "state": "not_run", "note": None}],
-            "checks": [{"name": name, "state": "not_run", "note": None} for name in ("model listing", "inference", "live profile", "vault baseline")],
-            "wikiVault": {"path": None, "existedBefore": False, "kept": False},
-            "notes": ["No profile or vault file was opened. Saved evidence does not prove remote facts.",
-                      "Review POST_INSTALL.md after installation. No package rollback is promised."]}
-    from datetime import datetime, timezone
-    data["date"] = datetime.now(timezone.utc).date().isoformat()
-    install_results.facts(data, [])
-    return install_results.render(commit="unknown", kit_root=kit, overlay_path=directory + "/overlay.json",
-                                  overlay=plan["overlayAfter"], known=known, facts=data, candidates=[])
+def _questions(state, terminal, adapter=None):
+    if adapter is None:
+        from scripts.wizard_adapter_tenant_pi import ADAPTER as adapter
+    adapter.questions(state, _asker(state, terminal), lambda value: terminal.show(_printable(value, lines=True)))
 
 
-def run(args, cli):
+def _plan(adapter, state):
+    """The plan data of the adapter with the digest of the wizard. Adapter and seam version stay outside it."""
+    plan = adapter.plan(state, state.scan)
+    json_value(plan, "wizard.plan", 4 << 20)
+    if type(plan) is not dict or type(plan.get("overlayAfter")) is not dict or {"digest", "adapter", "seamVersion"} & plan.keys():
+        fail("plan_shape", "wizard.plan")
+    plan = copy.deepcopy(plan)
+    plan["digest"] = digest(plan)
+    return plan
+
+
+def _scanned(adapter, state, data):
+    return wizard_adapter.check_scan(data, state.identity, [row["id"] for row in state.rows()])
+
+
+def _files(adapter, plan):
+    files = adapter.files(plan)
+    if type(files) is not dict:
+        fail("adapter_files", "wizard.files")
+    for name, value in files.items():
+        if type(name) is not str or not FILE_NAME.fullmatch(name) or name in FIXED_FILES:
+            fail("adapter_file_name", "wizard.files")
+        json_value(value, "wizard.files")
+        _safe(value)
+    return files
+
+
+def run(args, cli, terminal=None):
     from scripts.wizard_terminal import Back, Cancelled, Terminal
-    from scripts.wizard_scan import scan
-    terminal = Terminal()
+    terminal = terminal or Terminal()
     if not USER.fullmatch(args.account):
         fail("account", "wizard.account")
     for key in ("home", "target", "private_dir"):
         absolute(getattr(args, key), "wizard." + key)
+    # Only explicit inputs load. No installed settings, auth, or vault contents are read.
+    tracked = {}
+    def load(path, field, raw=False):
+        cli._outside_pi_agent(path, field)
+        cli._outside_wiki_vault(path, field, None)
+        before = _fingerprint(path, cli._load_input, field)
+        value = cli._load_input(path, field, raw=raw)
+        after = _fingerprint(path, cli._load_input, field)
+        if before != after:
+            fail("input_changed", field)
+        tracked[(path, field)] = after
+        return value
+    adapter = wizard_adapter.load_adapter(args.adapter, load)
+    if args.destination not in adapter.destinations:
+        fail("adapter_destination", "wizard.destination")
     clone = args.clone or (str(cli.ROOT) if args.destination == "local" else None)
     if args.destination == "compose":
         return {"status": "handoff", "route": "compose-plan", "qualified": False,
@@ -203,48 +196,12 @@ def run(args, cli):
         remote = remote_plan(args.ssh_target, args.account, args.home)
     else:
         remote = None
-    # Only explicit private inputs load. No installed settings, auth, or vault contents are read.
-    tracked = {}
-    def load(path, field):
-        before = _fingerprint(path, cli._load_input, field)
-        value = cli._load_input(path, field)
-        after = _fingerprint(path, cli._load_input, field)
-        if before != after:
-            fail("input_changed", field)
-        tracked[(path, field)] = after
-        return value
-    manifest_data = load(args.manifest, "manifest.file")
-    if args.overlay:
-        cli._outside_pi_agent(args.overlay, "wizard.overlay")
-        cli._outside_wiki_vault(args.overlay, "wizard.overlay")
-    overlay = load(args.overlay, "overlay.file") if args.overlay else None
-    state = State(manifest_data, identity, overlay)
-    # Reject known live configuration paths before loading any referenced input.
-    if args.overlay:
-        cli._outside_pi_agent(args.overlay, "wizard.overlay")
-        cli._outside_wiki_vault(args.overlay, "wizard.overlay", state.overlay)
-    local_dir = args.local_dir or (str(Path(args.overlay).parent) if args.overlay else None)
-    for key, attribute in (("modelsFile", "models"), ("mcpFile", "mcp")):
-        slot = state.overlay["inputs"].get(key)
-        if slot is not None:
-            expected = "inputs/models.json" if key == "modelsFile" else "inputs/mcp-adapter.json"
-            if slot != expected or not local_dir:
-                fail("input_allowlist", "wizard.inputs")
-            input_path = local_dir + "/" + slot
-            cli._outside_pi_agent(input_path, "wizard.inputs")
-            cli._outside_wiki_vault(input_path, "wizard.inputs", state.overlay)
-            loaded = load(input_path, "wizard." + attribute)
-            if attribute == "models":
-                models_input.validate(loaded)
-            else:
-                from scripts.workflow_modules import validate_mcp
-                validate_mcp(loaded)
-            _safe(loaded)
-            setattr(state, attribute, loaded)
-    if args.registry:
-        cli._outside_pi_agent(args.registry, "wizard.registry")
-        cli._outside_wiki_vault(args.registry, "wizard.registry", state.overlay)
-        state.registry = load(args.registry, "registry.file")
+    for name in OPTIONS:
+        if getattr(args, name) is not None and name not in adapter.options:
+            fail("adapter_option", "wizard." + name)
+    context = wizard_adapter.Context(args, cli, identity, load, None if args.adapter in wizard_adapter.BUILTIN else args.adapter)
+    state = adapter.start(context)
+    context.state = state
     _safe(state.overlay)
     cli._outside_kit(args.private_dir, "wizard.private_dir")
     cli._outside_pi_agent(args.private_dir, "wizard.private_dir")
@@ -257,31 +214,31 @@ def run(args, cli):
     if args.evidence:
         cli._outside_pi_agent(args.evidence, "wizard.evidence")
         cli._outside_wiki_vault(args.evidence, "wizard.evidence", state.overlay)
-        from scripts.wizard_state import evidence
-        state.scan = evidence(load(args.evidence, "wizard.evidence"), identity, manifest_data)
+        state.scan = adapter.evidence(load(args.evidence, "wizard.evidence"), state)
     if args.format == "json":
         return {"status": "data_only", "identity": identity, "components": state.rows(), "remoteHandoff": remote,
                 "writes": False, "scan": state.scan, "note": "No scan or approval is inferred from absent input."}
     try:
         terminal.show(json.dumps(identity, indent=2))
-        terminal.show("Scan scope: fixed version probes, known kit resource directories and target absence. No live profile or vault contents.")
+        terminal.show(adapter.scope)
         if terminal.ask("Confirm target/account and scan scope: type scan (or evidence for supplied offline facts)") != ("evidence" if args.evidence else "scan"):
             raise Cancelled()
         if not args.evidence:
             if args.destination == "remote":
                 return {"status": "resumable_stop", "reason": "remote_evidence_required", "remoteHandoff": remote,
                         "note": "No SSH connection made. Run the wizard on the target account or supply target-bound offline evidence."}
-            state.scan = scan(identity, manifest_data)
+            state.scan = _scanned(adapter, state, adapter.scan(identity, context))
         while True:
             try:
                 terminal.checklist(state)
-                _questions(state, terminal)
-                plan = state.review(args.private_dir)
+                _questions(state, terminal, adapter)
+                plan = _plan(adapter, state)
                 if args.destination == "local":
                     cli._outside_wiki_vault(args.private_dir, "wizard.private_dir", plan["overlayAfter"])
                     cli._outside_wiki_vault(args.target, "wizard.target", plan["overlayAfter"])
                 _safe(plan)
                 terminal.page(json.dumps(plan, sort_keys=True, indent=2, ensure_ascii=True).splitlines())
+                terminal.show("Adapter: " + adapter.id + ", seam version " + str(SEAM_VERSION) + ".")
                 terminal.show("This saves a NEW private handoff only. Existing overlays stay unchanged. Installation needs separate approval.")
                 if not state.approve(plan, terminal.ask("Type SAVE " + plan["digest"] + " to save; /back revises")):
                     raise Cancelled()
@@ -289,20 +246,20 @@ def run(args, cli):
                     if _fingerprint(path, cli._load_input, field) != expected:
                         fail("input_changed", "wizard.approval")
                 if not args.evidence:
-                    current = scan(identity, manifest_data)
+                    current = _scanned(adapter, state, adapter.scan(identity, context))
                     if current != state.scan:
                         fail("facts_changed", "wizard.approval")
                 elif args.destination == "local":
                     if os.path.lexists(args.target) == state.scan["targetAbsent"]:
                         fail("target_changed", "wizard.approval")
-                state.check_approval(state.review(args.private_dir))
+                state.check_approval(_plan(adapter, state))
                 def encode(value):
                     return (json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n").encode("ascii")
-                files = {"overlay.json": encode(plan["overlayAfter"]), "handoff.json": encode(plan),
-                         "INSTALLER_KIT_RESULTS.md": _result(plan, state.known, args.private_dir, str(cli.ROOT)).encode("utf-8")}
-                for attribute, name in (("models", "inputs/models.json"), ("mcp", "inputs/mcp-adapter.json"), ("registry", "registry.json")):
-                    if plan[attribute] is not None:
-                        files[name] = encode(plan[attribute])
+                handoff = {**plan, "adapter": adapter.id, "seamVersion": SEAM_VERSION}
+                files = {"overlay.json": encode(plan["overlayAfter"]), "handoff.json": encode(handoff),
+                         "INSTALLER_KIT_RESULTS.md": _results(adapter, plan, state, args.private_dir, str(cli.ROOT))}
+                for name, value in _files(adapter, plan).items():
+                    files[name] = encode(value)
                 _save(args.private_dir, files)
                 return {"status": "saved_handoff", "directory": args.private_dir, "digest": plan["digest"],
                         "installed": False, "results": args.private_dir + "/INSTALLER_KIT_RESULTS.md"}
@@ -312,6 +269,6 @@ def run(args, cli):
                 state.approval = None
                 if isinstance(exc, Invalid) and str(exc).startswith(("input_changed", "facts_changed", "target_changed", "approval_invalidated")):
                     raise
-                terminal.show(str(exc) if isinstance(exc, Invalid) else "Invalid JSON; no input text is logged.")
+                terminal.show(_printable(exc) if isinstance(exc, Invalid) else "Invalid JSON; no input text is logged.")
     except (Cancelled, Back, KeyboardInterrupt, EOFError, BrokenPipeError, OSError):
         return {"status": "cancelled", "installed": False}

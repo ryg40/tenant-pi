@@ -92,6 +92,8 @@ A missing `git`, a Git timeout, or a nonzero Git exit fails the `candidate-copy`
 
 `check-runtime` compares against the candidate pin. Current-pin test fixtures read the manifest of the candidate copy. A failed check still fails qualification; the report keeps its log. It does not edit tests to force a pass. See [the runtime check](check-runtime.md).
 
+The wizard plan fixture `tests/fixtures/wizard_plan_tenant_pi.json` is the exception. It holds the plan text of the current pin, and the qualifier does not regenerate it. A new pin therefore fails `test_tenant_pi_plan_is_unchanged` in the `unit-tests` step. Move the pins in the pin worktree, regenerate the fixture from `tenant_pi_plan_text()` and review its diff. Then qualify again from that worktree. The steps are in [the pin move guide](guides/pin-move-release.md#move-pins-and-measured-facts), step 4.
+
 The print tests select `local-test/sum-model` explicitly. Each server binds only to `127.0.0.1` on an unused port.
 They return fixed replies, not real model responses. Each launch has a 90-second timeout; request-body reads have a five-second timeout.
 The successful reply requires one request and exactly `43` plus a newline in the combined `print-mode.log`.

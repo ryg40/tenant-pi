@@ -1,7 +1,7 @@
 #!/bin/sh
 # Offline test for scripts/scan.sh, scripts/git-hooks and scripts/install-hooks.sh.
-# All repositories are temporary. The scanner image must be present
-# (docs/secret-handling.md); no network is used. The test does not change
+# All repositories are temporary. The Betterleaks binary must be present
+# (BETTERLEAKS_BIN, see scripts/scan.sh); no network is used. The test does not change
 # core.hooksPath of this repository.
 #
 # Usage: sh tests/test_scan.sh
@@ -19,9 +19,6 @@ trap 'rm -rf "$work"' EXIT
 # In sh, an INT or TERM handler does not end the script; exit runs the EXIT trap.
 trap 'exit 130' INT TERM
 
-# The name prefix of the test containers.
-SCAN_NAME_PREFIX=${SCAN_NAME_PREFIX:-tenantpi-p2-}
-export SCAN_NAME_PREFIX
 # Isolate Git from the global and system configuration (and its hooks).
 : >"$work/gitconfig"
 GIT_CONFIG_GLOBAL=$work/gitconfig GIT_CONFIG_NOSYSTEM=1
@@ -118,6 +115,23 @@ g -C "$work/wt" add untracked.txt
 expect_status "staged new file: finding" 1 in_repo "$work/wt" sh "$scan" tree
 expect_status "staged mode: finding" 1 in_repo "$work/wt" sh "$scan" staged
 expect_out "staged mode names the file" "untracked.txt:1"
+
+echo "# encoded secrets"
+# A base64-encoded synthetic token: the scan decodes it (--max-decode-depth).
+encoded=$(printf 'key = "%s"\n' "$token" | base64 | tr -d '\n')
+new_repo "$work/enc"
+printf 'blob = "%s"\n' "$encoded" >"$work/enc/encoded.txt"
+g -C "$work/enc" add encoded.txt
+for m in tree staged; do
+    expect_status "encoded token, $m: finding" 1 in_repo "$work/enc" sh "$scan" "$m"
+    expect_out "encoded token, $m: the file, the line and the rule" "encoded.txt:1  rule github-pat"
+    expect_no_out "encoded token, $m: the token is not in the output" "$token"
+    expect_no_out "encoded token, $m: the encoded text is not in the output" "$encoded"
+done
+g -C "$work/enc" commit -q -m encoded
+expect_status "encoded token, history: finding" 1 in_repo "$work/enc" sh "$scan" history
+expect_out "encoded token, history: the file, the rule and the commit" \
+    "encoded.txt:1  rule github-pat  commit $(g -C "$work/enc" rev-parse HEAD | cut -c1-12)"
 
 echo "# host values"
 new_repo "$work/host"
@@ -469,7 +483,47 @@ expect_status "staged .gitleaksignore, staged: finding" 1 in_repo "$work/ign" sh
 expect_out ".gitleaksignore, staged: policy finding" "FAIL  policy  .gitleaksignore  rule policy-ignore-file"
 g -C "$work/ign" commit -q -m baseline
 expect_status ".gitleaksbaseline in a commit, all: finding" 1 in_repo "$work/ign" sh "$scan" all
-expect_out ".gitleaksbaseline, all: policy finding with the commit" "sub/.gitleaksbaseline  rule policy-ignore-file (gitleaks ignore or baseline file)  commit"
+expect_out ".gitleaksbaseline, all: policy finding with the commit" "sub/.gitleaksbaseline  rule policy-ignore-file (gitleaks or Betterleaks ignore or baseline file)  commit"
+# The Betterleaks marker and file names.
+ballow=$(printf 'betterleaks:%s' allow)
+new_repo "$work/ballow"
+printf 'x = "%s" # %s\napi_base: http://%s:8080 # %s\n' "$token" "$ballow" "$host_ip" "$ballow" >"$work/ballow/a.txt"
+g -C "$work/ballow" add a.txt
+expect_status "betterleaks:allow, tree: finding" 1 in_repo "$work/ballow" sh "$scan" --level fail tree
+expect_out "betterleaks:allow does not hide a secret" "a.txt:1  rule github-pat"
+expect_out "betterleaks:allow does not hide a host value" "a.txt:2  rule host-value-private-192"
+expect_status "betterleaks:allow, staged: finding" 1 in_repo "$work/ballow" sh "$scan" --level fail staged
+expect_out "betterleaks:allow, staged: the secret" "a.txt:1  rule github-pat"
+expect_out "betterleaks:allow, staged: the host value" "a.txt:2  rule host-value-private-192"
+g -C "$work/ballow" commit -q -m ballow
+ballow_commit=$(g -C "$work/ballow" rev-parse HEAD)
+# An untracked .betterleaksignore with the fingerprints of the findings:
+# <commit>:<file>:<rule>:<line> for a commit, <file>:<rule>:<line> for a file.
+printf '%s:a.txt:github-pat:1\nb.txt:github-pat:1\n' "$ballow_commit" >"$work/ballow/.betterleaksignore"
+printf 'x = "%s"\n' "$token" >"$work/ballow/b.txt"
+g -C "$work/ballow" add b.txt
+expect_status "untracked .betterleaksignore, staged: finding" 1 in_repo "$work/ballow" sh "$scan" staged
+expect_out "untracked .betterleaksignore does not hide a staged secret" "b.txt:1  rule github-pat"
+expect_status "untracked .betterleaksignore, history: finding" 1 in_repo "$work/ballow" sh "$scan" history
+expect_out "untracked .betterleaksignore does not hide a secret in history" "a.txt:1  rule github-pat  commit $(printf '%.12s' "$ballow_commit")"
+mkdir -p "$work/ballow/sub" "$work/ballow/up"
+printf '{}\n' >"$work/ballow/sub/.betterleaksbaseline"
+printf '{}\n' >"$work/ballow/up/.BetterLeaksIgnore"
+g -C "$work/ballow" add .betterleaksignore sub up
+expect_status "staged .betterleaksignore, staged: finding" 1 in_repo "$work/ballow" sh "$scan" staged
+expect_out ".betterleaksignore, staged: policy finding" "FAIL  policy  .betterleaksignore  rule policy-ignore-file"
+expect_out ".betterleaksbaseline, staged: policy finding" "FAIL  policy  sub/.betterleaksbaseline  rule policy-ignore-file"
+expect_out ".betterleaksignore in another case, staged: policy finding" "FAIL  policy  up/.BetterLeaksIgnore  rule policy-ignore-file"
+g -C "$work/ballow" commit -q -m ignore
+expect_status "tracked .betterleaksignore, history: finding" 1 in_repo "$work/ballow" sh "$scan" history
+expect_out "tracked .betterleaksignore, history: the secret is still found" "a.txt:1  rule github-pat  commit $(printf '%.12s' "$ballow_commit")"
+expect_out ".betterleaksignore, history: policy finding" "FAIL  policy  .betterleaksignore  rule policy-ignore-file"
+expect_out ".betterleaksbaseline, history: policy finding" "sub/.betterleaksbaseline  rule policy-ignore-file"
+expect_status "tracked .betterleaksignore, tree: finding" 1 in_repo "$work/ballow" sh "$scan" tree
+expect_out ".betterleaksignore, tree: policy finding" "FAIL  policy  .betterleaksignore  rule policy-ignore-file"
+expect_out ".betterleaksbaseline, tree: policy finding" "FAIL  policy  sub/.betterleaksbaseline  rule policy-ignore-file"
+expect_status ".betterleaksignore in a commit, all: finding" 1 in_repo "$work/ballow" sh "$scan" all
+expect_out ".betterleaksignore, all: policy finding with the rule text" ".betterleaksignore  rule policy-ignore-file (gitleaks or Betterleaks ignore or baseline file)  commit"
 
 echo "# archives, dumps, bundles, messages, names, symlinks"
 new_repo "$work/arc"
@@ -778,9 +832,13 @@ expect_status "a branch without the scan: commit accepted" 0 g -C "$c" commit -q
 expect_out "a branch without the scan: the reason is printed" "pre-commit: this branch has no scripts/git-hooks/pre-commit and no scripts/scan.sh; no scan"
 g -C "$c" checkout -q -f clean
 
+expect_status "the dispatcher copies are in the Git directory of the clone" 0 test -x "$c/.git/scan-hooks/pre-commit"
 expect_status "install-hooks.sh --uninstall" 0 in_repo "$c" sh scripts/install-hooks.sh --uninstall
 expect_status "core.hooksPath is removed" 1 g -C "$c" config --get core.hooksPath
-expect_status "the dispatcher copies are removed" 1 test -e "$(g -C "$c" rev-parse --git-common-dir)/scan-hooks"
+# $c is a clone, so its Git directory is $c/.git. An absolute path: rev-parse
+# --git-common-dir prints the relative ".git", and test would look in the
+# current directory.
+expect_status "the dispatcher copies are removed" 1 test -e "$c/.git/scan-hooks"
 
 echo
 if [ "$failures" -eq 0 ]; then

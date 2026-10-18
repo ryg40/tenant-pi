@@ -25,33 +25,30 @@
 # A deny-list finding on exactly that line of that file is dropped; the file
 # itself carries no host value. A changed line is a finding again.
 # A policy finding always fails: a tracked
-# file named .gitleaksignore or .gitleaksbaseline, a tracked file in .local/,
+# file named .gitleaksignore, .gitleaksbaseline, .betterleaksignore or
+# .betterleaksbaseline, a tracked file in .local/,
 # or a tracked archive, database dump or Git bundle, known by the extension or
 # by the first bytes of the content (list in classify below).
-# Content does not switch the scan off: a "gitleaks:allow" comment does not
-# hide a finding, and gitleaks reads no .gitleaksignore of the repository.
+# Content does not switch the scan off: a "gitleaks:allow" or
+# "betterleaks:allow" comment does not hide a finding, and Betterleaks reads no
+# .betterleaksignore and no .gitleaksignore of the repository.
 #
 # Exit: 0 clean, 1 finding, 2 usage or tool error.
 #
 # Needs: a POSIX shell with od and readlink, Git 2.5 or later (tested with
-# 2.39.5; the mode history with the gitleaks binary needs Git 2.31), and
-# docker or the gitleaks binary.
+# 2.39.5; the mode history needs Git 2.31), and the Betterleaks binary 1.9.0.
 #
 # Environment:
-#   GITLEAKS_IMAGE    replaces the pinned scanner image (for a mirror)
-#   SCAN_ENGINE       auto (default), docker or binary
+#   BETTERLEAKS_BIN   name or path of the Betterleaks binary (default betterleaks)
 #   SCAN_REF          the ref that sets the default level, for example
 #                     refs/tags/portable/1 (default: the current branch and tags)
 #   SCAN_LOCAL_DENY   path of the local deny list (default: .local/host-values.deny
 #                     of this checkout, or of the main checkout for a worktree)
-#   SCAN_NAME_PREFIX  name prefix of the helper containers (default tenantpi-scan-)
 
 set -eu
 
-GITLEAKS_VERSION=v8.28.0
-GITLEAKS_IMAGE=${GITLEAKS_IMAGE:-zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854}
-SCAN_ENGINE=${SCAN_ENGINE:-auto}
-SCAN_NAME_PREFIX=${SCAN_NAME_PREFIX:-tenantpi-scan-}
+BETTERLEAKS_VERSION=1.9.0
+BETTERLEAKS_BIN=${BETTERLEAKS_BIN:-betterleaks}
 # Paths of the deny lists, relative to the repository root. A deny list contains
 # the patterns that it forbids, so host-value findings in these two files are
 # dropped. The tracked list holds generic patterns only; the untracked local
@@ -127,7 +124,7 @@ case $level in
 esac
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/scan.XXXXXX")
-# Docker Desktop and some CI systems share only resolved paths.
+# Use the resolved path, so that each path in the report starts with $work.
 work=$(CDPATH='' cd -- "$work" && pwd -P)
 trap 'rm -rf "$work"' EXIT
 # In sh, an INT or TERM handler does not end the script; exit runs the EXIT trap.
@@ -135,77 +132,33 @@ trap 'exit 130' INT TERM
 
 # --- scanner engine ---------------------------------------------------------
 
-engine=
+# select_engine: the Betterleaks binary must exist and have the pinned version.
+# The version output may start with "v".
 select_engine() {
-    case $SCAN_ENGINE in
-        docker|auto)
-            if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
-                engine=docker
-                docker image inspect "$GITLEAKS_IMAGE" >/dev/null 2>&1 ||
-                    die "scanner image $GITLEAKS_IMAGE is not present; run: docker pull $GITLEAKS_IMAGE"
-                return
-            fi
-            [ "$SCAN_ENGINE" = auto ] || die "docker is not available"
-            ;;
-        binary) ;;
-        *) die "SCAN_ENGINE must be auto, docker or binary" ;;
-    esac
-    command -v gitleaks >/dev/null 2>&1 || die "no docker and no gitleaks binary"
-    v=$(gitleaks version 2>/dev/null || true)
-    [ "${v#v}" = "${GITLEAKS_VERSION#v}" ] || die "gitleaks binary is ${v:-unknown}, need $GITLEAKS_VERSION"
-    engine=binary
+    command -v "$BETTERLEAKS_BIN" >/dev/null 2>&1 ||
+        die "no Betterleaks binary $BETTERLEAKS_BIN; install Betterleaks $BETTERLEAKS_VERSION or set BETTERLEAKS_BIN"
+    v=$("$BETTERLEAKS_BIN" version 2>/dev/null || true)
+    [ "${v#v}" = "$BETTERLEAKS_VERSION" ] || die "Betterleaks binary is ${v:-unknown}, need $BETTERLEAKS_VERSION"
 }
 
-run_count=0
-# bind_mount <path>: a read-only --mount value for <path> at the same path.
-# The value is CSV and each field is quoted, so a path may hold a blank, a
-# comma or a colon.
-bind_mount() {
-    q=$(printf '%s' "$1" | sed 's/"/""/g')
-    printf 'type=bind,"source=%s","target=%s",readonly' "$q" "$q"
+# run_scanner <betterleaks-argument>...: the report goes to stdout.
+run_scanner() {
+    "$BETTERLEAKS_BIN" "$@"
 }
-# run_gitleaks <mounts> <gitleaks-argument>...
-# <mounts>: none or repo (the repository). Paths are mounted
-# read-only at the same path, so the arguments are the same for the container
-# and for the binary. The report goes to stdout.
-run_gitleaks() {
-    mounts=$1; shift
-    if [ "$engine" = binary ]; then
-        gitleaks "$@"
-        return
-    fi
-    run_count=$((run_count + 1))
-    set -- "$GITLEAKS_IMAGE" "$@"
-    case $mounts in
-        repo)
-            # The Git directory is inside the working tree or inside the common directory.
-            case $common/ in
-                "$repo_top"/*) ;;
-                *) set -- --mount "$(bind_mount "$common")" "$@" ;;
-            esac
-            case $git_dir/ in
-                "$repo_top"/*|"$common"/*) ;;
-                *) set -- --mount "$(bind_mount "$git_dir")" "$@" ;;
-            esac
-            set -- --mount "$(bind_mount "$repo_top")" "$@"
-            # The index file is inside the Git directory.
-            if [ -n "${GIT_INDEX_FILE:-}" ]; then set -- -e GIT_INDEX_FILE "$@"; fi
-            ;;
-    esac
-    docker run --rm --network none --name "${SCAN_NAME_PREFIX}gitleaks-$$-$run_count" \
-        --mount "$(bind_mount "$work")" \
-        -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0='*' \
-        "$@"
-}
-# gl <mounts> <gitleaks-command> <argument>...: gitleaks with the common options.
-# --ignore-gitleaks-allow: a "gitleaks:allow" comment does not hide a finding.
-# --gitleaks-ignore-path: an empty directory, so that no .gitleaksignore of the
-# current directory applies. gitleaks also reads <source>/.gitleaksignore; in
-# git mode the source is the Git directory, not the working tree (see
-# require_repo), and in dir mode it is a directory of this script.
+# gl <betterleaks-command> <argument>...: Betterleaks with the common options.
+# --ignore-gitleaks-allow: a "gitleaks:allow" or "betterleaks:allow" comment
+# does not hide a finding.
+# --gitleaks-ignore-path: an empty directory, so that no .betterleaksignore and
+# no .gitleaksignore of the current directory applies. Betterleaks also reads
+# an ignore file in <source>; in git mode the source is the Git directory, not
+# the working tree (see require_repo), and in dir mode it is a directory of
+# this script.
+# --max-decode-depth 5: decode encoded text (for example base64) up to 5 times.
+# --max-archive-depth 3: scan into archives, nested up to 3 levels.
 gl() {
-    m=$1 c=$2; shift 2
-    run_gitleaks "$m" "$c" --no-banner --no-color --log-level error --redact --exit-code 0 \
+    c=$1; shift
+    run_scanner "$c" --no-banner --no-color --log-level error --redact --exit-code 0 \
+        --max-decode-depth 5 --max-archive-depth 3 \
         --ignore-gitleaks-allow --gitleaks-ignore-path "$work/no-ignore" \
         --config "$work/config.toml" --report-format template \
         --report-template "$work/report.tmpl" --report-path - "$@"
@@ -343,8 +296,8 @@ require_repo() {
     repo_top=$(CDPATH='' cd -- "$repo_top" && pwd -P)
     # A hook gets the index of the commit in GIT_INDEX_FILE: a relative
     # ".git/index", or a temporary index for "git commit -a" and
-    # "git commit <path>". Make it absolute before the cd below; run_gitleaks
-    # passes it to the container.
+    # "git commit <path>". Make it absolute before the cd below; the Git
+    # commands of Betterleaks read it.
     if [ -n "${GIT_INDEX_FILE:-}" ]; then
         case $GIT_INDEX_FILE in
             /*) ;;
@@ -359,8 +312,9 @@ require_repo() {
     cd -- "$repo_top"
     common=$(git rev-parse --git-common-dir)
     common=$(CDPATH='' cd -- "$common" && pwd -P)
-    # gitleaks git runs on the Git directory of this working tree (its HEAD
-    # and index). A .gitleaksignore in the working tree then does not apply.
+    # Betterleaks git runs on the Git directory of this working tree (its HEAD
+    # and index). A .betterleaksignore or .gitleaksignore in the working tree
+    # then does not apply.
     git_dir=$(git rev-parse --git-dir)
     git_dir=$(CDPATH='' cd -- "$git_dir" && pwd -P)
 }
@@ -405,7 +359,8 @@ hexdump_head() {
 }
 
 # classify: read "path<TAB>commit<TAB>hex" lines and write policy findings.
-# Ignore files: .gitleaksignore, .gitleaksbaseline (any directory, any case).
+# Ignore files: .gitleaksignore, .gitleaksbaseline, .betterleaksignore,
+#   .betterleaksbaseline (any directory, any case).
 # Local files: a path in the directory .local/ at the root. It holds the values
 # of one host (.local/host-values.deny) and is not tracked.
 # Extensions: zip jar war ear whl egg apk aab ipa nupkg tar tgz taz tbz tbz2
@@ -435,7 +390,8 @@ classify() {
     }
     {
         path = $1; name = path; sub(/.*\//, "", name); name = tolower(name)
-        if (name == ".gitleaksignore" || name == ".gitleaksbaseline") {
+        if (name == ".gitleaksignore" || name == ".gitleaksbaseline" ||
+            name == ".betterleaksignore" || name == ".betterleaksbaseline") {
             print "policy-ignore-file", path, "", $2
             next
         }
@@ -474,7 +430,7 @@ scan_tree() {
         tar --null -T - -cf - | tar -xf - -C "$work/tree/worktree"
     # The staged content of each tracked file.
     git checkout-index --all --prefix="$work/tree/index/"
-    # gitleaks does not read a symlink. Replace each symlink with a file that
+    # Betterleaks does not read a symlink. Replace each symlink with a file that
     # holds its target text, as the modes staged and history see it.
     find "$work/tree/worktree" "$work/tree/index" -type l | while IFS= read -r l; do
         t=$(readlink -- "$l")
@@ -485,17 +441,17 @@ scan_tree() {
     (cd "$work/tree" && find worktree index -type f) | while IFS= read -r f; do
         printf '%s\t\t%s\n' "${f#*/}" "$(hexdump_head <"$work/tree/$f")"
     done | classify >>"$work/findings"
-    gl none dir --max-archive-depth 3 "$work/tree" >"$work/raw" || die "gitleaks failed"
+    gl dir "$work/tree" >"$work/raw" || die "Betterleaks failed"
     strip_prefix "$work/tree/" <"$work/raw" | strip_prefix worktree/ | strip_prefix index/ |
         map_meta | sort -u >>"$work/findings"
 }
 
 scan_staged() {
     require_repo
-    # An empty index diff needs neither content nor name scanner containers.
+    # An empty index diff needs neither a content scan nor a name scan.
     git diff --cached --raw --no-abbrev --no-renames >"$work/staged-diff" || die "cannot read staged diff"
     [ -s "$work/staged-diff" ] || return 0
-    gl repo git --pre-commit --staged "$git_dir" >>"$work/findings" || die "gitleaks failed"
+    gl git --pre-commit --staged "$git_dir" >>"$work/findings" || die "Betterleaks failed"
     # Only new staged blobs need classification. Disable rename detection so
     # a rename to a forbidden extension also checks the destination path.
     git -c core.quotePath=false diff --cached --raw --no-abbrev --no-renames |
@@ -505,12 +461,12 @@ scan_staged() {
     rm -rf "$work/staged"
     mkdir -p "$work/staged/meta"
     git diff --cached --name-only -z | tr '\0' '\n' >"$work/staged/meta/names-staged"
-    gl none dir "$work/staged/meta" >"$work/raw" || die "gitleaks failed"
+    gl dir "$work/staged/meta" >"$work/raw" || die "Betterleaks failed"
     strip_prefix "$work/staged/" <"$work/raw" | map_meta >>"$work/findings"
 }
 
 # scan_commits <range>: the messages, the file names and the new blobs of the
-# commits in <range>. gitleaks reads neither messages nor names in git mode.
+# commits in <range>. Betterleaks reads neither messages nor names in git mode.
 scan_commits() {
     rm -rf "$work/hist"
     mkdir -p "$work/hist/meta"
@@ -529,17 +485,17 @@ scan_commits() {
             a[5] != "D" && a[2] != "160000" { print a[4], $2, c }' "$work/diff" >>"$work/blobs"
     done <"$work/commits"
     classify_blobs "$work/blobs"
-    gl none dir "$work/hist/meta" >"$work/raw" || die "gitleaks failed"
+    gl dir "$work/hist/meta" >"$work/raw" || die "Betterleaks failed"
     strip_prefix "$work/hist/" <"$work/raw" | map_meta >>"$work/findings"
 }
 
-# gitleaks reads "git log -p", and that prints no diff for a merge commit.
+# Betterleaks reads "git log -p", and that prints no diff for a merge commit.
 # --diff-merges=first-parent prints the diff of each merge commit against its
 # first parent; the commits of the other parents are still in the range.
 scan_history() {
     require_repo
-    gl repo git --log-opts="--diff-merges=first-parent $1" "$git_dir" >>"$work/findings" ||
-        die "gitleaks failed"
+    gl git --log-opts="--diff-merges=first-parent $1" "$git_dir" >>"$work/findings" ||
+        die "Betterleaks failed"
     scan_commits "$1"
 }
 
@@ -674,7 +630,7 @@ selftest() {
         printf 'loopback = %s.0.0.1 ::1\n' 127
         printf 'docs = %s.0.2.10 %s.51.100.7 %s.0.113.9 %s:db8::1\n' 192 198 203 2001
     } >"$work/selftest/clean.txt"
-    gl none dir "$work/selftest" >"$work/raw0" || die "gitleaks failed"
+    gl dir "$work/selftest" >"$work/raw0" || die "Betterleaks failed"
     strip_prefix "$work/selftest/" <"$work/raw0" >"$work/raw"
     ok=0
     for line in 1 2 3; do
@@ -723,7 +679,7 @@ sort -t "$tab" -u -k2,2 -k3,3n -k1,1 -k4,4 "$work/kept" >"$work/sorted"
 awk -F '\t' -v level="$level" -v pfile="$work/patterns" '
 BEGIN {
     while ((getline l < pfile) > 0) { split(l, a, "\t"); pat[a[1]] = a[2] }
-    pat["policy-ignore-file"] = "gitleaks ignore or baseline file"
+    pat["policy-ignore-file"] = "gitleaks or Betterleaks ignore or baseline file"
     pat["policy-archive"] = "archive, database dump or Git bundle"
     pat["policy-local-file"] = "tracked file in .local/"
 }

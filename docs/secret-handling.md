@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | Secret | The rules in `.gitleaks.toml` (the default rules of gitleaks v8.28.0) | Always fails. |
 | Host value | One literal pattern for each line of `scripts/host-values.deny` and of the untracked `.local/host-values.deny`, and one regular expression for each line of `scripts/host-values.regex` | Fails at level `fail`. Prints a warning at level `warn`. |
-| Policy | A tracked file named `.gitleaksignore` or `.gitleaksbaseline`; a tracked file in `.local/`; a tracked archive, database dump or Git bundle | Always fails. |
+| Policy | A tracked file named `.gitleaksignore`, `.gitleaksbaseline`, `.betterleaksignore` or `.betterleaksbaseline`; a tracked file in `.local/`; a tracked archive, database dump or Git bundle | Always fails. |
 
 A host value is text that identifies a private host: its private network, its host names, its owner names and its state directories. The branch `portable` and a tag `portable/*` must not contain host values.
 
@@ -59,7 +59,7 @@ The scan applies the allow list after the deny lists:
 
 At level `warn`, the scan skips host-value findings in paths listed in the optional `scripts/dev-only-files.txt`.
 An entry names an exact repository-relative file or a directory prefix ending in `/`.
-The generated gitleaks `[[allowlists]]` entry uses `paths` and `targetRules` limited to the generated `host-value-*` rules.
+The generated `[[allowlists]]` entry of the scan configuration uses `paths` and `targetRules` limited to the generated `host-value-*` rules.
 Secret rules and policy checks still cover those paths. Commit messages and file-name lists remain scanned.
 At level `fail`, this path allowlist does not exist. A portable snapshot already excludes these development-only paths.
 A missing or empty list adds no path exception.
@@ -76,7 +76,7 @@ The scan refuses what it cannot read or what switches it off:
 
 | Policy | Why |
 | --- | --- |
-| A tracked file named `.gitleaksignore` or `.gitleaksbaseline` (any directory, any case) | A `.gitleaksignore` with `<commit>:<file>:<rule>:<line>` hides a finding. |
+| A tracked file named `.gitleaksignore`, `.gitleaksbaseline`, `.betterleaksignore` or `.betterleaksbaseline` (any directory, any case) | A `.betterleaksignore` or `.gitleaksignore` with `<commit>:<file>:<rule>:<line>` hides a finding. |
 | A tracked file in `.local/` at the root | `.local/` holds values of one host. The scan does not report host values in `.local/host-values.deny`, so a tracked copy of it must not pass. |
 | A tracked archive, database dump or Git bundle | The content is compressed or binary. |
 
@@ -85,7 +85,7 @@ An archive, a dump or a bundle is known by its extension or by its first bytes:
 - Extensions: `zip jar war ear whl egg apk aab ipa nupkg tar tgz taz tbz tbz2 tb2 txz tlz tzst gz bz2 xz zst lz lz4 lzma lzo z 7z rar cab cpio ar deb rpm iso dmg sql dump pgdump backup db sqlite sqlite3 db3 mdb accdb rdb bundle pack` (any case).
 - Content: gzip, compress, zip, bzip2, xz, zstd, 7z, rar, ar and deb, lz4, lzip, rpm, cab, tar (`ustar` at byte 257), PostgreSQL custom dump (`PGDMP`), SQLite, Git bundle v2 and v3, Git pack, Redis dump, and a text dump with the header of `pg_dump`, `mysqldump` or `mariadb-dump` in the first 264 bytes.
 
-Content does not switch the scan off. A "gitleaks:allow" comment does not hide a finding (`--ignore-gitleaks-allow`), also not a host value. gitleaks reads a `.gitleaksignore` from the scanned directory. The scan gives it the Git directory in the modes `staged` and `history`. In the mode `tree`, the scan gives it a directory of its own. So a `.gitleaksignore` in the working tree does not apply, also when it is not tracked.
+Content does not switch the scan off. A "gitleaks:allow" or "betterleaks:allow" comment does not hide a finding (`--ignore-gitleaks-allow`), also not a host value. Betterleaks reads a `.betterleaksignore` or `.gitleaksignore` from the scanned directory. The scan gives it the Git directory in the modes `staged` and `history`. In the mode `tree`, the scan gives it a directory of its own. So a `.betterleaksignore` or `.gitleaksignore` in the working tree does not apply, also when it is not tracked.
 
 ## Modes
 
@@ -115,18 +115,18 @@ What each mode reads:
 `all` is `tree` and `history HEAD`.
 
 `staged` classifies only added or changed blobs, including rename destinations and changed symlinks.
-Deleted files have no new blob. An empty staged diff starts no scanner container; engine availability is still checked.
+Deleted files have no new blob. An empty staged diff runs no content scan. The script still checks the binary and its version.
 Unchanged files remain covered by `tree` and `history`, not by the staged policy check.
 
 ### Merge commits in history mode
 
-gitleaks reads `git log -p`. That command prints no diff for a merge commit, so gitleaks alone skips each merge commit. `scripts/scan.sh history` passes `--log-opts="--diff-merges=first-parent <range>"` to gitleaks. Git then prints the diff of each merge commit against its first parent. The result:
+Betterleaks reads `git log -p`. That command prints no diff for a merge commit, so Betterleaks alone skips each merge commit. `scripts/scan.sh history` passes `--log-opts="--diff-merges=first-parent <range>"` to Betterleaks. Git then prints the diff of each merge commit against its first parent. The result:
 
 - Content that a merge brings from its second parent gives a finding with the id of the merge commit.
 - Content that only the merge commit adds gives a finding.
 - The commits of the other parents stay in the range, so the scan also reads each of them. A secret that a side branch adds and then removes gives a finding.
 
-The script does not use `-m --first-parent`. That form leaves the commits of the side branches out of the range. `--diff-merges=first-parent` needs Git 2.31 or later. The scanner image contains Git 2.43.
+The script does not use `-m --first-parent`. That form leaves the commits of the side branches out of the range. `--diff-merges=first-parent` needs Git 2.31 or later. Betterleaks runs the Git of the host, so the mode `history` needs Git 2.31 or later on the host.
 
 The policy checks, the file names and the commit messages use `git diff-tree -m` for each commit of the range. So they also cover each merge commit.
 
@@ -134,14 +134,14 @@ The policy checks, the file names and the commit messages use `git diff-tree -m`
 
 `scripts/scan.sh selftest` proves that the rules work:
 
-- It builds a synthetic token at run time from parts. The token has letters and digits, because a token of one repeated letter does not pass the entropy filter of gitleaks. The scan must find it on three lines, also with a "gitleaks:allow" comment.
+- It builds a synthetic token at run time from parts. The token has letters and digits, because a token of one repeated letter does not pass the entropy filter of the rule. The scan must find it on three lines, also with a "gitleaks:allow" comment.
 - It writes one line for each pattern of both deny lists and for each sample of `scripts/host-values.regex`. The scan must find each one. So it also proves each pattern of the local deny list when that file exists.
 - A file with version pins, loopback addresses and documentation addresses must give no finding.
 
 ### Blind spots
 
 - `staged` and `history` do not read into an archive. The policy check stops a tracked archive by its extension or its content in each mode. An archive of a format that is not on the list, with a name that is not on the list, is not found.
-- A secret that is encoded (base64 of a token, split over lines, encrypted) is not found, unless a gitleaks rule matches the encoded form.
+- The scan decodes encoded text (for example base64) up to 5 levels deep (`--max-decode-depth 5`). A secret that is split over lines or encrypted is not found. A secret under more than 5 levels of encoding is not found.
 - The author and committer names and e-mail addresses, tag messages and notes are not scanned.
 - A pin with a blank after the operator (`pkg >= <version>`) of a version that is also a private address gives a false finding. An IPv4 address directly after `:`, `-` or a letter gives no finding.
 - The hooks run only where `scripts/install-hooks.sh` ran, and `--no-verify` skips them (section "Hooks").
@@ -166,7 +166,7 @@ The policy checks, the file names and the commit messages use `git diff-tree -m`
 6. Add a line to `scripts/host-values.allow` only after a decision of the maintainer. Each line is one exact URL. Add a line to `scripts/host-values.allow-lines` only after a decision of the maintainer, and record the file, the line, the value class and the reason in the section "Accepted host values in the publish set" below.
 7. A regex rule in `scripts/host-values.regex` has a name, a sample and a regular expression (format in the file). The file must not contain an address.
 8. Do not write a token or a host value into a tracked file, also not into a test. Build it at run time from parts, as `tests/test_scan.sh` does.
-9. Do not use `gitleaks:allow`, `.gitleaksignore` or a baseline to accept a finding. The scan ignores the comment and refuses the files. Correct the content, or add a narrow content allowlist (rules 1 and 2).
+9. Do not use `gitleaks:allow`, `betterleaks:allow`, `.gitleaksignore`, `.betterleaksignore` or a baseline to accept a finding. The scan ignores the comment and refuses the files. Correct the content, or add a narrow content allowlist (rules 1 and 2).
 
 A deny list contains the patterns that it forbids. The scan does not report host values in `scripts/host-values.deny` and in `.local/host-values.deny`. This exception is for host-value rules and these two paths only: the secret rules scan the files, and a copy at another path is reported.
 
@@ -178,31 +178,120 @@ A deny list contains the patterns that it forbids. The scan does not report host
 4. The section "Local allowlists" is added. It has three content allowlists: placeholder values, the test fixture of the in-tree Promptr package, and the test fixture of the vendored OpenViking Pi package.
 5. The global table `[allowlist]` is changed to `[[allowlists]]`. The file holds more than one global allowlist, and only the array form permits that.
 
-The fixture allowlist permits one exact value for the rule `generic-api-key`: the project key `promptr-abc123`. Three Promptr test files use it (`packages/promptr/test/project/workstreams.test.mjs`, `packages/promptr/test/project/browse.test.mjs`, `packages/promptr/test/tracker-binding/binding.test.mjs`). It is the only value that gitleaks reports in these files.
+The fixture allowlist permits one exact value for the rule `generic-api-key`: the project key `promptr-abc123`. Three Promptr test files use it (`packages/promptr/test/project/workstreams.test.mjs`, `packages/promptr/test/project/browse.test.mjs`, `packages/promptr/test/tracker-binding/binding.test.mjs`). It is the only value that the scan reports in these files.
 
 The OpenViking fixture allowlist permits one exact value for the rule `curl-auth-header`: the placeholder `bearer-value`. One test file uses it (`packages/openviking-pi/tests/capture-adapter.test.mjs`), in a command that the capture adapter must redact. The allowlist keeps the file equal to its upstream commit.
 
-To update gitleaks, take `config/gitleaks.toml` of the new version, apply the differences again, and change the pinned digest in `scripts/scan.sh`.
+`.gitleaks.toml` keeps the rule set of gitleaks v8.28.0 under Betterleaks. A change of the rule set is a separate decision. For that change, take the default configuration of the new rule set, apply the five differences again, and run `sh tests/test_scan.sh`.
 
 ## Scanner
 
-The scanner is `gitleaks` in this image, pinned by digest in `scripts/scan.sh`:
+The scanner is the Betterleaks binary, version 1.9.0. `scripts/scan.sh` pins the version in `BETTERLEAKS_VERSION`.
+Before each scan, the script runs `betterleaks version` and compares the output with the pin. The output `1.9.0` or `v1.9.0` passes.
+A missing binary or another version stops the scan with exit code 2.
 
-```text
-zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854
-```
-
-Each run uses `--rm`, `--network none`, read-only mounts and `--redact`. The image must be present on the host. The scan does not pull it.
+Each run uses `--redact`, `--max-decode-depth 5`, `--max-archive-depth 3` and `--ignore-gitleaks-allow`. The scan uses no network and starts no container.
 
 | Variable | Use |
 | --- | --- |
-| `GITLEAKS_IMAGE` | Another image reference, for example a mirror. Pin it by digest. |
-| `SCAN_ENGINE` | `auto` (default: the container, else a `gitleaks` binary of version v8.28.0), `docker` or `binary`. Both `8.28.0` and `v8.28.0` version output are accepted. |
-| `SCAN_NAME_PREFIX` | Name prefix of the scanner containers. Default `tenantpi-scan-`. |
+| `BETTERLEAKS_BIN` | The name or the path of the Betterleaks binary. Default `betterleaks`, found on `PATH`. |
 | `SCAN_LOCAL_DENY` | Path of the local deny list. |
 | `SCAN_REF` | The refs that give the default level. |
 
-Host needs: a POSIX shell with `od` and `readlink`, Git 2.5 or later (tested with Git 2.39.5), and Docker or the `gitleaks` binary. With the binary, the mode `history` needs Git 2.31 or later. A path with a blank, a comma or a colon works for the repository and for `$TMPDIR` (tested).
+Host needs: a POSIX shell with `od` and `readlink`, Git 2.5 or later (tested with Git 2.39.5), and the Betterleaks 1.9.0 binary. The mode `history` needs Git 2.31 or later. A path with a blank, a comma or a colon works for the repository and for `$TMPDIR` (tested).
+
+### Pinned checksums
+
+The [Betterleaks v1.9.0 release](https://github.com/betterleaks/betterleaks/releases/tag/v1.9.0) has one archive for each platform. The lines below come from its `checksums.txt`.
+
+| File | SHA-256 |
+| --- | --- |
+| `betterleaks_1.9.0_linux_x64.tar.gz` | `f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7` |
+| `betterleaks_1.9.0_linux_arm64.tar.gz` | `1d39116e0a58dc94574715e2aa12a2dbd5062f193eee3fec011fef6ba06bd13b` |
+| `betterleaks_1.9.0_darwin_arm64.tar.gz` | `83dd7eaab13d44a1e8e347a17064cdef153a1478db473276d41b38d55613d3f2` |
+| `betterleaks`, extracted from the linux x64 archive | `0ace40b41652344608f89967fe93c6caf4faae9a4df20423632c7efb02a4d4e1` |
+
+The extracted binary has a pinned checksum for linux x64 only. On the other platforms, the checksum of the archive covers the binary.
+
+### Install Betterleaks on Linux
+
+The steps use linux x64. On linux arm64, use the file name and the checksum of `betterleaks_1.9.0_linux_arm64.tar.gz` and leave out step 5. For macOS, see [the macOS guide](guides/macos.md#scanner-the-betterleaks-binary).
+
+1. Make an empty directory and go into it.
+
+   ```sh
+   cd "$(mktemp -d)"
+   ```
+
+   `pwd` must print the new directory.
+
+2. Download the archive.
+
+   ```sh
+   curl -fsSLO https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_linux_x64.tar.gz
+   ```
+
+   The command must end with exit code 0.
+
+3. Check the archive against the pinned line.
+
+   ```sh
+   echo 'f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7  betterleaks_1.9.0_linux_x64.tar.gz' | sha256sum -c
+   ```
+
+   The command must print `betterleaks_1.9.0_linux_x64.tar.gz: OK`. Stop at any other output.
+
+4. Extract the binary.
+
+   ```sh
+   tar -xzf betterleaks_1.9.0_linux_x64.tar.gz betterleaks
+   ```
+
+   The archive holds `betterleaks`, `LICENSE` and `README.md`. The command extracts only the binary.
+
+5. Check the extracted binary (linux x64 only).
+
+   ```sh
+   echo '0ace40b41652344608f89967fe93c6caf4faae9a4df20423632c7efb02a4d4e1  betterleaks' | sha256sum -c
+   ```
+
+   The command must print `betterleaks: OK`.
+
+6. Install the binary into a directory on `PATH`.
+
+   ```sh
+   install -m 755 betterleaks /usr/local/bin/betterleaks
+   ```
+
+   `/usr/local/bin` needs root. Without root, use a directory of your own on `PATH`, for example `~/.local/bin`.
+
+7. Check the version.
+
+   ```sh
+   betterleaks version
+   ```
+
+   The command must print `1.9.0`. Observed on linux x64: the output is `1.9.0`.
+
+Optional: when `cosign` exists, check the signature of `checksums.txt`. Download `checksums.txt` and `checksums.txt.sigstore.json` from the release into the same directory, then run:
+
+```sh
+cosign verify-blob --bundle checksums.txt.sigstore.json \
+  --certificate-identity https://github.com/betterleaks/betterleaks/.github/workflows/release.yml@refs/tags/v1.9.0 \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  checksums.txt
+```
+
+The command must print `Verified OK`. Then compare the line of your archive in `checksums.txt` with the pinned line. Not verified: this signature check. The kit was not tested with `cosign`.
+
+### Update Betterleaks
+
+To update Betterleaks, take these steps:
+
+1. Choose the new version. Change `BETTERLEAKS_VERSION` in `scripts/scan.sh`.
+2. Replace the pinned checksums above with the lines of the new `checksums.txt`. Replace the checksum of the extracted binary.
+3. Install the new binary with the steps above.
+4. Requalify: run `sh tests/test_scan.sh`. Each test must pass.
 
 ## Hooks
 
@@ -261,7 +350,7 @@ The install script copies `scripts/git-hooks/dispatch` to `<git-common-dir>/scan
 | The hook or `scripts/scan.sh` is missing from the working tree, but is in the index or in `HEAD` | The commit, merge or push stops (fail closed). This includes the commit that deletes `scripts/scan.sh`. |
 | The branch never had them | No scan. The hook prints `this branch has no scripts/git-hooks/<hook> and no scripts/scan.sh; no scan`. |
 
-A hook fails closed: if Docker or the scanner image is not available, the commit or the push stops.
+A hook fails closed: if the Betterleaks binary is missing or has another version, the commit or the push stops.
 
 After a change of `scripts/git-hooks/dispatch`, or after the repository moves to another path, run `scripts/install-hooks.sh` again. `--check` reports both cases. If the path in `core.hooksPath` does not exist, Git runs no hook and prints nothing.
 
@@ -276,7 +365,7 @@ The publisher writes the publication line into the notes; do not repeat the rang
 sh tests/test_scan.sh
 ```
 
-The test runs offline. It uses temporary repositories and temporary bare remotes in a temporary directory under `/tmp`, and removes the directory at the end. It installs the hooks only in a temporary clone. It does not change the configuration of this repository. It needs Docker and the scanner image, and takes some minutes.
+The test runs offline. It uses temporary repositories and temporary bare remotes in a temporary directory under `/tmp`, and removes the directory at the end. It installs the hooks only in a temporary clone. It does not change the configuration of this repository. It needs the Betterleaks 1.9.0 binary (`BETTERLEAKS_BIN`). It needs no container and no image.
 
 The test covers the negative control, a clean tree, a synthetic secret and a host value at both levels. It covers the allow list, the policy findings and the history with merge commits. It also covers the hooks (install, refusal, fail closed, uninstall) and the private address ranges.
 

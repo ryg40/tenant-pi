@@ -47,7 +47,14 @@ Not verified: the lowest Compose version that reads the two Compose files. `Comp
 
 macOS uses zsh as its login shell. Put each `PATH` or variable line in `~/.zshrc`, and reload it with `exec zsh`.
 
-Podman runs Linux containers in a virtual machine on macOS. [The macOS guide](macos.md#scanner-recommended-podman-container-path) has the install lines of Podman.
+Podman runs Linux containers in a virtual machine on macOS. Install Podman with Homebrew before step 1:
+
+```sh
+brew install podman
+podman --version
+```
+
+`podman --version` must print a version. The [macOS guide](macos.md#package-architecture) lists the macOS versions with a native arm64 bottle of Podman.
 
 1. Start the Podman machine.
 

@@ -1598,20 +1598,13 @@ A bottle is a prebuilt Homebrew package.
 | --- | --- |
 | All steps | macOS uses zsh. Put every `PATH` or variable line in `~/.zshrc`, never `~/.bashrc`. Run `exec zsh` to reload it. Use the kitty window's zsh to run Git hooks and the launcher. |
 | Prerequisites | Use native `arm64` tools and the Homebrew prefix `/opt/homebrew`. The guide does not require Rosetta. |
-| Prerequisites | `git`, `python@3.12`, `node@24` and `podman` have arm64 bottles for macOS 15 (Sequoia) and 26 (Tahoe), not 14 (Sonoma). |
-| Prerequisites | `gitleaks` and `colima` have arm64 bottles for macOS 14, 15 and 26. Recheck the formula for your macOS version. |
+| Prerequisites | `git`, `python@3.12` and `node@24` have arm64 bottles for macOS 15 (Sequoia) and 26 (Tahoe), not 14 (Sonoma). The Compose seat also needs `podman`, with the same bottles. |
+| Prerequisites | The scan needs the Betterleaks 1.9.0 binary: the `darwin_arm64` archive with its pinned checksum, or the Homebrew cask `betterleaks/tap/betterleaks@1`. The version output on a Mac remains unverified. |
 | 1, 3, 10 | Select Node 24 and Python 3.11 or later. The guide selects `python@3.12`; check both version and `arm64` architecture. |
 | 4 to 9 | Use the expanded macOS home path in JSON. Keep the target outside the clone, private directory and live profile. |
 | 10 | Homebrew `node@24` needs its explicit `PATH`. The nvm alternative and native addon compilation remain unverified. For a home that has no nvm, [INSTALL.md](INSTALL.md#stage-1-requirements) gives the nvm install lines and the shell startup choice. |
-| Scan prerequisites | Podman is recommended instead of Docker Desktop. Colima is an untested alternative, not a configured scanner. |
-| Scan command | The script accepts `SCAN_ENGINE=docker`, not `podman`. A private `podman-bin/docker` symlink makes its `docker` calls reach Podman. |
-| Scan paths | Share the repository, Git directory and scan temporary directory into the VM at the same absolute paths. |
-| Scan temporary files | Set `TMPDIR` to private `scan-tmp/` under your home. That avoids assumptions about macOS temporary-directory sharing. |
-| Scan image | Pull the pinned image explicitly. The scan never pulls it; Podman short-name resolution and arm64 execution remain unverified. |
-| Scan binary | The current Homebrew gitleaks cannot satisfy exact output `v8.28.0`. The upstream darwin arm64 binary route remains unverified. |
+| Scan binary | The scan runs only the Betterleaks binary and accepts the version output `1.9.0` or `v1.9.0`. Set `BETTERLEAKS_BIN` when the binary is not on `PATH`, for example `betterleaks-v1` of the cask. The scan starts no container. |
 | 12 to 14 | Keep all baseline checks and the launcher unchanged. No accepted live Mac trial qualifies the launch, login or model reply. |
-
-Warning: the compatibility `PATH` changes every `docker` command in that shell. `TMPDIR` changes every temporary-directory user in that shell.
 
 ## Components
 

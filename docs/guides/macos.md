@@ -37,9 +37,8 @@ Check the formula for your macOS version before installing. Do not infer support
 | [git](https://formulae.brew.sh/formula/git) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Clone and scan history. |
 | [python@3.12](https://formulae.brew.sh/formula/python@3.12) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Run the kit. |
 | [node@24](https://formulae.brew.sh/formula/node@24) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Run Pi and build optional packages. |
-| [podman](https://formulae.brew.sh/formula/podman) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Recommended container runtime. |
-| [gitleaks](https://formulae.brew.sh/api/formula/gitleaks.json) | Native arm64 bottles: macOS 14 (Sonoma), 15 (Sequoia), 26 (Tahoe); current formula, not the required v8.28.0 | Homebrew binary cannot pass the scan version check. |
-| [colima](https://formulae.brew.sh/formula/colima) | Native arm64 bottles: macOS 14 (Sonoma), 15 (Sequoia), 26 (Tahoe); kit use not verified | Potential alternative only. |
+| [podman](https://formulae.brew.sh/formula/podman) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | The [Compose seat](compose-seat.md) only. The scan does not use it. |
+| [Betterleaks](https://github.com/betterleaks/betterleaks/releases/tag/v1.9.0) 1.9.0 | The release has a `darwin_arm64` archive; the Homebrew cask `betterleaks/tap/betterleaks@1` installs the command `betterleaks-v1`; version output on a Mac not verified | The scanner of the scan hook. See [the scanner section](#scanner-the-betterleaks-binary). |
 | nvm with Node 24 | Not verified here; nvm is a shell version manager, not a native bottle | Optional per-user alternative to Homebrew Node; initialize nvm in `~/.zshrc`. |
 | Xcode Command Line Tools | Not verified here; Apple supplies the toolchain, not a Homebrew bottle | Compile native addons when needed. |
 | Pi and the selected npm packages | Not verified on arm64; npm packages, not Homebrew bottles | Install only the selected modules. |
@@ -201,111 +200,117 @@ Keep INSTALL.md's declared-package version caveats and compare the profile after
 Regenerate the runtime report and run `plan` again after changing Node or Pi.
 The runtime stays `unverified`. A dependency step that you omit is `skipped`.
 
-### Scanner: recommended Podman container path
+### Scanner: the Betterleaks binary
 
-Use the pinned Podman container path for scanning; the Homebrew gitleaks binary cannot pass the script's version check.
 The scan hook uses [scripts/scan.sh](../../scripts/scan.sh); see [secret handling](../secret-handling.md#scanner).
-Verified by reading that script: `SCAN_ENGINE` accepts only `auto`, `docker` and `binary`, not `podman`.
-With `auto`, it first tests an executable named `docker` with `docker info`.
-A working engine needs the pinned image already present; a missing image stops the scan without a binary fallback.
-If no working `docker` exists, `auto` tries the `gitleaks` binary.
+The script runs only the Betterleaks binary. It needs the version output `1.9.0` or `v1.9.0`.
+The scan starts no container and no virtual machine.
 
-Podman is the recommended replacement for Docker Desktop.
-On macOS, it runs Linux containers in a virtual machine.
-The [init command](https://docs.podman.io/en/latest/markdown/podman-machine-init.1.html) creates it;
-the [start command](https://docs.podman.io/en/latest/markdown/podman-machine-start.1.html) starts it.
+Choose one of two routes: the release archive or the Homebrew cask. Run each step in zsh.
+
+#### Route 1: the release archive
+
+1. Make an empty directory and go into it.
+
+   ```sh
+   cd "$(mktemp -d)"
+   ```
+
+   `pwd` must print the new directory.
+
+2. Download the `darwin_arm64` archive.
+
+   ```sh
+   curl -fsSLO https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_darwin_arm64.tar.gz
+   ```
+
+   The command must end with exit code 0.
+
+3. Check the archive against the pinned line.
+
+   ```sh
+   echo '83dd7eaab13d44a1e8e347a17064cdef153a1478db473276d41b38d55613d3f2  betterleaks_1.9.0_darwin_arm64.tar.gz' | shasum -a 256 -c
+   ```
+
+   The command must print `betterleaks_1.9.0_darwin_arm64.tar.gz: OK`. Stop at any other output.
+
+4. Extract the binary.
+
+   ```sh
+   tar -xzf betterleaks_1.9.0_darwin_arm64.tar.gz betterleaks
+   ```
+
+   The command extracts only the binary. The checksum of the archive covers it.
+
+5. Install the binary into a directory of your own.
+
+   ```sh
+   mkdir -p "$HOME/.local/bin"
+   install -m 755 betterleaks "$HOME/.local/bin/betterleaks"
+   ```
+
+   `ls -l "$HOME/.local/bin/betterleaks"` must show the file with mode `-rwxr-xr-x`.
+
+6. Put the directory on `PATH`. Add this line to `~/.zshrc`:
+
+   ```sh
+   export PATH="$HOME/.local/bin:$PATH"
+   ```
+
+   Run `exec zsh`. Then `command -v betterleaks` must print the path of step 5.
+
+7. Check the version.
+
+   ```sh
+   betterleaks version
+   ```
+
+   The command must print `1.9.0`.
+
+Not verified: the output of `betterleaks version` on a Mac. Not verified: macOS Gatekeeper accepts the binary without a prompt.
+
+#### Route 2: the Homebrew cask
+
+1. Install the cask.
+
+   ```sh
+   brew install --cask betterleaks/tap/betterleaks@1
+   ```
+
+   The cask installs the command `betterleaks-v1`, not `betterleaks`.
+
+2. Name the command for the scan. Add this line to `~/.zshrc`:
+
+   ```sh
+   export BETTERLEAKS_BIN=betterleaks-v1
+   ```
+
+   Run `exec zsh`. Then `echo "$BETTERLEAKS_BIN"` must print `betterleaks-v1`.
+
+3. Check the version.
+
+   ```sh
+   betterleaks-v1 version
+   ```
+
+   The command must print `1.9.0`. Another version stops the scan. Then use route 1.
+
+Not verified: the version that the cask installs, and the output of `betterleaks-v1 version`.
+The cask has no pinned checksum in this kit. Route 1 checks the pinned checksum.
+
+#### Check the scan
+
+Run the scan in the kit:
 
 ```sh
-brew install podman
-podman machine init
-podman machine start
-podman info
-```
-
-Run `init` once for a new machine. For an existing machine, check `podman machine list` before starting it.
-
-The gitleaks image runs as a Linux container under Podman, not as a macOS executable.
-The scan script still calls `docker`. An interactive `alias docker=podman` does not reach its separate shell or Git hooks.
-Use a private executable symlink instead. After the private directory exists:
-
-```sh
-mkdir "$HOME/.config/tenant-pi/podman-bin"
-ln -s "$(command -v podman)" "$HOME/.config/tenant-pi/podman-bin/docker"
-export PATH="$HOME/.config/tenant-pi/podman-bin:$PATH"
-export SCAN_ENGINE=docker
-mkdir -p "$HOME/.config/tenant-pi/scan-tmp"
-export TMPDIR="$HOME/.config/tenant-pi/scan-tmp"
-docker info
-```
-
-Warning: this `PATH` makes `docker` invoke Podman for every command in the current zsh.
-Warning: the `TMPDIR` export changes the temporary-directory setting for every command in the current zsh, not only the scan.
-
-Review adding the `PATH`, `SCAN_ENGINE` and `TMPDIR` export lines to `~/.zshrc` yourself.
-
-Do not overwrite an existing compatibility directory. Inspect it instead.
-The repository, Git directory and scan temporary directory must be shared into the VM at the same absolute paths.
-Using the home directory avoids relying on macOS temporary-directory sharing defaults.
-Not verified: these mounts with the selected Podman machine provider.
-
-Pull the pinned image explicitly before scanning. The scan itself never pulls and uses no container network:
-
-```sh
-image='docker.io/zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854'
-podman pull "$image"
-docker image inspect zricethezav/gitleaks:v8.28.0@sha256:cdbb7c955abce02001a9f6c9f602fb195b7fadc1e812065883f695d1eeaba854
-podman run --rm --network none "$image" version
 cd "$HOME/tenant-pi"
 scripts/scan.sh --level fail tree
 ```
 
-The registry prefix makes the pull explicit; the script uses the same pinned image without that prefix.
-The `docker image inspect` command checks the exact short name that the scan script inspects.
-Not verified: Podman resolves the short name.
-Stop if that inspection fails; the scan cannot use an image it cannot find.
-Keep the compatibility `PATH`, `SCAN_ENGINE` and `TMPDIR` in the shell that runs Git hooks.
-In kitty on macOS, this is the zsh of the window.
-Not verified: the pinned image's arm64 execution, Podman command compatibility and complete scan-hook run on macOS.
-A failure leaves the scan `blocked`; do not skip the hook or add emulation as an assumed fix.
-
-### Scanner: direct binary path is unverified
-
-`SCAN_ENGINE=binary` requires the exact output `v8.28.0` from `gitleaks version`, including the leading `v`.
-The Homebrew formula sets its version string to `8.30.1`, without a leading `v`.
-Thus `SCAN_ENGINE=binary` with Homebrew cannot pass this check.
-`brew pin gitleaks` prevents upgrades; it does not install an older release or change the version string.
-
-For native darwin arm64, only the upstream v8.28.0 release binary can match the required pin.
-Look for `gitleaks_8.28.0_darwin_arm64.tar.gz` in the [gitleaks v8.28.0 release](https://github.com/gitleaks/gitleaks/releases/tag/v8.28.0).
-Not verified: that release asset name.
-Not verified: the upstream binary prints `v8.28.0`.
-Check the installed upstream binary before selecting this path:
-
-```sh
-gitleaks version
-```
-
-If the output differs from `v8.28.0`, this route is `blocked`; use the pinned container path instead.
-Do not change the scan pin to make an installed binary pass.
-Only with that exact output and the matching binary on `PATH`, run:
-
-```sh
-SCAN_ENGINE=binary scripts/scan.sh --level fail tree
-```
-
-Not verified: an exact-pin arm64 binary installation and a live macOS scan.
-
-### Colima: potential alternative only
-
-[Colima](https://github.com/abiosoft/colima) manages a Lima Linux VM and can expose a Docker-compatible socket with its Docker runtime.
-It is a potential alternative, not a recommendation. Its Homebrew installation line is:
-
-```sh
-brew install colima
-```
-
-Not verified: Colima startup, client and socket configuration, image architecture, volume mounts or scan hooks with this kit.
-Test those before choosing it. Installing Colima alone does not configure the scanner.
+The command must end with exit code 0. Exit code 2 with `no Betterleaks binary` or `need 1.9.0` shows a missing binary or another version.
+Keep `PATH` or `BETTERLEAKS_BIN` in the zsh that runs Git hooks. In kitty on macOS, this is the zsh of the window.
+Not verified: a complete scan-hook run on macOS.
+A failure leaves the scan `blocked`; do not skip the hook.
 
 ## Authenticate
 

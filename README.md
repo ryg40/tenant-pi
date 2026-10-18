@@ -15,7 +15,7 @@ The published copy of the kit is a snapshot mirror: the maintainer updates it wi
 | Guide | For |
 | --- | --- |
 | [Install](INSTALL.md) | The install stages with exact commands. Start here. |
-| [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Podman adaptations; macOS stays not qualified. |
+| [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Betterleaks binary adaptations; macOS stays not qualified. |
 | [Compose seat](docs/guides/compose-seat.md) | A Pi profile in a container that you reach over SSH, with Docker Compose or Podman; not qualified. |
 | [Explainer](EXPLAINER.md) | The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
 | [Architecture](docs/architecture.md) | The installed environment: terminal, selected Pi profile, runtime modules, state and optional services. Open the self-contained `docs/architecture.html` from disk. Five views include model-route alternatives, memory data flows and a searchable module catalog. The guide explains navigation and rebuilding. |

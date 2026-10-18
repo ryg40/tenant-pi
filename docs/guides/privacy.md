@@ -113,10 +113,10 @@ Rule from the Pi 1.1.0 source: Pi checks each tool in `<target>/bin/` first, the
 
 | Finding | Result |
 | --- | --- |
-| A secret pattern (gitleaks v8.28.0 default rules) | Always fails. |
+| A secret pattern (the default rules of gitleaks v8.28.0 in `.gitleaks.toml`) | Always fails. |
 | A host value: a pattern of the deny lists or a private network address | Fails on the branch `portable` and on a tag `portable/*`. Warns on other branches. |
-| A tracked `.gitleaksignore`, a tracked file in `.local/`, a tracked archive or database dump | Always fails. |
+| A tracked `.gitleaksignore`, `.gitleaksbaseline`, `.betterleaksignore` or `.betterleaksbaseline`, a tracked file in `.local/`, a tracked archive or database dump | Always fails. |
 
-Modes: `tree`, `staged`, `history`, `all` and `selftest`. The scanner runs gitleaks in a pinned container without network access, or a local gitleaks binary.
+Modes: `tree`, `staged`, `history`, `all` and `selftest`. The scanner is the local Betterleaks 1.9.0 binary. It runs without network access and without a container.
 
-The scanner does not check untracked files, the private directory, a generated profile, encoded secrets, or commit author names. `scripts/publish_check.py` also scans each file of the publish set for private-key and token patterns, and for the content classes of [the public reader rules](../publishing.md#public-reader-rules). Neither check is a full secret audit.
+The scanner does not check untracked files, the private directory, a generated profile, a secret that is split over lines or encrypted, or commit author names. `scripts/publish_check.py` also scans each file of the publish set for private-key and token patterns, and for the content classes of [the public reader rules](../publishing.md#public-reader-rules). Neither check is a full secret audit.

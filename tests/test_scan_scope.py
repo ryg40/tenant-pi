@@ -82,15 +82,15 @@ class ScanScopeTests(unittest.TestCase):
 
     def test_binary_version_accepts_both_forms_and_rejects_other_versions(self):
         source = (ROOT / "scripts/scan.sh").read_text()
-        function = source.split("select_engine() {", 1)[1].split("\nrun_count=", 1)[0]
+        function = source.split("select_engine() {", 1)[1].split("\n}\n", 1)[0]
         harness = self.root / "version.sh"
         harness.write_text('''
-SCAN_ENGINE=binary
-GITLEAKS_VERSION=v8.28.0
+BETTERLEAKS_VERSION=1.9.0
+BETTERLEAKS_BIN=betterleaks
 die() { echo "$*" >&2; exit 2; }
-gitleaks() { echo "$TEST_VERSION"; }
-select_engine() {''' + function + '\nselect_engine\n')
-        for version, expected in (("8.28.0", 0), ("v8.28.0", 0), ("8.27.0", 2), ("", 2)):
+betterleaks() { echo "$TEST_VERSION"; }
+select_engine() {''' + function + '\n}\nselect_engine\n')
+        for version, expected in (("1.9.0", 0), ("v1.9.0", 0), ("1.8.0", 2), ("", 2)):
             with self.subTest(version=version):
                 result = subprocess.run(["sh", str(harness)], cwd=self.root,
                                         env={**self.env, "TEST_VERSION": version},

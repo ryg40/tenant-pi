@@ -70,57 +70,10 @@ class UnitTests(unittest.TestCase):
         self.assertIn("--local-dir", actions["validate"])
 
 
-class PiInstallRuleTests(unittest.TestCase):
-    """The three install documents give one rule for the `pi` status `missing` and `mismatch`."""
+class InstallExampleTests(unittest.TestCase):
+    """Executable install blocks and validated JSON examples, without prose pins."""
 
-    DOCS = ("INSTALL.md", "docs/guides/setup.md", "skills/tenant-pi-install/SKILL.md")
-    # Each line is in each document one time, so a change of one document without the others fails.
-    LINES = (
-        'p="$(npm config get prefix)"; test -w "$p/lib/node_modules" && test -w "$p/bin" '
-        '&& echo writable || echo "not writable"',
-        'npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@',
-        'export PATH="$HOME/.npm-global/bin:$PATH"',
-        "- Stop.",
-        "- Keep the existing Pi, and record the version mismatch as a gap.",
-        "The existing Pi stays in its place. Record the prefix and its `PATH` line as an adaptation.",
-        # What the write test writes, and the path after a refused global command.
-        "The test writes nothing into the npm prefix. `npm config get prefix` writes one debug log file into "
-        "the npm cache directory of the user (default `~/.npm/_logs`), and makes that directory when it is absent.",
-        "can refuse the global command and use the prefix form below in its place.",
-        # The three options above are the choices; the global command is none of them.
-        "The global install command is not the default for a `mismatch`: it replaces the installed Pi for every "
-        "profile of the user, and it is a downgrade when the installed Pi is newer.",
-    )
-    TEXT = ("`not writable`", "`mismatch`", "`missing`", "The kit never edits a shell startup file")
-    # `npm config get prefix` writes a log file, so no document calls the write test read-only.
-    ABSENT = ("reads only", "changes nothing")
-
-    def test_same_rule_in_each_document(self):
-        for name in self.DOCS:
-            lines = (ROOT / name).read_text(encoding="utf-8").split("\n")
-            for expected in self.LINES:
-                with self.subTest(name=name, line=expected):
-                    self.assertEqual(1, sum(expected in line for line in lines))
-            for expected in self.TEXT:
-                with self.subTest(name=name, text=expected):
-                    self.assertTrue(any(expected in line for line in lines))
-            # The write test comes before the prefix form, and the `PATH` line follows the install line.
-            at = [next(i for i, line in enumerate(lines) if expected in line) for expected in self.LINES[:3]]
-            self.assertLess(at[0], at[1])
-            self.assertEqual(at[1] + 1, at[2])
-            for expected in self.ABSENT:
-                with self.subTest(name=name, absent=expected):
-                    self.assertFalse(any(expected in line for line in lines))
-            # The two lines on the write test are between the write test and the prefix form.
-            for expected in self.LINES[6:8]:
-                with self.subTest(name=name, between=expected):
-                    here = next(i for i, line in enumerate(lines) if expected in line)
-                    self.assertLess(at[0], here)
-                    self.assertLess(here, at[1])
-            # The line on the global install command follows the three options of a `mismatch`.
-            options = [next(i for i, line in enumerate(lines) if expected in line) for expected in self.LINES[3:6]]
-            self.assertEqual([options[0], options[0] + 1, options[0] + 2], options)
-            self.assertEqual(options[2] + 2, next(i for i, line in enumerate(lines) if self.LINES[8] in line))
+    DOCS = ("INSTALL.md",)
 
     @slow
     def test_install_blocks_read_and_use_the_pin_in_one_shell(self):
@@ -147,7 +100,6 @@ class PiInstallRuleTests(unittest.TestCase):
                             if language == "sh" and any('"${pin:?}"' in line for _, line in lines)]
                 self.assertEqual(2, len(installs), name)
                 for lines in installs:
-                    self.assertEqual("# Run from the kit root.", lines[0][1])
                     command = "\n".join(line for _, line in lines)
                     for shell in shells:
                         for value in ("9.9.9", "", None):
@@ -171,87 +123,87 @@ class PiInstallRuleTests(unittest.TestCase):
                         self.assertNotEqual(0, result.returncode)
                         self.assertFalse(record.exists())
 
+    @classmethod
+    def setUpClass(cls):
+        cls.texts = {name: (ROOT / name).read_text(encoding="utf-8") for name in cls.DOCS}
 
-class ModelReplyRuleTests(unittest.TestCase):
-    """The three install documents give one fixed prompt and one reading rule for the model reply."""
+    def memory_example(self, name):
+        """The one JSON example of a guide that holds the consent key and the `memory` block."""
+        found = []
+        for lang, _, lines in parse(self.texts[name])[1]:
+            if lang == "json":
+                data = json.loads("\n".join(line.strip() for _, line in lines))
+                if type(data) is dict and "memory" in data:
+                    found.append(data)
+        self.assertEqual(1, len(found), name)
+        return found[0]
 
-    DOCS = PiInstallRuleTests.DOCS
-    PROMPT = "What is 17 plus 26? Reply with the number only."
-    EXPECTED = "43"
-    # The print mode form: the launch line, then `-p` and the prompt, then the exit status.
-    PRINT = ("pi --no-approve -p '" + PROMPT + "'; echo \"exit status: $?\"")
-    TEXT = ("The expected reply is the number `43`", "The prompt text does not hold that number",
-            '"Model replied"', '"Reply matched"', "Preferred form: print mode", "holds no user line",
-            "user line", "model line", "thinking text", "A Pi screen has no labels",
-            "A `43` in the user line or in the thinking text is not a reply", "The user line must be the fixed prompt",
-            "only when both are yes", "--model '<provider>/<model>'", "`exit status: 0`")
-    # The old check accepted any text on the screen, also the text that the user typed.
-    ABSENT = ("A one-line prompt gets a reply", "a one-line prompt receives a reply", "Reply with exactly")
-
-    def test_the_expected_reply_is_not_in_the_prompt(self):
-        self.assertNotIn(self.EXPECTED, self.PROMPT)
-        self.assertEqual(int(self.EXPECTED), 17 + 26)
-        # No part of the prompt is the reply: a user who types the prompt cannot put the reply on the screen.
-        self.assertFalse(any(self.EXPECTED in word for word in self.PROMPT.split()))
-
-    def test_same_rule_in_each_document(self):
-        for name in self.DOCS:
-            text = (ROOT / name).read_text(encoding="utf-8")
+    def test_the_memory_example_is_valid_with_the_recommended_selection(self):
+        from scripts.components import RECOMMENDED, selection
+        from scripts.validate import Invalid, manifest, overlay
+        known = manifest(json.loads((ROOT / "config/manifest.json").read_text(encoding="utf-8")))
+        sample = json.loads((ROOT / "config/config.example.json").read_text(encoding="utf-8"))
+        chosen = selection(known, list(RECOMMENDED))
+        self.assertEqual([], chosen["added"])
+        examples = {name: self.memory_example(name) for name in self.DOCS}
+        self.assertEqual(1, len({json.dumps(example, sort_keys=True) for example in examples.values()}))
+        for name, example in examples.items():
             with self.subTest(name=name):
-                self.assertEqual(1, text.count(self.PRINT))
-                # The prompt is given as text, and one time more in the print mode command.
-                self.assertEqual(2, text.count(self.PROMPT))
-            for expected in self.TEXT:
-                with self.subTest(name=name, text=expected):
-                    self.assertTrue(expected in text)
-            for old in self.ABSENT:
-                with self.subTest(name=name, absent=old):
-                    self.assertFalse(old in text.replace('such as "Reply with exactly: ..."', ""))
-            # Print mode comes before the pasted screen: it is the preferred form.
-            self.assertLess(text.index("Preferred form: print mode"), text.index("A Pi screen has no labels"), name)
+                self.assertEqual({"consent", "memory"}, set(example))
+                self.assertEqual({"memoryCapture": True, "remoteMemoryWrites": False, "telemetry": False}, example["consent"])
+                # No background model call, an ambient vault, and neither remote module.
+                self.assertEqual({"schemaVersion": 1, "hermes": {"backgroundReview": False},
+                                  "wiki": {"ambientPersonalVault": True, "backgroundTasks": False}, "openviking": None, "agentcore": None},
+                                 example["memory"])
+                data = {**sample, "target": {"agentDir": "/home/EXAMPLE_USER/.pi/profiles/main"},
+                        "selection": chosen["selection"], **example}
+                overlay(data, known)
+                # Each `overlay:` code of the two modules is a key of the example.
+                for cid in ("hermes", "wiki"):
+                    for code in chosen["prerequisites"][cid]:
+                        if code.startswith("overlay:"):
+                            value = example
+                            for key in code.split(":", 1)[1].split("."):
+                                value = value[key]
+                            self.assertTrue(value, code)
+                # The sample overlay alone, with this selection, is refused: the consent is a separate act.
+                with self.assertRaises(Invalid):
+                    overlay({**sample, "selection": chosen["selection"]}, known)
 
-    def test_the_install_log_template_separates_the_reply_from_the_match(self):
-        lines = (ROOT / "config/private/install-log.md").read_text(encoding="utf-8").split("\n")
-        replied = [line for line in lines if line.startswith("- Model replied:")]
-        matched = [line for line in lines if line.startswith("- Reply matched:")]
-        self.assertEqual((1, 1), (len(replied), len(matched)))
-        for line in replied + matched:
-            self.assertTrue("`yes`, `no` or `not run`" in line)
-        self.assertTrue("model line" in matched[0] and "not in the user line" in matched[0])
-        self.assertLess(lines.index(replied[0]), lines.index(matched[0]))
-        # The template names no expected reply: the log is not the place that tells it to the user.
-        self.assertFalse(any(self.EXPECTED in line for line in lines))
+    def test_install_selection_example_matches_the_action(self):
+        from scripts.components import selection
+        from scripts.validate import manifest
+        known = manifest(json.loads((ROOT / "config/manifest.json").read_text(encoding="utf-8")))
+        samples = [json.loads("\n".join(line for _, line in lines))
+                   for lang, _, lines in parse(self.texts["INSTALL.md"])[1] if lang == "json"]
+        core = [sample for sample in samples
+                if type(sample) is dict and sample.get("selection", {}).get("enable") == ["core"]]
+        self.assertEqual(1, len(core))
+        self.assertEqual(selection(known, [])["selection"], core[0]["selection"])
 
 
 class PublicTextTests(unittest.TestCase):
-    def test_lifecycle_titles_and_links(self):
-        titles = {
-            "accepted-drift": "Accepted drift in the overlay",
-            "carry": "Carry wanted drift into the overlay",
-            "launcher": "Launcher file",
-            "candidate-list": "Candidate list",
-            "check-runtime": "Runtime version check",
-            "private-directory": "Private directory",
-            "profile-inventory": "Profile inventory, names only",
-            "owner-packages": "Owner package paths in the overlay",
-            "owner-resources": "Owner skill and prompt directories in the overlay",
-        }
-        for name, title in titles.items():
-            with self.subTest(name=name):
-                text = (ROOT / f"docs/{name}.md").read_text(encoding="utf-8")
-                self.assertEqual("# " + title, text.splitlines()[0])
-                self.assertIn(slug(title), anchors(parse(text)[0]))
-        lifecycle = (ROOT / "docs/profile-lifecycle.md").read_text(encoding="utf-8")
-        self.assertNotIn("Suggested order", lifecycle)
-        self.assertNotIn("Where the concept is thin today", lifecycle)
-        for name in titles:
-            self.assertIn(f"({name}.md)", lifecycle)
+    def test_lifecycle_links(self):
+        targets = ("accepted-drift.md", "carry.md", "launcher.md", "candidate-compare.md#candidate-list",
+                   "check-runtime.md", "private-directory.md", "profile-inventory.md",
+                   "owner-extensions.md#owner-package-paths-in-the-overlay",
+                   "owner-extensions.md#owner-skill-and-prompt-directories-in-the-overlay")
+        lifecycle = (ROOT / "docs/private-directory.md").read_text(encoding="utf-8")
+        for target in targets:
+            self.assertIn(f"({target})", lifecycle)
 
-    def test_empty_readiness_list_requires_versions_and_no_other_gap(self):
-        for name in ("INSTALL.md", "EXPLAINER.md", "docs/guides/setup.md"):
-            with self.subTest(name=name):
-                self.assertIn("with `match` for Node and Pi, and a profile without another gap",
-                              (ROOT / name).read_text(encoding="utf-8"))
+    def test_directory_docs_are_checked_and_denied_docs_are_omitted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "docs/explainer").mkdir(parents=True)
+            (root / "scripts").mkdir()
+            name = "docs/explainer/new-guide.md"
+            (root / name).write_text("# New guide\n")
+            self.assertNotIn(name, doc_check.PUBLISH)
+            self.assertIn(name, doc_check.document_files(root))
+            (root / doc_check.DEV_ONLY_REL).write_text(name + "\n")
+            self.assertNotIn(name, doc_check.document_files(root))
+            self.assertFalse(doc_check.published(name, root))
 
     def test_private_excluded_package_links_are_not_published(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -261,124 +213,6 @@ class PublicTextTests(unittest.TestCase):
             self.assertFalse(doc_check.published("packages/tenantext/private/note.md", root))
             self.assertFalse(doc_check.published("packages/tenantext/private", root))
             self.assertTrue(doc_check.published("packages/tenantext/private-other/note.md", root))
-
-    def test_provider_key_rule_is_shared_without_a_provider_choice(self):
-        rule = ("Pi reads a provider key from the environment of the launching shell, "
-                "including in a profile with no login.")
-        variable_rule = ("Not verified: which variable names Pi reads for each provider. "
-                         "Use the name that the Pi documentation gives.")
-        for name in (*PiInstallRuleTests.DOCS, "EXPLAINER.md", "docs/launcher.md"):
-            with self.subTest(name=name):
-                text = (ROOT / name).read_text(encoding="utf-8")
-                self.assertEqual(1, text.count(rule))
-                self.assertEqual(1, text.count(variable_rule))
-                self.assertNotIn("OPENROUTER_API_KEY", text)
-        explainer = (ROOT / "EXPLAINER.md").read_text(encoding="utf-8")
-        self.assertIn("replace `EXAMPLE_PROVIDER_API_KEY`", explainer)
-        self.assertIn("where-the-outputs-come-from", anchors(parse(explainer)[0]))
-        self.assertNotIn("update-this-document-for-a-new-release", explainer)
-        self.assertNotIn("run for this document", explainer)
-
-
-class SharedRuleTests(unittest.TestCase):
-    """The three install documents give the same rules: one shared line or text for each rule."""
-
-    DOCS = PiInstallRuleTests.DOCS
-    REPEATED = (
-        "# Run from the kit root.",
-        '''pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && ''' + "\\",
-    )
-    # Each shared line has the same count in each document.
-    LINES = (*REPEATED,
-        "`<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.",
-        '`runtime.piAcceptedRange` is the accepted Pi range. `runtime.piVersion` is the tested version.',
-        'A newer accepted Pi version works by the range rule. The kit tests ran on the tested version only.',
-        'With `untested_in_range`, keep the installed Pi and record `core_runtime_untested_in_range` as a readiness gap.',
-        'The Pi install line stays a plain command with `not_needed`, not `replaces_installed`.',
-        'With `match` or `untested_in_range`, skip the Pi install.',
-        "After the overlay exists, `python3 scripts/tenant_pi.py plan --overlay <file>` prints the same line "
-        "in `commands.piInstall`, key `command`.",
-        '  npm install --global -- @earendil-works/pi-coding-agent@"${pin:?}"',
-        '  npm install --global --prefix "$HOME/.npm-global" -- @earendil-works/pi-coding-agent@"${pin:?}"',
-        # A live agent directory that is a link, a `pi` command of the agent, and the time of the baseline.
-        "If the action stops with `not_directory: baseline.dir`, the directory or a directory above it is a symbolic "
-        'link. Run `realpath "$HOME/.pi/agent"`, give that path as `--dir` to `baseline` and to `check-baseline`, '
-        "and record both paths.",
-        "A `pi` command without `PI_CODING_AGENT_DIR` counts as a Pi in the live profile, also `pi --version`, "
-        "and also when the installing agent ran it.",
-        "Observed with Pi 1.0.2 and a `settings.json` in the directory: a `pi --version` without "
-        '`PI_CODING_AGENT_DIR` gives `changed` with empty name lists and `"directoryModified":true`.',
-        "Record check 4 as passed only when `recordedAt` is before the first Pi command that names the target.",
-        "Check 4 has one more value, not verified.",
-        # The runtime report is a file that the reader makes, and the kit cannot date it.
-        "Exit code 1 is a finding here, not a failure: the file holds the report.",
-        "The kit cannot tell an old report from a current one.",
-        # A JSON syntax error gives its place.
-        '{"candidate_created": false, "column": 3, "error": "invalid_json: overlay.file", "line": 6}',
-    )
-    TEXT = (
-        # Each directory that Stage 0 can print has its own baseline file.
-        '--dir "$PI_CODING_AGENT_DIR"', "live-baseline-env.json",
-        '--dir "$PI_CODING_AGENT_SESSION_DIR"', "session-dir-baseline.json",
-        # The command that makes the report, the option, and the mark of the Pi install line.
-        "tenant_pi.py check-runtime > ", "/.config/tenant-pi/runtime.json", "--runtime-report",
-        "`commands.piInstall`", "`replaces_installed`", "`not_needed`",
-        # The cause is in the rule, and the place is near the reported line.
-        "`input_missing: overlay.file`", "the end of the line before",
-        # The target comes from `--target`; a hand edit is one value, with a syntax check and no fragment.
-        'tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/',
-        "`sample_target: overlay.target.agentDir`", "/home/EXAMPLE_USER/new-agent", "Change nothing else",
-        "JSON fragment", "python3 -m json.tool ", '>/dev/null && echo "JSON valid"',
-    )
-    # The old texts: an overlay that starts as a hand copy, a Pi line that the plan always prints,
-    # a question that names only a Pi of the user, and a bare `pi --version` claim without its condition.
-    ABSENT = ("Start from `config/config.example.json`", "The plan prints this line under `commands.setupDisplayOnly`",
-              "The plan prints the Pi line and the declared-package lines", "/path/to/overlay.json",
-              "Ask whether a Pi of the user ran",
-              "A `pi --version` without `PI_CODING_AGENT_DIR` gives", "a bare `pi --version` changes the modification time")
-
-    def test_same_rule_in_each_document(self):
-        for name in self.DOCS:
-            text = (ROOT / name).read_text(encoding="utf-8")
-            lines = text.split("\n")
-            for expected in self.LINES:
-                with self.subTest(name=name, line=expected[:60]):
-                    self.assertEqual(2 if expected in self.REPEATED else 1, sum(expected in line for line in lines))
-            for expected in self.TEXT:
-                with self.subTest(name=name, text=expected):
-                    self.assertTrue(expected in text)
-            for old in self.ABSENT:
-                with self.subTest(name=name, absent=old):
-                    self.assertFalse(old in text)
-
-    def test_order_of_the_steps_in_each_document(self):
-        for name in self.DOCS:
-            text = (ROOT / name).read_text(encoding="utf-8")
-            with self.subTest(name=name):
-                made = text.index("tenant_pi.py init-private --dir")
-                syntax = text.index("python3 -m json.tool ")
-                validate = text.index("tenant_pi.py validate --overlay")
-                # The private directory with its target comes first; the syntax check comes before `validate`.
-                self.assertLess(made, syntax)
-                self.assertLess(syntax, validate)
-                # The report is made before the baseline step, and the baseline before its comparison.
-                report = text.index("tenant_pi.py check-runtime > ")
-                baseline = text.index("tenant_pi.py baseline --dir")
-                self.assertLess(validate, report)
-                self.assertLess(report, baseline)
-                self.assertLess(baseline, text.index("tenant_pi.py check-baseline --dir"))
-                # The link case belongs to the baseline step: it comes before the comparison.
-                self.assertLess(text.index("`not_directory: baseline.dir`"), text.index("tenant_pi.py check-baseline --dir"))
-
-    def test_the_commands_of_the_skill_name_the_private_directory(self):
-        # The skill gave `/path/to/overlay.json`; each kit command now names the file that `init-private` made.
-        text = (ROOT / "skills/tenant-pi-install/SKILL.md").read_text(encoding="utf-8")
-        for action in ("validate", "plan", "generate"):
-            with self.subTest(action=action):
-                self.assertEqual(1, text.count('tenant_pi.py ' + action + ' --overlay "$HOME/.config/tenant-pi/overlay.json"'))
-        plan = next(line for line in text.split("\n")
-                    if 'tenant_pi.py plan --overlay "$HOME/.config/tenant-pi/overlay.json"' in line)
-        self.assertTrue('--runtime-report "$HOME/.config/tenant-pi/runtime.json"' in plan)
 
 
 class PostInstallTests(unittest.TestCase):
@@ -460,10 +294,8 @@ class PostInstallTests(unittest.TestCase):
             title = section.split("\n", 1)[0]
             self.assertTrue(doc_check.LINK.search(section), title)
 
-    def test_stage_10_of_each_install_text_points_to_the_file(self):
-        for name, heading, link in (("INSTALL.md", "## Stage 10: updates", "(POST_INSTALL.md)"),
-                                    ("skills/tenant-pi-install/SKILL.md", "## Stage 10: keep it current",
-                                     "(../../POST_INSTALL.md)")):
+    def test_stage_10_points_to_the_file(self):
+        for name, heading, link in (("INSTALL.md", "## Stage 10: updates", "(POST_INSTALL.md)"),):
             text = (ROOT / name).read_text(encoding="utf-8")
             stage = text[text.index(heading):]
             stage = stage[:stage.index("\n## ", 1)]
@@ -471,161 +303,27 @@ class PostInstallTests(unittest.TestCase):
             self.assertIn("the kit changes no profile in place", stage, name)
             # The commands of an update are in the one file; the stage holds no second copy.
             self.assertNotIn("```", stage, name)
-            self.assertNotIn("tenant_pi.py", stage, name)
+            self.assertIn("This stage is one message to the user, and it runs no command.", stage, name)
 
     def test_the_document_lists_name_the_file(self):
         for name, link in (("README.md", "(POST_INSTALL.md)"), ("EXPLAINER.md", "(POST_INSTALL.md)"),
                            ("docs/guides/setup.md", "(../../POST_INSTALL.md)"),
-                           ("docs/guides/candidate-update.md", "(../../POST_INSTALL.md)")):
+                           ("skills/tenant-pi-install/SKILL.md", "(../../POST_INSTALL.md)")):
             self.assertIn(link, (ROOT / name).read_text(encoding="utf-8"), name)
-        top = (ROOT / "docs/guides/candidate-update.md").read_text(encoding="utf-8").split("\n")[:4]
-        self.assertTrue(any("POST_INSTALL.md" in line for line in top))
 
-
-class InstallFlowTests(unittest.TestCase):
-    """The checklist, the memory consent, the vault rule and the results file in the two agent guides."""
-
-    DOCS = ("INSTALL.md", "skills/tenant-pi-install/SKILL.md")
-    CONSENT = ("`hermes` and `wiki` are marked. Both store text of your sessions on this machine. "
-               "With the default setting, `wiki` also adds text from your vault to each prompt in each directory, "
-               "and that text goes to your model provider. "
-               "Keep a mark only when you agree to that. Switch off the number of a module that you do not want.")
-    # The commands of the flow, and the texts that an edit must keep.
-    TEXT = ("tenant_pi.py components --format text", "tenant_pi.py components --select ",
-            "tenant_pi.py check-wiki-vault", "tenant_pi.py results --facts ", "--replace",
-            "Fresh wizard defaults select only required core items", "Review the complete plan before saving",
-            "`added`", "`second_vault`", "`doubled`", "Never set `memory.wiki.embedding` on your own",
-            "wiki-vault-baseline.json", '"modified":["meta"]', "INSTALLER_KIT_RESULTS.md", "results-facts.json",
-            "The last line is the full path of the results file", "POST_INSTALL.md#switch-a-memory-module-on")
-    # The old texts: a bundle question, a list of the IDs, and memory that is off without a question.
-    ABSENT = ("Recommended full set", "off by default", "Default is none", "Default no", "Enable memory at all?",
-              "Which in-tree extensions and skills?", "compare` (Stage 10)")
-
-    @classmethod
-    def setUpClass(cls):
-        cls.texts = {name: (ROOT / name).read_text(encoding="utf-8") for name in cls.DOCS}
-        cls.components = json.loads((ROOT / "config/manifest.json").read_text(encoding="utf-8"))["components"]
-
-    def test_each_guide_names_the_actions_and_holds_the_consent_sentence(self):
-        for name, text in self.texts.items():
-            for expected in (self.CONSENT, *self.TEXT):
-                with self.subTest(name=name, text=expected[:50]):
-                    self.assertIn(expected, text)
-            for old in self.ABSENT:
-                with self.subTest(name=name, absent=old):
-                    self.assertNotIn(old, text)
-            # The list comes first, then the selection, then the results file.
-            order = [text.index(self.TEXT[index]) for index in (0, 1, 3)]
-            self.assertEqual(sorted(order), order, name)
-
-    def test_each_text_shows_the_peer_override_line_with_the_path_of_the_clone(self):
-        # The plan prints the absolute path of the script. A relative path runs only from the kit root.
-        shown = re.compile(r"PI_CODING_AGENT_DIR=\S+ node (\S+)")
-        for name in (*self.DOCS, "docs/guides/setup.md", "POST_INSTALL.md"):
+    def test_setup_and_skill_point_to_install_without_a_second_flow(self):
+        from tests.test_skill_invariants import TRACKER, skill_findings
+        self.assertEqual([], skill_findings([ROOT / "skills/tenant-pi-install"], TRACKER,
+                                           require_credits=False))
+        for name in ("docs/guides/setup.md", "skills/tenant-pi-install/SKILL.md"):
             text = (ROOT / name).read_text(encoding="utf-8")
-            with self.subTest(name=name):
-                self.assertNotIn("node scripts/patch_extension_peers.mjs", text)
-                paths = shown.findall(text)
-                self.assertTrue(paths)
-                for path in paths:
-                    self.assertIn(path, ("<clone>/scripts/patch_extension_peers.mjs",
-                                         '"$HOME/tenant-pi/scripts/patch_extension_peers.mjs"'))
-                self.assertIn("absolute path of the script of the clone", text)
-
-    def test_no_guide_holds_a_copy_of_the_component_list(self):
-        ids = [re.compile(r"(?<![\w-])" + re.escape(cid) + r"(?![\w-])") for cid in self.components]
-        for name, text in self.texts.items():
-            for number, line in enumerate(text.split("\n"), 1):
-                with self.subTest(name=name, line=number):
-                    self.assertLess(sum(bool(pattern.search(line)) for pattern in ids), 10)
-        # The rule finds the old list: the recommended set in one paragraph.
-        from scripts.components import RECOMMENDED
-        old = "Recommended: " + ", ".join("`" + cid + "`" for cid in RECOMMENDED) + "."
-        self.assertGreaterEqual(sum(bool(pattern.search(old)) for pattern in ids), 10)
-
-    def memory_example(self, name):
-        """The one JSON example of a guide that holds the consent key and the `memory` block."""
-        found = []
-        for lang, _, lines in parse(self.texts[name])[1]:
-            if lang == "json":
-                data = json.loads("\n".join(line.strip() for _, line in lines))
-                if type(data) is dict and "memory" in data:
-                    found.append(data)
-        self.assertEqual(1, len(found), name)
-        return found[0]
-
-    def test_the_memory_example_is_valid_with_the_recommended_selection(self):
-        from scripts.components import RECOMMENDED, selection
-        from scripts.validate import Invalid, manifest, overlay
-        known = manifest(json.loads((ROOT / "config/manifest.json").read_text(encoding="utf-8")))
-        sample = json.loads((ROOT / "config/config.example.json").read_text(encoding="utf-8"))
-        chosen = selection(known, list(RECOMMENDED))
-        self.assertEqual([], chosen["added"])
-        examples = {name: self.memory_example(name) for name in self.DOCS}
-        self.assertEqual(1, len({json.dumps(example, sort_keys=True) for example in examples.values()}))
-        for name, example in examples.items():
-            with self.subTest(name=name):
-                self.assertEqual({"consent", "memory"}, set(example))
-                self.assertEqual({"memoryCapture": True, "remoteMemoryWrites": False, "telemetry": False}, example["consent"])
-                # No background model call, an ambient vault, and neither remote module.
-                self.assertEqual({"schemaVersion": 1, "hermes": {"backgroundReview": False},
-                                  "wiki": {"ambientPersonalVault": True, "backgroundTasks": False}, "openviking": None, "agentcore": None},
-                                 example["memory"])
-                data = {**sample, "target": {"agentDir": "/home/EXAMPLE_USER/.pi/profiles/main"},
-                        "selection": chosen["selection"], **example}
-                overlay(data, known)
-                # Each `overlay:` code of the two modules is a key of the example.
-                for cid in ("hermes", "wiki"):
-                    for code in chosen["prerequisites"][cid]:
-                        if code.startswith("overlay:"):
-                            value = example
-                            for key in code.split(":", 1)[1].split("."):
-                                value = value[key]
-                            self.assertTrue(value, code)
-                # The sample overlay alone, with this selection, is refused: the consent is a separate act.
-                with self.assertRaises(Invalid):
-                    overlay({**sample, "selection": chosen["selection"]}, known)
-
-    def test_the_setup_guide_uses_the_same_actions_and_the_sample_of_the_action(self):
-        from scripts.components import selection
-        from scripts.validate import manifest
-        known = manifest(json.loads((ROOT / "config/manifest.json").read_text(encoding="utf-8")))
-        text = (ROOT / "docs/guides/setup.md").read_text(encoding="utf-8")
-        for expected in ("tenant_pi.py components --format text", "tenant_pi.py components --select core,ops-footer",
-                         "tenant_pi.py check-wiki-vault", "Both store text of your sessions on this machine.",
-                         "With the default setting, `wiki` also adds text from your vault to each prompt in each directory, "
-                         "and that text goes to your model provider.",
-                         "`npm warn install-scripts`", "`npm warn deprecated`", "require scan, selection and full-plan review before changes",
-                         "`models-store.json`", "`lastChangelogVersion`", "`pi update` does not write it.",
-                         '--out-dir "$HOME/.config/tenant-pi"'):
-            with self.subTest(text=expected):
-                self.assertIn(expected, text)
-        self.assertIn("The order differs from `docs/guides/setup.md`", self.texts["INSTALL.md"])
-        # The core-only sample lists each optional component, as `components --select core` prints it.
-        samples = [json.loads("\n".join(line for _, line in lines)) for lang, _, lines in parse(text)[1] if lang == "json"]
-        core = [sample for sample in samples if type(sample) is dict and sample.get("selection", {}).get("enable") == ["core"]]
-        self.assertEqual(1, len(core))
-        self.assertEqual(selection(known, [])["selection"], core[0]["selection"])
-        self.assertEqual(["context-meter"], selection(known, ["ops-footer"])["added"])
-
-    def test_the_other_documents_state_the_new_defaults(self):
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        self.assertIn("The sample overlay enables no memory module.", readme)
-        self.assertIn("Without the consent key, nothing is captured.", readme)
-        for name in ("README.md", "docs/guides/setup.md", "docs/guides/modules.md", "docs/guides/privacy.md",
-                     "docs/memory-modules.md", "EXPLAINER.md", "POST_INSTALL.md"):
-            with self.subTest(name=name):
-                text = (ROOT / name).read_text(encoding="utf-8")
-                self.assertNotIn("memory is off by default", text)
-                self.assertNotIn("Recommended full set", text)
-        # The sample overlay stays core only.
-        sample = json.loads((ROOT / "config/config.example.json").read_text(encoding="utf-8"))
-        self.assertEqual(["core"], sample["selection"]["enable"])
-        self.assertNotIn("memory", sample)
-        # Each list of the files of the private directory names the results file.
-        for name in ("INSTALL.md", "docs/guides/privacy.md", "docs/private-directory.md", "EXPLAINER.md"):
-            with self.subTest(name=name):
-                self.assertIn("INSTALLER_KIT_RESULTS.md", (ROOT / name).read_text(encoding="utf-8"))
+            self.assertIn("(../../INSTALL.md)", text)
+            self.assertNotRegex(text, r"(?m)^#+ Stage \d|^\d+\. ")
+            self.assertNotIn("```", text)
+            self.assertLess(len(text.splitlines()), 60)
+            for anchor in ("stage-0-inventory", "stage-5-the-private-overlay",
+                           "stage-9-first-launch-and-checks", "stage-10-updates"):
+                self.assertIn("../../INSTALL.md#" + anchor, text)
 
 
 class TreeTests(unittest.TestCase):
@@ -662,12 +360,12 @@ class TreeTests(unittest.TestCase):
             "link_missing": "[x](absent.md)",
             "anchor_missing": "[x](ref.md#" + CANARY.lower() + ")",
             "link_outside": "[x](../../../" + CANARY + ".md)",
-            "link_unpublished": "[x](design.md)",
+            "link_unpublished": "[x](../design.md)",
             "json_example": "```json\n\"" + CANARY + "\": 1\n```",
             "cli_action": "`python3 scripts/tenant_pi.py " + CANARY.lower() + "`",
             "cli_flag": "`python3 scripts/tenant_pi.py plan --target '/x'`",
         }
-        (self.root / "docs/design.md").write_text("# Design\n", encoding="utf-8")
+        (self.root / "design.md").write_text("# Design\n", encoding="utf-8")
         for rule, text in cases.items():
             with self.subTest(rule=rule):
                 findings, _ = self.run_check({"docs/other.md": "# Other\n\n" + text + "\n"})
@@ -700,10 +398,17 @@ class TreeTests(unittest.TestCase):
             with self.subTest(rule=rule):
                 findings, _ = self.run_check({"docs/guides/setup.md": guide + "\n" + text + "\n"})
                 self.assertEqual([rule + ": docs/guides/setup.md:" + str(guide.count("\n") + 2)], findings)
-                # The same text outside the guides and README.md is not a finding.
+                # Other reference pages do not use the strict flag and environment rules.
                 self.assertEqual([], self.run_check({"docs/other.md": "# Other\n\n" + text + "\n"})[0])
         self.assertEqual([], self.run_check({"docs/guides/setup.md": guide + "\nUse `--no-approve` and "
                                              "`--launcher` with `TENANTEXT_LITELLM_API_KEY`.\n"})[0])
+
+    def test_install_counts_as_a_guide_and_checks_standalone_flags(self):
+        guide = self.files["docs/guides/setup.md"]
+        self.files["docs/guides/setup.md"] = "# Setup\n\n## Stage one\n\n[Install](../../INSTALL.md)\n"
+        self.assertEqual([], self.run_check({"INSTALL.md": guide})[0])
+        findings, _ = self.run_check({"INSTALL.md": guide + "\nUse `--" + CANARY.lower() + "`.\n"})
+        self.assertEqual(["cli_flag: INSTALL.md:" + str(guide.count("\n") + 2)], findings)
 
     def test_continuation_and_brackets(self):
         text = "```sh\npython3 scripts/tenant_pi.py generate --overlay '/a b' \\\n  --target '/c' [--launcher '/d']\n```\n"
@@ -711,7 +416,7 @@ class TreeTests(unittest.TestCase):
         bad = text.replace("--launcher", "--require-launcher")
         self.assertEqual(["cli_flag: docs/other.md:4"], self.run_check({"docs/other.md": "# Other\n\n" + bad})[0])
 
-    def test_action_coverage_counts_guides_only(self):
+    def test_action_coverage_excludes_reference_pages(self):
         self.files["docs/guides/setup.md"] = "# Setup\n\n`python3 scripts/tenant_pi.py plan --help`\n"
         findings, _ = self.run_check({"docs/other.md": "`python3 scripts/tenant_pi.py list --help`\n"})
         self.assertIn("action_unguided: scripts/tenant_pi.py:list", findings)
@@ -719,6 +424,8 @@ class TreeTests(unittest.TestCase):
 
     def test_dev_only_target(self):
         text = "[notes](dev/notes.md)"
+        (self.root / "scripts").mkdir()
+        (self.root / doc_check.DEV_ONLY_REL).write_text("docs/dev/\n")
         with mock.patch.object(doc_check, "DEV_ONLY_TARGETS", ("docs/dev/notes.md",)):
             self.assertEqual([], self.run_check({"docs/other.md": "# Other\n\n" + text + "\n"})[0])
             (self.root / "docs/dev").mkdir()
@@ -758,76 +465,6 @@ class DocCheckRepoTests(unittest.TestCase):
         with contextlib.redirect_stdout(second):
             doc_check.main()
         self.assertEqual(out.getvalue(), second.getvalue())
-
-
-class HerdrStageTests(unittest.TestCase):
-    """The Herdr and question tool stage of the two agent guides: the same rules, no invented source."""
-
-    DOCS = {"INSTALL.md": "## Stage 4a: Herdr and the question tool",
-            "skills/tenant-pi-install/SKILL.md": "## Stage 8: Herdr and the question tool (optional)"}
-    ASSET = "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64"
-    DIGEST = "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7"
-
-    def stage(self, name):
-        text = (ROOT / name).read_text(encoding="utf-8")
-        start = text.index(self.DOCS[name] + "\n")
-        return text[start:text.index("\n## Stage ", start + 1)]
-
-    def test_each_guide_asks_the_same_decisions(self):
-        for name in self.DOCS:
-            stage = self.stage(name)
-            for expected in ("on this machine, on a remote Linux host over SSH, or in a container on this machine", "existing", "privileged actions",
-                             "approves or refuses each item", "id -un", "command -v herdr && herdr --version",
-                             "tenant_pi.py check-herdr", "packages/tenantext/skills/herdr/install.sh",
-                             "separate approval", "`questions`", "plain text", "no Pi extension into Claude Code",
-                             "complete and the actions that are not"):
-                with self.subTest(name=name, expected=expected):
-                    self.assertIn(expected, stage)
-
-    def test_the_herdr_source_is_the_pinned_release_and_no_command_pipes_a_script_or_upgrades_it(self):
-        for name in self.DOCS:
-            stage = self.stage(name)
-            with self.subTest(name=name):
-                self.assertNotIn("<reviewed Herdr source>", stage)
-                for expected in ("`herdrdev/herdr`", "Apache-2.0", "reads it before it runs", "`herdr-macos-aarch64`",
-                                 "`herdr-macos-x86_64`", "a non-login shell or in an SSH command",
-                                 "never edits a shell startup file"):
-                    self.assertIn(expected, stage)
-                # The addresses are the pinned release asset, the home page and the official install script.
-                self.assertLessEqual(set(re.findall(r"https?://[^\s`)]+", stage)),
-                                     {self.ASSET, "https://herdr.dev", "https://herdr.dev/install.sh"})
-                blocks = re.findall(r"```(?:sh|text)\n(.*?)```", stage, re.S)
-                commands = "\n".join(blocks)
-                # The preferred form: the pinned asset, the digest check, then the install without root.
-                for expected in ("curl -fsSLO " + self.ASSET + " &&",
-                                 "echo '" + self.DIGEST + "  herdr-linux-x86_64' | sha256sum -c - &&",
-                                 "install -m 755 herdr-linux-x86_64 ~/.local/bin/herdr"):
-                    self.assertIn(expected, commands)
-                self.assertIsNone(re.search(r"\|\s*(?:ba|z|da)?sh\b", commands))
-                for forbidden in ("herdr update", "herdr channel set", "herdr server", "wget",
-                                  "StrictHostKeyChecking", "UserKnownHostsFile", "install.sh"):
-                    self.assertNotIn(forbidden, commands)
-                # Host key verification is named only as a rule that forbids its removal.
-                self.assertIn("host key verification", stage)
-
-    def test_the_fact_document_names_each_part_and_the_unverified_claims(self):
-        text = (ROOT / "docs/herdr-setup.md").read_text(encoding="utf-8")
-        for expected in ("The kit does not install, update or start it.", "@juicesharp/rpiv-ask-user-question@2.13.8",
-                         "installs no Pi extension into Claude Code", "the agent asks in plain text"):
-            self.assertIn(expected, text)
-        # Each value of the code is in the document, so a new value needs a new line there.
-        from scripts.check_runtime import HERDR_STATUSES
-        from scripts.profile_inventory import NOT_MEASURED
-        from scripts.profile_plan import HERDR_CLI_GAP, HERDR_CLI_GAPS, HERDR_SESSION_GAP
-        for value in (*HERDR_STATUSES, *NOT_MEASURED, *NOT_MEASURED.values(), HERDR_CLI_GAP, *HERDR_CLI_GAPS.values(),
-                      HERDR_SESSION_GAP, "readable", "not_readable", "not_declared", "declared", "installed",
-                      "question_ui_unverified"):
-            with self.subTest(value=value):
-                self.assertIn("`" + value + "`", text)
-        live = text[text.index("### Live checks that the owner approves"):text.index("## The remote plan")]
-        # No live check is recorded as done.
-        self.assertEqual(4, live.count("| Not run |"))
-        self.assertNotIn("| Passed |", live)
 
 
 if __name__ == "__main__":

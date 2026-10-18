@@ -71,6 +71,47 @@ class RuleTests(unittest.TestCase):
     def test_no_rule_gives_the_explicit_tuple(self):
         self.assertEqual(publish_check.PUBLISH, publish_check.publish_files(TRACKED, (), root=self.empty_root))
 
+    def test_new_document_enters_by_directory_rule(self):
+        name = "docs/explainer/new-guide.md"
+        path = self.empty_root / name
+        path.parent.mkdir(parents=True)
+        path.write_text("# New guide\n")
+        git(self.empty_root, "init", "-q", "-b", "main")
+        git(self.empty_root, "add", ".")
+        tracked = publish_check.tracked_files(self.empty_root)
+        self.assertNotIn(name, publish_check.PUBLISH)
+        self.assertIn(name, publish_check.publish_files(tracked, root=self.empty_root))
+        self.assertEqual({name}, publish_check.rule_files(tracked)[0])
+
+    def test_new_document_leaves_when_denied(self):
+        name = "docs/explainer/new-guide.md"
+        path = self.empty_root / name
+        path.parent.mkdir(parents=True)
+        path.write_text("# Private guide\n")
+        deny = self.empty_root / publish_check.DEV_ONLY_REL
+        deny.parent.mkdir()
+        deny.write_text(name + "\n")
+        git(self.empty_root, "init", "-q", "-b", "main")
+        git(self.empty_root, "add", ".")
+        tracked = publish_check.tracked_files(self.empty_root)
+        published = publish_check.publish_files(tracked, root=self.empty_root)
+        self.assertNotIn(name, published)
+        self.assertNotIn(publish_check.DEV_ONLY_REL, published)
+        self.assertFalse(publish_check.excluded_files(published, publish_check.private_excludes(self.empty_root)))
+
+    def test_frozen_bundle_stays_out_even_if_a_rule_selects_it(self):
+        name = ".okf/log.md"
+        path = self.empty_root / name
+        path.parent.mkdir()
+        path.write_text("# Frozen log\n")
+        deny = self.empty_root / publish_check.DEV_ONLY_REL
+        deny.parent.mkdir()
+        deny.write_text(".okf/\n")
+        tracked = {name, publish_check.DEV_ONLY_REL}
+        self.assertNotIn(name, publish_check.rule_files(tracked)[0])
+        rules = publish_check.PUBLISH_DIRS + ((".okf", ()),)
+        self.assertNotIn(name, publish_check.publish_files(tracked, rules, root=self.empty_root))
+
     def test_optional_private_list_exact_prefix_missing_and_source_ref(self):
         with tempfile.TemporaryDirectory(prefix="tenant-pi-excludes-") as temp:
             root = Path(temp)
@@ -309,7 +350,8 @@ class CheckTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="tenant-pi-rules-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "copy"
-        self.explicit = ("README.md", "docs/guide.md", "config/manifest.json", "config/config.example.json", ".env.example")
+        self.explicit = ("README.md", "config/manifest.json", "config/config.example.json", ".env.example")
+        self.add("docs/guide.md", "clean\n")
         self.rules = publish_check.PUBLISH_DIRS
         self.pending = publish_check.PUBLIC_PENDING
         for name in self.explicit:
@@ -460,6 +502,19 @@ class CheckTests(unittest.TestCase):
                 self.assertIn("publish_secret_pattern: " + path, result.stderr)
                 self.add(path, text)
 
+    def test_local_architecture_files_are_ignored_but_tracking_is_refused(self):
+        for name in publish_check.LOCAL_FILES:
+            self.add(name, "private fixture\n")
+            with self.assertRaisesRegex(Invalid, "^tracked_local_file: "):
+                publish_check.build_output_guard({name})
+        result = self.run_check()
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(set(publish_check.LOCAL_FILES).isdisjoint(publish_check.inventory_files(self.root)))
+        git(self.root, "init", "-q", "-b", "main")
+        git(self.root, "add", "config", "README.md", ".env.example", "scripts", "packages", "docs/guide.md")
+        self.add("docs/architecture-local.html.extra", "unreviewed\n")
+        self.assertIn("unreviewed_file", self.run_check().stderr)
+
     def test_untracked_promptr_build_output_is_ignored(self):
         self.add("packages/promptr/dist/src/extension/index.mjs", "export {};\n")
         result = self.run_check()
@@ -470,12 +525,13 @@ class CheckTests(unittest.TestCase):
         self.add("node_modules/.package-lock.json", "{}\n")
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(f"{len(self.explicit) + len(publish_check.rule_files(repository_files(self.root))[0])} files", result.stdout)
+        count = len(self.explicit) + len(publish_check.rule_files(repository_files(self.root))[0] - {publish_check.DEV_ONLY_REL})
+        self.assertIn(f"{count} files", result.stdout)
 
     def test_rule_accepts_the_directory_and_counts_its_files(self):
         self.add("packages/demo/index.mjs")
         self.add("packages/demo/src/a.mjs")
-        count = len(self.explicit) + len(publish_check.rule_files(repository_files(self.root))[0])
+        count = len(self.explicit) + len(publish_check.rule_files(repository_files(self.root))[0] - {publish_check.DEV_ONLY_REL})
         self.add("packages/demo/notes/plan.md")
         result = self.run_check(RULES)
         self.assertEqual(0, result.returncode, result.stderr)
@@ -534,7 +590,8 @@ class CheckTests(unittest.TestCase):
         self.assertEqual("publish_public_reader: packages/demo/index.mjs", result.stderr.strip())
 
     def test_explicit_file_under_a_rule_is_a_duplicate(self):
-        result = self.run_check((("docs", ()),))
+        self.explicit += ("docs/guide.md",)
+        result = self.run_check()
         self.assertNotEqual(0, result.returncode)
         self.assertIn("publish_duplicates", result.stderr)
 

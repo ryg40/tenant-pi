@@ -21,7 +21,7 @@ from datetime import date
 from scripts.candidate_list import child
 from scripts.components import names as resource_names
 from scripts.memory_modules import MEMORY
-from scripts.profile_write import WriteError, _ancestors, _create_file
+from scripts.profile_write import MAX_PATH, WriteError, create_new_file, open_new_parent
 from scripts.validate import NPM, ROLE_NAMES, absolute, fail, fields, npm_name
 
 NAME = "INSTALLER_KIT_RESULTS.md"
@@ -29,7 +29,6 @@ NAME = "INSTALLER_KIT_RESULTS.md"
 TEMPORARY = NAME + ".new"
 FIELD = "results.out_dir"
 MODE = "0600"
-MAX_PATH = 1024
 # Length bound of each free text of the facts file, and item bound of each of its lists.
 MAX_TEXT = 200
 MAX_ITEMS = 64
@@ -37,7 +36,6 @@ MAX_TARGETS = 16
 STATUSES = ("complete", "stopped")
 STAGE_STATES = ("done", "not_run", "not_applicable", "failed", "blocked")
 CHECK_STATES = ("passed", "failed", "not_run", "not_verified")
-CANDIDATE_STATES = ("complete", "incomplete", "unmanaged", "invalid", "absent")
 DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 ACCOUNT = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,63}\Z")
 # Forms of a secret in a free text: a private key header, a credential word with a value, a
@@ -484,13 +482,6 @@ def render(*, commit, kit_root, overlay_path, overlay, known, facts, candidates)
     return "\n".join(out)
 
 
-def check_location(out_dir):
-    """Static refusal of a bad `--out-dir` form, before any filesystem access; the caller checks its location."""
-    absolute(out_dir, FIELD)
-    if len(out_dir) > MAX_PATH:
-        fail("path_too_long", FIELD)
-
-
 def write(out_dir, data, replace=False):
     """Create `<out_dir>/INSTALLER_KIT_RESULTS.md` with mode 0600, or raise WriteError.
 
@@ -499,7 +490,7 @@ def write(out_dir, data, replace=False):
     """
     try:
         # The walk refuses each linked or unsafe directory of the path, and a left temporary file.
-        parent_fd, _ = _ancestors(out_dir + "/" + TEMPORARY)
+        parent_fd, _ = open_new_parent(out_dir + "/" + TEMPORARY)
     except WriteError as exc:
         raise WriteError("temporary_exists" if exc.rule == "target_exists" else exc.rule,
                          FIELD + exc.field[len("target"):]) from None
@@ -521,11 +512,11 @@ def write(out_dir, data, replace=False):
             raise WriteError("target_not_regular", FIELD)
         if found is None:
             # Exclusive creation: an entry that appears after the check is refused.
-            _create_file(parent_fd, NAME, data)
+            create_new_file((parent_fd, NAME), data, 0o600, FIELD)
             created = True
         else:
             try:
-                _create_file(parent_fd, TEMPORARY, data)
+                create_new_file((parent_fd, TEMPORARY), data, 0o600, FIELD)
             except FileExistsError:
                 # The name appeared after the walk: the file is of another process, and it stays.
                 raise

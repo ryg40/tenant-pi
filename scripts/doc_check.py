@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Offline, read-only check of the Markdown files of the explicit publish set (Python 3.11+).
+"""Offline, read-only check of explicit Markdown files and published docs (Python 3.11+).
 
 Rules: relative links and `#anchors` resolve; each fenced `json` block parses; each
 `tenant_pi.py <action>` and its `--flag` exist in the parser of `scripts/tenant_pi.py`;
-each parser action is named in a guide under `docs/guides/`; the skill table in the README of a
+each parser action is named in `INSTALL.md` or a guide under `docs/guides/`; the skill table in the README of a
 component of several skills is the skill list of `config/manifest.json`. A diagnostic is
 `rule: path:line` and never holds file content. No process, no network, no write.
 """
@@ -26,7 +26,7 @@ from scripts.validate import load, manifest
 GUIDES = "docs/guides/"
 # Optional private-copy link targets. A portable copy can omit them. The list is empty.
 DEV_ONLY_TARGETS = ()
-# Flags of other programs that the guides and README.md name in a standalone code span.
+# Flags of other programs that the guides, INSTALL.md and README.md name in a standalone code span.
 EXTERNAL_FLAGS = frozenset({
     "--no-approve", "--extensions", "--version", "--prefix", "--ignore-scripts", "--global",
     "--no-verify", "--no-push", "--force", "--model", "--remote", "--remote-branch",
@@ -211,10 +211,18 @@ def skill_lists(components):
                    [PurePosixPath(skill).name for skill in skills] if len(parents) == 1 else None)
 
 
+def document_files(root):
+    """Keep explicit Markdown and directory-selected docs without a Git subprocess."""
+    names = {name for name in explicit_files(root, PUBLISH) if name.endswith(".md")}
+    names.update(path.relative_to(root).as_posix() for path in (root / "docs").rglob("*.md")
+                 if path.is_file())
+    return sorted(name for name in names if published(name, root))
+
+
 def check(root=ROOT, files=None):
     """Sorted unique diagnostics and counts for the Markdown files of the publish set."""
     every_list = files is None
-    files = sorted(name for name in explicit_files(root, PUBLISH) if name.endswith(".md")) if files is None else sorted(files)
+    files = document_files(root) if files is None else sorted(files)
     top, actions = cli_tree()
     every_flag = top.union(*actions.values())
     components = manifest(load(root / "config/manifest.json"))
@@ -232,7 +240,7 @@ def check(root=ROOT, files=None):
             findings.add(f"doc_text: {name}")
     for name, (prose, blocks) in parsed.items():
         counts["files"] += 1
-        strict = name.startswith(GUIDES) or name == "README.md"
+        strict = name.startswith(GUIDES) or name in ("INSTALL.md", "README.md")
         for number, line in prose:
             for match in LINK.finditer(SPAN.sub("", line)):
                 target = match.group(1)
@@ -286,7 +294,7 @@ def check(root=ROOT, files=None):
                 if word not in actions:
                     findings.add(f"cli_action: {where}")
                     continue
-                if name.startswith(GUIDES):
+                if name.startswith(GUIDES) or name == "INSTALL.md":
                     guided.add(word)
                 for flag in FLAG.findall(rest):
                     if flag not in actions[word]:

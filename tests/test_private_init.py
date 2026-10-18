@@ -201,20 +201,6 @@ class InitTests(Fixture):
             with self.subTest(directory=directory[:20]):
                 self.rejected(rule, "init-private.dir", directory=directory)
 
-    def test_forbidden_roots_before_any_filesystem_access(self):
-        roots = [("under_kit", str(self.parent)), ("under_pi_agent", str(self.agent))]
-        with patch.object(private_init, "_ancestors", side_effect=AssertionError("filesystem access")):
-            for directory, rule in ((self.parent, "under_kit"), (self.dir, "under_kit"),
-                                    (self.dir / "deep" / "er", "under_kit"),
-                                    (self.agent, "under_pi_agent"), (self.agent / "private", "under_pi_agent")):
-                with self.subTest(directory=directory):
-                    self.rejected(rule, "init-private.dir", directory=directory, forbidden=roots)
-        self.assertFalse(os.path.lexists(self.dir))
-        # A name that only starts with the text of a root is outside it.
-        sibling = self.base / "owned parent2"
-        sibling.mkdir(mode=0o700)
-        self.assertTrue(init(str(sibling / "private"), contents(), roots).complete)
-
     def test_inputs_directory_privacy(self):
         original = os.mkdir
 
@@ -234,14 +220,15 @@ class InitTests(Fixture):
         self.assertFalse(os.path.lexists(self.dir))
 
     def test_write_failure_leaves_the_partial_directory_and_a_static_diagnostic(self):
-        original = private_init._create_file
+        original = private_init.create_new_file
 
-        def create(fd, name, data):
+        def create(path, data, mode, field):
+            fd, name = path
             if name == "install-log.md":
                 raise OSError("CANARY_SECRET")
-            original(fd, name, data)
+            original(path, data, mode, field)
 
-        with patch.object(private_init, "_create_file", side_effect=create):
+        with patch.object(private_init, "create_new_file", side_effect=create):
             self.rejected("write_failed", "init-private.dir", created=True)
         self.assertTrue(self.dir.is_dir())
         self.assertLess(self.tree(), NAMES | {INPUTS})
@@ -263,11 +250,12 @@ class InitTests(Fixture):
             self.rejected("target_changed", "init-private.dir", created=True)
 
     def test_close_failure_after_the_last_file_is_a_warning(self):
-        original_close, original_create = os.close, private_init._create_file
+        original_close, original_create = os.close, private_init.create_new_file
         order, calls = [], []
 
-        def create(fd, name, data):
-            original_create(fd, name, data)
+        def create(path, data, mode, field):
+            fd, name = path
+            original_create(path, data, mode, field)
             order.append(name)
 
         def close(fd):
@@ -278,7 +266,7 @@ class InitTests(Fixture):
                 calls.append(fd)
                 raise OSError("CANARY_SECRET")
 
-        with patch.object(private_init, "_create_file", side_effect=create), \
+        with patch.object(private_init, "create_new_file", side_effect=create), \
              patch.object(private_init.os, "close", side_effect=close):
             result = init(str(self.dir), contents())
         self.assertTrue(result.complete)
@@ -299,7 +287,7 @@ class InitTests(Fixture):
                 raised.append(fd)
                 raise OSError("CLEANUP_CANARY")
 
-        with patch.object(private_init, "_create_file", side_effect=OSError("PRIMARY_CANARY")), \
+        with patch.object(private_init, "create_new_file", side_effect=OSError("PRIMARY_CANARY")), \
              patch.object(private_init.os, "close", side_effect=close):
             self.rejected("write_failed", "init-private.dir", created=True)
         self.assertEqual(3, len(raised))
@@ -349,8 +337,7 @@ class CliTests(Fixture):
                     "PYTHONDONTWRITEBYTECODE": "1", "EDITOR": "CANARY_EDITOR"}
 
     def run_cli(self, directory, *extra, env=None):
-        in_process = {"test_refusals", "test_target_refusals_create_nothing", "test_wiki_home_vault_is_refused_for_the_directory_and_the_target",
-                      "test_linked_pi_agent_and_linked_ancestor", "test_home"}
+        in_process = {'test_home', 'test_refusals', 'test_target_refusals_create_nothing'}
         if self._testMethodName in in_process:
             return run_main(["init-private", "--dir", str(directory), *extra], self.base,
                             self.env if env is None else env)
@@ -448,8 +435,6 @@ class CliTests(Fixture):
         self.assertEqual("KEEP", self.sentinel.read_text())
 
     def test_target_refusals_create_nothing(self):
-        (self.base / "to agent").symlink_to(self.agent, target_is_directory=True)
-        (self.base / "to kit").symlink_to(ROOT, target_is_directory=True)
         (self.base / "to parent").symlink_to(self.parent, target_is_directory=True)
         for target, error in (
                 ("relative/profile", "absolute_path: init-private.target"),
@@ -457,14 +442,6 @@ class CliTests(Fixture):
                 ("$HOME/.pi/profiles/main", "shell_or_template: init-private.target"),
                 ("/" + "a" * MAX_PATH, "path_too_long: init-private.target"),
                 (SAMPLE_TARGET, "sample_target: init-private.target"),
-                # The live agent directory, as written and through a link.
-                (self.agent, "under_pi_agent: init-private.target"),
-                (self.agent / "profiles" / "main", "under_pi_agent: init-private.target"),
-                (self.base / "to agent" / "main", "under_pi_agent: init-private.target"),
-                # A personal wiki vault is no place for a profile.
-                (self.home / ".llm-wiki" / "profile", "under_wiki_vault: init-private.target"),
-                (ROOT / ".local" / "tenant-pi-test-target-absent", "under_kit: init-private.target"),
-                (self.base / "to kit" / "docs" / "tenant-pi-test-target-absent", "under_kit: init-private.target"),
                 # The private directory and the target must stay outside of each other.
                 (self.dir / "profile", "under_private_dir: init-private.target"),
                 (self.base / "to parent" / self.dir.name / "profile", "under_private_dir: init-private.target"),
@@ -475,8 +452,6 @@ class CliTests(Fixture):
                 self.assertFalse(os.path.lexists(self.dir))
         self.assertFalse(os.path.lexists(ROOT / ".local" / "tenant-pi-test-target-absent"))
         self.assertEqual({"auth.json", "models.json", "settings.json"}, {p.name for p in self.agent.iterdir()})
-        # A bad directory is reported before a bad location of the target.
-        self.refused(self.agent / "private", "under_pi_agent: init-private.dir", "--target", str(self.agent / "main"))
         # The target itself is never created or read: an existing target and an absent parent pass here.
         (self.parent / "exists").mkdir()
         self.assertEqual(0, self.run_cli(self.dir, "--target", str(self.parent / "exists")).returncode)
@@ -484,11 +459,9 @@ class CliTests(Fixture):
         self.assertEqual([], list((self.parent / "exists").iterdir()))
         self.assertFalse((self.base / "absent").exists())
 
+    @slow
     def test_location_cli_smoke(self):
-        for root, rule in ((ROOT, "under_kit"), (self.agent, "under_pi_agent"),
-                           (self.home / ".llm-wiki", "under_wiki_vault")):
-            with self.subTest(rule=rule):
-                self.refused(root / "private", rule + ": init-private.dir")
+        self.refused(self.agent / "private", "under_pi_agent: init-private.dir")
 
     def test_refusals(self):
         (self.parent / "exists").mkdir()
@@ -497,12 +470,6 @@ class CliTests(Fixture):
                 ("relative", "absolute_path: init-private.dir"),
                 (self.parent / "exists", "target_exists: init-private.dir"),
                 (self.base / "absent" / "private", "parent_missing: init-private.dir.parent"),
-                (kit, "under_kit: init-private.dir"),
-                (ROOT / "config" / "private" / "new", "under_kit: init-private.dir"),
-                (self.agent, "under_pi_agent: init-private.dir"),
-                (self.agent / "private", "under_pi_agent: init-private.dir"),
-                (self.home / ".llm-wiki", "under_wiki_vault: init-private.dir"),
-                (self.home / ".llm-wiki" / "private", "under_wiki_vault: init-private.dir"),
                 ("/home/EXAMPLE_USER/new-agent", "under_overlay_target: init-private.dir"),
                 ("/home/EXAMPLE_USER/new-agent/private", "under_overlay_target: init-private.dir")):
             with self.subTest(directory=str(directory)):
@@ -511,29 +478,6 @@ class CliTests(Fixture):
         self.assertFalse((self.base / "absent").exists())
         self.assertEqual([], list((self.parent / "exists").iterdir()))
         self.assertEqual({"auth.json", "models.json", "settings.json"}, {p.name for p in self.agent.iterdir()})
-
-    def test_wiki_home_vault_is_refused_for_the_directory_and_the_target(self):
-        other = self.base / "wiki home"
-        env = dict(self.env, WIKI_HOME=str(other))
-        self.refused(other / ".llm-wiki" / "private", "under_wiki_vault: init-private.dir", env=env)
-        self.refused(self.home / ".llm-wiki" / "private", "under_wiki_vault: init-private.dir", env=env)
-        self.refused(self.dir, "under_wiki_vault: init-private.target", "--target", str(other / ".llm-wiki" / "main"), env=env)
-        self.assertFalse(os.path.lexists(self.dir))
-        self.assertFalse(other.exists())
-
-    def test_linked_pi_agent_and_linked_ancestor(self):
-        real = self.base / "real agent"
-        real.mkdir(mode=0o700)
-        home = self.base / "home2"
-        (home / ".pi").mkdir(parents=True)
-        (home / ".pi/agent").symlink_to(real, target_is_directory=True)
-        env = dict(self.env, HOME=str(home))
-        self.refused(real / "private", "under_pi_agent: init-private.dir", env=env)
-        self.refused(home / ".pi/agent" / "private", "under_pi_agent: init-private.dir", env=env)
-        self.assertEqual([], list(real.iterdir()))
-        # A link that reaches a forbidden place from another name fails at the ancestor walk.
-        (self.base / "to agent").symlink_to(self.agent, target_is_directory=True)
-        self.refused(self.base / "to agent" / "private", "unsafe_path: init-private.dir.parents")
 
     @slow
     def test_named_overlay_targets(self):
@@ -588,7 +532,6 @@ class CliTests(Fixture):
                 overlay.write_text(text)
                 self.refused(self.dir, error, "--overlay", path)
         self.assertFalse(os.path.lexists(self.dir))
-
 
     def test_help_names_the_action(self):
         result = subprocess.run([sys.executable, str(CLI), "--help"], cwd=self.base, env=self.env,

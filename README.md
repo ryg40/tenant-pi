@@ -6,25 +6,15 @@ Status: portable release candidate. Linux is the first target. The offline stage
 
 The published copy of the kit is a snapshot mirror: the maintainer updates it with a reviewed snapshot of the kit. The published copy takes no issues. Each snapshot has a tag of the form `portable/<yyyymmdd>-<source sha>`. A tag can have a release entry: the release page of the tag on the publication service. The release entry holds [the release notes](docs/guides/release-checklist.md#release-notes) of that snapshot: the result of each gate of the release checklist and the open gaps. A tag with no release entry has no release notes.
 
-## The stages
+## Install
 
-1. Obtain the sources: clone the kit and run its offline checks.
-2. Edit the local choices: create the private directory, select the components from the checklist, and edit the overlay.
-3. Validate: `python3 scripts/tenant_pi.py validate`.
-4. Plan: `python3 scripts/tenant_pi.py plan`.
-5. Generate: `python3 scripts/tenant_pi.py generate` into a new, absent target.
-6. Install the dependencies by hand: Node 24 (`>=24.0.0 <25`), Pi and the packages of the enabled modules.
-7. Authenticate: Pi `/login`, or a key in the launching shell.
-8. Launch: run the launcher file or the plan launch line.
-9. Test: record each check as passed, failed, blocked or not run.
-
-The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of their commands. The plan prints the Pi install line, the `pi install` and peer-override lines of the enabled npm modules, and the launch line as display text. The Node and Python installs and the `npm ci` of the in-tree packages are in [the setup guide](docs/guides/setup.md#stage-6-install-the-dependencies-by-hand) only.
+[INSTALL.md](INSTALL.md) is the single install flow. It gives the commands and checks, and requires approval before each change.
 
 ## Guides
 
 | Guide | For |
 | --- | --- |
-| [Setup](docs/guides/setup.md) | The nine stages with exact commands. Start here. |
+| [Install](INSTALL.md) | The install stages with exact commands. Start here. |
 | [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Podman adaptations; macOS stays not qualified. |
 | [Compose seat](docs/guides/compose-seat.md) | A Pi profile in a container that you reach over SSH, with Docker Compose or Podman; not qualified. |
 | [Explainer](EXPLAINER.md) | The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
@@ -33,15 +23,14 @@ The kit runs stages 1 to 5. Stages 6 to 9 are yours, and the kit runs none of th
 | [Providers](docs/guides/providers.md) | Codex login, and llama-swap and vLLM as direct providers in `models.json` of the profile. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
 | [After the install](POST_INSTALL.md) | The commands for each update and change after a base install. You do not read the install text again. |
-| [Candidate update](docs/guides/candidate-update.md) | Regenerate, compare, carry choices, switch profiles. |
 | [Pi update checks](docs/pi-update.md) | Detect npm releases, qualify an isolated candidate, and read breaking changes. |
-| [Continuous integration](docs/ci.md) | Offline checks, scheduled Pi qualification, and update pull requests. |
+| [Continuous integration](docs/publishing.md#continuous-integration) | Offline checks, scheduled Pi qualification, and update pull requests. |
 | [Privacy](docs/guides/privacy.md) | What the kit separates, what it never does, what the scanner checks. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [Release checklist](docs/guides/release-checklist.md) | The gates and steps of a portable release. |
 | [Pin move and release](docs/guides/pin-move-release.md) | Qualify a Pi pin, review the change, and publish a fast-track snapshot. |
 
-An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `skills/tenant-pi-install/SKILL.md`. Both follow the same stages and ask before each change. Both show the checklist of all components, and both write the results file `INSTALLER_KIT_RESULTS.md` at the end and at each earlier stop. After a base install, the user or an agent of the user reads [POST_INSTALL.md](POST_INSTALL.md) for each update and change.
+An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `skills/tenant-pi-install/SKILL.md`. The skill is a short question list that points to the install stages. The flow writes `INSTALLER_KIT_RESULTS.md` at completion and each earlier stop. After a base install, the user or an agent of the user reads [POST_INSTALL.md](POST_INSTALL.md) for each update and change.
 
 ## The command line
 
@@ -56,7 +45,7 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 | `compare` | Redacted comparison of two profile directories. Read-only. | [candidate comparison](docs/candidate-compare.md) |
 | `carry` | Prints overlay patches from a `compare` report. Writes nothing. | [carrying drift into the overlay](docs/carry.md) |
 | `inventory` | Names-only list of the resources of one profile. Read-only. | [profile inventory](docs/profile-inventory.md) |
-| `list` | Lists the candidates under one parent directory. Read-only. | [the candidate list](docs/candidate-list.md) |
+| `list` | Lists the candidates under one parent directory. Read-only. | [the candidate list](docs/candidate-compare.md#candidate-list) |
 | `wizard` | Scans the confirmed target, opens a terminal checklist and saves only an explicitly approved private handoff. | [wizard guide](docs/guides/wizard.md) |
 | `components` | Prints the checklist of all components: as data, as a numbered list, or as a selection. Read-only. | [the CLI contract](docs/generator.md#components-the-checklist-of-the-components) |
 | `check-runtime` | Compares the installed Pi, Node and Python with the pins. | [the runtime version check](docs/check-runtime.md) |
@@ -71,9 +60,9 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 
 ## Reference documents
 
-- [The profile lifecycle](docs/profile-lifecycle.md).
-- [Memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md), [model routes](docs/model-routes.md) and [in-tree packages](docs/packages.md).
-- [Owner package paths](docs/owner-packages.md), [owner skill and prompt directories](docs/owner-resources.md) and [accepted drift](docs/accepted-drift.md).
+- [The profile lifecycle](docs/private-directory.md#profile-lifecycle).
+- [Memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md), [model routes](docs/guides/providers.md#pure-model-route-contract) and [in-tree packages](docs/packages.md).
+- [Owner package paths](docs/owner-extensions.md#owner-package-paths-in-the-overlay), [owner skill and prompt directories](docs/owner-extensions.md#owner-skill-and-prompt-directories-in-the-overlay) and [accepted drift](docs/accepted-drift.md).
 - [Host peer overrides](docs/host-peer-overrides.md), [secret handling](docs/secret-handling.md) and [publishing](docs/publishing.md).
 
 The kit uses the MIT license in [LICENSE](LICENSE).
@@ -89,7 +78,7 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 - `packages/` holds the optional in-tree packages `tenantext`, `promptr`, `openviking-pi`, `agentcore-pi`, `agentcore-memory-core`, `agentcore-claude` and `agentcore-memory-admin`. The extensions and skills of `packages/tenantext` and `packages/promptr` are components of `config/manifest.json` with the source kind `tree`. Each extension and each skill is one component, except `coordinator-skills` and `knowledge-skills`, which each hold several skills. `openviking` (`packages/openviking-pi`) and `agentcore` (`packages/agentcore-pi`) are `tree` components too. The core, the Claude Code plugin and the registry script are not kit components. See [the in-tree packages](docs/packages.md).
 - A source pin does not prove that a clean client can use a module.
 - `scripts/publish_portable.py` publishes the reviewed publish set as a portable snapshot branch.
-- No install, capture, update or live service command exists. `scripts/capture.py` and `scripts/install.py` stop at once with retirement messages.
+- No install, capture, update or live service command exists.
 
 Pi warns about extension packages that list host-provided modules under `dependencies`. The warning was observed on Pi 0.99.x. With the kit pin in `config/manifest.json`, key `runtime.piVersion`, it was observed for `typebox` in the question extension. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the script makes no change for them. `scripts/patch_extension_peers.mjs` corrects the installed manifests. See [host peer overrides](docs/host-peer-overrides.md) for the packages and for how to reapply it after each extension update.
 

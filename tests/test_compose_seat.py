@@ -15,7 +15,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from publish_check import PUBLISH  # noqa: E402
+from publish_check import PUBLISH, rule_files  # noqa: E402
 
 SEAT = ROOT / "deploy/compose"
 FILES = (".dockerignore", "deploy/compose/Dockerfile", "deploy/compose/sshd_config",
@@ -601,7 +601,7 @@ class PublishSetTests(unittest.TestCase):
         for name in FILES:
             with self.subTest(name=name):
                 self.assertTrue((ROOT / name).is_file())
-                self.assertEqual(1, PUBLISH.count(name))
+                self.assertEqual(1, PUBLISH.count(name) + int(name in rule_files(FILES)[0]))
 
 
 if __name__ == "__main__":

@@ -25,8 +25,6 @@ AGENTCORE_LEGACY = frozenset(("memoryId", "region", "namespaces", "topK", "captu
 # The shared core beside the extension. Its lock file installs the AWS SDK; the extension has no dependency.
 AGENTCORE_CORE = "packages/agentcore-memory-core"
 HERMES_CONFIG = "hermes-memory-config.json"
-HERMES_PACKAGE = "pi-hermes-memory"
-WIKI_PACKAGE = "@zosmaai/pi-llm-wiki"
 # Upstream requires a nonempty bearer key even for a server that ignores authentication.
 WIKI_NO_AUTH_KEY = "no-auth-required"
 # Existing kit restriction; the 0.12.5 TaskConfig reader ignores taskThinkingLevel.

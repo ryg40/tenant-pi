@@ -205,12 +205,7 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertIn("Pi 1.0.2 and Pi 1.0.3 load", facts["local_package_load"])
         self.assertIn("16 commands", facts["local_package_load"])
         self.assertIn("four skills", facts["local_package_load"])
-        self.assertIn("pins pi-tui and pi-coding-agent 1.3.0", facts["pi_line_build_and_tests"])
-        self.assertIn("With both dependencies at 1.3.0, the build, the 781 tests, the typecheck and `npm run smoke` pass.",
-                      facts["pi_line_build_and_tests"])
-        self.assertIn("`npm run smoke:installed` and a package load on Pi 1.3.0 are not verified.",
-                      facts["pi_line_build_and_tests"])
-        self.assertEqual("@earendil-works/pi-tui@1.3.0", next(
+        self.assertEqual("@earendil-works/pi-tui@" + self.manifest_data["runtime"]["piVersion"], next(
             p["subject"] for p in PROMPTR_PREREQUISITES if p["code"] == "host_module_dependency"))
         self.assertIn("Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning", facts["host_module_dependency"])
         self.assertNotIn("No build or test on the kit pin is verified", " ".join(facts.values()))

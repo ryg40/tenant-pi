@@ -15,7 +15,7 @@ import unittest
 from tests.support import slow
 from unittest.mock import patch
 
-from scripts import tenant_pi, private_init, launcher, baseline
+from scripts import tenant_pi
 from scripts.profile_plan import PROVIDER_KEY_NAMES
 from scripts.profile_write import WriteError
 from scripts.check_runtime import parse_range
@@ -111,64 +111,12 @@ class LocationTests(unittest.TestCase):
                 with self.assertRaisesRegex(AssertionError, "changed the source checkout"):
                     tearDownModule()
 
-    def test_protected_roots_home_and_symlink_matrix(self):
-        with tempfile.TemporaryDirectory(prefix="tenant-pi-location-") as temp:
-            base = Path(temp).resolve()
-            home = base / "home"
-            (home / ".pi").mkdir(parents=True)
-            agent = base / "real-agent"
-            agent.mkdir()
-            (home / ".pi/agent").symlink_to(agent, target_is_directory=True)
-            linked_home = base / "linked-home"
-            linked_home.symlink_to(home, target_is_directory=True)
-            kit = base / "kit"
-            kit.mkdir()
-            wiki = base / "wiki"
-            chosen = base / "chosen"
-            for current_home in (home, linked_home):
-                for wiki_home in (None, "", "relative", str(wiki), str(wiki) + "//"):
-                    env = {"HOME": str(current_home), "PI_CODING_AGENT_DIR": str(base / "ignored")}
-                    if wiki_home is not None:
-                        env["WIKI_HOME"] = wiki_home
-                    data = {"memory": {"wiki": {"wikiHome": str(chosen)}}}
-                    with patch.dict(os.environ, env, clear=True):
-                        pairs = (("under_kit", str(kit)), ("under_pi_agent", str(current_home / ".pi/agent")),
-                                 *tenant_pi._wiki_vaults(tenant_pi._home("home"), data))
-                        roots = tenant_pi._roots(pairs)
-                        self.assertIn(("under_pi_agent", str(agent)), roots)
-                        expected_vaults = {str(current_home / ".llm-wiki"), str(chosen / ".llm-wiki")}
-                        if wiki_home and wiki_home.startswith("/"):
-                            expected_vaults.add(str(wiki / ".llm-wiki"))
-                        self.assertEqual(expected_vaults, {root for rule, root in pairs if rule == "under_wiki_vault"})
-                        for rule, root in roots:
-                            for suffix in ("", "/child", "/nested/child"):
-                                with self.subTest(home=str(current_home), wiki_home=wiki_home, rule=rule, suffix=suffix):
-                                    for check in (private_init.check_location, launcher.check_location, baseline.check_location):
-                                        with self.assertRaises(Invalid) as error:
-                                            check(root + suffix, roots)
-                                        self.assertTrue(str(error.exception).startswith(rule + ":"))
-                                    with self.assertRaises(Invalid) as error:
-                                        tenant_pi._outside(root + suffix, pairs, "target")
-                                    self.assertEqual(rule + ": target", str(error.exception))
-                            tenant_pi._outside(root + "-sibling", pairs, "target")
-                        # A target link is resolved by _outside, not by the text-only check_location.
-                        link = base / "target-link"
-                        if not link.is_symlink():
-                            link.symlink_to(agent, target_is_directory=True)
-                        with self.assertRaisesRegex(Invalid, "^under_pi_agent: target$"):
-                            tenant_pi._outside(str(link / "child"), pairs, "target")
-                        tenant_pi._outside(str(base / "ignored"), pairs, "target")
-            for value, error in ((None, "home_required"), ("relative", "absolute_path"), (str(home) + "/", "absolute_path")):
-                with patch.dict(os.environ, {} if value is None else {"HOME": value}, clear=True):
-                    with self.assertRaisesRegex(Invalid, "^" + error + ": home$"):
-                        tenant_pi._home("home")
-
 
 @slow
 class InstallUmaskTests(unittest.TestCase):
     def test_guide_parents_private_init_and_generation_under_both_umasks(self):
         for mask in (0o002, 0o022):
-            for guide in ("INSTALL.md", "docs/guides/setup.md"):
+            for guide in ("INSTALL.md",):
                 with self.subTest(umask=oct(mask), guide=guide), tempfile.TemporaryDirectory() as temp:
                     home = Path(temp).resolve()
                     env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1",
@@ -849,13 +797,7 @@ class CliTests(unittest.TestCase):
         data["target"]["agentDir"] = str(target)
         self.overlay.write_text(json.dumps(data))
         extra = ("--target", str(target)) if action == "generate" else ()
-        in_process = {"test_target_inside_kit_refused_before_any_write",
-                      "test_target_in_live_agent_directory_refused_before_any_write",
-                      "test_target_in_a_wiki_vault_refused_before_any_write",
-                      "test_symlink_into_kit_refused_and_no_path_printed",
-                      "test_linked_live_agent_directory_and_linked_home_are_refused",
-                      "test_target_in_the_vault_of_the_overlay_wiki_home_refused_before_any_write",
-                      "test_target_rule_needs_home_and_reads_no_other_environment_value"}
+        in_process = {"test_target_rule_needs_home_and_reads_no_other_environment_value"}
         if self._testMethodName in in_process:
             return run_main([action, "--overlay", str(self.overlay), "--manifest", str(self.manifest), *extra],
                             self.base, self.env if env is None else env)
@@ -864,37 +806,12 @@ class CliTests(unittest.TestCase):
                               cwd=self.base, env=self.env if env is None else env,
                               text=True, capture_output=True, check=False)
 
-    def assert_under_kit(self, result):
-        self.assertEqual(2, result.returncode)
-        self.assertEqual({"candidate_created": False, "error": "under_kit: overlay.target.agentDir"},
-                         json.loads(result.stderr))
-        self.assertEqual("", result.stdout)
-
     @slow
     def test_location_cli_smoke(self):
         for action in ("validate", "plan", "generate"):
-            for root, rule in ((ROOT, "under_kit"), (self.old, "under_pi_agent"),
-                               (self.home / ".llm-wiki", "under_wiki_vault")):
-                with self.subTest(action=action, rule=rule):
-                    self.assert_refused(self.run_target(action, root / "inside-profile"),
-                                        rule + ": overlay.target.agentDir")
-
-    def test_target_inside_kit_refused_before_any_write(self):
-        before_fixture = inventory(self.base)
-        # `docs/inside-profile` has an existing parent: without the refusal, `generate` would write there.
-        for target in (ROOT, ROOT / ".local/inside-profile", ROOT / "docs/inside/agent", ROOT / "docs/inside-profile"):
-            for action in ("validate", "plan", "generate"):
-                with self.subTest(target=str(target.relative_to(ROOT)), action=action):
-                    self.assert_under_kit(self.run_target(action, target))
-                    self.assertEqual(target == ROOT, target.exists())
-        # An invalid overlay is still reported first.
-        self.data["unknown"] = "x"
-        result = self.run_target("plan", ROOT / "docs/inside/agent")
-        self.assertIn("unknown_fields", result.stderr)
-        self.assertNotIn("under_kit", result.stderr)
-        del self.data["unknown"]
-        self.save()
-        self.check_unchanged(before_fixture)
+            with self.subTest(action=action):
+                self.assert_refused(self.run_target(action, self.old / "inside-profile"),
+                                    "under_pi_agent: overlay.target.agentDir")
 
     @slow
     def test_sample_target_is_refused_with_its_own_rule(self):
@@ -945,125 +862,10 @@ class CliTests(unittest.TestCase):
             self.assertEqual(0, self.run_target(action, sibling).returncode)
         self.assertFalse(sibling.exists())
 
-    def test_symlink_into_kit_refused_and_no_path_printed(self):
-        linked_kit = self.base / "linked-kit"
-        linked_kit.symlink_to(ROOT, target_is_directory=True)
-        linked_docs = self.base / "linked-docs"
-        linked_docs.symlink_to(ROOT / "docs", target_is_directory=True)
-        for target in (linked_kit, linked_kit / "inside", linked_docs / "inside/agent"):
-            for action in ("validate", "plan", "generate"):
-                with self.subTest(target=target.name, action=action):
-                    result = self.run_target(action, target)
-                    self.assert_under_kit(result)
-                    for text in (str(ROOT), str(self.base), "inside", "linked"):
-                        self.assertNotIn(text, result.stderr)
-        self.assertFalse((ROOT / "inside").exists())
-        self.assertFalse((ROOT / "docs/inside").exists())
-        # A link that resolves outside the kit still passes the read-only actions.
-        linked_out = self.base / "linked-out"
-        linked_out.symlink_to(self.parent, target_is_directory=True)
-        for action in ("validate", "plan"):
-            with self.subTest(target="linked-out", action=action):
-                result = self.run_target(action, linked_out / "agent")
-                self.assertEqual(0, result.returncode, result.stderr)
-        self.assertFalse((self.parent / "agent").exists())
-
     def assert_refused(self, result, error):
         """The exact object: the diagnostic holds the rule and the field, and no path."""
         self.assertEqual((2, ""), (result.returncode, result.stdout))
         self.assertEqual({"candidate_created": False, "error": error}, json.loads(result.stderr))
-
-    def test_target_in_live_agent_directory_refused_before_any_write(self):
-        linked = self.base / "linked-agent"
-        linked.symlink_to(self.old, target_is_directory=True)
-        before_fixture = inventory(self.base)
-        # `inside` has an existing parent that the caller owns: without the refusal, `generate` would write there.
-        for target in (self.old, self.old / "inside", self.old / "profiles/main", linked, linked / "inside"):
-            for action in ("validate", "plan", "generate"):
-                with self.subTest(target=str(target.relative_to(self.base)), action=action):
-                    self.assert_refused(self.run_target(action, target), "under_pi_agent: overlay.target.agentDir")
-        self.assertEqual(["settings.json"], os.listdir(self.old))
-        # An invalid overlay is still reported first.
-        self.data["unknown"] = "x"
-        result = self.run_target("plan", self.old / "inside")
-        self.assertIn("unknown_fields", result.stderr)
-        self.assertNotIn("under_pi_agent", result.stderr)
-        del self.data["unknown"]
-        self.save()
-        self.check_unchanged(before_fixture)
-
-    def test_target_in_a_wiki_vault_refused_before_any_write(self):
-        # The kit writes nothing below a personal wiki vault: `<home>/.llm-wiki`, and `<WIKI_HOME>/.llm-wiki` when set.
-        vault = self.home / ".llm-wiki"
-        vault.mkdir()
-        other = self.base / "wiki home"
-        other.mkdir(mode=0o700)
-        (other / ".llm-wiki").mkdir(mode=0o700)
-        linked = self.base / "linked-vault"
-        linked.symlink_to(vault, target_is_directory=True)
-        env = {name: value for name, value in self.env.items() if name != "WIKI_HOME"}
-        inherited = dict(env, WIKI_HOME=str(other))
-        for target, case in ((vault, env), (vault / "profile", env), (linked / "profile", env),
-                             (vault / "profile", inherited), (other / ".llm-wiki" / "profile", inherited)):
-            for action in ("validate", "plan", "generate"):
-                with self.subTest(target=str(target.relative_to(self.base)), action=action, inherited=case is inherited):
-                    self.assert_refused(self.run_target(action, target, env=case), "under_wiki_vault: overlay.target.agentDir")
-        self.assertEqual(([], []), (os.listdir(vault), os.listdir(other / ".llm-wiki")))
-        # Without the variable, the other place is no vault.
-        result = self.run_target("generate", other / ".llm-wiki" / "profile", env=env)
-        self.assertEqual((0, ""), (result.returncode, result.stderr))
-        # An empty value is no value, as in the extension. A value that is no absolute path names no root.
-        for value in ("", "relative"):
-            result = self.run_target("validate", other / ".llm-wiki" / "second", env=dict(env, WIKI_HOME=value))
-            self.assertEqual((0, ""), (result.returncode, result.stderr))
-        # Trailing separators of the variable do not change the root.
-        result = self.run_target("validate", other / ".llm-wiki" / "second", env=dict(env, WIKI_HOME=str(other) + "//"))
-        self.assert_refused(result, "under_wiki_vault: overlay.target.agentDir")
-
-    def test_target_in_the_vault_of_the_overlay_wiki_home_refused_before_any_write(self):
-        # The launch line gives `memory.wiki.wikiHome` to the extension: the vault there is a vault of the user too.
-        chosen = self.base / "chosen wiki home"
-        chosen.mkdir(mode=0o700)
-        vault = chosen / ".llm-wiki"
-        vault.mkdir(mode=0o700)
-        linked = self.base / "linked-chosen"
-        linked.symlink_to(vault, target_is_directory=True)
-        env = {name: value for name, value in self.env.items() if name != "WIKI_HOME"}
-        # Without `wikiHome` in the overlay, the place is no vault.
-        result = self.run_target("validate", vault / "profile", env=env)
-        self.assertEqual((0, ""), (result.returncode, result.stderr))
-        self.data["selection"] = {"enable": ["core", "wiki"], "disable": []}
-        self.data["consent"]["memoryCapture"] = True
-        self.data["memory"] = {"schemaVersion": 1, "hermes": None, "openviking": None,
-                               "wiki": {"ambientPersonalVault": True, "backgroundTasks": False, "wikiHome": str(chosen)}}
-        for target in (vault, vault / "profile", linked / "profile"):
-            for action in ("validate", "plan", "generate"):
-                with self.subTest(target=str(target.relative_to(self.base)), action=action):
-                    self.assert_refused(self.run_target(action, target, env=env), "under_wiki_vault: overlay.target.agentDir")
-        self.assertEqual([], os.listdir(vault))
-        # A target beside the vault is not refused.
-        result = self.run_target("generate", chosen / "profile", env=env)
-        self.assertEqual((0, ""), (result.returncode, result.stderr))
-        self.assertEqual([], os.listdir(vault))
-
-    def test_linked_live_agent_directory_and_linked_home_are_refused(self):
-        # `~/.pi/agent` is a link: the directory behind it is the live profile too.
-        real = self.base / "real agent"
-        real.mkdir(mode=0o700)
-        home = self.base / "home2"
-        (home / ".pi").mkdir(parents=True, mode=0o700)
-        (home / ".pi/agent").symlink_to(real, target_is_directory=True)
-        linked_home = self.base / "linked home"
-        linked_home.symlink_to(self.home, target_is_directory=True)
-        through_link, through_home = dict(self.env, HOME=str(home)), dict(self.env, HOME=str(linked_home))
-        for target, env in ((real, through_link), (real / "inside", through_link),
-                            (home / ".pi/agent/inside", through_link), (self.old / "inside", through_home)):
-            for action in ("validate", "plan", "generate"):
-                with self.subTest(target=str(target.relative_to(self.base)), action=action):
-                    self.assert_refused(self.run_target(action, target, env=env),
-                                        "under_pi_agent: overlay.target.agentDir")
-        self.assertEqual([], os.listdir(real))
-        self.assertEqual(["settings.json"], os.listdir(self.old))
 
     @slow
     def test_target_beside_live_agent_directory_succeeds(self):

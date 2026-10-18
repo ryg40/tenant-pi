@@ -171,7 +171,7 @@ json.dump(data, open(sys.argv[2], "w"), indent=2)' \
         make_profile "$name" "$STATE/$name-overlay.json" "$candidate" "$launcher" || return 0
     fi
     say "$name: the image build differs from the build of the live profile $main"
-    say "$name: follow $KIT/docs/guides/candidate-update.md from Step 3"
+    say "$name: follow $KIT/POST_INSTALL.md from Read the comparison"
     say "$name: 1. compare: python3 $KIT/scripts/tenant_pi.py compare --left $main --right $candidate"
     say "$name: 2. reconcile: carry, accept or drop each difference"
     say "$name: 3. set up: the candidate authenticates and installs its declared packages on its own"

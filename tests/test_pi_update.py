@@ -138,10 +138,6 @@ class UpdateTests(unittest.TestCase):
         tests = candidate / "packages/openviking-pi/tests"
         tests.mkdir()
         (tests / "fixture.test.mjs").write_text("// test inventory fixture\n")
-        if (ROOT / update.LOCAL_VALUES).is_file():
-            path = candidate / update.LOCAL_VALUES
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text("{}\n")
         return candidate
 
     def recording_runner(self, command, *, cwd, env, log, timeout=600, stderr_log=None):
@@ -422,7 +418,7 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue(all(Path(name).is_relative_to(run / "packages/openviking-pi") for name in tests["args"][1:]))
 
     @slow
-    def test_candidate_pages_are_rebuilt_with_the_new_pin_before_the_unit_tests(self):
+    def test_candidate_keeps_pages_unchanged_when_the_pin_moves(self):
         requested = "99.0.0"
         npm = self.bin / "npm"
         npm.write_text(npm.read_text().replace(PIN, requested))
@@ -442,58 +438,17 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(runtime["pi"]["status"], "match")
 
         names = [row["name"] for row in report["steps"]]
-        pages = [name for name, _ in update.PAGES]
-        self.assertEqual(names[names.index("candidate-copy") + 1:names.index("candidate-copy") + 4], pages)
-        self.assertLess(names.index("pages-explainer"), names.index("offline-fixture"))
-        candidate = Path(report["workdir"]) / "kit"
-        spec = update.PACKAGE + "@"
-        self.assertIn(spec + requested, (candidate / "docs/architecture.html").read_text())
-        self.assertNotIn(spec + PIN, (candidate / "docs/architecture.html").read_text())
-        self.assertIn(spec + PIN, (ROOT / "docs/architecture.html").read_text(), "the checkout keeps its page")
-        checks = [["scripts/architecture_build.py", "--check"], ["scripts/explainer_build.py", "--check"]]
-        if (ROOT / update.LOCAL_VALUES).is_file():
-            checks.append(["scripts/architecture_build.py", "--local", "--check"])
-            self.assertIn(spec + requested, (candidate / "docs/architecture-local.html").read_text())
-        for args in checks:
-            result = subprocess.run([sys.executable, "-B", *args], cwd=candidate, capture_output=True, text=True)
-            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertFalse(any(name.startswith("pages-") for name in names))
+        for name in ("docs/architecture.html", "EXPLAINER.html"):
+            self.assertEqual((ROOT / name).read_bytes(), (candidate / name).read_bytes())
 
-    def test_page_builds_see_the_candidate_pin_and_a_copy_without_local_values_skips_the_local_page(self):
-        requested = "99.0.0"
-        small = self.small_candidate
-        def without_local(run, version, env):
-            candidate = small(run, version, env)
-            local = candidate / update.LOCAL_VALUES
-            if local.is_file():
-                local.rename(local.with_name("local-values.moved"))
-            return candidate
-        with patch.object(self, "small_candidate", side_effect=without_local):
-            report = self.qualify(requested)
+    def test_qualification_has_no_page_steps_or_builder_commands(self):
+        report = self.qualify("99.0.0")
         self.assertTrue(report["passed"], report)
-        builders = [(name, command[2:], json.loads((cwd / "config/manifest.json").read_text())["runtime"]["piVersion"])
-                    for name, command, cwd, env in self.recorded if name.startswith("pages-")]
-        self.assertEqual(builders, [("pages-architecture", ["scripts/architecture_build.py"], requested),
-                                    ("pages-explainer", ["scripts/explainer_build.py"], requested)])
-        names = [row[0] for row in self.recorded]
-        self.assertLess(names.index("pages-explainer"), names.index("offline-fixture"))
-        steps = {row["name"]: row for row in report["steps"]}
-        self.assertEqual(steps["pages-architecture-local"]["exitCode"], 0)
-        self.assertEqual(json.loads(Path(steps["pages-architecture-local"]["log"]).read_text()),
-                         {"build": "not_applicable_without_local_values"})
-
-    def test_a_failed_page_build_fails_qualification_and_the_later_steps_still_run(self):
-        runner = self.recording_runner
-        def failed(command, **options):
-            code = runner(command, **options)
-            return 2 if options["log"].stem == "pages-architecture" else code
-        with patch.object(self, "recording_runner", side_effect=failed):
-            report = self.qualify()
-        self.assertFalse(report["passed"])
-        codes = {step["name"]: step["exitCode"] for step in report["steps"]}
-        self.assertEqual(codes["pages-architecture"], 2)
-        self.assertEqual(codes["pages-explainer"], 0)
-        self.assertEqual(codes["offline-fixture"], 0)
-        self.assertEqual(codes["generate"], 0)
+        self.assertFalse(any(row["name"].startswith("pages-") for row in report["steps"]))
+        for _, command, _, _ in self.recorded:
+            self.assertFalse(any("architecture_build.py" in str(arg) or "explainer_build.py" in str(arg)
+                                 for arg in command))
 
     def test_baseline_drift_is_informational_unless_strict(self):
         real_scan = update._dir_state

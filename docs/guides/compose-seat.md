@@ -5,7 +5,7 @@ A Compose seat is a container, started by Compose, that holds one generated Pi p
 
 This guide is the procedure for the operator. [The Compose seat document](../../deploy/compose/README.md) is the reference: the image, the entrypoint, the Compose files and each variable.
 
-No container of this image has a recorded trial. Use the labels from [the setup guide](setup.md#labels-for-a-prerequisite):
+No container of this image has a recorded trial. Use the labels from [INSTALL.md](../../INSTALL.md#labels-for-a-prerequisite):
 
 | Label | Meaning here |
 | --- | --- |
@@ -359,7 +359,7 @@ Warning: `up -d` alone keeps the old image. The image tag is `KIT_COMMIT`, so an
 
    The entrypoint compares the build record of the image with the record of the profile. When they differ, it generates the candidate `~/.pi/profiles/candidate-<commit>-<pin>` and prints five steps. `<pin>` is the Pi version of the image.
 
-5. Follow [the candidate update guide](candidate-update.md#step-3-compare) from Step 3, inside the seat.
+5. Follow [the candidate update guide](../../POST_INSTALL.md#read-the-comparison) from "Read the comparison", inside the seat.
 
    ```sh
    python3 /opt/tenant-pi/scripts/tenant_pi.py compare --left "$HOME/.pi/profiles/main" --right "$HOME/.pi/profiles/candidate-<commit>-<pin>"

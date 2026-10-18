@@ -11,11 +11,9 @@ import re
 from ipaddress import ip_address
 from urllib.parse import unquote, urlsplit
 
-from scripts.validate import ENV, REF, absolute, fail, fields, text
+from scripts.validate import ENV, REF, REVIEWED_SOURCES, absolute, fail, fields, text
 
-WORKFLOW = ("promptr", "mcp")
 MCP_CONFIG = "mcp-adapter.json"  # `<agent dir>/mcp-adapter.json`, the adapter's own file.
-MCP_PACKAGE = "pi-mcp-adapter"
 # `PI_MCP_CONFIG_MODE=exclusive` (adapter `config.ts` isExclusiveConfigMode): only the agent-dir
 # file loads; shared, project, ancestor, host-discovered, package, and plugin sources are skipped.
 MCP_MODE_NAME = "PI_MCP_CONFIG_MODE"
@@ -54,11 +52,11 @@ PROMPTR_PREREQUISITES = (
     {"code": "local_package_load", "subject": "promptr", "status": "met",
      "fact": "Pi 1.0.2 and Pi 1.0.3 load the built packages/promptr as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills."},
     {"code": "pi_line_build_and_tests", "subject": "promptr", "status": "met",
-     "fact": "The package pins pi-tui and pi-coding-agent 1.3.0. With both dependencies at 1.3.0, the build, the 781 tests, the typecheck and `npm run smoke` pass. `npm run smoke:installed` and a package load on Pi 1.3.0 are not verified."},
+     "fact": "The package pins pi-tui and pi-coding-agent to runtime.piVersion in config/manifest.json. The package tests pass, as do the build, the typecheck and `npm run smoke`. `npm run smoke:installed` and a package load on the kit pin are not verified."},
     {"code": "build_step_required", "subject": "promptr", "status": "open",
      "fact": "packages/promptr/index.ts re-exports dist/src/extension/index.mjs; dist/ is ignored and absent in the tree, so `npm ci` and `npm run build` must run first."},
-    {"code": "host_module_dependency", "subject": "@earendil-works/pi-tui@1.3.0", "status": "open",
-     "fact": "packages/promptr/package.json pins pi-tui 1.3.0 under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The current package pins align at 1.3.0, and Pi 1.3.0 declares its pi-tui dependency at that exact version. Interactive key handling and the warning on Pi 1.3.0 are not verified."},
+    {"code": "host_module_dependency", "subject": "@earendil-works/pi-tui@" + REVIEWED_SOURCES["core"]["spec"].rsplit("@", 1)[1], "status": "open",
+     "fact": "packages/promptr/package.json pins pi-tui under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The package pins match runtime.piVersion in config/manifest.json. Pi declares its pi-tui dependency at that exact version. Interactive key handling and the warning on the kit pin are not verified."},
     {"code": "private_renderer_adapters", "subject": "promptr", "status": "open",
      "fact": "The sidebar uses private Pi renderer adapters; a start on Pi 1.0.2 shows the sidebar, and no session with a model ran."},
     {"code": "automatic_dispatch_path_unverified", "subject": "promptr", "status": "open",

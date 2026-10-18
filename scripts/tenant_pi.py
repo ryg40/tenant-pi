@@ -26,10 +26,10 @@ from scripts import compose_plan as seat
 from scripts import install_results as results
 from scripts import launcher
 from scripts.model_routes import render
-from scripts.private_init import TARGET, TEMPLATES, check_location, check_target, init, inside, report as init_report, with_target
+from scripts.private_init import TARGET, TEMPLATES, check_target, init, report as init_report, with_target
 from scripts.profile_plan import (PROVIDER_KEY_NAMES, herdr_report, prepare, provider_key_warning, readiness,
                                    runtime_report, setup_commands)
-from scripts.profile_write import WriteError, utc_now, write
+from scripts.profile_write import WriteError, check_location, inside, preflight, utc_now, write
 from scripts.remote_plan import remote_plan
 from scripts import wiki_vault
 from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, overlay, parse, place, fail
@@ -366,10 +366,10 @@ def _baseline(args, clock):
     """Record the baseline of one explicitly named directory; the one write is the absent `--out` file."""
     home = _home("baseline.home")
     absolute(args.dir, baseline.DIR_FIELD)
-    baseline.check_location(args.out, _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
-                                              *_wiki_vaults(home), ("under_dir", args.dir))))
+    check_location(args.out, _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
+                                      *_wiki_vaults(home), ("under_dir", args.dir))), baseline.OUT_FIELD)
     # An existing baseline or a bad parent stops before the directory is listed.
-    baseline.preflight(args.out)
+    preflight(args.out, baseline.OUT_FIELD)
     value = baseline.record(args.dir, baseline.stamp(clock), _dir_state(args.dir, baseline.DIR_FIELD))
     data = baseline.encode(value)
     if len(data) > MAX_INPUT:
@@ -486,9 +486,9 @@ def _check_wiki_vault():
 def _launcher_location(path, plan, targets, overlay_data):
     """Static launcher refusals for `plan` and `generate`, before any filesystem access."""
     home = _home("launcher.home")
-    launcher.check_location(path, _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
-                                          *_wiki_vaults(home, overlay_data),
-                                          *(("under_target", target) for target in dict.fromkeys(targets)))))
+    check_location(path, _roots((("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
+                                  *_wiki_vaults(home, overlay_data),
+                                  *(("under_target", target) for target in dict.fromkeys(targets)))), launcher.FIELD)
     launcher.text(plan["commands"]["launch"])
 
 
@@ -508,7 +508,7 @@ def _init_private(args):
                         *(("under_overlay_target", target) for target in targets)))
     if args.target is not None:
         # The directory rules first, then the rules of the new target; both before any write.
-        check_location(args.dir, forbidden)
+        check_location(args.dir, forbidden, "init-private.dir")
         _outside(args.target, (("under_private_dir", args.dir), ("under_kit", str(ROOT)),
                                ("under_pi_agent", home + "/.pi/agent"), *_wiki_vaults(home)), TARGET)
         contents["overlay.json"] = with_target(template, args.target)
@@ -620,7 +620,7 @@ def _results(args):
         fail("out_dir_required", "results.replace")
     if args.out_dir is not None:
         # The form first: the location rules resolve the links of the path.
-        results.check_location(args.out_dir)
+        check_location(args.out_dir, field=results.FIELD)
         home = _home("results.home")
         # Private state stays outside the clone, the kit writes nothing below a vault, and a candidate holds no
         # file that the kit did not declare.
@@ -910,7 +910,7 @@ def main(argv=None, *, clock=utc_now):
                 fail("pi_login_blocked", "overlay.modelRoutes.gateway.auth")
             if launcher_path is not None:
                 # An existing launcher or a bad parent stops before the target is created.
-                launcher.preflight(launcher_path)
+                preflight(launcher_path, launcher.FIELD)
             result = write(plan, args.target, clock=clock, kit_commit=_kit_commit())
             if not result.complete:
                 raise WriteError("incomplete_result", "target", candidate_created=True)

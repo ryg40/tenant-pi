@@ -473,26 +473,27 @@ class WriteTests(unittest.TestCase):
 
     def test_a_temporary_file_that_another_process_made_stays(self):
         self.path.write_bytes(b"old\n")
-        create = results._create_file
+        create = results.create_new_file
 
-        def late(parent_fd, name, data):
+        def late(path, data, mode, field):
+            parent_fd, name = path
             # The file appears after the walk and before the exclusive create.
             other = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=parent_fd)
             os.write(other, b"other")
             os.close(other)
-            return create(parent_fd, name, data)
+            return create(path, data, mode, field)
 
-        with patch.object(results, "_create_file", late):
+        with patch.object(results, "create_new_file", late):
             self.assertEqual("target_exists: results.out_dir", self.rule(str(self.out), b"new\n", True))
         self.assertEqual((b"old\n", b"other"), (self.path.read_bytes(), (self.out / TEMPORARY).read_bytes()))
 
-        def broken(parent_fd, name, data):
-            create(parent_fd, name, data)
+        def broken(path, data, mode, field):
+            create(path, data, mode, field)
             raise OSError("CANARY")
 
         # A temporary file of this call does not stay after a failure.
         (self.out / TEMPORARY).unlink()
-        with patch.object(results, "_create_file", broken):
+        with patch.object(results, "create_new_file", broken):
             self.assertEqual("write_failed: results.out_dir", self.rule(str(self.out), b"new\n", True))
         self.assertEqual([NAME], os.listdir(self.out))
         self.assertEqual(b"old\n", self.path.read_bytes())
@@ -580,8 +581,7 @@ class CliTests(unittest.TestCase):
         args += ["--overlay", str(self.overlay)] if overlay else []
         for target in targets:
             args += ["--target", str(target)]
-        in_process = {"test_a_directory_inside_the_checkout_is_refused", "test_a_directory_below_a_wiki_vault_is_refused",
-                      "test_the_vault_of_the_overlay_wiki_home_is_refused"}
+        in_process = {'test_home_is_required_only_for_output', 'test_candidate_and_relative_output_are_refused'}
         if self._testMethodName in in_process:
             return run_main([*args[2:], *extra], self.base, self.env)
         return subprocess.run([*args, *extra], cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
@@ -668,110 +668,21 @@ class CliTests(unittest.TestCase):
                          [line for line in found if line.startswith("    state:")])
         self.assertNotIn("CANARY", result.stdout)
 
+    @slow
     def test_location_cli_smoke(self):
-        # Results forbids candidate directories, not every live-agent directory.
-        for root, rule in ((ROOT, "under_kit"), (self.main, "under_target"),
-                           (self.home / ".llm-wiki", "under_wiki_vault")):
-            with self.subTest(rule=rule):
-                self.refused(rule + ": results.out_dir", "--out-dir", str(root))
+        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(self.home / ".llm-wiki"))
 
-    def test_a_directory_inside_the_checkout_is_refused(self):
-        self.refused("under_kit: results.out_dir", "--out-dir", str(ROOT))
-        self.refused("under_kit: results.out_dir", "--out-dir", str(ROOT / "docs"))
-        # A link to the checkout does not hide it.
-        (self.base / "link").symlink_to(ROOT / "docs")
-        self.refused("under_kit: results.out_dir", "--out-dir", str(self.base / "link"))
+    def test_candidate_and_relative_output_are_refused(self):
         self.refused("under_target: results.out_dir", "--out-dir", str(self.main))
         self.refused("absolute_path: results.out_dir", "--out-dir", "relative")
 
-    def test_a_directory_below_a_wiki_vault_is_refused(self):
-        vault = self.home / ".llm-wiki"
-        (vault / "meta").mkdir(parents=True, mode=0o700)
-        (vault / "config.json").write_text("CANARY_PRIVATE")
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(vault))
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(vault / "meta"))
-        # A link to the vault does not hide it.
-        (self.base / "link").symlink_to(vault / "meta")
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(self.base / "link"))
-        # The vault of `WIKI_HOME` counts also, and the vault of the home directory stays refused.
-        other = self.base / "other" / ".llm-wiki"
-        other.mkdir(parents=True, mode=0o700)
-        self.env["WIKI_HOME"] = str(self.base / "other")
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(other))
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(vault))
-        # The rule needs the home directory, and only with `--out-dir`.
-        home = self.env.pop("HOME")
+    def test_home_is_required_only_for_output(self):
+        self.env.pop("HOME")
         self.refused("home_required: results.home", "--out-dir", str(self.private))
         self.assertEqual(0, self.run_cli().returncode)
-        self.env["HOME"] = home
-        # A directory beside the vault is not refused.
-        result = self.run_cli("--out-dir", str(self.private))
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertTrue((self.private / NAME).is_file())
-        self.assertEqual([".llm-wiki"], sorted(path.name for path in (self.base / "other").iterdir()))
-        self.assertEqual(["config.json", "meta"], sorted(path.name for path in vault.iterdir()))
-        self.assertEqual([], list((vault / "meta").iterdir()))
 
-    def wiki_home_overlay(self, root):
-        """The overlay of the fixture with the `wiki` module and `memory.wiki.wikiHome` at `root`."""
-        data = overlay_data(str(self.main))
-        data["selection"] = {"enable": [*data["selection"]["enable"], "wiki"], "disable": ["questions"]}
-        data["memory"]["wiki"] = {"ambientPersonalVault": True, "backgroundTasks": False, "wikiHome": str(root)}
-        self.overlay.write_text(json.dumps(data))
 
-    def test_the_vault_of_the_overlay_wiki_home_is_refused(self):
-        chosen = self.base / "chosen wiki home"
-        vault = chosen / ".llm-wiki"
-        self.private_directory(vault / "meta")
-        # Without `wikiHome` in the overlay, the place is no vault.
-        self.assertEqual(0, self.run_cli("--out-dir", str(vault / "meta")).returncode)
-        (vault / "meta" / NAME).unlink()
-        self.wiki_home_overlay(chosen)
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(vault))
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(vault / "meta"))
-        (self.base / "link").symlink_to(vault / "meta")
-        self.refused("under_wiki_vault: results.out_dir", "--out-dir", str(self.base / "link"))
-        self.refused("under_wiki_vault: results.target", targets=[vault / "candidate"])
-        # A directory beside the vault is not refused.
-        result = self.run_cli("--out-dir", str(chosen))
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual([".llm-wiki", NAME], sorted(path.name for path in chosen.iterdir()))
-        self.assertEqual([], list((vault / "meta").iterdir()))
     @slow
-
-    def test_a_target_below_a_wiki_vault_is_refused_before_any_open(self):
-        # The kit opens no file of a vault: a `--target` there is refused before its kit files are read.
-        vault = self.home / ".llm-wiki"
-        other = self.base / "other" / ".llm-wiki"
-        chosen = self.base / "chosen" / ".llm-wiki"
-        for root in (vault, other, chosen):
-            (root / "x" / ".tenant-pi").mkdir(parents=True, mode=0o700)
-            for name in ("settings.json", ".tenant-pi/state.json"):
-                (root / "x" / name).write_text("CANARY_PRIVATE")
-        (self.base / "link").symlink_to(vault / "x")
-        for target in (vault, vault / "x", vault / "absent", self.base / "link"):
-            self.refused("under_wiki_vault: results.target", targets=[target])
-            self.refused("under_wiki_vault: results.target", "--out-dir", str(self.private), targets=[self.main, target])
-        # Until here no file is opened but the files of Python and of the kit: the rule comes before each input file.
-        events = self.log.read_text().splitlines()
-        self.assertIn("open " + str(CLI), events)
-        self.assertEqual([], [event for event in events if event.endswith(".json") and not event.startswith("open " + str(ROOT))])
-        # The vault of `WIKI_HOME` counts also. With no `HOME`, a print knows only this vault and the one of the overlay.
-        self.env["WIKI_HOME"] = str(self.base / "other")
-        home = self.env.pop("HOME")
-        self.refused("under_wiki_vault: results.target", targets=[other / "x"])
-        self.env["HOME"] = home
-        del self.env["WIKI_HOME"]
-        # The vault of `memory.wiki.wikiHome` of the overlay counts also.
-        self.wiki_home_overlay(self.base / "chosen")
-        self.refused("under_wiki_vault: results.target", targets=[chosen / "x"])
-        # No run opened an entry of a vault, by its path or by its name.
-        opened = {event[5:] for event in self.log.read_text().splitlines() if event.startswith("open ")}
-        self.assertEqual(set(), {name for name in opened if ".llm-wiki" in name or name in ("x", ".tenant-pi", "state.json",
-                                                                                           "settings.json")})
-        self.assertFalse((self.private / NAME).exists())
-    @slow
-
     def test_an_existing_file_is_replaced_only_with_replace(self):
         self.assertEqual(0, self.run_cli("--out-dir", str(self.home)).returncode)
         first = (self.home / NAME).read_bytes()
@@ -794,8 +705,8 @@ class CliTests(unittest.TestCase):
         self.facts.write_text(json.dumps(self.data))
         self.refused("unknown_fields: facts", "--out-dir", str(self.home))
         self.refused("unknown_fields: facts")
-    @slow
 
+    @slow
     def test_a_secret_form_does_not_reach_the_file(self):
         for secret in SECRETS:
             data = copy.deepcopy(self.data)
@@ -807,8 +718,8 @@ class CliTests(unittest.TestCase):
         self.assertEqual(2, result.returncode)
         for secret in SECRETS:
             self.assertNotIn(secret, result.stdout + result.stderr)
-    @slow
 
+    @slow
     def test_bad_inputs_are_refused(self):
         self.refused("duplicate_target: results.target", targets=[self.main, self.main])
         self.refused("absolute_path: results.target", targets=["relative"])

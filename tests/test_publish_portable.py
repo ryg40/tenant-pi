@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,7 +14,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from publish_portable import (  # noqa: E402
     DEFAULT_EMAIL, DEFAULT_NAME, EMAIL_VARIABLE, NAME_VARIABLE, push_command, resolve_identity, snapshot,
-    snapshot_tags, tag_snapshot,
+    snapshot_tags, release_tags,
 )
 
 MARKER_NAME = "HOST_MARKER_NAME"
@@ -32,6 +33,18 @@ class RepositoryCase(unittest.TestCase):
         git(self.root, "init", "-q", "-b", "main")
         git(self.root, "config", "user.email", "test@example.invalid")
         git(self.root, "config", "user.name", "test")
+        (self.root / "config").mkdir()
+        (self.root / "config/manifest.json").write_text(json.dumps({
+            "runtime": {"piVersion": "1.2.3", "piAcceptedRange": ">=1.2.3 <1.3"}}))
+        (self.root / "scripts").mkdir()
+        (self.root / "docs").mkdir()
+        for builder, page in (("architecture_build.py", "docs/architecture.html"),
+                              ("explainer_build.py", "EXPLAINER.html")):
+            (self.root / page).write_text("current\n")
+            (self.root / "scripts" / builder).write_text(
+                "import sys\nfrom pathlib import Path\n"
+                "assert sys.argv[1:] == ['--check']\n"
+                f"raise SystemExit(0 if Path({page!r}).read_text() == 'current\\n' else 1)\n")
         (self.root / "keep.txt").write_text("keep\n")
         (self.root / "private").mkdir()
         (self.root / "private/draft.md").write_text("PRIVATE_CANARY\n")
@@ -110,10 +123,11 @@ class SnapshotTests(RepositoryCase):
         with mock.patch.object(publish_portable, "ROOT", self.root), \
                 mock.patch.object(publish_portable, "git", side_effect=local_git), \
                 mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
-                mock.patch.object(publish_portable, "check_set"), \
+                mock.patch.object(publish_portable, "check_set", return_value=["check: passed"]), \
                 mock.patch.object(publish_portable, "check", return_value=("keep.txt",)), \
                 contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(0, publish_portable.main(["--new-root", "--no-push"]))
+            self.assertEqual(0, publish_portable.main(["--new-root", "--no-push", "--notes",
+                                                       str(self.root / ".git/notes.md")]))
             before = git(self.root, "show-ref")
             with self.assertRaises(SystemExit):
                 publish_portable.main(["--new-root", "--no-push"])
@@ -201,7 +215,6 @@ class CheckSetTests(RepositoryCase):
 
     def setUp(self):
         super().setUp()
-        (self.root / "scripts").mkdir()
         (self.root / "scripts/check.py").write_text(
             "import json, os, sys\n"
             "from pathlib import Path\n"
@@ -219,7 +232,17 @@ class CheckSetTests(RepositoryCase):
         path = self.root / ".git/check-calls"
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
-    def invoke(self, mode):
+    def make_stamp(self):
+        tree = git(self.root, "rev-parse", "HEAD^{tree}")
+        directory = self.root / ".git/check-stamps"
+        directory.mkdir(exist_ok=True)
+        stamp = {"when": "2030-01-01T00:00:00Z", "client": {"root": False}, "tests": 4,
+                 "skipped": 1, "resultLines": ["Ran 4 tests in 0.001s", "OK (skipped=1)",
+                                              "publish: passed", "public: passed", "diff: passed", "check: passed"]}
+        (directory / tree).write_text(json.dumps(stamp))
+        return tree, stamp
+
+    def invoke(self, mode, *options, push=False, default_notes=False):
         import publish_portable
         (self.root / ".git/check-mode").write_text(mode)
         real_git = publish_portable.git
@@ -234,17 +257,63 @@ class CheckSetTests(RepositoryCase):
                 mock.patch.object(publish_portable, "check", return_value=("keep.txt",)) as direct_check, \
                 mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
                 contextlib.redirect_stdout(output):
-            self.assertEqual(0, publish_portable.main(["--no-push"]))
+            arguments = [] if push else ["--no-push"]
+            if not default_notes:
+                arguments += ["--notes", str(self.root / ".git/notes.md")]
+            self.assertEqual(0, publish_portable.main([*arguments, *options]))
             direct_check.assert_called_once_with()
         return output.getvalue()
 
+    def test_stale_explainer_refuses_both_classes_and_current_tree_passes(self):
+        from tests.test_explainer_build import ROOT, link_targets
+        import explainer_build
+
+        shutil.copy2(ROOT / "scripts/explainer_build.py", self.root / "scripts/explainer_build.py")
+        shutil.copytree(ROOT / explainer_build.SOURCE_REL, self.root / explainer_build.SOURCE_REL)
+        for target in link_targets():
+            path = self.root / target
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                path.touch()
+        page = self.root / "EXPLAINER.html"
+        current = explainer_build.build(self.root)
+        for kind in ("patch", "full"):
+            with self.subTest(kind=kind):
+                page.write_text("stale\n")
+                git(self.root, "add", "-A")
+                git(self.root, "commit", "-qm", f"stale page for {kind}")
+                self.make_stamp()
+                before = git(self.root, "show-ref")
+                with self.assertRaises(SystemExit) as caught:
+                    self.invoke("stamp", "--class", kind)
+                self.assertEqual("page stale: EXPLAINER.html", str(caught.exception))
+                self.assertEqual(before, git(self.root, "show-ref"))
+                self.assertEqual("stale\n", page.read_text())
+                self.assertEqual("", git(self.root, "status", "--porcelain"))
+                page.write_text(current)
+                git(self.root, "commit", "-qam", f"current page for {kind}")
+                self.make_stamp()
+                self.invoke("stamp", "--class", kind, "--new-root")
+                self.assertEqual(current, page.read_text())
+                self.assertEqual("", git(self.root, "status", "--porcelain"))
+
+    def test_architecture_staleness_and_builder_errors_stop_before_snapshot(self):
+        page = self.root / "docs/architecture.html"
+        for code, message in ((1, "page stale: docs/architecture.html"),
+                              (2, "page check failed: docs/architecture.html")):
+            with self.subTest(code=code):
+                (self.root / "scripts/architecture_build.py").write_text(f"raise SystemExit({code})\n")
+                git(self.root, "commit", "-qam", f"builder exit {code}")
+                self.make_stamp()
+                before = git(self.root, "show-ref")
+                with self.assertRaises(SystemExit) as caught:
+                    self.invoke("stamp")
+                self.assertEqual(message, str(caught.exception))
+                self.assertEqual(before, git(self.root, "show-ref"))
+                self.assertEqual("current\n", page.read_text())
+
     def test_matching_stamp_prints_record_and_skips_full_run(self):
-        tree = git(self.root, "rev-parse", "HEAD^{tree}")
-        directory = self.root / ".git/check-stamps"
-        directory.mkdir()
-        stamp = {"when": "2030-01-01T00:00:00Z", "client": {"root": False},
-                 "skipped": 1, "resultLines": ["Ran 4 tests in 0.001s", "OK (skipped=1)", "check: passed"]}
-        (directory / tree).write_text(json.dumps(stamp))
+        tree, stamp = self.make_stamp()
         output = self.invoke("stamp")
         for line in (f"tree: {tree}", f"when: {stamp['when']}", 'client: {"root": false}',
                      "skipped: 1", "resultLines:", *stamp["resultLines"]):
@@ -255,6 +324,7 @@ class CheckSetTests(RepositoryCase):
         self.assertEqual(self.calls(), [[["--stamp-status"], "1"]] * 2)
 
     def test_no_stamp_runs_full_check_before_build(self):
+        self.make_stamp()  # The full-check fixture leaves this stamp for the publisher to read.
         output = self.invoke("pass")
         self.assertEqual(self.calls(), [[["--stamp-status"], "1"], [[], "1"]])
         self.assertIn("check: passed", output)
@@ -284,6 +354,140 @@ class CheckSetTests(RepositoryCase):
         self.assertEqual(before, git(self.root, "show-ref"))
 
 
+class ReleaseClassTests(RepositoryCase):
+    """Stamped main fixtures, legacy/full and patch tags, and actual merge subjects."""
+
+    make_stamp = CheckSetTests.make_stamp
+    invoke = CheckSetTests.invoke
+
+    def setUp(self):
+        super().setUp()
+        (self.root / "scripts/check.py").write_text("raise SystemExit(0)\n")
+        git(self.root, "add", "scripts/check.py")
+        git(self.root, "commit", "-qm", "check fixture")
+        self.full_tag = "portable/20290101-0000aaa"
+        self.patch_tag = "portable/20290102-0000bbb"
+        self.add_tag(self.full_tag, "full")
+        git(self.root, "commit", "--allow-empty", "-qm", "previous patch")
+        self.add_tag(self.patch_tag, "patch")
+        for number in (21, 22):
+            git(self.root, "checkout", "-qb", f"topic-{number}")
+            (self.root / "keep.txt").write_text(f"change {number}\n")
+            git(self.root, "commit", "-qam", f"change {number}")
+            git(self.root, "checkout", "-q", "main")
+            git(self.root, "merge", "--no-ff", "-qm", f"Merge change (issue {number})", f"topic-{number}")
+        self.make_stamp()
+
+    def add_tag(self, tag, kind):
+        source = git(self.root, "rev-parse", "HEAD")
+        message = f"Portable snapshot of {source[:7]} (2029-01-01)\n"
+        if kind:
+            message += f"\nclass: {kind}\n"
+        git(self.root, "tag", "-a", tag, "-m", message)
+
+    def test_patch_and_full_notes_from_stamp(self):
+        tree, stamp = self.make_stamp()
+        for kind in ("patch", "full"):
+            with self.subTest(kind=kind):
+                # Separate branches still collide on the tag name, so use independent fixtures.
+                if kind == "full":
+                    git(self.root, "commit", "--allow-empty", "-qm", "full qualification")
+                output = self.invoke("stamp", "--class", kind, "--new-root")
+                notes = (self.root / ".git/notes.md").read_text()
+                tag = snapshot_tags(self.root, "portable")[0]
+                self.assertIn(f"# Portable release: {kind}", notes)
+                self.assertIn(f"- Tag: {tag}", notes)
+                self.assertIn(f"- Source commit: {git(self.root, 'rev-parse', 'HEAD')}", notes)
+                self.assertIn(f"- Snapshot commit: {git(self.root, 'rev-parse', 'portable')}", notes)
+                self.assertIn(f"- Kind of release: {kind} release", notes)
+                self.assertIn("Pi pin (runtime.piVersion): 1.2.3", notes)
+                for line in (f"tree: {tree}", f"when: {stamp['when']}", "skipped: 1", *stamp["resultLines"]):
+                    self.assertIn(line, notes)
+                self.assertIn("Snapshot range: not run (no push)", notes)
+                self.assertIn("## Known defects\n\n<none recorded>", notes)
+                self.assertIn(f"notes: {self.root / '.git/notes.md'}", output)
+                self.assertIn(f"\nclass: {kind}\n", git(self.root, "cat-file", "-p", tag))
+                if kind == "patch":
+                    self.assertIn(f"Gates 6-8: unchanged from {self.full_tag}", notes)
+                    self.assertIn(f"Changes since {self.patch_tag}", notes)
+                    for number in (21, 22):
+                        self.assertEqual(notes.count(f"- Merge change (issue {number})"), 1)
+                    self.assertNotIn("scan.sh all", notes)
+                    self.assertNotIn("6. Clean Linux", notes)
+                else:
+                    for line in ("scan.sh all: <", "6. Clean Linux core trial: <", "7. Optional live services",
+                                 "8. Compose seat", "Platforms that are not qualified: <", "## Open gaps"):
+                        self.assertIn(line, notes)
+                    self.assertNotIn("Gates 6-8: unchanged", notes)
+
+    def test_legacy_tag_is_last_full_and_default_class_is_patch(self):
+        legacy = "portable/20290103-0000ccc"
+        self.add_tag(legacy, None)
+        self.assertEqual(release_tags(self.root)[0], (legacy, "full", git(self.root, "rev-parse", "HEAD")[:7]))
+        self.invoke("stamp")
+        notes = (self.root / ".git/notes.md").read_text()
+        self.assertIn("# Portable release: patch", notes)
+        self.assertIn(f"Gates 6-8: unchanged from {legacy}", notes)
+
+    def test_default_notes_are_outside_repository(self):
+        output = self.invoke("stamp", default_notes=True)
+        path = Path(next(line.removeprefix("notes: ") for line in output.splitlines() if line.startswith("notes: ")))
+        self.addCleanup(path.unlink)
+        self.assertEqual(path.parent, Path(tempfile.gettempdir()))
+        self.assertFalse(path.is_relative_to(self.root))
+        self.assertIn("not run (no push)", path.read_text())
+
+    def test_retry_keeps_original_change_range_and_class(self):
+        self.invoke("stamp")
+        first = (self.root / ".git/notes.md").read_text()
+        self.invoke("stamp")
+        self.assertEqual(first, (self.root / ".git/notes.md").read_text())
+        with self.assertRaisesRegex(SystemExit, "different class or source"):
+            self.invoke("stamp", "--class", "full")
+
+    def test_push_copies_hook_stdout_and_stderr_without_real_push(self):
+        import publish_portable
+        real_run = subprocess.run
+        for stream in ("stdout", "stderr"):
+            with self.subTest(stream=stream):
+                line = "pre-push: result pass; range abc..def; level fail"
+
+                def run(command, *args, **kwargs):
+                    if command[:2] == ["git", "push"]:
+                        return subprocess.CompletedProcess(command, 0, **{stream: line + "\n",
+                                                           "stderr" if stream == "stdout" else "stdout": ""})
+                    return real_run(command, *args, **kwargs)
+
+                with mock.patch.object(publish_portable.subprocess, "run", side_effect=run):
+                    output = self.invoke("stamp", push=True)
+                self.assertIn(line, output.splitlines())
+                self.assertIn(f"Snapshot range: {line}", (self.root / ".git/notes.md").read_text())
+
+    def test_missing_hook_line_does_not_claim_scan_passed(self):
+        import publish_portable
+        with mock.patch.object(publish_portable.subprocess, "run", return_value=(
+                subprocess.CompletedProcess([], 0, "", "Everything up-to-date"))):
+            _, lines = publish_portable.push_snapshot(self.root, ["push", "unused"])
+        self.assertEqual(lines, ["not recorded (no pre-push result line)"])
+
+    def test_failed_push_keeps_failure_record(self):
+        import publish_portable
+        line = "pre-push: result fail; range abc..def; level fail"
+        real_run = subprocess.run
+
+        def run(command, *args, **kwargs):
+            if command[:2] == ["git", "push"]:
+                return subprocess.CompletedProcess(command, 1, "", line + "\nrefused")
+            return real_run(command, *args, **kwargs)
+
+        output = io.StringIO()
+        with mock.patch.object(publish_portable.subprocess, "run", side_effect=run), \
+                contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(SystemExit, "push failed"):
+                self.invoke("stamp", push=True)
+        self.assertIn(f"Snapshot range: {line}", (self.root / ".git/notes.md").read_text())
+
+
 class IdentityTests(RepositoryCase):
     """The snapshot commit and the tag carry the neutral identity, never the one of the Git config."""
 
@@ -304,9 +508,8 @@ class IdentityTests(RepositoryCase):
         self.addCleanup(patch.stop)
 
     def identities(self):
-        commit, _, changed = snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="one")
+        commit, _, changed = snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="one", tag="portable/test")
         self.assertTrue(changed)
-        tag_snapshot(self.root, "portable/test", commit, message="tag one")
         return (git(self.root, "log", "-1", "--format=%an|%ae|%cn|%ce", "portable"),
                 git(self.root, "for-each-ref", "--format=%(taggername)|%(taggeremail)", "refs/tags/"))
 
@@ -333,7 +536,7 @@ class IdentityTests(RepositoryCase):
         self.assertTrue(git(self.root, "for-each-ref", "--format=%(taggerdate:iso)", "refs/tags/").endswith("+0000"))
         self.assertEqual("Asia/Tokyo", os.environ["TZ"])
         self.assertEqual("one", git(self.root, "log", "-1", "--format=%B", "portable"))
-        self.assertEqual("tag one", git(self.root, "for-each-ref", "--format=%(contents:subject)", "refs/tags/"))
+        self.assertEqual("one", git(self.root, "for-each-ref", "--format=%(contents:subject)", "refs/tags/"))
         # Every other Git call keeps the host identity.
         self.assertEqual(MARKER_NAME, git(self.root, "config", "user.name"))
 
@@ -403,10 +606,10 @@ class SnapshotTagTests(RepositoryCase):
 
     def test_only_snapshot_tags_of_the_commit_are_listed(self):
         head = git(self.root, "rev-parse", "HEAD")
-        commit, _, changed = snapshot(self.root, ["keep.txt"], head, "portable", message="first snapshot")
+        self.assertEqual(snapshot_tags(self.root, head), [])
+        commit, _, changed = snapshot(self.root, ["keep.txt"], head, "portable", message="first snapshot",
+                                      tag="portable/20300101-0000aaa")
         self.assertTrue(changed)
-        self.assertEqual(snapshot_tags(self.root, commit), [])
-        tag_snapshot(self.root, "portable/20300101-0000aaa", commit, message="tag")
         git(self.root, "tag", "portable/manual", commit)
         git(self.root, "tag", "junk", commit)
         git(self.root, "tag", "portable/20291231-0000bbb", head)

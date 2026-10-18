@@ -266,8 +266,9 @@ A hook fails closed: if Docker or the scanner image is not available, the commit
 After a change of `scripts/git-hooks/dispatch`, or after the repository moves to another path, run `scripts/install-hooks.sh` again. `--check` reports both cases. If the path in `core.hooksPath` does not exist, Git runs no hook and prints nothing.
 
 Warning: `git commit --no-verify` and `git push --no-verify` skip the hooks.
-Follow gate 5 of the [release checklist](guides/release-checklist.md). A pin move or new component requires `scripts/scan.sh all`.
-Otherwise run `scripts/scan.sh history <last portable tag>..HEAD`. Record the pre-push result for the snapshot range.
+Follow gate 5 of the [release checklist](guides/release-checklist.md). Only the full release class requires `scripts/scan.sh all`.
+Development pushes and the publication push each print one `pre-push: result` line.
+The publisher writes the publication line into the notes; do not repeat the range scan.
 
 ## Test
 

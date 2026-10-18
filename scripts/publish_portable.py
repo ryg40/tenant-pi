@@ -4,7 +4,8 @@
 You can keep private notes in your source copy and publish only reviewed files.
 This command takes the publish set from committed HEAD (never the working tree),
 chains it onto the previous snapshot (or starts a new history with `--new-root`),
-tags it, and pushes it to your chosen remote. It writes no file inside the checkout.
+tags it, and pushes it to your chosen remote. It writes draft release notes to a
+new system temporary file, or to the path given by `--notes`.
 
 The snapshot commit and the tag carry a neutral identity and no signature, so that the
 Git identity and the signing key of the publishing host do not leave with a snapshot.
@@ -16,6 +17,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,7 +84,6 @@ def snapshot(root, paths, source_ref, branch, *, message, identity=None, new_roo
     With `new_root` the commit has no parent, also when its tree equals the previous snapshot:
     `branch` starts a new history, and no earlier snapshot is an ancestor of it.
     """
-    import tempfile
     identity = resolve_identity() if identity is None else identity
     check_snapshot_branch(root, branch)
     if tag is not None:
@@ -116,12 +117,6 @@ def snapshot(root, paths, source_ref, branch, *, message, identity=None, new_roo
     check_snapshot_branch(root, branch)
     git("update-ref", "--stdin", root=root, input="start\n" + branch_update + tag_update + "prepare\ncommit\n")
     return commit, tree, True
-
-
-def tag_snapshot(root, tag, commit, *, message, identity=None):
-    """Write the annotated tag `tag` on `commit` with `identity` as tagger and no signature."""
-    identity = resolve_identity() if identity is None else identity
-    git(*NO_SIGNATURE, "tag", "-a", tag, commit, "-m", message, root=root, env=identity_env(identity))
 
 
 def push_command(remote, branch, remote_branch, tags=(), *, force=False):
@@ -158,6 +153,84 @@ def publish_tracked(root, ref):
     return tracked
 
 
+def stamp_record(root):
+    """Read the evidence lines without turning an unrun gate into a passed gate."""
+    tree = git("rev-parse", "HEAD^{tree}", root=root)
+    try:
+        stamp = json.loads(stamp_path(root, tree).read_text(encoding="utf-8"))
+        return [f"tree: {tree}", f"when: {stamp['when']}",
+                f"client: {json.dumps(stamp['client'], sort_keys=True)}",
+                f"skipped: {stamp['skipped']}", "resultLines:", *stamp["resultLines"]]
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise SystemExit("matching stamp could not be read") from error
+
+
+def release_tags(root):
+    """Newest annotated snapshot tags first; old tags without a class are full releases."""
+    names = git("for-each-ref", "--sort=-refname", "--sort=-taggerdate",
+                "--format=%(refname:short)", "refs/tags/portable/", root=root).splitlines()
+    records = []
+    for name in names:
+        message = git("for-each-ref", "--format=%(contents)", f"refs/tags/{name}", root=root)
+        source = re.search(r"^Portable snapshot of ([0-9a-f]{7,40})\b", message, re.MULTILINE)
+        if not source:
+            continue
+        classes = re.findall(r"^class:[ \t]*(.*?)[ \t]*$", message, re.MULTILINE)
+        if classes and classes not in (["patch"], ["full"]):
+            raise SystemExit(f"invalid release class in tag {name}")
+        records.append((name, classes[0] if classes else "full", source.group(1)))
+    return records
+
+
+def release_notes(root, tag, source, commit, release_class, tags, record, scan):
+    """Render the known evidence and leave all other checks for the maintainer."""
+    runtime = json.loads(git("show", f"{source}:config/manifest.json", root=root))["runtime"]
+    previous = tags[0] if tags else None
+    last_full = next((name for name, kind, _ in tags if kind == "full"), "<no full tag recorded>")
+    revisions = f"{previous[2]}..{source}" if previous else source
+    changes = git("log", revisions, "--merges", "--format=%s", root=root).splitlines()
+    lines = [f"# Portable release: {release_class}", "", f"- Tag: {tag}",
+             f"- Source commit: {source}", f"- Snapshot commit: {commit}",
+             f"- Kind of release: {release_class} release",
+             f"- Pi pin (runtime.piVersion): {runtime['piVersion']}"]
+    if release_class == "full":
+        lines += [f"- Accepted range (runtime.piAcceptedRange): {runtime['piAcceptedRange']}",
+                  "- Qualification: <full qualification, or fast track: gate 6 not run, approved by the maintainer>"]
+    lines += ["", "## Gates", "", "1. The check set (stamp record)",
+              *[f"   - {line}" for line in record], "5. Scanner",
+              *[f"   - Snapshot range: {line}" for line in scan]]
+    if release_class == "patch":
+        lines += [f"Gates 6-8: unchanged from {last_full}"]
+    else:
+        lines += ["   - scan.sh all: <passed, failed, blocked or not run> - <result line with the level>",
+                  "6. Clean Linux core trial: <passed, failed, blocked or not run> - <result line>",
+                  "7. Optional live services (one line for each, no total result)",
+                  "   - <module, route or service>: <passed, failed, blocked or not run> - <result line>",
+                  "8. Compose seat (no total result): config <passed, failed or not run>, "
+                  "build <passed, failed or not run>, table check <passed, failed or not run>"]
+    lines += ["", f"## Changes since {previous[0] if previous else '<first snapshot>'}", "",
+              *[f"- {change}" for change in changes]]
+    if release_class == "full":
+        lines += ["", "Platforms that are not qualified: "
+                  "<full URL of docs/guides/release-checklist.md at the tag>#platforms-that-are-not-qualified"]
+    lines += ["", "## Known defects", "", "<none recorded>"]
+    if release_class == "full":
+        lines += ["", "## Open gaps", "", "- <gap, or none known>"]
+    return "\n".join(lines) + "\n"
+
+
+def push_snapshot(root, command):
+    """Keep the hook's evidence, including stderr and a refused push."""
+    result = subprocess.run(["git", *command], cwd=root, text=True, capture_output=True)
+    lines = [line for line in (result.stdout + "\n" + result.stderr).splitlines()
+             if re.fullmatch(r"pre-push: result (?:pass|fail); range .+; level .+", line)]
+    for line in lines:
+        print(line, flush=True)
+    if not lines:
+        lines = ["not recorded (no pre-push result line)"]
+    return result, lines
+
+
 def check_set(root):
     """Reuse a matching full-run stamp, or require a successful full check set."""
     command = [sys.executable, "scripts/check.py"]
@@ -165,17 +238,10 @@ def check_set(root):
     status = subprocess.run([*command, "--stamp-status"], cwd=root, env=env,
                             text=True, capture_output=True)
     if status.returncode == 0:
-        tree = git("rev-parse", "HEAD^{tree}", root=root)
-        try:
-            stamp = json.loads(stamp_path(root, tree).read_text(encoding="utf-8"))
-            lines = [f"tree: {tree}", f"when: {stamp['when']}",
-                     f"client: {json.dumps(stamp['client'], sort_keys=True)}",
-                     f"skipped: {stamp['skipped']}", "resultLines:", *stamp["resultLines"]]
-        except (OSError, ValueError, KeyError, TypeError) as error:
-            raise SystemExit("matching stamp could not be read") from error
+        lines = stamp_record(root)
         print("stamp: matches", flush=True)
         print("\n".join(lines), flush=True)
-        return
+        return lines
     print("stamp: missing or stale; running the full check set", flush=True)
     result = subprocess.run(command, cwd=root, env=env, text=True, capture_output=True)
     print(result.stdout, end="", flush=True)
@@ -183,6 +249,19 @@ def check_set(root):
         print(result.stderr, end="", file=sys.stderr)
     if result.returncode != 0 or result.stdout.splitlines()[-1:] != ["check: passed"]:
         raise SystemExit("check set failed; no snapshot built")
+    return stamp_record(root)
+
+
+def check_pages(root):
+    """Compare public pages without writing them, independently of a check-set stamp."""
+    for builder, page in (("architecture_build.py", "docs/architecture.html"),
+                          ("explainer_build.py", "EXPLAINER.html")):
+        result = subprocess.run([sys.executable, f"scripts/{builder}", "--check"], cwd=root,
+                                env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
+                                text=True, capture_output=True)
+        if result.returncode:
+            reason = "stale" if result.returncode == 1 else "check failed"
+            raise SystemExit(f"page {reason}: {page}")
 
 
 def main(argv=None):
@@ -191,6 +270,9 @@ def main(argv=None):
     parser.add_argument("--remote-branch", default="main", help="branch name on the remote")
     parser.add_argument("--branch", default="portable", help="local snapshot branch: portable, portable-* or portable/*")
     parser.add_argument("--no-push", action="store_true", help="build and tag only")
+    parser.add_argument("--class", dest="release_class", choices=("patch", "full"), default="patch",
+                        help="release class (default: patch)")
+    parser.add_argument("--notes", type=Path, help="notes output path (default: a new system temporary file)")
     parser.add_argument("--force", action="store_true",
                         help="replace the remote branch, including an existing snapshot chain; uses --force-with-lease")
     parser.add_argument("--new-root", action="store_true",
@@ -208,11 +290,13 @@ def main(argv=None):
         raise SystemExit("working tree not clean: commit or stash first; the snapshot comes from HEAD only")
     head = git("rev-parse", "HEAD")
     short = head[:7]
-    check_set(ROOT)
+    record = check_set(ROOT)
+    check_pages(ROOT)
+    tags_before = release_tags(ROOT)
     names = check()
     print(f"check ok: publish set ({len(names)} files)")
     date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    message = (f"Portable snapshot of {short} ({date})\n\n"
+    message = (f"Portable snapshot of {short} ({date})\n\nclass: {args.release_class}\n\n"
                f"Exactly the reviewed publish set from scripts/publish_check.py at\n"
                f"source commit {head}. Only reviewed files are included.\n")
     previous = git("rev-parse", "--verify", "--quiet", f"refs/heads/{args.branch}^{{commit}}", check_call=False)
@@ -226,13 +310,34 @@ def main(argv=None):
         print(f"portable commit {commit[:7]} (tree {tree[:7]}), tag {tag}")
     else:
         print(f"no change: portable branch already holds tree {tree[:7]} (commit {commit[:7]})")
-    if args.no_push:
-        return 0
     tags = snapshot_tags(ROOT, commit)
-    push = push_command(args.remote, args.branch, args.remote_branch, tags, force=args.force)
-    # A refused push stops the command: with named refs the remote can accept one ref and refuse another.
-    git(*push)
-    print(f"pushed {args.branch} to {args.remote}/{args.remote_branch}" + "".join(f", tag {tag}" for tag in tags))
+    if not changed:
+        existing = next((entry for entry in tags_before if entry[0] in tags), None)
+        if existing is None:
+            raise SystemExit("unchanged snapshot has no release tag; no notes or push")
+        tag, release_class, source = existing
+        if release_class != args.release_class or git("rev-parse", source, root=ROOT) != head:
+            raise SystemExit("unchanged snapshot has a different class or source; no notes or push")
+        tags_before = [entry for entry in tags_before if entry[0] != tag]
+    # Render before the push so missing source metadata cannot cause a publication without notes.
+    notes = release_notes(ROOT, tag, head, commit, args.release_class, tags_before, record,
+                          ["not run (no push)"])
+    if args.notes is None:
+        descriptor, path = tempfile.mkstemp(prefix="tenant-pi-release-", suffix=".md")
+        os.close(descriptor)
+        args.notes = Path(path)
+    args.notes.write_text(notes, encoding="utf-8")
+    if not args.no_push:
+        push = push_command(args.remote, args.branch, args.remote_branch, tags, force=args.force)
+        result, scan = push_snapshot(ROOT, push)
+        args.notes.write_text(release_notes(ROOT, tag, head, commit, args.release_class, tags_before, record, scan),
+                              encoding="utf-8")
+        print(f"notes: {args.notes}", flush=True)
+        if result.returncode:
+            raise SystemExit(f"push failed: {result.stderr.strip()}")
+        print(f"pushed {args.branch} to {args.remote}/{args.remote_branch}" + "".join(f", tag {tag}" for tag in tags))
+    else:
+        print(f"notes: {args.notes}", flush=True)
     return 0
 
 

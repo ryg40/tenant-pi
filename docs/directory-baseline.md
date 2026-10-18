@@ -165,6 +165,8 @@ So read `changed` in this way:
 
 Each refusal is a static `rule: field` text. It contains no path and no value. Each refusal of this table fires before any write. The refusals of the `--out` path and of `HOME` fire before the directory is listed.
 
+See the [refusal rules](private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
+
 | Diagnostic | Cause |
 | --- | --- |
 | `absolute_path: baseline.dir`, `absolute_path: check-baseline.dir` | `--dir` is relative or has a segment that the path rule refuses. |
@@ -174,9 +176,6 @@ Each refusal is a static `rule: field` text. It contains no path and no value. E
 | `absolute_path: baseline.out`, `text: baseline.out`, `shell_or_template: baseline.out` | `--out` is not an absolute POSIX path of the kit form. |
 | `path_too_long: baseline.out` | `--out` has more than 1024 characters. |
 | `under_dir: baseline.out` | `--out` is `--dir` or is under it. A baseline never goes into the directory that it records. |
-| `under_pi_agent: baseline.out` | `--out` is `~/.pi/agent` or is under it. |
-| `under_wiki_vault: baseline.out` | `--out` is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. The kit writes nothing below a personal wiki vault; `--dir` can name the vault. |
-| `under_kit: baseline.out` | `--out` is the kit clone or is under it. This includes `.local/` of the clone. |
 | `target_exists: baseline.out` | The `--out` path exists: a file, a directory, a link, a dangling link or another entry. The entry is not changed. |
 | `parent_missing: baseline.out.parent` | The parent of `--out`, or a directory above it, does not exist. |
 | `unsafe_parent_owner: baseline.out.parent`, `unsafe_owner: baseline.out.parents`, `unsafe_permissions: baseline.out.parents`, `unsafe_path: baseline.out.parents` | The ancestor rules of the guarded writer; see [the launcher file](launcher.md#refusals). |
@@ -196,8 +195,6 @@ After a complete listing, a failed write gives `file_privacy`, `short_write`, `w
 - The comparison names the direct entries only. It does not name an entry at a lower level.
 - An entry that goes away during the listing is left out. A Pi that runs in the directory during `baseline` can give a baseline that differs from the directory at once.
 - One directory that the caller cannot list stops the action with `unreadable`.
-- `under_kit` covers only the root of the kit that runs the action, as for `--launcher`.
-- `under_pi_agent` knows only `~/.pi/agent`. `baseline` reads no `PI_CODING_AGENT_DIR`, so an `--out` path inside a live agent directory that only this variable names is refused only when that directory is the `--dir`. Keep `--out` in the private directory.
 - The write boundary is the Linux-first boundary of the guarded writer; see [the launcher file](launcher.md#limits).
 
 ## Test coverage

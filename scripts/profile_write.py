@@ -14,7 +14,8 @@ from scripts.validate import Invalid, absolute, fail, relative
 
 STATE = ".tenant-pi/state.json"  # Writer-owned; not a planner output.
 OPTIONAL_OUTPUTS = (HERMES_CONFIG, MCP_CONFIG, "models.json")  # Whole extra profile files an optional module may own.
-_DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+MAX_PATH = 1024
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 GENERATED_AT = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _FILE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 
@@ -128,11 +129,11 @@ def _check_dir(fd, *, parent=False):
 
 def _ancestors(target):
     segments = target[1:].split("/")
-    fd = os.open("/", _DIR_FLAGS)
+    fd = os.open("/", DIR_FLAGS)
     try:
         _check_dir(fd)
         for part in segments[:-1]:
-            child = os.open(part, _DIR_FLAGS, dir_fd=fd)
+            child = os.open(part, DIR_FLAGS, dir_fd=fd)
             try:
                 _check_dir(child)
             except BaseException:
@@ -167,6 +168,106 @@ def _create_file(fd, name, data, mode=0o600):
         os.fsync(file_fd)
     finally:
         os.close(file_fd)
+
+
+def inside(path, root):
+    return path == root or path.startswith(root.rstrip("/") + "/")
+
+
+def check_location(path, forbidden=(), field="target"):
+    """Check path form and forbidden roots before filesystem access."""
+    absolute(path, field)
+    if len(path) > MAX_PATH:
+        fail("path_too_long", field)
+    for rule, root in forbidden:
+        if inside(path, root):
+            fail(rule, field)
+
+
+def open_new_parent(path):
+    """Open a checked parent for exclusive directory creation; the caller owns the descriptor."""
+    return _ancestors(path)
+
+
+def _parent(path, field):
+    try:
+        return open_new_parent(path)
+    except WriteError as exc:
+        raise WriteError(exc.rule, field + exc.field[len("target"):]) from None
+    except FileNotFoundError:
+        raise WriteError("parent_missing", field + ".parent") from None
+    except OSError:
+        raise WriteError("unsafe_path", field + ".parents") from None
+
+
+def _present(parent_fd, leaf):
+    try:
+        os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
+    except OSError:
+        return False
+    return True
+
+
+def preflight(path, field):
+    """Check the parent and absent target without writing."""
+    parent_fd, _ = _parent(path, field)
+    try:
+        os.close(parent_fd)
+    except OSError:
+        raise WriteError("cleanup_failed", field.split(".")[0] + ".descriptors") from None
+
+
+@dataclass(frozen=True)
+class FileResult:
+    path: str
+    complete: bool
+    warnings: tuple[str, ...] = ()
+
+
+def create_new_file(path, data, mode, field):
+    """Create an absent private file, without changing the caller's umask.
+
+    A string path gets the full parent walk and publication checks. A (directory
+    descriptor, leaf) pair uses a parent already checked and held by a directory
+    transaction. That transaction owns sync, cleanup and partial-output diagnostics.
+    Exclusive creation refuses existing entries, including links, in both forms.
+    """
+    if isinstance(path, tuple):
+        _create_file(path[0], path[1], data, mode)
+        return None
+    parent_fd, leaf = _parent(path, field)
+    created = complete = False
+    failure = None
+    warnings = []
+    descriptors = field.split(".")[0] + ".descriptors"
+    try:
+        _create_file(parent_fd, leaf, data, mode)
+        created = True
+        os.fsync(parent_fd)
+        # Keep the executable launcher's post-create mode check.
+        if mode == 0o700:
+            named = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
+            if not stat.S_ISREG(named.st_mode) or stat.S_IMODE(named.st_mode) != mode or named.st_uid != os.geteuid():
+                raise WriteError("target_changed", field)
+        complete = True
+    except FileExistsError:
+        failure = WriteError("target_exists", field)
+    except WriteError as exc:
+        failure = WriteError(exc.rule, field, candidate_created=True)
+    except OSError:
+        created = created or _present(parent_fd, leaf)
+        failure = WriteError("write_failed" if created else "target_unavailable", field, candidate_created=created)
+    finally:
+        try:
+            os.close(parent_fd)
+        except OSError:
+            if complete:
+                warnings.append("cleanup_failed: " + descriptors)
+            elif failure is None:
+                failure = WriteError("cleanup_failed", descriptors, candidate_created=created)
+    if failure is not None:
+        raise failure from None
+    return FileResult(path, True, tuple(warnings))
 
 
 def _provenance(choices, names):
@@ -239,14 +340,14 @@ def write(plan, target_agent_dir, *, clock=utc_now, kit_commit=UNKNOWN):
         # Exclusive directory creation is the ownership boundary. Never adopt it.
         os.mkdir(leaf, 0o700, dir_fd=parent_fd)
         created = True
-        target_fd = os.open(leaf, _DIR_FLAGS, dir_fd=parent_fd)
+        target_fd = os.open(leaf, DIR_FLAGS, dir_fd=parent_fd)
         info = os.fstat(target_fd)
         if (info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700
                 or not stat.S_ISDIR(info.st_mode)):
             raise WriteError("dir_privacy", "target")
         os.fsync(parent_fd)
         os.mkdir(".tenant-pi", 0o700, dir_fd=target_fd)
-        meta_fd = os.open(".tenant-pi", _DIR_FLAGS, dir_fd=target_fd)
+        meta_fd = os.open(".tenant-pi", DIR_FLAGS, dir_fd=target_fd)
         meta = os.fstat(meta_fd)
         if meta.st_uid != os.geteuid() or stat.S_IMODE(meta.st_mode) != 0o700:
             raise WriteError("dir_privacy", "target.metadata")

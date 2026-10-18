@@ -5,7 +5,7 @@ import shlex
 import stat
 from dataclasses import dataclass
 
-from scripts.profile_write import WriteError, _DIR_FLAGS, _ancestors, _create_file
+from scripts.profile_write import MAX_PATH, WriteError, DIR_FLAGS, check_location, create_new_file, open_new_parent
 from scripts.validate import SAMPLE_TARGET, absolute, fail
 
 FIELD = "init-private.dir"
@@ -20,8 +20,6 @@ TEMPLATES = {
     ".gitignore": "config/private/gitignore",
 }
 INPUTS = "inputs"  # Holds the fixed overlay.inputs slots; the .gitignore template ignores it.
-# Length bound of each caller-supplied text that the report echoes: the directory and the target.
-MAX_PATH = 1024
 
 
 @dataclass(frozen=True)
@@ -29,24 +27,6 @@ class InitResult:
     directory: str
     complete: bool
     warnings: tuple[str, ...] = ()
-
-
-def inside(path, root):
-    return path == root or path.startswith(root.rstrip("/") + "/")
-
-
-def check_location(directory, forbidden):
-    """Static refusal of a bad location, before any filesystem access.
-
-    `forbidden` is a sequence of (rule, absolute root). The comparison is on path text; the
-    writer then refuses every symlink ancestor, so a link cannot reach a root another way.
-    """
-    absolute(directory, FIELD)
-    if len(directory) > MAX_PATH:
-        fail("path_too_long", FIELD)
-    for rule, root in forbidden:
-        if inside(directory, root):
-            fail(rule, FIELD)
 
 
 def check_target(target):
@@ -77,12 +57,12 @@ def init(directory, contents, forbidden=()):
     `contents` maps each created file name to its bytes. Raises Invalid before any
     filesystem access and WriteError after; nothing existing is adopted or changed.
     """
-    check_location(directory, forbidden)
+    check_location(directory, forbidden, FIELD)
     if (type(contents) is not dict or set(contents) != set(TEMPLATES)
             or any(type(data) is not bytes for data in contents.values())):
         fail("fields", "init-private.templates")
     try:
-        parent_fd, leaf = _ancestors(directory)
+        parent_fd, leaf = open_new_parent(directory)
     except WriteError as exc:
         raise _renamed(exc, False) from None
     except FileNotFoundError:
@@ -98,19 +78,19 @@ def init(directory, contents, forbidden=()):
         # Exclusive directory creation is the ownership boundary. Never adopt it.
         os.mkdir(leaf, 0o700, dir_fd=parent_fd)
         created = True
-        dir_fd = os.open(leaf, _DIR_FLAGS, dir_fd=parent_fd)
+        dir_fd = os.open(leaf, DIR_FLAGS, dir_fd=parent_fd)
         info = os.fstat(dir_fd)
         if (info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700
                 or not stat.S_ISDIR(info.st_mode)):
             raise WriteError("dir_privacy", "target")
         os.fsync(parent_fd)
         os.mkdir(INPUTS, 0o700, dir_fd=dir_fd)
-        inputs_fd = os.open(INPUTS, _DIR_FLAGS, dir_fd=dir_fd)
+        inputs_fd = os.open(INPUTS, DIR_FLAGS, dir_fd=dir_fd)
         inputs = os.fstat(inputs_fd)
         if inputs.st_uid != os.geteuid() or stat.S_IMODE(inputs.st_mode) != 0o700:
             raise WriteError("dir_privacy", "target.inputs")
         for name in TEMPLATES:
-            _create_file(dir_fd, name, contents[name])
+            create_new_file((dir_fd, name), contents[name], 0o600, FIELD)
         os.fsync(inputs_fd)
         os.fsync(dir_fd)
         named = os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)

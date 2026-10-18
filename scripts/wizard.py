@@ -10,8 +10,7 @@ import re
 import stat
 
 from scripts import wizard_adapter
-from scripts.private_init import check_location
-from scripts.profile_write import WriteError, _ancestors, _create_file, _DIR_FLAGS
+from scripts.profile_write import WriteError, check_location, create_new_file, open_new_parent, DIR_FLAGS
 from scripts.validate import Invalid, absolute, fail
 from scripts.wizard_adapter import FILE_NAME, FIXED_FILES, OPTIONS, SEAM_VERSION, json_value, secret_free
 from scripts.wizard_state import digest
@@ -77,17 +76,17 @@ def _save(directory, files):
     parent = child = inputs = None
     created = False
     try:
-        parent, leaf = _ancestors(directory)
+        parent, leaf = open_new_parent(directory)
         os.mkdir(leaf, 0o700, dir_fd=parent)
         created = True
-        child = os.open(leaf, _DIR_FLAGS, dir_fd=parent)
+        child = os.open(leaf, DIR_FLAGS, dir_fd=parent)
         info = os.fstat(child)
         if info.st_uid != os.geteuid() or stat.S_IMODE(info.st_mode) != 0o700:
             raise WriteError("dir_privacy", "wizard.private_dir", candidate_created=True)
         os.mkdir("inputs", 0o700, dir_fd=child)
-        inputs = os.open("inputs", _DIR_FLAGS, dir_fd=child)
+        inputs = os.open("inputs", DIR_FLAGS, dir_fd=child)
         for name, data in files.items():
-            _create_file(inputs if name.startswith("inputs/") else child, name.split("/")[-1], data)
+            create_new_file((inputs if name.startswith("inputs/") else child, name.split("/")[-1]), data, 0o600, "wizard.private_dir")
         os.fsync(inputs)
         os.fsync(child)
         named = os.stat(leaf, dir_fd=parent, follow_symlinks=False)
@@ -206,7 +205,7 @@ def run(args, cli, terminal=None):
     cli._outside_kit(args.private_dir, "wizard.private_dir")
     cli._outside_pi_agent(args.private_dir, "wizard.private_dir")
     cli._outside_wiki_vault(args.private_dir, "wizard.private_dir", state.overlay)
-    check_location(args.private_dir, (("under_target", args.target),))
+    check_location(args.private_dir, (("under_target", args.target),), "init-private.dir")
     if args.destination == "local":
         cli._outside_kit(args.target, "wizard.target")
         cli._outside_pi_agent(args.target, "wizard.target")

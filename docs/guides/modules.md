@@ -8,7 +8,7 @@ The table is the state of this release. It is not a claim that a module works on
 
 ## Status labels
 
-The manifest has three statuses. This guide maps them to four labels. The same labels are in [the setup guide](setup.md#labels-for-a-prerequisite).
+The manifest has three statuses. This guide maps them to four labels. The same labels are in [INSTALL.md](../../INSTALL.md#labels-for-a-prerequisite).
 
 | Label | Meaning | From |
 | --- | --- | --- |
@@ -88,7 +88,7 @@ The action reads the manifest and writes nothing. With `--select` it prints the 
 
 The legacy recommended set is not the fresh wizard selection. The wizard selects only core and retains loaded overlay choices. The marks are a proposal: the action enables nothing. The marked `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider (source reading). The install flow of [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay) prints this list and waits for the answer of the user.
 
-Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [workflow modules](../workflow-modules.md), [model routes](../model-routes.md).
+Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [workflow modules](../workflow-modules.md), [model routes](providers.md#pure-model-route-contract).
 
 ## The Tenantext path
 
@@ -101,8 +101,8 @@ Requirements:
 | Pi | `<pin>`. No test starts a Pi session with the component on the kit pin. Each component keeps the gap `pi_line_unqualified`. | `config/manifest.json`, `packages/tenantext/README.md` |
 | Node | `>=24.0.0 <25` | `packages/tenantext/package.json` `engines` |
 | Source | `packages/tenantext` in the kit clone | [in-tree packages](../packages.md) |
-| Dependencies | `npm ci --ignore-scripts` in `packages/tenantext`, by hand (setup Stage 6) | [setup guide](setup.md#in-tree-packages) |
-| Gateway | `codex-accounts` enabled, `modelRoutes.gateway` `{"auth": "env"}`, the `/v1` URL and the `${TENANTEXT_LITELLM_API_KEY}` reference | [model routes](../model-routes.md) |
+| Dependencies | `npm ci --ignore-scripts` in `packages/tenantext`, by hand (INSTALL.md, package dependencies) | [INSTALL.md](../../INSTALL.md#stage-4-package-dependencies) |
+| Gateway | `codex-accounts` enabled, `modelRoutes.gateway` `{"auth": "env"}`, the `/v1` URL and the `${TENANTEXT_LITELLM_API_KEY}` reference | [model routes](providers.md#pure-model-route-contract) |
 
 The native terminal interface stays. Pi loads each Tenantext component as a normal extension or skill through one `settings.packages` entry with a filter. The launch line is `pi --no-approve` with assignments in front. The kit installs no wrapper program, no other interface and no copy of the extensions.
 
@@ -134,7 +134,7 @@ Give the file with `--registry` to `validate`, `plan` and `generate`. Without th
 
 - **Memory** (`hermes`, `wiki`): three parts together enable a module: the ID in `selection.enable`, `consent.memoryCapture: true`, and a `memory` block. Consent alone enables nothing. The wizard starts with both modules unchecked. Selection and storage/recall consent are separate decisions. Both store text of the sessions on this machine. Before `wiki` goes on, run `python3 scripts/tenant_pi.py check-wiki-vault`: the profile uses an existing vault as it is. Read [memory modules](../memory-modules.md) first. Hermes with `backgroundReview: true` makes model calls on its own; the install flow writes `false`.
 - **MCP** (`mcp`): the server list goes into `inputs/mcp-adapter.json` of the private directory. Every `validate`, `plan` and `generate` then needs `--local-dir "$HOME/.config/tenant-pi"`. The kit disables the native Pi MCP with `-builtin:mcp`. Read [workflow modules](../workflow-modules.md) first.
-- **Owner packages and directories**: `ownerPackages` adds a Pi package that you maintain. `ownerResources` adds a skills or prompts directory. See [owner packages](../owner-packages.md) and [owner resources](../owner-resources.md). Each entry adds a permanent `owner_package_unqualified` or `owner_resource_unqualified` gap.
+- **Owner packages and directories**: `ownerPackages` adds a Pi package that you maintain. `ownerResources` adds a skills or prompts directory. See [owner packages](../owner-extensions.md#owner-package-paths-in-the-overlay) and [owner resources](../owner-extensions.md#owner-skill-and-prompt-directories-in-the-overlay). Each entry adds a permanent `owner_package_unqualified` or `owner_resource_unqualified` gap.
 - **Agent fan-out**: no subagents module exists. Use the `herdr` component or the Herdr skill installer. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.
 - **Questions** (`questions`): the Pi extension with the `ask_user_question` tool. It needs an interactive session. Without it, a skill asks in plain text. It is not an extension for Claude Code.
 
@@ -148,7 +148,7 @@ python3 scripts/tenant_pi.py check-herdr
 
 The output names `present` with the version, `missing` or `unparsed`. The action installs nothing and starts no Herdr session. With `missing`, install Herdr from the source that you reviewed, then run the action again. Do not upgrade a present Herdr as a part of this setup.
 
-The `questions` component adds the Pi question extension to one profile. The plan then prints two more setup lines: `pi install` with the source of the extension, and the peer override. Run them in Stage 6 of [the setup guide](setup.md).
+The `questions` component adds the Pi question extension to one profile. The plan then prints two more setup lines: `pi install` with the source of the extension, and the peer override. Run them in [INSTALL.md](../../INSTALL.md#stage-7-declared-npm-packages).
 
 For an install on a remote Linux host, print the SSH command lines first. The action runs none of them:
 
@@ -175,4 +175,4 @@ Both components are `unverified`. [Herdr and the question tool](../herdr-setup.m
 1. Edit `selection.enable` and `selection.disable` in the overlay. `python3 scripts/tenant_pi.py components --select <ids>` prints the complete `selection` object, with each required component.
 2. Run `validate`. The command shows the first rule that fails, for example `missing_dependency: overlay.selection.enable`.
 3. Run `plan` and read the new gaps.
-4. Generate into a new target. See [the candidate update guide](candidate-update.md).
+4. Generate into a new target. See [the candidate update guide](../../POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate).

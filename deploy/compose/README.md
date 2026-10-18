@@ -194,7 +194,7 @@ The profile steps depend on the state of `~/.pi/profiles/main`:
 | The profile exists, `~/.tenant-pi/seat-build` is absent, and the status in `.tenant-pi/state.json` of the profile is not `complete`. | None. The entrypoint prints `seat: main: the profile <dir> is incomplete; remove it and start again` and stops with exit code 1. |
 | The profile exists and is complete, and `~/.tenant-pi/seat-build` is absent. | The entrypoint keeps the profile and copies the seat build record to `~/.tenant-pi/seat-build`. |
 | The profile exists, and the two seat build records are equal. | None. |
-| The profile exists, and the two records differ. | The same four steps into `~/.pi/profiles/candidate-<kit_commit>-<pi_version>`. Then the entrypoint prints the steps of [the candidate update guide](../../docs/guides/candidate-update.md). A failure does not stop the container. |
+| The profile exists, and the two records differ. | The same four steps into `~/.pi/profiles/candidate-<kit_commit>-<pi_version>`. Then the entrypoint prints the steps of [the candidate update guide](../../POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate). A failure does not stop the container. |
 
 - The entrypoint never writes into a profile directory that exists. `generate` refuses an existing target too.
 - `/private` is read-only. The entrypoint writes the runtime report, the output of each step and `install-log.md` to `~/.tenant-pi`. It writes the launcher to `~/.local/bin/pi-profile`.

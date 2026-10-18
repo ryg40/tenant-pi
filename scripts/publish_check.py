@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the explicit foundation publish set; never traverse private inputs."""
+"""Check the explicit and directory-rule publish set; never traverse private inputs."""
 import hashlib
 import os
 import re
@@ -12,16 +12,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from validate import ROOT, OPTIONAL_TREE_COMPONENTS, TREE_COMPONENTS, Invalid, load, manifest, overlay, fail, tree_items
 from examples import render
 
-# Exact paths, not extensions or a recursive glob. Update only after source review.
+# Required paths outside the script, test and documentation directory rules.
 PUBLISH = (
     ".gitea/workflows/pi-update.yml",
     ".gitea/workflows/checks.yml",
     ".github/workflows/checks.yml",
-    "scripts/ci_update.py",
-    "scripts/check.py", "tests/test_check.py", "tests/support.py", "tests/__init__.py",
-    "tests/test_ci_workflows.py",
-    "docs/ci.md",
-    ".gitignore", ".env.example", "README.md", "LICENSE", "packages/promptr/LICENSE",
+    ".gitignore",
+    ".env.example",
+    "README.md",
+    "LICENSE",
+    "packages/promptr/LICENSE",
     "packages/openviking-pi/LICENSE",
     "packages/tenantext/extensions/doctor/wiki.ts",
     "packages/tenantext/test/doctor-wiki.test.ts",
@@ -39,78 +39,42 @@ PUBLISH = (
     "packages/promptr/test/herdr/fixtures/agent-list.json",
     "packages/promptr/test/herdr/fixtures/agent-prompt-wait.json",
     "packages/promptr/test/herdr/fixtures/agent-wait.json",
-    "INSTALL.md", "POST_INSTALL.md", "EXPLAINER.md", "config/manifest.json",
-    "config/config.example.json", "scripts/validate.py", "scripts/examples.py",
-    "scripts/publish_check.py", "scripts/capture.py", "scripts/install.py",
-    "tests/test_contract.py", "tests/test_profile_plan.py",
-    "docs/profile-plan.md", "scripts/profile_plan.py", "scripts/profile_write.py",
-    "tests/test_profile_write.py", "docs/profile-write.md", "scripts/tenant_pi.py",
-    "tests/test_cli.py", "docs/generator.md", "scripts/model_routes.py",
-    "tests/test_model_routes.py", "docs/model-routes.md", "scripts/patch_extension_peers.mjs",
-    "scripts/pi_npm_wrapper.sh", "extensions/peer-override-reminder.ts",
-    "tests/test_peer_overrides.py", "docs/host-peer-overrides.md", "scripts/candidate_compare.py",
-    "tests/test_candidate_compare.py", "docs/candidate-compare.md", "scripts/memory_modules.py",
-    "tests/test_memory_modules.py", "docs/memory-modules.md", "skills/tenant-pi-install/SKILL.md",
-    "scripts/memory_submit.py", "tests/test_memory_submit.py", "config/memory-candidates.example.md",
-    "docs/shared-memory-security.md",
-    "scripts/publish_portable.py", "tests/test_publish_portable.py", "docs/publishing.md",
-    "scripts/workflow_modules.py", "tests/test_workflow_modules.py", "docs/workflow-modules.md",
-    "scripts/scan.sh", ".gitleaks.toml", "scripts/host-values.deny", "scripts/host-values.allow",
-    "scripts/host-values.regex", "scripts/host-values.allow-lines", "scripts/install-hooks.sh", "scripts/git-hooks/dispatch",
-    "scripts/git-hooks/pre-commit", "scripts/git-hooks/pre-merge-commit",
-    "scripts/git-hooks/pre-push", "tests/test_scan.sh", "tests/test_scan_scope.py", "tests/test_publish_rules.py",
-    "docs/secret-handling.md", "docs/packages.md", "docs/resources.md",
-    "docs/profile-lifecycle.md",
-    "scripts/profile_inventory.py", "tests/test_profile_inventory.py", "docs/profile-inventory.md",
-    "scripts/check_runtime.py", "tests/test_check_runtime.py", "docs/check-runtime.md", "docs/herdr-setup.md",
-    "scripts/wiki_vault.py", "tests/test_wiki_vault.py",
-    "scripts/remote_plan.py", "tests/test_remote_plan.py",
-    "scripts/compose_plan.py", "tests/test_compose_plan.py",
-    "scripts/components.py", "tests/test_components.py",
-    "scripts/models_input.py", "scripts/wizard.py", "scripts/wizard_state.py",
-    "scripts/wizard_scan.py", "scripts/wizard_terminal.py", "tests/test_wizard.py", "docs/guides/wizard.md",
-    "scripts/wizard_adapter.py", "scripts/wizard_adapter_tenant_pi.py", "tests/test_wizard_seam.py",
-    "tests/fixtures/wizard_adapter_example.py", "tests/fixtures/wizard_plan_tenant_pi.json", "docs/wizard-seam.md",
-    "tests/test_owner_packages.py", "docs/owner-packages.md",
-    "tests/test_unmanaged.py", "docs/accepted-drift.md",
-    "tests/test_owner_resources.py", "docs/owner-resources.md",
-    "scripts/private_init.py", "tests/test_private_init.py", "docs/private-directory.md",
-    "scripts/carry.py", "tests/test_carry.py", "docs/carry.md",
-    "config/private/registry.json", "config/private/install-log.md", "config/private/accepted-drift.md",
+    "INSTALL.md",
+    "POST_INSTALL.md",
+    "EXPLAINER.md",
+    "config/manifest.json",
+    "config/config.example.json",
+    "extensions/peer-override-reminder.ts",
+    "skills/tenant-pi-install/SKILL.md",
+    "config/memory-candidates.example.md",
+    ".gitleaks.toml",
+    "config/private/registry.json",
+    "config/private/install-log.md",
+    "config/private/accepted-drift.md",
     "config/private/gitignore",
-    "scripts/launcher.py", "tests/test_launcher.py", "docs/launcher.md",
-    "scripts/candidate_list.py", "tests/test_candidate_list.py", "docs/candidate-list.md",
-    "scripts/pi_update.py",
-    "tests/test_pi_update.py",
-    "docs/pi-update.md",
-    "scripts/kit_commit.py", "tests/test_kit_commit.py",
-    "scripts/baseline.py", "tests/test_baseline.py", "docs/directory-baseline.md",
-    "scripts/install_results.py", "tests/test_install_results.py", "docs/install-results.md",
-    "scripts/doc_check.py", "tests/test_doc_check.py", "docs/guides/setup.md", "docs/guides/modules.md",
-    "docs/guides/troubleshooting.md", "docs/guides/privacy.md", "docs/guides/candidate-update.md",
-    "docs/guides/release-checklist.md", "docs/guides/pin-move-release.md", "docs/guides/macos.md",
-    "docs/guides/providers.md",
-    "AGENTS.md", "GLOSSARY.md", "docs/agents/issue-tracker.md",
-    "tests/test_skill_invariants.py", "tests/test_knowledge_skills.py", "tests/test_get_status_contract.py",
-    "tests/test_dummies_contract.py", "tests/test_dummies_scripts.py",
-    ".dockerignore", "deploy/compose/Dockerfile", "deploy/compose/sshd_config",
-    "deploy/compose/entrypoint.sh", "deploy/compose/README.md", "tests/test_compose_seat.py",
-    "deploy/compose/compose.yaml", "deploy/compose/compose.projects.yaml",
-    "deploy/compose/seat.env.example", "deploy/compose/compose.env.example", "deploy/compose/profile.sh",
-    "docs/guides/compose-seat.md",
-    "docs/architecture.html", "docs/architecture.md", "docs/architecture/model.json",
-    "scripts/architecture_build.py", "tests/test_architecture_build.py",
-    "EXPLAINER.html", "scripts/explainer_build.py", "tests/test_explainer_build.py",
-    "docs/explainer/page.json", "docs/explainer/explainer.css", "docs/explainer/template.html",
-    "docs/explainer/tutorials/01-dana-receives-her-key.json", "docs/explainer/tutorials/02-dana-first-pi-session.json",
-    "docs/explainer/tutorials/03-dana-proposes-a-record.json", "docs/explainer/tutorials/04-alice-reviews.json",
-    "docs/explainer/tutorials/05-dana-sees-the-approved-record.json", "docs/explainer/tutorials/06-chen-in-claude-code.json",
-    "docs/explainer/tutorials/07-a-directory-without-a-project.json", "docs/explainer/tutorials/08-dana-leaves.json",
+    "AGENTS.md",
+    "GLOSSARY.md",
+    ".dockerignore",
+    "deploy/compose/Dockerfile",
+    "deploy/compose/sshd_config",
+    "deploy/compose/entrypoint.sh",
+    "deploy/compose/README.md",
+    "deploy/compose/compose.yaml",
+    "deploy/compose/compose.projects.yaml",
+    "deploy/compose/seat.env.example",
+    "deploy/compose/compose.env.example",
+    "deploy/compose/profile.sh",
+    "EXPLAINER.html",
 )
-# Package directory rules: (directory, technical excludes relative to that directory).
+# Exact local artifacts, never part of the portable inventory or a tracked source tree.
+LOCAL_FILES = ("docs/architecture-local.html", "docs/architecture/local-values.json")
+
+# Directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.
 PUBLISH_DIRS = (
-    (".okf", ()),
+    ("scripts", ()),
+    ("tests", ()),
+    ("docs", tuple(name.removeprefix("docs/") for name in LOCAL_FILES)),
     ("packages/tenantext", ("node_modules/", "extensions/doctor/wiki.ts", "test/doctor-wiki.test.ts",
                             "skills/herdr-relay/SKILL.md", "skills/herdr-relay/install.sh",
                             "skills/herdr-relay/relay.example.json", "skills/herdr-relay/scripts/relay.py",
@@ -326,7 +290,7 @@ def rule_files(tracked, rules=None):
 
 
 def publish_files(tracked, rules=None, *, root=None, ref=None):
-    """Explicit files and package rule files, minus optional private-copy exclusions."""
+    """Explicit files and directory rule files, minus optional private-copy exclusions."""
     entries = private_excludes(root, ref)
     if excluded_files(PUBLISH, entries):
         fail("private_excludes_explicit", DEV_ONLY_REL)
@@ -361,6 +325,8 @@ def node_modules_guard(tracked):
 def build_output_guard(tracked):
     """Fail on a tracked path under a build output directory: the inventory skips those directories."""
     for name in sorted(tracked):
+        if name in LOCAL_FILES:
+            fail("tracked_local_file", name)
         if any(name.startswith(item + "/") for item in BUILD_DIRS):
             fail("tracked_build_output", name)
 
@@ -381,7 +347,8 @@ def inventory_files(root):
         dirs[:] = [name for name in dirs if name not in {".local", ".git", "__pycache__", "node_modules"}
                    and (relative / name).as_posix() not in BUILD_DIRS]
         found.update((relative / name).as_posix() for name in files if (Path(directory) / name).is_file()
-                     and name not in {".git", ".local", "__pycache__", "node_modules"})
+                     and name not in {".git", ".local", "__pycache__", "node_modules"}
+                     and (relative / name).as_posix() not in LOCAL_FILES)
     return found
 
 

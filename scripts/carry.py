@@ -45,7 +45,7 @@ KNOWN_SEGMENTS = frozenset((
     "memoryCapture", "remoteMemoryWrites", "telemetry", "ownerPackages", "unmanaged", "ownerResources",
     "modelRoutes", "cycle", "gateway", "auth", "runtime", "piVersion", "piAcceptedRange", "nodeRange", "pythonRange", "components",
     "status", "metadata",
-    # the overlay `memory` block and `ownerResources` (docs/memory-modules.md, docs/owner-resources.md)
+    # the overlay `memory` block and `ownerResources` (docs/memory-modules.md, docs/owner-extensions.md)
     *MEMORY, *(name for group in MODULE_FIELDS.values() for names in group for name in names), *OWNER_RESOURCES,
     # .tenant-pi/state.json
     "provenance", "kitSchemaVersion", "enabled", "pins", "outputs",

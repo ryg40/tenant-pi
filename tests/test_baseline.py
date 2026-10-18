@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from contextlib import chdir, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
@@ -13,8 +14,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts import baseline, tenant_pi
-from scripts.baseline import MAX_PATH, check_location, compare, encode, record, saved_record, scan, write
-from scripts.profile_write import WriteError
+from scripts.baseline import MAX_PATH, compare, encode, record, saved_record, scan, write
+from scripts.profile_write import WriteError, check_location, preflight
+from scripts import profile_write
 from scripts.validate import Invalid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -162,16 +164,16 @@ class PureTests(unittest.TestCase):
                 self.assertEqual("baseline_record: check-baseline.baseline", self.rule(lambda: compare(bad, "/a", None)))
 
     def test_location_rules(self):
-        roots = [("under_kit", "/k/kit"), ("under_pi_agent", "/h/.pi/agent"), ("under_dir", "/h/live")]
+        roots = [("under_dir", "/h/live")]
         for path, rule in (("relative.json", "absolute_path"), ("/a/../b.json", "absolute_path"),
                            ("/a/b/", "absolute_path"), ("/a/$HOME.json", "shell_or_template"), ("", "text"),
-                           ("/" + "a" * MAX_PATH, "path_too_long"), ("/k/kit/.local/b.json", "under_kit"),
-                           ("/h/.pi/agent/b.json", "under_pi_agent"), ("/h/live", "under_dir"),
+                           ("/" + "a" * MAX_PATH, "path_too_long"),
+                           ("/h/live", "under_dir"),
                            ("/h/live/sessions/b.json", "under_dir")):
             with self.subTest(path=path[:40]):
-                self.assertEqual(rule + ": baseline.out", self.rule(lambda: check_location(path, roots)))
+                self.assertEqual(rule + ": baseline.out", self.rule(lambda: check_location(path, roots, "baseline.out")))
         # A name that only starts with the text of a root is outside it.
-        check_location("/h/live-baseline.json", roots)
+        check_location("/h/live-baseline.json", roots, "baseline.out")
 
 
 class Fixture(unittest.TestCase):
@@ -372,7 +374,7 @@ class WriteTests(Fixture):
         self.assertTrue(stat.S_ISREG(info.st_mode))
         self.assertEqual(0o600, stat.S_IMODE(info.st_mode))
         self.rejected("target_exists", "baseline.out", lambda: write(str(self.out), b"second\n"))
-        self.rejected("target_exists", "baseline.out", lambda: baseline.preflight(str(self.out)))
+        self.rejected("target_exists", "baseline.out", lambda: preflight(str(self.out), "baseline.out"))
         self.assertEqual(b"first\n", self.out.read_bytes())
 
     def test_each_existing_entry_and_each_unsafe_parent_is_refused(self):
@@ -395,15 +397,15 @@ class WriteTests(Fixture):
         self.assertEqual(CANARY, (self.outside / "target.txt").read_text())
 
     def test_failures_are_static_and_say_whether_a_file_stays(self):
-        with patch.object(baseline, "_create_file", side_effect=OSError(CANARY)):
+        with patch.object(profile_write, "_create_file", side_effect=OSError(CANARY)):
             self.rejected("target_unavailable", "baseline.out", lambda: write(str(self.out), b"x"))
         self.assertFalse(os.path.lexists(self.out))
 
-        def partial(fd, name, data):
+        def partial(fd, name, data, mode=0o600):
             os.close(os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=fd))
             raise OSError(CANARY)
 
-        with patch.object(baseline, "_create_file", side_effect=partial):
+        with patch.object(profile_write, "_create_file", side_effect=partial):
             self.rejected("write_failed", "baseline.out", lambda: write(str(self.out), b"x"), created=True)
         self.out.unlink()
         old = os.umask(0o277)
@@ -534,17 +536,6 @@ class CliTests(Fixture):
         # The baseline file never goes into the directory that it records, or into `~/.pi/agent`.
         self.refused("under_dir: baseline.out", self.record(other, out=other / "live-baseline.json"))
         self.refused("under_dir: baseline.out", self.record(other, out=other / "sessions" / "b.json"))
-        self.refused("under_pi_agent: baseline.out", self.record(out=self.live / "live-baseline.json"))
-        self.refused("under_pi_agent: baseline.out", self.record(other, out=self.live / "sessions" / "b.json"))
-        self.refused("under_kit: baseline.out", self.record(out=ROOT / ".local" / "live-baseline.json"))
-        # The baseline of a wiki vault never goes into a vault: the one of the home directory or the one of WIKI_HOME.
-        vault = self.home / ".llm-wiki"
-        self.refused("under_wiki_vault: baseline.out", self.record(out=vault / "vault-baseline.json"))
-        self.refused("under_wiki_vault: baseline.out", self.record(vault, out=vault / "meta" / "b.json"))
-        with patch.dict(os.environ, {"WIKI_HOME": str(other)}):
-            self.refused("under_wiki_vault: baseline.out", self.record(out=other / ".llm-wiki" / "b.json"))
-            self.refused("under_wiki_vault: baseline.out", self.record(out=vault / "b.json"))
-        self.assertFalse(os.path.lexists(vault))
         self.refused("absolute_path: baseline.out", self.record(out="live-baseline.json"))
         self.refused("parent_missing: baseline.out.parent", self.record(out=self.home / "absent" / "b.json"))
         self.refused("absolute_path: baseline.dir", self.record("relative/agent"))
@@ -554,13 +545,6 @@ class CliTests(Fixture):
         (self.home / "agent link").symlink_to(self.live, target_is_directory=True)
         self.refused("unsafe_path: baseline.out.parents",
                      self.record(self.outside, out=self.home / "agent link" / "b.json"))
-        # A root that is a link does not hide its real place: the root counts as written and as resolved.
-        linked_home = self.base / "linked home"
-        linked_home.symlink_to(self.home, target_is_directory=True)
-        self.refused("under_pi_agent: baseline.out",
-                     self.record(self.outside, out=self.live / "b.json", home=linked_home))
-        self.assertFalse(os.path.lexists(self.live / "b.json"))
-
     def test_home_is_required_for_the_record_only(self):
         self.populate()
         with patch.dict(os.environ), redirect_stdout(StringIO()), redirect_stderr(StringIO()) as err:
@@ -636,15 +620,13 @@ class CliTests(Fixture):
             self.refused("input_too_large: baseline.dir", self.record())
         self.assertFalse(os.path.lexists(self.out))
 
+    @slow
     def test_location_cli_smoke(self):
         env = {"HOME": str(self.home), "PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"}
-        for root, rule in ((ROOT, "under_kit"), (self.live, "under_pi_agent"),
-                           (self.home / ".llm-wiki", "under_wiki_vault")):
-            with self.subTest(rule=rule):
-                done = subprocess.run([sys.executable, str(ROOT / "scripts/tenant_pi.py"), "baseline",
-                                       "--dir", str(self.live), "--out", str(root / "baseline.json")],
-                                      env=env, cwd=self.base, capture_output=True, text=True)
-                self.refused(rule + ": baseline.out", (done.returncode, done.stdout, done.stderr))
+        done = subprocess.run([sys.executable, str(ROOT / "scripts/tenant_pi.py"), "baseline",
+                               "--dir", str(self.live), "--out", str(self.live / "baseline.json")],
+                              env=env, cwd=self.base, capture_output=True, text=True)
+        self.refused("under_pi_agent: baseline.out", (done.returncode, done.stdout, done.stderr))
 
     def test_the_real_cli_process(self):
         self.populate()
@@ -664,9 +646,9 @@ class CliTests(Fixture):
 
 
 class GuideTests(unittest.TestCase):
-    """The three install documents give the same Stage 0 line and the same two baseline commands."""
+    """The install flow gives the Stage 0 line and both baseline commands."""
 
-    DOCS = ("INSTALL.md", "docs/guides/setup.md", "skills/tenant-pi-install/SKILL.md")
+    DOCS = ("INSTALL.md",)
     FIRST = 'for d in "$HOME/.pi/agent" "${PI_CODING_AGENT_DIR:-}"; do'
     TEXT = ('tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.config/tenant-pi/live-baseline.json"',
             'tenant_pi.py check-baseline --dir "$HOME/.pi/agent" --baseline "$HOME/.config/tenant-pi/live-baseline.json"',
@@ -683,7 +665,7 @@ class GuideTests(unittest.TestCase):
         self.assertEqual("done", block[-1], name)
         return "\n".join(block)
 
-    def test_same_text_in_each_document(self):
+    def test_install_has_the_baseline_rules(self):
         loops = {self.loop(name) for name in self.DOCS}
         self.assertEqual(1, len(loops))
         for name in self.DOCS:

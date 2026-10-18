@@ -1,6 +1,6 @@
 # Carry wanted drift into the overlay
 
-Status: offline implementation. `carry` prints JSON patches for the overlay. It never applies a patch and never writes a file. Concept and tier model: [the profile lifecycle](profile-lifecycle.md).
+Status: offline implementation. `carry` prints JSON patches for the overlay. It never applies a patch and never writes a file. Concept and tier model: [the profile lifecycle](private-directory.md#profile-lifecycle).
 
 A `compare` report shows which fields differ between two candidates. When the user wants to keep a difference of the right side, the overlay must change, because the next candidate is generated from the overlay. `carry` turns the owner-owned differences of a report into RFC 6902 patches for the overlay, so the user does not transcribe them by hand.
 

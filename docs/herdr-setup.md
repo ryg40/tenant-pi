@@ -104,7 +104,7 @@ The file must be the unchanged output of `check-herdr`: else `herdr_report_statu
 
 ### After a regeneration
 
-A new candidate comes from the overlay. With `herdr` and `questions` in `selection.enable`, each regenerated candidate has the same two package entries. The regeneration writes into the new, absent target only. The old candidate, the active profile `~/.pi/agent`, the guidance file of the extension and the shared skill directories stay unchanged. Pi installs the question extension for each candidate on its own: `questionExtension` is `declared` until the `pi install` line of the plan ran for that candidate. See [the candidate update guide](guides/candidate-update.md).
+A new candidate comes from the overlay. With `herdr` and `questions` in `selection.enable`, each regenerated candidate has the same two package entries. The regeneration writes into the new, absent target only. The old candidate, the active profile `~/.pi/agent`, the guidance file of the extension and the shared skill directories stay unchanged. Pi installs the question extension for each candidate on its own: `questionExtension` is `declared` until the `pi install` line of the plan ran for that candidate. See [the candidate update guide](../POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate).
 
 ### Live checks that the owner approves
 

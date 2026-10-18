@@ -1,6 +1,6 @@
 # Private directory
 
-Status: offline implementation, not a qualified runtime. The `init-private` action of `scripts/tenant_pi.py` creates the private directory of one host in one fixed shape. The private directory holds the overlay, the registry, the install log and the accepted-drift list; see [the profile lifecycle](profile-lifecycle.md). The logic is in `scripts/private_init.py`. It uses the ancestor walk and the file creation of the guarded writer of `generate` (`scripts/profile_write.py`).
+Status: offline implementation, not a qualified runtime. The `init-private` action of `scripts/tenant_pi.py` creates the private directory of one host in one fixed shape. The private directory holds the overlay, the registry, the install log and the accepted-drift list; see [the profile lifecycle](private-directory.md#profile-lifecycle). The logic is in `scripts/private_init.py`. It uses the ancestor walk and the file creation of the guarded writer of `generate` (`scripts/profile_write.py`).
 
 ## Command
 
@@ -79,6 +79,33 @@ The three command lines are display text; the action starts no process. Each pat
 | 0 | The tree is complete. |
 | 2 | A refusal or a failed write. Standard error has `{"candidate_created": <bool>, "error": "<rule>: <field>"}`. `candidate_created` is `true` when the directory exists after the failure. With the rule `invalid_json`, the object also has the integers `line` and `column`. |
 
+## Refusal rules
+
+These rules protect the kit, the live profile and personal wiki vaults before any write.
+A refusal has exit code 2 and a static `rule: field` diagnostic, without a path or a value.
+
+| Rule | Protected roots and scope | Symbolic links and environment variants |
+| --- | --- | --- |
+| `under_kit` | The running kit clone, including `.local/`. Profile targets, private directories, launcher files, baseline files and results output directories cannot equal or descend from it. `compose-plan` also separates its declared clone and private directory in both directions. | Each root counts as written and resolved. A second clone or another worktree is not protected. |
+| `under_pi_agent` | `<HOME>/.pi/agent`, the profile that a bare `pi` opens. Applies to profile targets, private directories, launcher files and baseline files. `compose-plan --write` checks its private directory. Results output uses its separate `under_target` rule, not this rule. | A linked `HOME` or agent root protects both names. `HOME` must be set and absolute, without a trailing slash. `PI_CODING_AGENT_DIR` does not select a protected root. |
+| `under_wiki_vault` | `<HOME>/.llm-wiki` and `<WIKI_HOME>/.llm-wiki`. An action that reads an overlay also protects `<wikiHome>/.llm-wiki` from `memory.wiki.wikiHome`. Applies to profile targets, private directories, launcher files, baseline files and results directories and targets. | Each vault root counts as written and resolved. An absent, empty or relative `WIKI_HOME` adds no root. Trailing `/` characters do not count. `baseline` and `init-private` know only the environment roots, not another overlay's vault. |
+
+A protected root and every descendant are refused; a sibling with the same name prefix is not.
+Profile targets, results paths and Compose write paths also count with their symbolic links resolved.
+New private directories, launcher files and baseline files use a no-follow ancestor walk after the path-text check.
+That walk refuses every linked ancestor, even when the link leads outside a protected root.
+Resolving a link reads its target name, not file content.
+Bind mounts and hard-linked directories can expose a root under a name that these checks do not detect.
+
+The wizard checks its private directory and local target against these roots too.
+`results` without `--out-dir` permits missing or invalid `HOME`; only the other known vault roots then count.
+With `--out-dir`, `results` requires a valid `HOME`.
+`baseline --dir` may name a vault because it lists metadata without opening its files; the output must stay outside it.
+The kit reuses an existing vault and makes no second vault.
+
+`tests/test_refusal_rules.py` checks the shared rules in process, including linked roots, linked homes and `WIKI_HOME` variants.
+Each command has a slow CLI smoke test for one rule.
+
 ## Refusals
 
 Each refusal is a static `rule: field` text. It contains no path and no value. The loader rules of an `--overlay` file and of a template name one cause each; see `docs/generator.md`, "Input file errors".
@@ -87,17 +114,11 @@ Each refusal is a static `rule: field` text. It contains no path and no value. T
 | --- | --- | --- |
 | `absolute_path: init-private.dir`, `text: init-private.dir`, `shell_or_template: init-private.dir` | The path is not an absolute POSIX path of the kit form. | None |
 | `path_too_long: init-private.dir` | The path has more than 1024 characters. | None |
-| `under_kit: init-private.dir` | The path is the kit clone or is under it. This includes `.local/` of the clone. | None |
-| `under_pi_agent: init-private.dir` | The path is `~/.pi/agent` or is under it. | None |
-| `under_wiki_vault: init-private.dir` | The path is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. | None |
 | `under_overlay_target: init-private.dir` | The path is the `target.agentDir` of an overlay or is under it. The overlays are `config/config.example.json`, each `--overlay` file, and the new overlay with the path of `--target`. | None |
 | `absolute_path: init-private.target`, `text: init-private.target`, `shell_or_template: init-private.target` | The `--target` path is not an absolute POSIX path of the kit form. A path that starts with `~` gives `absolute_path`; a path with `$` gives `shell_or_template`. | None |
 | `path_too_long: init-private.target` | The `--target` path has more than 1024 characters. | None |
 | `sample_target: init-private.target` | The `--target` path is the sample target of `config/config.example.json`. | None |
 | `under_private_dir: init-private.target` | The `--target` path is under `--dir`. | None |
-| `under_kit: init-private.target` | The `--target` path is the kit clone or is under it. | None |
-| `under_pi_agent: init-private.target` | The `--target` path is `~/.pi/agent` or is under it. | None |
-| `under_wiki_vault: init-private.target` | The `--target` path is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. | None |
 | `target_exists: init-private.dir` | The path exists: a directory (also an empty one), a file, a link or another entry. | None |
 | `parent_missing: init-private.dir.parent` | The parent, or a directory above it, does not exist. The action does not create a parent. | None |
 | `unsafe_parent_owner: init-private.dir.parent` | The parent is owned by root and the caller is not root. | None |
@@ -115,8 +136,6 @@ Each refusal is a static `rule: field` text. It contains no path and no value. T
 | `write_failed: init-private.dir`, `short_write: init-private.dir.files`, `target_changed: init-private.dir` | A write fails after the directory is created, or another process replaces the directory. | The directory stays, incomplete |
 | `target_unavailable: init-private.dir` | The creation of the directory itself fails. | None |
 
-The four location rules of `--dir` (`under_kit`, `under_pi_agent`, `under_wiki_vault`, `under_overlay_target`) compare path text before any other access. The four location rules of `--target` (`under_private_dir`, `under_kit`, `under_pi_agent`, `under_wiki_vault`) run after them and work in the same way; the target path also counts with its symbolic links resolved. Each forbidden root counts twice: as written, and with its symbolic links resolved (this reads link targets only, no file content). The ancestor walk then refuses each symbolic link above the new directory, so a link cannot reach a forbidden root from another name.
-
 The action has no rollback. After a failure with `"candidate_created": true`, inspect the directory and remove it yourself; a second run refuses it with `target_exists`.
 
 ## What it does not do
@@ -130,15 +149,11 @@ The action has no rollback. After a failure with `"candidate_created": true`, in
 
 ## Limits
 
-`under_kit` covers only the root of the kit that runs the action. A second clone of the kit, the main clone when the action runs from a Git worktree, and a worktree when the action runs from the main clone are not protected: the action can create the directory there, for example in `.local/` of that other clone.
-
 `under_overlay_target` covers only the sample overlay, the path of `--target` and the named `--overlay` files; see "Command".
-
-`under_pi_agent` knows only `~/.pi/agent`. The action reads no `PI_CODING_AGENT_DIR`, so a live agent directory that only this variable names is not refused as a `--target`. `generate` refuses each target that exists. `validate`, `plan` and `generate` apply the same rule to `target.agentDir`, with the same limit; see `docs/generator.md`.
 
 `sample_target` is the one path `/home/EXAMPLE_USER/new-agent`. Another path with the placeholder user name `EXAMPLE_USER`, for example a path that was copied from a document, passes the rule.
 
-The boundary is the Linux-first boundary of the guarded writer; see [the guarded writer](profile-write.md). It does not protect against another process of the same user, against root, or against a filesystem that ignores permissions. The path comparison does not detect a forbidden root that a bind mount or a hard-linked directory shows under another name.
+The boundary is the Linux-first boundary of the guarded writer; see [the guarded writer](generator.md#guarded-new-target-writer). It does not protect against another process of the same user, against root, or against a filesystem that ignores permissions. The path comparison does not detect a forbidden root that a bind mount or a hard-linked directory shows under another name.
 
 ## Test coverage
 
@@ -146,15 +161,14 @@ The boundary is the Linux-first boundary of the guarded writer; see [the guarded
 
 - The created tree under umask `000`: the exact seven entries, the modes `0700` and `0600`, each file equal to its template byte for byte, an empty `inputs`, and no `.git`.
 - The template set: the five names, the `{}` registry, the ignored names of the `.gitignore` template, and no negation line.
-- Each refusal: an existing directory, file, link, dangling link and FIFO; an absent parent; a parent that the caller does not own; a linked, a non-directory and a writable ancestor; each path form; a path under the kit clone, under `~/.pi/agent` (also when `~/.pi/agent` is a link), under the sample overlay target and under the target of a named overlay; a bad `--overlay` file (unreadable, linked, without a target, a `.` or `..` path segment, `NaN` and `Infinity`, a duplicate key); a missing `HOME`, a relative `HOME` and a `HOME` with a trailing slash.
+- Each refusal: an existing directory, file, link, dangling link and FIFO; an absent parent; a parent that the caller does not own; a linked, a non-directory and a writable ancestor; each path form; a path under the sample overlay target and under the target of a named overlay; a bad `--overlay` file (unreadable, linked, without a target, a `.` or `..` path segment, `NaN` and `Infinity`, a duplicate key); a missing `HOME`, a relative `HOME` and a `HOME` with a trailing slash.
 - A damaged kit template, with the CLI in the test process and the kit root moved to a disposable copy: a missing template, a linked one, a FIFO, one larger than 1 MiB, and an overlay template that is not JSON or has no target. Each gives a static `init-private.template.<file name>` diagnostic and creates nothing.
-- That the location rules stop before the ancestor walk, and that a refusal creates nothing and leaves an existing entry unchanged.
+- A refusal creates nothing and leaves an existing entry unchanged.
 - Failures after creation: a restrictive umask, an `inputs` directory with a wrong mode (`dir_privacy: init-private.dir.inputs`), a failed file write, a replaced directory, a failed close before completion (the primary error stays) and after completion (a static warning in the report; the test asserts the call order: five files, then three closes).
 - The real CLI in a disposable `HOME`: deterministic output equal to the report of the module, `created` equal to the tree on disk, no process start (an audit hook records `subprocess.Popen`, `os.system`, `os.exec`, `os.spawn`, `os.posix_spawn`, `os.fork`, `os.forkpty` and `pty.spawn`; decoy `git`, `vi` and `sh` commands on `PATH` stay unused), no open of the canary files `auth.json`, `models.json` and `settings.json`, no canary text in the output, and the printed `validate` line on the unedited copy stops with `sample_target: overlay.target.agentDir`.
 - The `--target` option: the overlay bytes (one changed line, the key order of the template, a path with quote characters), the report with `targetAgentDir`, and the report without the option (no such key). With the real CLI and no edit of any file: `init-private --target`, the printed `validate` line, `plan` and `generate` succeed, start no process and open no file of the live profile.
-- Each `--target` refusal, with nothing created: a relative path, a `~` path, a `$HOME` path, a path that is too long, the sample target, `~/.pi/agent` and a path under it (also through a link), a path under the kit clone (also through a link), a path under `--dir` (also through a link), and a `--dir` that is the target or is under it. A bad `--dir` is reported before a bad target location. An existing target and a target with an absent parent pass, and the action does not create or change them.
+- Each `--target` refusal, with nothing created: a relative path, a `~` path, a `$HOME` path, a path that is too long, the sample target, a path under `--dir` (also through a link), and a `--dir` that is the target or is under it. An existing target and a target with an absent parent pass, and the action does not create or change them.
 - `tests/test_cli.py`: `validate`, `plan` and `generate` refuse the tracked example with `sample_target: overlay.target.agentDir` and change nothing; another path of the same form passes; an invalid overlay is reported first; direct `scripts/validate.py` accepts the example.
-- `tests/test_cli.py`: `validate`, `plan` and `generate` refuse a `target.agentDir` that is `~/.pi/agent` or is under it with `under_pi_agent: overlay.target.agentDir` and change nothing, also through a link; a target beside the directory passes.
 
 Not verified: behaviour on macOS or on a filesystem other than a local Linux filesystem.
 Not verified: the refusal `unsafe_parent_owner` with a real non-root caller under a root-owned parent. The test changes the caller identity with a patch; a second test, which runs only as root, gives the parent to another user and gets `unsafe_owner`.
@@ -164,3 +178,31 @@ Not verified: `file_privacy`, `short_write` and `target_unavailable` through a r
 Not verified: that `git init` and a later commit in the created directory track exactly the four record files. The kit runs no Git command, and no test runs Git against the template.
 Not verified: that the ignored names cover every file of a host that can hold a secret. The list is a fixed set of names, not a scan.
 Not verified: the open-audit is a list of forbidden names, not a proof that no other file is opened.
+
+## Profile lifecycle
+
+The kit supports each step of the profile lifecycle. See [profile inventory](profile-inventory.md), [owner package paths](owner-extensions.md#owner-package-paths-in-the-overlay), [accepted drift](accepted-drift.md), [carrying drift into the overlay](carry.md), [the launcher file](launcher.md), [the candidate list](candidate-compare.md#candidate-list), [the runtime version check](check-runtime.md), [the private directory](private-directory.md) and [owner skill and prompt directories](owner-extensions.md#owner-skill-and-prompt-directories-in-the-overlay).
+
+### The model in one page
+
+The kit does not manage a live Pi directory. It builds a new one. Four facts follow from that:
+
+1. **Three tiers, one home each.** A Pi profile is made of three kinds of thing. Each kind has exactly one place where it is edited.
+
+   | Tier | Examples | Home | How Pi gets it |
+   | --- | --- | --- | --- |
+   | Kit-managed | core settings, model routes, Tenantext components, MCP, Hermes, wiki | the kit (generic values) plus the private overlay (host values) | `generate` writes it into the profile |
+   | Repo-owned | a skills or extension repo the user maintains | that repo | a `packages` path in `settings.json`, or a project `.agents/skills` directory; `git pull` is the install |
+   | Host-only | `auth.json`, sessions, memory stores, caches, `npm/` | the profile directory | Pi writes it at run time |
+
+2. **Change path.** Edit the overlay or the kit. Regenerate into a new dated target. Run `compare` between the old and the new candidate. Switch the launch line. Never hand-edit a generated `settings.json`.
+
+3. **Drift is visible, not prevented.** Pi itself may write to a profile. The next `compare` shows the difference. The user carries wanted drift into the overlay and records the rest as accepted drift.
+
+4. **The live `~/.pi/agent` is a fallback, not a target.** It stays untouched until a candidate is good enough to replace it.
+
+A profile adopted this way is reproducible from two clones: the kit and the private directory that holds the overlay, the registry, the install log and the accepted-drift list.
+
+### Out of scope
+
+An ownership manager, in-place updates, automatic deletes of old candidates, migration of sessions or memory, and automatic package installation stay excluded.

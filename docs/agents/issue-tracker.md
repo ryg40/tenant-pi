@@ -8,7 +8,6 @@ Issues live in the development repository on Gitea. An agent works them through 
 | --- | --- |
 | The development repository on Gitea | The only issue tracker. It is the `origin` remote of a development checkout. |
 | The GitHub repository | A publish mirror. It has no issues. |
-| `docs/wayfinder/issues/` in a private copy | Snapshots of old issues. It is not a tracker. |
 
 A snapshot clone from GitHub has `origin` set to GitHub. Such a clone has no issue tracker. An agent in such a clone reports that. It does not open an issue on GitHub.
 
@@ -17,7 +16,7 @@ Rules:
 - Do not open an issue on GitHub.
 - No `gh issue`, `gh pr`, `gh api`, `gh repo` or `glab` command applies to this repository.
 - `gh release create` and `gh release view` apply only to the release entry of a snapshot tag. See [the release checklist](../guides/release-checklist.md#release-notes). Only the maintainer of the release runs `gh release create`.
-- Do not write a local ticket file. There is no `.scratch/` directory. Do not add a file to `docs/wayfinder/issues/`.
+- Do not write a local ticket file. There is no `.scratch/` directory and no snapshot directory of issues in the kit.
 - When a skill says "publish to the issue tracker", create a Gitea issue with the operations below.
 
 ## Authentication

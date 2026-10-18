@@ -245,7 +245,7 @@ class WizardTests(unittest.TestCase):
 
     def test_partial_save_and_existing_destination(self):
         from scripts import wizard
-        with patch.object(wizard, "_create_file", side_effect=OSError("SECRET_CANARY")):
+        with patch.object(wizard, "create_new_file", side_effect=OSError("SECRET_CANARY")):
             with self.assertRaisesRegex(Exception, "save_failed_partial") as result:
                 wizard._save(str(self.private), {"overlay.json": b"{}"})
             self.assertTrue(result.exception.candidate_created)

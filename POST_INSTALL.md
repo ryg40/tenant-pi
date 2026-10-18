@@ -26,7 +26,7 @@ The rules of the install stay in force. Write no secret into a file. Never write
    python3 scripts/tenant_pi.py inventory --dir '<old target>'
    ```
 
-   `list` shows the candidate with `"status":"candidate"` and `"filesComplete":true`. `inventory` shows `"managed":true` and the package sources of the candidate. See [the candidate list](docs/candidate-list.md).
+   `list` shows the candidate with `"status":"candidate"` and `"filesComplete":true`. `inventory` shows `"managed":true` and the package sources of the candidate. See [the candidate list](docs/candidate-compare.md#candidate-list).
 3. Compare the runtime with the kit, in the shell that launches Pi:
 
    ```sh
@@ -69,7 +69,40 @@ The kit changes no profile in place. A change is an edit of the overlay, then a 
    `changes` of the report holds `/overlay/target/agentDir` and the fields of your change, and no other field.
 8. Switch. Use `<private dir>/launch-<name>.sh` from this time on. To go back, run the launcher of the old candidate.
 
-Give each other option of the first plan again, for example `--registry` or `--require-role`. `generate` refuses an existing target with `target_exists: target`, so an old candidate cannot change. Details: [the candidate update guide](docs/guides/candidate-update.md).
+Give each other option of the first plan again, for example `--registry` or `--require-role`. `generate` refuses an existing target with `target_exists: target`, so an old candidate cannot change. Details: [the profile lifecycle](docs/private-directory.md#profile-lifecycle).
+
+The selection comes from the overlay. A new candidate keeps each enabled component, for example `herdr` and `questions`: the same package entries are in its `settings.json`. The regeneration writes into the new target only. It does not write into the old candidate, into `~/.pi/agent`, or into a shared directory of the user.
+
+### Read the comparison
+
+`compare` reads at most the declared files of the two sides and writes nothing. Read these keys of the report:
+
+| Key | Meaning |
+| --- | --- |
+| `changes` | Declared fields that differ. A private field shows as a marker, without a value. |
+| `unsupported` | Fields that the comparison does not interpret, for example a key that Pi wrote. |
+| `accepted` | Differences that the `unmanaged` list of the overlay accepts, with the reason. |
+| `markers` | `generatedAt` and `kitCommit`. They differ between any two generations. |
+| `left.drift`, `right.drift` | `status: "owner_edits"` lists the `settings.json` keys that changed after generation. |
+
+Two candidates of the same overlay and kit differ only in `/overlay/target/agentDir` and in the markers. The live profile can be a side too: it compares as `settings_only`. See [candidate comparison](docs/candidate-compare.md).
+
+### Switch profiles
+
+Switching is a launch choice. Run the launcher file of the candidate you want:
+
+```sh
+"$HOME/.config/tenant-pi/launch-main-2.sh"
+```
+
+To go back, run the launcher of the old candidate. Without launcher files, use the `commands.launchDisplayOnly` line of each plan. The line sets `PI_CODING_AGENT_DIR` and removes `PI_CODING_AGENT_SESSION_DIR` for one process.
+
+Limits of a switch:
+
+- Each candidate authenticates and installs its declared packages on its own. Run the [declared-package steps](#install-the-declared-npm-packages-of-a-new-candidate) and log in for the new candidate. The kit copies no auth, sessions, memory or packages. With `questions`, `inventory` shows `coordination.questionExtension` as `declared` for the new candidate until the `pi install` line of the plan ran for it.
+- Going back is not a data rollback. Data that a session wrote into a candidate stays there.
+- The live `~/.pi/agent` stays untouched. Replacing it is your manual decision and is out of scope of the kit.
+- Old candidates stay on disk. The kit deletes nothing. Remove an old candidate by hand only after you checked that no launcher points at it.
 
 ## Add or remove a component
 
@@ -110,7 +143,7 @@ Before `wiki` goes on, look for a vault of the account:
 python3 scripts/tenant_pi.py check-wiki-vault
 ```
 
-- `"result":"vault_exists"`: the candidate uses the vault as it is. The kit refuses a target, a launcher file, a results directory, a baseline file and a private directory that is the vault or is below it, with `under_wiki_vault`. Set `memory.wiki.wikiHome` to the value of `wikiHome.root` only when `personalVault` is `wikiHome`.
+- `"result":"vault_exists"`: use the existing vault and follow the [refusal rules](docs/private-directory.md#refusal-rules). Set `memory.wiki.wikiHome` to `wikiHome.root` only when `personalVault` is `wikiHome`.
 - `"result":"second_vault"`: set no `wikiHome`. The candidate uses the vault of the home directory.
 - `"result":"no_vault"`: the extension makes the vault at the first start. When `wikiHome` of the output is `null`, set no `wikiHome`: the vault is `.llm-wiki` in the home directory. When it is not `null`, the shell has `WIKI_HOME`: set `memory.wiki.wikiHome` to the value of `wikiHome.root`. Without that key the launch line removes `WIKI_HOME`, and the vault starts in the home directory.
 - `"doubled":true`: keep `wiki` off until you decide. The extension moves the inner vault one level up at the first start.
@@ -160,7 +193,7 @@ PI_CODING_AGENT_DIR='<target>' node <clone>/scripts/patch_extension_peers.mjs
 - A source with an exact version (`questions`) does not move. Its version changes with a new kit version and a new candidate.
 - An update writes the upstream manifests again. Run the second line after each update. It prints one line for each manifest that it corrects, and it ends with exit code 0. A second run of it prints nothing. Where the first run printed nothing, the proof is the next start: startup prints no peer warning.
 - With `wiki`, an update can print the same kind of audit summary of npm as the install: a count of vulnerabilities and a hint to run `npm audit fix`. Such output is not a failure of the update. Not verified: the npm output of an update of the `wiki` package. See [INSTALL.md](INSTALL.md#the-audit-summary-of-npm).
-- With `wiki`: at `@zosmaai/pi-llm-wiki` 0.12.5 a start changes no existing file of a vault and adds only `meta/qmd/`. Not verified: a newer version. Record a new baseline of the vault before the update, and compare the vault with it after the next launch: see "Record the baseline of a new candidate". That comparison is check 8 in `INSTALL.md` and check 7 in the setup guide. It is the proof for the installed version.
+- With `wiki`: at `@zosmaai/pi-llm-wiki` 0.12.5 a start changes no existing file of a vault and adds only `meta/qmd/`. Not verified: a newer version. Record a new baseline of the vault before the update, and compare the vault with it after the next launch: see "Record the baseline of a new candidate". That comparison is check 8 in `INSTALL.md`. It is the proof for the installed version.
 
 Warning: do not run `npm audit fix` in the candidate, and do not run `npm audit fix --force`. The command changes the installed packages of the candidate. It can undo the peer override, and it can install versions that the kit did not review.
 
@@ -202,7 +235,21 @@ All candidates of one account share what is outside the candidate directories: t
 2. Apply each patch of `patches` to `<overlay>` by hand.
 3. Read `notCarried`. A consent change has the reason `consent_decision`: set it by hand after your own decision. A hand edit of `settings.json`, for example `/model`, has the reason `rendered_field`: put it into the overlay field of [the table](docs/candidate-compare.md#drift-owner-edits-inside-a-candidate).
 
-For each difference, select one of three actions: carry it, accept it as drift, or drop it. Details: [carry](docs/carry.md).
+The user-owned keys are `roles`, `modelRoutes`, `selection`, `endpoints`, `env`, `ownerPackages`, `unmanaged`, `memory` and `ownerResources`.
+
+For each difference, select one of three actions: carry it, accept it as drift, or drop it. To drop it, do nothing: the next candidate does not have the change. Details: [carry](docs/carry.md).
+
+### After a native Pi operation
+
+Pi can write `settings.json` of a profile on its own. Examples: `pi install` of a new source or of a source string that differs from the declared string, `/model`, a settings change in the interface, a `/resources` toggle, and the `npmCommand` wrapper setup. `pi update --extensions` does not write `settings.json`. `pi install` does not write it when the source string is identical to the declared string.
+
+After each such operation:
+
+1. Run `compare` again. Put the previous candidate on the left and the changed candidate on the right. The drift section of a side compares its `settings.json` with its own recorded choices, so the other side can be any candidate.
+2. Read `right.drift.fields`. Each listed key changed after generation. Example: `/npmCommand` and `/defaultThinkingLevel` show there after such an edit.
+3. Carry, accept or drop each change as in this section.
+
+The drift stays visible on purpose. The kit does not hide or revert it. An accepted key still shows in `drift.fields`.
 
 ## Record the baseline of a new candidate
 
@@ -227,7 +274,7 @@ The second line prints `"result":"unchanged"`, or `changed` with only `"modified
 
 ## Remove a candidate that is not used
 
-The kit has no remove action and deletes nothing. You remove a candidate by hand. Details: [the candidate update guide](docs/guides/candidate-update.md#step-5-switch-profiles).
+The kit has no remove action and deletes nothing. You remove a candidate by hand. Details: [switching profiles](#switch-profiles).
 
 1. List the candidates, look at the directory, and find each launcher that points at it:
 
@@ -244,7 +291,7 @@ Warning: a removal of the wrong directory deletes `auth.json`, the sessions and 
 
 ## Get a new version of the kit
 
-Details: [the candidate update guide](docs/guides/candidate-update.md#step-1-get-the-new-inputs).
+Details: [candidate comparison](docs/candidate-compare.md#update-model).
 
 ```sh
 cd '<clone>' && git pull
@@ -254,7 +301,7 @@ python3 scripts/tenant_pi.py check-runtime > '<private dir>/runtime.json'
 ```
 
 - The last test line starts with `OK`; a skipped-test count is expected and depends on the client. The publish check prints `publish set valid`. With another result, stop and keep the old candidate.
-- The pull changes no file of a profile. A profile loads the in-tree packages from the clone by path, so an existing candidate loads the new package code at its next start.
+- Not verified: the effect of a pull on a running Pi session. The pull changes no file of a profile. A profile loads the in-tree packages from the clone by path, so an existing candidate loads the new package code at its next start.
 - Then do the loop with one overlay edit: a new `target.agentDir`. When `changes` of the `compare` report holds only `/overlay/target/agentDir`, the new kit version gives the same profile, and you can keep the old candidate in use.
 
 ## Move to a new Pi version

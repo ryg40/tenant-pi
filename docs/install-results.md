@@ -175,10 +175,10 @@ The file is local. It holds the real paths and the account name of the machine. 
 
 ## The write
 
+See the [refusal rules](private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
+
 - The action applies each refusal before the write: the location of `--out-dir`, the manifest, the overlay, the facts file and the `--target` list.
-- `--out-dir` is refused inside the kit clone (`under_kit`), inside a personal vault of the wiki extension (`under_wiki_vault`) and inside a `--target` directory (`under_target`). The path counts as written and with its links resolved. Private state stays outside the clone, the kit writes nothing below a vault, and a candidate holds no file that the kit did not declare.
-- The vault places are `<HOME>/.llm-wiki`, `<WIKI_HOME>/.llm-wiki` when the variable is set, and `<wikiHome>/.llm-wiki` when the `--overlay` file has `memory.wiki.wikiHome`. With `--out-dir`, `HOME` must be set and must be an absolute path; else the action stops with `home_required: results.home` or `absolute_path: results.home`.
-- A `--target` that is a vault or is under one is refused with `under_wiki_vault: results.target`, before the action opens a file of the target: the kit opens no file of a vault. The path counts as written and with its links resolved. Limit: without `--out-dir`, a `HOME` that is not set or is not an absolute path names no vault. The rule then covers the vault of `WIKI_HOME` and the vault of the overlay only. The [memory modules document](memory-modules.md#what-the-kit-does-for-an-existing-vault) gives the rule.
+- `--out-dir` cannot equal or descend from a `--target` directory (`under_target`).
 - The action uses the ancestor walk and the exclusive file creation of the guarded writer (`scripts/profile_write.py`), as the launcher file does. A directory of the path that is a link stops the action. The file gets mode `0600`.
 - With `--replace` and an existing file, the action writes the new text to `INSTALLER_KIT_RESULTS.md.new` in the same directory and renames it over the file in one step. Only a regular file is replaced: a link or a directory at the name gives `target_not_regular`. A left `.new` file gives `temporary_exists`.
 - The action writes nothing else.

@@ -349,7 +349,7 @@ class Adapter(unittest.TestCase):
         out.write_text("")
         with patch.dict(os.environ, {"GITHUB_OUTPUT": str(out)}):
             with self.assertRaisesRegex(ci.Invalid, "api_failed"):
-                ci.preflight(self.directory, NEWER, api)
+                ci.update_preflight(self.directory, NEWER, api)
         self.assertEqual(out.read_text(), "")
 
     def test_existing_request_is_noop(self):

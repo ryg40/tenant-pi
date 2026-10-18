@@ -7,8 +7,8 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 // Pi supplies these modules at runtime. Since Pi 0.99.0 it warns when a package lists them under
-// `dependencies`; Pi 1.3.0 still does (source reading). An npm install or update restores the
-// upstream manifest.
+// `dependencies`; the kit pin in config/manifest.json runtime.piVersion still does (source reading).
+// An npm install or update restores the upstream manifest.
 const packages = {
   "pi-hermes-memory": ["@earendil-works/pi-tui"],
   "@juicesharp/rpiv-ask-user-question": ["typebox"],

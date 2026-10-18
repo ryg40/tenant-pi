@@ -12,7 +12,7 @@ sources:
     resource: README.md
     title: tenant-pi README
   - id: setup-guide
-    resource: docs/guides/setup.md
+    resource: INSTALL.md
     title: Setup guide
   - id: generator
     resource: docs/generator.md
@@ -113,7 +113,7 @@ Optional components stay off until you select them. See [Optional components](#o
 | Node with npm | `>=24.0.0 <25` | `config/manifest.json`, `runtime.nodeRange` | Step 1 prints both versions. Example: Node `24.21.0`, npm `11.19.0`. |
 | Python | `>=3.11` | `config/manifest.json`, `runtime.pythonRange` | Step 1 prints the version. The kit uses the standard library only. |
 | Pi | Tested pin `1.1.0`; accepted range `>=1.1.0 <1.2` | `config/manifest.json`, `runtime.piVersion` and `runtime.piAcceptedRange` | Step 3 checks the version without using the live profile. Step 10 installs the pin when needed. |
-| Git | Any current version for the clone | [Setup guide](docs/guides/setup.md#before-you-start) | Step 1 prints the version. Scanning has separate requirements in [secret handling](docs/secret-handling.md#scanner). |
+| Git | Any current version for the clone | [Setup guide](INSTALL.md#stage-0-inventory) | Step 1 prints the version. Scanning has separate requirements in [secret handling](docs/secret-handling.md#scanner). |
 
 `<pin>` means `runtime.piVersion` in `config/manifest.json`, the tested Pi version.
 Read the runtime requirements from your clone:
@@ -128,8 +128,8 @@ For Apple silicon, read [docs/guides/macos.md](docs/guides/macos.md). The [Mac s
 ## Install
 
 Run each command from the clone root after step 2.
-These are the original 15 steps. None is merged; the setup guide groups them into nine stages.
-An installing agent reads [INSTALL.md](INSTALL.md). For all options, read [the setup guide](docs/guides/setup.md).
+These are the original 15 steps. [INSTALL.md](INSTALL.md) holds the install stages.
+An installing agent reads [INSTALL.md](INSTALL.md). For all options, read [INSTALL.md](INSTALL.md).
 For a failure, read [troubleshooting](docs/guides/troubleshooting.md). This file gives little troubleshooting.
 
 <details><summary>Path, output and error conventions</summary>
@@ -512,16 +512,16 @@ In `scripts/tenant_pi.py`, `main()` calls `_init_private()`:
 2. `_load_input()` reads the five templates that `TEMPLATES` in `scripts/private_init.py` names.
 3. `check_target()` checks the form of `--target`: an absolute path, 1024 characters maximum, not the sample target of the example.
 4. `_roots()` makes the list of forbidden places: the clone, `~/.pi/agent` and each known overlay target. Each place counts as written and with its symbolic links resolved.
-5. `check_location()` refuses a `--dir` that is in a forbidden place.
+5. The shared `profile_write.check_location()` refuses a `--dir` that is in a forbidden place.
 6. `_outside()` refuses a `--target` that is in the private directory, in the clone or in `~/.pi/agent`.
 7. `with_target()` makes the overlay text: the example with one changed value, `target.agentDir`.
 8. `init()` of `scripts/private_init.py` creates the tree.
 9. `report()` makes the output.
 
-`init()` uses two functions of the guarded writer in `scripts/profile_write.py`. Steps 9 and 12 use the same two functions:
+`init()` calls the shared guarded writer in `scripts/profile_write.py`. Steps 9 and 12 also use this module:
 
-- `_ancestors()` opens each directory above the new one, without following a symbolic link. Each must be owned by you or by root. None can be writable by group or others, unless it has the sticky bit as `/tmp` has. The direct parent must be owned by you. The new name must not exist.
-- `_create_file()` creates one file with an exclusive create, so it never replaces a file. It then checks the mode and the owner, writes the bytes and syncs the file.
+- `open_new_parent()` calls `_ancestors()` to open each directory above the new one, without following a symbolic link. Each must be owned by you or by root. None can be writable by group or others, unless it has the sticky bit as `/tmp` has. The direct parent must be owned by you. The new name must not exist.
+- `profile_write.create_new_file()` holds the file checks and diagnostics. Its internal `_create_file()` uses an exclusive create, so it never replaces a file. It checks the mode and the owner, writes the bytes and syncs the file.
 
 The kit creates the directory with `os.mkdir` and mode `0700`.
 An exclusive create prevents replacement of an existing entry. The kit writes the private templates only into its new directory.
@@ -738,7 +738,7 @@ The action creates and changes no file. It opens no file of the target or of the
 | `valid` | `true`. A refusal prints an error object on standard error in its place. |
 | `scope` | A fixed sentence. The check covers the structure and the supported inputs. It does not prove that Pi can use the profile. |
 
-Three options exist for an overlay with optional modules: `--registry`, `--local-dir` and `--require-role`. A core-only overlay needs none of them. See [the setup guide](docs/guides/setup.md#stage-3-validate).
+Three options exist for an overlay with optional modules: `--registry`, `--local-dir` and `--require-role`. A core-only overlay needs none of them. See [INSTALL.md](INSTALL.md#validate).
 
 </details>
 
@@ -921,11 +921,11 @@ The profile is complete when `filesComplete` is `true`.
 
 `generate` does the shared steps of steps 7 and 8, and then these:
 
-1. `preflight()` of `scripts/launcher.py` checks the launcher path before a write: its parent is safe and the file is absent.
+1. The shared `profile_write.preflight()` checks the launcher path before a write: its parent is safe and the file is absent.
 2. `_kit_commit()` reads the commit of the clone from the files in `.git`. It starts no `git` process.
 3. `write()` of `scripts/profile_write.py`, the **writer**, creates the profile.
 4. `_preview()` makes the output, as in step 8.
-5. `write()` of `scripts/launcher.py` creates the launcher file. This is the last write, after the profile is complete.
+5. `write()` of `scripts/launcher.py` calls `profile_write.create_new_file()`, which holds the preflight and diagnostics. This is the last write, after the profile is complete.
 
 The writer does these things, in this order:
 
@@ -1097,7 +1097,7 @@ With `replaces_installed`, the global line is not a default step. It replaces th
 - Keep the installed Pi. The gap `core_runtime_mismatch` stays, and you record it in step 15.
 - Install `<pin>` with the `--prefix` form above. The installed Pi stays in its place.
 
-See [the setup guide](docs/guides/setup.md#pi) for the full rule.
+See [INSTALL.md](INSTALL.md#stage-3-install-pi) for the full rule.
 
 #### Not touched
 
@@ -1175,7 +1175,7 @@ Two more cases:
 - The session-directory comparison proves separation only after a session with a prompt. Observed with Pi 1.1.0: a launch without a prompt writes no session file, even without `env -u PI_CODING_AGENT_SESSION_DIR`.
 - When `~/.pi/agent` or a directory above it is a symbolic link, the action stops with `not_directory: baseline.dir`. Run `realpath "$HOME/.pi/agent"`, and give that path as `--dir` here and in step 14.
 
-See [the setup guide](docs/guides/setup.md#stage-8-launch) for both cases.
+See [INSTALL.md](INSTALL.md#stage-9-first-launch-and-checks) for both cases.
 
 <details><summary>Drill-down: what the baseline touches</summary>
 
@@ -1191,11 +1191,11 @@ See [the setup guide](docs/guides/setup.md#stage-8-launch) for both cases.
 In `scripts/tenant_pi.py`, `main()` calls `_baseline()`:
 
 1. `_home()` reads `HOME`.
-2. `check_location()` of `scripts/baseline.py` refuses an `--out` path in the clone, in `~/.pi/agent` or in `--dir`.
-3. `preflight()` checks the parent of `--out` and that the file is absent, with `_ancestors()` as in step 4.
+2. The shared `profile_write.check_location()` refuses an `--out` path in the clone, in `~/.pi/agent` or in `--dir`.
+3. The shared `profile_write.preflight()` checks the parent of `--out` and that the file is absent, with `_ancestors()` as in step 4.
 4. `_dir_state()` opens `--dir` and calls `scan()`.
 5. `scan()` lists the directory at each level and makes one status call for each entry. It opens directories only and follows no symbolic link.
-6. `record()` and `encode()` make the bytes of the file. `write()` creates the file with `_create_file()`.
+6. `record()` and `encode()` make the bytes of the file. `write()` calls `profile_write.create_new_file()`, which holds the preflight and diagnostics.
 
 #### Files
 
@@ -1309,7 +1309,7 @@ Rule from the Pi 1.1.0 source: Pi checks each tool in `<target>/bin/` first, the
 Not verified: this behaviour in other Pi versions and the content of `models-store.json`.
 The kit opens none of these runtime data files during generation.
 
-Pi can change `settings.json` after each command that changes a setting. The kit does not write the file again. To see the difference between two profiles, use the `compare` action; see [the candidate update guide](docs/guides/candidate-update.md#after-a-native-pi-operation).
+Pi can change `settings.json` after each command that changes a setting. The kit does not write the file again. To see the difference between two profiles, use the `compare` action; see [the candidate update guide](POST_INSTALL.md#after-a-native-pi-operation).
 
 #### Not touched
 
@@ -1508,7 +1508,7 @@ Three rules hold for each module:
 - The module can need a credential. The credential reaches Pi from the shell or from a Pi login, never from a file of the kit.
 - `readinessGaps` is not empty for a profile with a module that has a gap.
 
-No optional module passed an accepted live trial in this release. Read [the module guide](docs/guides/modules.md) before you enable one. It has one row for each component, with its inputs, its credential method and its state. The details are in [in-tree packages](docs/packages.md), [memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md) and [model routes](docs/model-routes.md).
+No optional module passed an accepted live trial in this release. Read [the module guide](docs/guides/modules.md) before you enable one. It has one row for each component, with its inputs, its credential method and its state. The details are in [in-tree packages](docs/packages.md), [memory modules](docs/memory-modules.md), [workflow modules](docs/workflow-modules.md) and [model routes](docs/guides/providers.md#pure-model-route-contract).
 
 Every optional component has label `skipped` in the sample overlay and `unverified` when enabled.
 The install flow of [INSTALL.md](INSTALL.md#stage-5-the-private-overlay) prints a checklist of all components with a recommended set marked. `hermes` and `wiki` are in that set.
@@ -1518,7 +1518,7 @@ A missing requirement makes its setup `blocked`. The [module guide](docs/guides/
 ### Tenantext extensions
 
 Status: `unverified`. The components add filtered entries from `packages/tenantext` to `settings.json`.
-Install that package's dependencies with npm as the setup guide specifies. Keep the clone in place.
+Install that package's dependencies with npm as INSTALL.md specifies. Keep the clone in place.
 `context-meter` shows context use; `ops-footer` needs it. `resources` manages resource selections.
 The usage and doctor extensions can read login state outside the target; see the module guide for each path.
 `codex-accounts` needs an HTTPS gateway, model evidence and an environment-key reference. Its login route is `blocked`.
@@ -1550,7 +1550,7 @@ Status: manifest `tested`, runtime `unverified`. LLM Wiki adds profile settings 
 Select `wiki`, set `consent.memoryCapture: true` and supply `memory.wiki` together. The checklist of the install flow marks `wiki`; the consent key is written only when you keep the mark.
 It needs `@zosmaai/pi-llm-wiki`. A selected wiki home adds `WIKI_HOME` to the launch line. With no selected wiki home, the launch line removes an inherited `WIKI_HOME`, and the vault is `~/.llm-wiki/`.
 An existing vault is used as it is, and `check-wiki-vault` reports it. The kit refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`.
-The setup guide gives the peer-override step for both Hermes and LLM Wiki.
+INSTALL.md gives the peer-override step for both Hermes and LLM Wiki.
 These npm modules have reviewed versions, but their declarations do not pin the registry version installed by Pi.
 
 ### OpenViking memory
@@ -1674,7 +1674,7 @@ The reasons for this structure:
 
 - **Two inputs.** The manifest is public and reviewed. The overlay is private. A kit update changes the manifest and never your choices. A profile is always "this manifest plus this overlay".
 - **A pure plan.** The plan does not depend on the machine. The writer builds it a second time from the record and refuses a difference. So `choices.json` is enough to explain each byte of `settings.json`.
-- **New directories only.** The kit has no code that edits an existing profile. An update is a new target from the same overlay, a comparison, and a launch with the launcher file of the new target. The old profile stays as the way back. See [the candidate update guide](docs/guides/candidate-update.md).
+- **New directories only.** The kit has no code that edits an existing profile. An update is a new target from the same overlay, a comparison, and a launch with the launcher file of the new target. The old profile stays as the way back. See [the candidate update guide](POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate).
 - **Display-only commands.** Each command that changes the machine is text in an output key that ends in `DisplayOnly`, or in `piInstall`. You read it and run it. Of the actions, only `check-runtime` and `check-herdr` start a process: three `--version` commands and one.
 - **Gaps, not promises.** The kit cannot prove offline that Pi loads a package or that a model replies. It lists each such fact as a gap. A gap goes away only when a fact proves it.
 - **A profile is a directory, not a sandbox.** `PI_CODING_AGENT_DIR` selects the data of one Pi process. Each process of your user can still read each profile. See [the privacy guide](docs/guides/privacy.md).
@@ -1686,7 +1686,7 @@ The reasons for this structure:
 | `scripts/tenant_pi.py` | The command line: the options, the bounded file loader and each action. |
 | `scripts/validate.py` | The rules of the manifest and of the overlay. |
 | `scripts/profile_plan.py` | The plan: `prepare()`, `readiness()`, `setup_commands()`, `runtime_report()` and `herdr_report()`. |
-| `scripts/profile_write.py` | The guarded writer: `write()`, `_ancestors()` and `_create_file()`. |
+| `scripts/profile_write.py` | The guarded writer: `write()`, `_ancestors()` and `create_new_file()`. |
 | `scripts/private_init.py` | The private directory of `init-private`. |
 | `scripts/launcher.py` | The launcher file. |
 | `scripts/check_runtime.py` | The three version processes of `check-runtime`, and the one of `check-herdr`. |
@@ -1716,11 +1716,8 @@ The reasons for this structure:
 | `scripts/git-hooks/pre-commit` | Scans staged changes. |
 | `scripts/git-hooks/pre-merge-commit` | Scans the staged merge. |
 | `scripts/git-hooks/pre-push` | Scans commits that the push sends. |
-| `scripts/capture.py` | Retired entry point; refuses live capture. |
-| `scripts/install.py` | Retired entry point; refuses installation. |
 
 `python3 scripts/tenant_pi.py --help` lists the actions. Each action has its own `--help`.
-`scripts/setup_remotes.sh` is development-only. It configures fetch-only package-source remotes and is absent from portable snapshots.
 The remaining files under `scripts/` are scan rule lists and the development-only inventory, not executable scripts.
 
 ### Generated files
@@ -1779,7 +1776,7 @@ python3 scripts/tenant_pi.py list --parent "$HOME/.pi/profiles"
 python3 scripts/tenant_pi.py inventory --dir "$HOME/.pi/profiles/main"
 ```
 
-`list` reads `.tenant-pi/state.json` of each directory below the parent. `inventory` names the packages, extensions, skills and prompts of one profile. See [the candidate list](docs/candidate-list.md) and [the profile inventory](docs/profile-inventory.md).
+`list` reads `.tenant-pi/state.json` of each directory below the parent. `inventory` names the packages, extensions, skills and prompts of one profile. See [the candidate list](docs/candidate-compare.md#candidate-list) and [the profile inventory](docs/profile-inventory.md).
 
 ### Configuration files
 
@@ -1882,7 +1879,7 @@ Check these facts for each portable release. A text check does not prove a live 
 | --- | --- | --- |
 | Node `>=24.0.0 <25`, Python `>=3.11`, Pi pin and accepted range | `runtime` in `config/manifest.json`; `scripts/check_runtime.py` | Runtime and contract tests check range rules. No check compares every version written here with the manifest. |
 | Example Node `24.21.0`, npm `11.19.0`, Python `3.11.2`, Git `2.39.5`, historical Pi `1.0.2` observations | Retained output examples and their provenance below | No check measures these example versions. They are not new runtime evidence. |
-| The 15 steps and their order | [README.md](README.md#the-stages) and [setup guide](docs/guides/setup.md), nine stages | Documentation tests check shared rules in the install guides. No test counts or orders this file's 15 steps. |
+| The 15 steps and their order | [INSTALL.md](INSTALL.md), the install stages | Documentation tests check shared rules in the install guides. No test counts or orders this file's 15 steps. |
 | Script inventory and options | Tracked `scripts/` files; parser in `scripts/tenant_pi.py` | `doc_check.py` checks kit action and flag names. It does not prove this script inventory complete. |
 | Profile and private file inventory, modes and writers | `scripts/profile_write.py`, `scripts/private_init.py`, `scripts/launcher.py`, `scripts/baseline.py` | Unit tests check generated trees, modes and refusal rules. No check compares every footprint row with the implementation. |
 | JSON fields and quoted output lines | `scripts/tenant_pi.py`, `scripts/profile_plan.py`, `scripts/check_runtime.py`, `scripts/baseline.py` | `doc_check.py` parses JSON examples. Unit tests check output behavior, not every quoted example byte. |
@@ -1927,11 +1924,11 @@ Not verified:
 
 | Document | For |
 | --- | --- |
-| [The setup guide](docs/guides/setup.md) | The same install as nine stages, with each option. |
+| [INSTALL.md](INSTALL.md) | The install stages, with each option. |
 | [INSTALL.md](INSTALL.md) | The same install for an installing agent. |
 | [POST_INSTALL.md](POST_INSTALL.md) | The commands for each update and change after a base install. |
 | [The module guide](docs/guides/modules.md) | Each component. |
-| [The candidate update guide](docs/guides/candidate-update.md) | A new kit version: regenerate, compare, switch. |
+| [The candidate update guide](POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate) | A new kit version: regenerate, compare, switch. |
 | [The privacy guide](docs/guides/privacy.md) | What the kit separates and what it does not. |
 | [The Compose seat guide](docs/guides/compose-seat.md) | The Compose seat: the same profile in a container that you reach over SSH. Not verified: a start of that container. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |

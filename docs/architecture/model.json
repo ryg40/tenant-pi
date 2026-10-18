@@ -213,7 +213,7 @@
      "sub": "auth.json; sessions; Hermes",
      "kind": "output",
      "summary": "Pi writes login and sessions under {{profile}}. Enabled Hermes stores session indexes and memory there too. A new candidate gets none of this state. Authentication is not copied between profiles.",
-     "doc": "docs/profile-lifecycle.md",
+     "doc": "docs/private-directory.md",
      "files": [
       "{{profile}}/auth.json",
       "{{profile}}/sessions/"
@@ -627,7 +627,7 @@
      "sub": "{{profile}}/settings.json",
      "kind": "output",
      "summary": "Settings hold package sources, filters and defaults. Optional mcp-adapter.json and hermes-memory-config.json live beside them. models.json registers direct inference, from the owner or from a validated inputs.modelsFile. .tenant-pi/ holds generation records, not a runtime daemon.",
-     "doc": "docs/profile-lifecycle.md",
+     "doc": "docs/private-directory.md",
      "files": [
       "{{profile}}/settings.json",
       "{{profile}}/.tenant-pi/choices.json",
@@ -866,7 +866,7 @@
      "sub": "Optional codex-accounts",
      "kind": "comp-tenantext",
      "summary": "This optional route reads TENANTEXT_LITELLM_BASE_URL and TENANTEXT_LITELLM_API_KEY from its process environment. The gateway key is not the native provider login. The supported route uses an HTTPS endpoint ending in /v1.",
-     "doc": "docs/model-routes.md",
+     "doc": "docs/guides/providers.md",
      "files": [
       "packages/tenantext/extensions/codex-accounts/routing.ts"
      ]
@@ -937,7 +937,7 @@
      "sub": "{{gateway_url}}",
      "kind": "service",
      "summary": "On route C only, {{gateway}} receives the request and forwards it to {{provider}}. It resolves {{aliases}}. Both gateway and upstream receive model data. The kit installs neither service.",
-     "doc": "docs/model-routes.md",
+     "doc": "docs/guides/providers.md",
      "tags": [
       "optional route",
       "not verified here"
@@ -1270,7 +1270,7 @@
      "sub": "Recalled text / task input",
      "kind": "service",
      "summary": "A native provider, direct inference server or optional gateway receives the model context. Local memory storage does not keep that context on this host. Background tasks can use roles.memory when configured.",
-     "doc": "docs/model-routes.md",
+     "doc": "docs/guides/providers.md",
      "drill": "runtime"
     }
    ],
@@ -1494,7 +1494,7 @@
      "summary": "Builtin Pi settings for the default provider, model and thinking level, and the model cycle.",
      "inputs": "roles, optional modelRoutes; --registry when modelRoutes names a model",
      "consent": "none",
-     "doc": "docs/model-routes.md",
+     "doc": "docs/guides/providers.md",
      "tags": [
       "optional; not a detected selection"
      ]
@@ -1529,7 +1529,7 @@
       "packages/tenantext/extensions/codex-accounts/routing.ts",
       "packages/tenantext/extensions/codex-accounts/settings.ts"
      ],
-     "doc": "docs/model-routes.md",
+     "doc": "docs/guides/providers.md",
      "tags": [
       "optional; not a detected selection"
      ]

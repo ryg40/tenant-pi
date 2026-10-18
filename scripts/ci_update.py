@@ -170,7 +170,7 @@ def open_request(api, branch):
     raise Invalid("api_page_limit")
 
 
-def preflight(directory, target, api):
+def update_preflight(directory, target, api):
     """Skip expensive stages for an existing request or a claimed version branch; GET only."""
     branch = "automation/pi-" + version(target)
     existing = open_request(api, branch)
@@ -265,7 +265,7 @@ def main(argv=None):
             api = Api(os.environ.get("UPDATE_SERVER", ""), os.environ.get("UPDATE_REPOSITORY"),
                       os.environ.get("UPDATE_TOKEN"))
             if args.action == "preflight":
-                result = preflight(args.directory, target, api)
+                result = update_preflight(args.directory, target, api)
             else:
                 result = request(args.directory, target, previous, os.environ.get("UPDATE_BASE"),
                                  os.environ.get("UPDATE_REVISION"), api)

@@ -46,7 +46,7 @@ See [Switch wiki embeddings off](../memory-modules.md#switch-wiki-embeddings-off
 | `blocked_component: overlay.selection.enable` | A `blocked` module is enabled. | Move it to `selection.disable`. See [the module guide](modules.md). |
 | `missing_dependency: overlay.selection.enable` | An enabled module requires another module that is not enabled. Example: `ops-footer` needs `context-meter`. | Enable the required module. |
 | `memory_disabled: overlay.consent` | `consent.memoryCapture` is `true`, and no memory module is enabled. | Set it to `false`, or enable `hermes` or `wiki` with a `memory` block. |
-| `memory_choices_required: overlay.memory` | A memory module is enabled, and the overlay has no `memory` block. `validate` looks for the block first, so this error comes before the consent error. | Add the `memory` block of [setup Stage 2](setup.md#stage-2-edit-the-local-choices), step 5. |
+| `memory_choices_required: overlay.memory` | A memory module is enabled, and the overlay has no `memory` block. `validate` looks for the block first, so this error comes before the consent error. | Add the `memory` block of [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay), step 5. |
 | `memory_consent_required: overlay.consent.memoryCapture` | A memory module is enabled, the overlay has the `memory` block, and `consent.memoryCapture` is `false`. (documented) | Set `consent.memoryCapture: true` after you read [memory modules](../memory-modules.md). |
 | `moved_key: overlay.endpoints.tenantext is now overlay.endpoints.codex-accounts` | The overlay uses the old gateway key. | Rename the key to `codex-accounts` in `endpoints` and `env`. |
 | `undeclared_env: overlay.env` | An `env` value of the overlay names a variable that the manifest does not declare for the module. For `codex-accounts`, the allowed names are `TENANTEXT_LITELLM_API_KEY` for the key and `TENANTEXT_LITELLM_BASE_URL` for the URL. | Use the allowed name. With `compose-plan`, leave `--key-var` at its default. |
@@ -64,23 +64,21 @@ The same rules apply to each JSON input, with another field: `manifest.file`, `r
 
 ## Target, private directory and launcher
 
+See the [refusal rules](../private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
+
 | Diagnostic | Cause | Fix |
 | --- | --- | --- |
 | `invalid_plan: target_mismatch: plan.targetAgentDir` | `--target` differs from `target.agentDir` of the overlay. | Use the same absolute path in both places. |
 | `sample_target: overlay.target.agentDir` | The overlay still has the sample target `/home/EXAMPLE_USER/new-agent`. `init-private` without `--target` writes it. `validate`, `plan` and `generate` refuse it. (documented) | Change the one value of `target.agentDir` to the absolute path of the new profile. Check the syntax with `python3 -m json.tool "<file>" >/dev/null`. For a new private directory, use `init-private` with `--target`. |
-| `under_kit: overlay.target.agentDir` | `target.agentDir` is the kit clone or is under it, also through a symbolic link. `validate`, `plan` and `generate` refuse it before any write. | Choose a target outside the clone, for example `"$HOME/.pi-profiles/main"`. Edit `target.agentDir` to match. |
-| `under_pi_agent: overlay.target.agentDir` | `target.agentDir` is the live profile `~/.pi/agent` or is under it, also through a symbolic link. `validate`, `plan` and `generate` refuse it before any write. (documented) | Choose a target beside the live profile, for example `"$HOME/.pi/profiles/main"`. Edit `target.agentDir` to match. |
 | `target_exists: target` | The target exists. `generate` never writes into an existing directory. | Choose a new target name, for example with a date. Edit `target.agentDir` to match. |
 | `unsafe_path: target.parents` | The parent of the target does not exist, or a directory above it is a link or not a directory. | Create the parent with `mkdir -p`. Do not use a linked parent. |
 | `unsafe_parent_owner: target.parent` | The immediate parent of the target is not owned by the caller. A parent of another non-root user fails earlier with `unsafe_owner`, so in practice root owns the parent and you are not root. (documented) | Use a parent that you own, for example `"$HOME/.pi-profiles"` when root owns `~/.pi`. |
 | `unsafe_owner: target.parents`, `unsafe_permissions: target.parents` | A directory above the target belongs to another user, or its group or others can write to it without a sticky bit. (documented) | Use a parent tree that only you own. |
 | `pi_login_blocked: overlay.modelRoutes.gateway.auth` | The gateway uses `auth: "login"`. A fresh profile cannot log in to the gateway at this pin. (documented) | Use `{"auth": "env"}` and export `TENANTEXT_LITELLM_API_KEY`. |
 | `target_exists: init-private.dir` | The private directory exists. | Keep the existing directory, or name a new one. The action never adopts a directory. |
-| `under_wiki_vault: overlay.target.agentDir`, `under_wiki_vault: launcher.path`, `under_wiki_vault: baseline.out`, `under_wiki_vault: init-private.dir`, `under_wiki_vault: init-private.target`, `under_wiki_vault: results.out_dir`, `under_wiki_vault: results.target` | The path is a personal wiki vault or is below one. The vaults are `~/.llm-wiki`, `<WIKI_HOME>/.llm-wiki` when the shell has `WIKI_HOME`, and, for an action that reads the overlay, `<wikiHome>/.llm-wiki` of `memory.wiki.wikiHome`. `baseline` and `init-private` read no overlay, so they know the first two only. (documented) | Choose a path outside the vault. To record the vault, give it as `--dir` of `baseline` and keep `--out` in the private directory. |
-| `under_pi_agent: init-private.dir` | The private directory is inside `~/.pi/agent`. | Use a directory outside the live profile, for example `"$HOME/.config/tenant-pi"`. |
-| `under_kit: init-private.dir`, `under_overlay_target: init-private.dir` | The path is inside the kit clone or inside a profile target. (documented) | Use a directory outside both. |
+| `under_overlay_target: init-private.dir` | The path is inside a profile target. | Choose a directory outside the target. |
 | `absolute_path: init-private.target`, `shell_or_template: init-private.target` | The `--target` path is relative, starts with `~`, or has a `$`. The kit does not expand a path. (documented) | Give the expanded absolute path, for example `--target "$HOME/.pi/profiles/main"` in double quotes. |
-| `under_pi_agent: init-private.target`, `under_private_dir: init-private.target`, `under_kit: init-private.target` | The `--target` path is inside the live profile, inside the private directory or inside the kit clone. (documented) | Choose a target outside the three, for example `"$HOME/.pi/profiles/main"`. |
+| `under_private_dir: init-private.target` | The target is inside the private directory. | Choose a target outside that directory. |
 | `home_required: init-private.home` | `HOME` is not set. `init-private` and `--launcher` need it. | Run the command in a shell with `HOME` set to an absolute path. |
 | `home_required: target.home`, `absolute_path: target.home` | `HOME` is not set, or it is not an absolute path without a trailing slash. `validate`, `plan` and `generate` need it to find `~/.pi/agent`. (documented) | Run the command in a shell with `HOME` set to an absolute path. |
 | `target_exists: launcher.path` | The launcher file exists. The check runs before the target is created. | Remove the old file after review, or use a new name, for example `launch-main-2.sh`. |
@@ -102,7 +100,6 @@ The `compose-plan` action refuses an answer or a file with one of these rules. W
 | `private_dir_missing: compose-plan.private_dir` | With `--write`: the private directory does not exist. (documented) | Create it with `mkdir -p` and give it mode 700. Then run the command again. |
 | `private_dir_unsafe: compose-plan.private_dir` | With `--write`: the directory or a directory above it is a symbolic link or is not a directory. (documented) | Give a path through real directories. |
 | `target_exists: compose-plan.<file>` | With `--write`: one of the five files exists. The action then writes none. (documented) | Move the file after review, or name another private directory. Do not delete a file to make the action pass. |
-| `under_kit: compose-plan.private_dir` | The private directory is the clone, is under it, or holds it. With `--write`: it is under the kit that runs the action. (documented) | Name a private directory outside the kit, for example `"$HOME/.config/tenant-pi"`. |
 | `credential_free_https_url: compose-plan.gateway_url` | The URL breaks the gateway rule of the overlay: it is not HTTPS on port 443, or it holds a credential, a query or a fragment. (documented) | Give an HTTPS URL on port 443 without a user name, a password, a key, a `?` part or a `#` part. |
 | `gateway_api_prefix: compose-plan.gateway_url` | The URL does not end in `/v1`. (documented) | Add `/v1` at the end of the URL. |
 | `unsupported_gateway_model: compose-plan.model` | The provider is `litellm-codex`, and the model is not one of its three aliases. (documented) | Give `codex-auto/astra`, `codex-auto/sol` or `codex-auto/luna`. |
@@ -160,7 +157,7 @@ A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of t
 | Status | Fix |
 | --- | --- |
 | `untested_in_range` for `pi` | Keep the installed version and record `core_runtime_untested_in_range`. The kit tests ran on the tested version only. |
-| `missing` for `pi` | Install the pin by hand (setup Stage 6), or add its directory to `PATH` in the launching shell. |
+| `missing` for `pi` | Install the pin by hand (INSTALL.md, package dependencies), or add its directory to `PATH` in the launching shell. |
 | `mismatch` for `pi` | Keep the other Pi and record the gap, or install the manifest pin (`runtime.piVersion`) under a prefix. Do not run the global install line as a default step: it replaces the other Pi for every profile. Example: an installed Pi `0.99.2` is a `mismatch`. |
 | `mismatch` for `node` | Select Node 24 with your version manager in the launching shell. |
 | `unparsed` | Run the tool with `--version` by hand and read the output. |
@@ -168,7 +165,7 @@ A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of t
 
 ### The key or the `PATH` line is missing in another shell
 
-A non-interactive SSH command, a browser terminal, a desktop launcher or a service does not always read your interactive startup file. See [the setup guide](setup.md#shells-that-do-not-inherit-your-variables). Run `check-runtime` and the `test -n` check in the shell that starts Pi.
+A non-interactive SSH command, a browser terminal, a desktop launcher or a service does not always read your interactive startup file. See [INSTALL.md](../../INSTALL.md#shells-that-do-not-inherit-your-variables). Run `check-runtime` and the `test -n` check in the shell that starts Pi.
 
 ### Pi starts with `Cannot find module 'yaml'`
 
@@ -199,7 +196,7 @@ The `pi install` line of the `wiki` package prints an audit summary of npm for t
 
 Warning: do not run `npm audit fix` in the profile, and do not run `npm audit fix --force`. The command changes the installed packages of the profile. It can undo the peer override, and it can install versions that the kit did not review.
 
-To install without the module, switch `wiki` off before `generate`. See [the audit summary of npm](setup.md#the-audit-summary-of-npm) in Stage 6 of the setup guide.
+To install without the module, switch `wiki` off before `generate`. See [the audit summary of npm](../../INSTALL.md#the-audit-summary-of-npm) in INSTALL.md.
 
 ## Kit checks
 

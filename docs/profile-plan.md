@@ -50,7 +50,7 @@ With the `herdr` component, the plan adds `herdr_cli_unverified` and `herdr_sess
 
 The `python` entry of the report adds no gap. Python runs the kit, not the profile. No other gap changes: no kit action measures a package, a model catalog, a provider login or a gateway.
 
-`runtimeReady` is always `false`: this kit has no live trial of a generated profile. The measured facts are in `readinessGaps`: an empty list after a complete generation says that the kit knows no open gap before the launch. An empty list is not a launch proof and it is not the label `ready` of [the setup guide](guides/setup.md#labels-for-a-prerequisite): the report compares version numbers only.
+`runtimeReady` is always `false`: this kit has no live trial of a generated profile. The measured facts are in `readinessGaps`: an empty list after a complete generation says that the kit knows no open gap before the launch. An empty list is not a launch proof and it is not the label `ready` of [INSTALL.md](../INSTALL.md#labels-for-a-prerequisite): the report compares version numbers only.
 
 ### The report file
 

@@ -213,14 +213,11 @@ class SeamTests(unittest.TestCase):
         self.assertEqual("q4", seam.choice(ask, "quant", "Quant", ("q4", "q8")))
         self.assertTrue(seam.consent(ask, "measure", "Permit?"))
         self.assertFalse(seam.consent(ask, "measure", "Permit?"))
-        self.assertIsNone(seam.text_if(ask, False, "name", "Name"))
-        self.assertNotIn("name", answers)
         replies = ["q5"]
         with self.assertRaisesRegex(Invalid, "choice: wizard.quant"):
             seam.choice(ask, "quant", "Quant", ("q4", "q8"))
         accepted = ((seam.absolute_path(), "/home/fixture/models"), (seam.url(), "https://example.invalid/v1"),
                     (seam.env_name(), "MODEL_KEY"), (seam.integer(4, 256), "256"),
-                    (seam.json_shape([{"name": str, "minGiB": int}]), '[{"name": "a", "minGiB": 2}]'),
                     (seam.optional(seam.env_name()), ""))
         for check_value, value in accepted:
             check_value(value)
@@ -233,10 +230,7 @@ class SeamTests(unittest.TestCase):
                    (seam.absolute_path(), "/home/fixture/a;b", "absolute_path"),
                    (seam.url(), "https://example.invalid/v1?page=1", "credential_free_url"),
                    (seam.env_name(), "model_key", "env_name"), (seam.integer(4, 256), "257", "integer_range"),
-                   (seam.integer(4, 256), "4.5", "integer_range"),
-                   (seam.json_shape([{"name": str, "minGiB": int}]), '[{"name": "a"}]', "required_fields"),
-                   (seam.json_shape([{"name": str, "minGiB": int}]), '[{"name": "a", "minGiB": true}]', "int"),
-                   (seam.json_shape({"a": str}), "{", "json"))
+                   (seam.integer(4, 256), "4.5", "integer_range"))
         for check_value, value, rule in refused:
             with self.assertRaisesRegex(Invalid, "^" + rule + ":"):
                 check_value(value)
@@ -274,7 +268,7 @@ class SeamTests(unittest.TestCase):
         args = parser.parse_args([*self.base, "--adapter", str(EXAMPLE)])
         # Toggle the blocked row, then the dashboard (it adds metrics), then continue. /back and a context
         # out of range each return to the checklist; the earlier answers stay as defaults.
-        lines = "scan\n5\n4\nc\n" + "q6\n\n\n/back\nc\n" + "\n\n\n300\nc\n" + "\n\n\n64\n\nMODEL_KEY\n\nyes\n"
+        lines = "scan\n5\n4\nc\n" + "q6\n\n\n/back\nc\n" + "\n\n\n300\nc\n" + "\n\n\n64\n\nMODEL_KEY\nyes\n"
         terminal = Script(lines)
         with patch.dict(os.environ, {"HOME": str(self.home)}):
             os.environ.pop("WIKI_HOME", None)
@@ -308,7 +302,7 @@ class SeamTests(unittest.TestCase):
                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    env=self.env, text=True, bufsize=1)
         try:
-            process.stdin.write("scan\n4\nc\n" + "\n" * 8)
+            process.stdin.write("scan\n4\nc\n" + "\n" * 7)
             process.stdin.flush()
             while True:
                 line = process.stderr.readline()
@@ -335,7 +329,7 @@ class SeamTests(unittest.TestCase):
         adapter = example()
         state = seam.SeamState(adapter.catalog(None), self.identity)
         state.answers = {"quant": "q8", "modelDir": "/home/fixture/models", "contextK": "128", "serverUrl": "http://127.0.0.1:8080/v1",
-                         "keyVar": "", "rules": "[]", "measure": "no"}
+                         "keyVar": "", "measure": "no"}
         with patch.object(adapter, "cards", return_value=[{"name": "small", "vramGiB": 8}]):
             state.scan = adapter.scan(self.identity, None)
         plan = adapter.plan(state, state.scan)
@@ -436,7 +430,7 @@ class SeamTests(unittest.TestCase):
                         handle.write("# changed after load\n")
                 return super().ask(label, default)
 
-        terminal = Changing("scan\nc\n" + "\n" * 8)
+        terminal = Changing("scan\nc\n" + "\n" * 6)
         with self.assertRaisesRegex(Invalid, "^input_changed: wizard.approval"):
             self.run_wizard(str(path), terminal)
         self.assertEqual(1, len(saves))

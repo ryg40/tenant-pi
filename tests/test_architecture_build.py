@@ -1,14 +1,17 @@
 """Architecture diagrams: a deterministic public build, the public reader rules, and a complete graph.
 
-The local edition is development-only. Its tests run only when its values file is present, so a
-portable snapshot skips them.
+The local edition uses synthetic values. Tests do not read the host's untracked local files.
 """
+import contextlib
 import copy
+import io
 import json
 import os
 import re
 import sys
+import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +20,6 @@ import architecture_build  # noqa: E402
 import publish_check  # noqa: E402
 from scripts.doc_check import published  # noqa: E402
 
-LOCAL = ROOT / architecture_build.LOCAL_REL
 PUBLIC_FILES = (architecture_build.PUBLIC_OUT, architecture_build.MODEL_REL, "docs/architecture.md")
 # A placeholder left in the page. The test keeps its own pattern, so a narrow build pattern cannot hide a leak.
 LEAK = re.compile(r"\{\{[a-z0-9_]+\}\}")
@@ -29,10 +31,21 @@ def encoded(value):
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
+def local_values():
+    placeholders = json.loads((ROOT / architecture_build.MODEL_REL).read_text())["placeholders"]
+    return {"values": {name: "<fixture-only-" + name + ">" for name in placeholders}, "planned": ["seat_address"]}
+
+
+def local_graph():
+    load = architecture_build.load_json
+    with mock.patch.object(architecture_build, "load_json", side_effect=lambda path, field:
+                           local_values() if field == architecture_build.LOCAL_REL else load(path, field)):
+        return architecture_build.build(ROOT, local=True)
+
+
 def editions():
     yield "public", architecture_build.build(ROOT)
-    if LOCAL.is_file():
-        yield "local", architecture_build.build(ROOT, local=True)
+    yield "local", local_graph()
 
 
 class PublicBuildTests(unittest.TestCase):
@@ -43,10 +56,6 @@ class PublicBuildTests(unittest.TestCase):
 
     def test_build_is_deterministic(self):
         self.assertEqual(self.text, architecture_build.render(architecture_build.build(ROOT)))
-
-    def test_committed_file_is_current(self):
-        committed = (ROOT / architecture_build.PUBLIC_OUT).read_text(encoding="utf-8")
-        self.assertEqual(committed, self.text, "run python3 scripts/architecture_build.py")
 
     def test_self_contained(self):
         for pattern in (r"<script[^>]*\ssrc=", r"<link\b", r"@import", r"\bfetch\(", r"XMLHttpRequest",
@@ -63,8 +72,10 @@ class PublicBuildTests(unittest.TestCase):
         self.assertIsNone(LEAK.search(self.text))
 
     def test_public_files_are_published(self):
-        for name in (*PUBLIC_FILES, "scripts/architecture_build.py", "tests/test_architecture_build.py"):
-            self.assertIn(name, publish_check.PUBLISH)
+        names = (*PUBLIC_FILES, "scripts/architecture_build.py", "tests/test_architecture_build.py")
+        published_files = set(publish_check.PUBLISH) | publish_check.rule_files(names)[0]
+        for name in names:
+            self.assertIn(name, published_files)
 
     def test_links_point_into_the_publish_set(self):
         for view in self.graph["views"]:
@@ -181,12 +192,11 @@ class PageScriptTests(unittest.TestCase):
         self.assertIn('s("title", null, n.label', body)
 
 
-@unittest.skipUnless(LOCAL.is_file(), "the local values file is development-only")
 class LocalBuildTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.values = json.loads(LOCAL.read_text(encoding="utf-8"))["values"]
-        cls.local = architecture_build.render(architecture_build.build(ROOT, local=True))
+        cls.values = local_values()["values"]
+        cls.local = architecture_build.render(local_graph())
         cls.public = architecture_build.render(architecture_build.build(ROOT))
 
     def test_local_build_contains_each_value(self):
@@ -198,26 +208,53 @@ class LocalBuildTests(unittest.TestCase):
             self.assertNotIn(value, self.public, name)
             self.assertNotIn(encoded(value), self.public, name)
 
-    def test_local_build_is_deterministic_and_current(self):
-        self.assertEqual(self.local, architecture_build.render(architecture_build.build(ROOT, local=True)))
-        out = ROOT / architecture_build.LOCAL_OUT
-        if out.is_file():
-            self.assertEqual(out.read_text(encoding="utf-8"), self.local, "run python3 scripts/architecture_build.py --local")
+    def test_local_build_is_deterministic(self):
+        self.assertEqual(self.local, architecture_build.render(local_graph()))
+
+    def test_local_command_writes_page_and_preserves_input(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            values = root / architecture_build.LOCAL_REL
+            values.parent.mkdir(parents=True)
+            values.write_text(json.dumps(local_values()))
+            before = values.read_bytes()
+            graph = architecture_build.build(ROOT)
+            for view in graph["views"]:
+                for node in view["nodes"]:
+                    for name in node.get("files", []) + [node.get("doc", ""), node.get("script", "")]:
+                        if architecture_build.is_repo_path(name):
+                            path = root / name.partition("#")[0]
+                            path.parent.mkdir(parents=True, exist_ok=True)
+                            if name.endswith("/"):
+                                path.mkdir(exist_ok=True)
+                            else:
+                                path.touch()
+            for name in (architecture_build.MODEL_REL, architecture_build.MANIFEST_REL):
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes((ROOT / name).read_bytes())
+            expected = architecture_build.render(architecture_build.build(root, local=True))
+            with mock.patch.object(architecture_build, "ROOT", root), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, architecture_build.main(["--local"]))
+                self.assertEqual(0, architecture_build.main(["--local", "--check"]))
+            self.assertEqual(before, values.read_bytes())
+            self.assertEqual(expected, (root / architecture_build.LOCAL_OUT).read_text())
 
     def test_a_planned_value_is_tagged(self):
-        planned = json.loads(LOCAL.read_text(encoding="utf-8")).get("planned", [])
-        self.assertIn("seat_address", planned)
-        graph = architecture_build.build(ROOT, local=True)
+        self.assertIn("seat_address", local_values()["planned"])
+        graph = local_graph()
         tagged = {node["id"] for view in graph["views"] for node in view["nodes"]
                   if architecture_build.PLANNED_TAG in node.get("tags", [])}
-        self.assertIn("r-ssh", tagged)
+        self.assertIn("compose-seat", tagged)
         self.assertNotIn(architecture_build.PLANNED_TAG, self.public)
 
     def test_local_files_are_development_only(self):
-        entries = publish_check.private_excludes(ROOT)
+        ignored = (ROOT / ".gitignore").read_text().splitlines()
         for name in (architecture_build.LOCAL_REL, architecture_build.LOCAL_OUT):
-            self.assertTrue(publish_check.excluded_files({name}, entries), name)
+            self.assertIn(name, ignored)
             self.assertNotIn(name, publish_check.PUBLISH)
+            self.assertNotIn(name, publish_check.rule_files({name})[0])
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -392,11 +429,11 @@ class BrowserTests(unittest.TestCase):
         context.route(re.compile(r"^https?://"), refuse)
         page = context.new_page()
         page.on("pageerror", lambda error: self.errors.append(str(error)))
-        page.goto((ROOT / (architecture_build.LOCAL_OUT if local else architecture_build.PUBLIC_OUT)).as_uri())
+        page.set_content(architecture_build.render(local_graph() if local else architecture_build.build(ROOT)))
         return page
 
     def test_rendered_geometry_and_offline_navigation(self):
-        for local in (False, True) if LOCAL.exists() else (False,):
+        for local in (False, True):
             for width, height in ((1440, 1000), (390, 844)):
                 with self.subTest(local=local, width=width):
                     page = self.page(width, height, local)
@@ -485,7 +522,7 @@ class BrowserTests(unittest.TestCase):
             ("node text overflow", "document.querySelector('.nlabel').textContent='A deliberately excessive label '.repeat(20)"),
         ]
         for expected, mutation in mutations:
-            page.reload()
+            page.set_content(architecture_build.render(architecture_build.build(ROOT)))
             page.evaluate(mutation)
             self.assertIn(expected, {item[0] for item in page.evaluate(BROWSER_GEOMETRY)}, mutation)
 

@@ -69,7 +69,7 @@ Tenantext is a Pi extension suite with a Claude Code plugin under `claude-code/`
 | Item | Value |
 | --- | --- |
 | Source | `packages/tenantext` |
-| Claude Code plugin | `claude-code/`, including the `herdr` and `slopscore-pr` skills |
+| Claude Code plugin | `claude-code/`; `build-skills.py` builds `herdr` and `slopscore-pr` from the package source skills |
 | License | MIT, `packages/tenantext/LICENSE`; third-party notices in `packages/tenantext/THIRD_PARTY_NOTICES.md` and `packages/tenantext/licenses/` |
 | Node | `>=24.0.0 <25` (`engines` in `packages/tenantext/package.json`) |
 
@@ -111,7 +111,7 @@ A host can have more than one global Node modules directory, with a different Pi
 node -p "require('./node_modules/@earendil-works/pi-coding-agent/package.json').version"
 ```
 
-Two tests need Pi `1.0.1` or later, because they compare the project MCP override with the code of Pi. One is in `test/resources-inventory.test.ts`; its name ends with `agrees with the Pi loader`. One is in `test/resources-writers.test.ts`; its name ends with `as Pi does`. Observed: with links to a Pi `0.99.1`, these two tests fail and 304 of 306 tests pass. Pi `0.99.1` has no project override, and its `updateMcpServerConfig()` has no fourth parameter. With links to Pi `1.0.2` and with links to Pi `1.0.3`, all 306 tests pass. The fix is new links to a Pi `1.0.1` or later. It is not a change of the tests.
+Two tests need Pi `1.0.1` or later, because they compare the project MCP override with the code of Pi. One is in `test/resources-inventory.test.ts`; its name ends with `agrees with the Pi loader`. One is in `test/resources-writers.test.ts`; its name ends with `as Pi does`. Observed: with links to a Pi `0.99.1`, these two tests fail while the remaining package tests pass. Pi `0.99.1` has no project override, and its `updateMcpServerConfig()` has no fourth parameter. With links to Pi `1.0.2` and with links to Pi `1.0.3`, the package tests pass. The fix is new links to a Pi `1.0.1` or later. It is not a change of the tests.
 
 A Pi from `npm install --prefix <dir>` without `--global` has the three packages side by side in `<dir>/node_modules/@earendil-works`. Link each one from there.
 
@@ -127,7 +127,7 @@ Promptr is a Pi extension: a prompt queue, progress checkpoints, staged handoffs
 | License | MIT, `packages/promptr/LICENSE`; declared in `packages/promptr/package.json`. |
 | Skills | `packages/promptr/skills/`: `promptr-generate-task-prompt`, `promptr-handoff`, `openknowledge-project-pages` and `watch-herdr-agents` |
 | Publish rule | `("packages/promptr", ("node_modules/", "dist/", "LICENSE"))`; `packages/promptr/LICENSE` is explicit in `PUBLISH`. |
-| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` `1.3.0`. The build, the 781 tests, the typecheck and `npm run smoke` pass with both dependencies at 1.3.0. Not verified on 1.3.0: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
+| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` to `runtime.piVersion` in `config/manifest.json`. The package tests pass, as do the build, typecheck and `npm run smoke`. Not verified on the kit pin: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
 
 ### Build and test
 
@@ -145,8 +145,8 @@ npm run typecheck
 
 Warning: `npm run install:local` and `npm run doctor` read or change the Pi directory of the host. Do not run them as a repository check. `npm run smoke:installed` installs into a new directory under the temporary directory and starts `pi` there without a prompt.
 
-A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now pins 1.3.0, matching the kit pin. Pi 1.3.0 declares its `pi-tui` dependency at that exact version.
-The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on 1.3.0.
+A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now matches `runtime.piVersion` in `config/manifest.json`. Pi declares its `pi-tui` dependency at that exact version.
+The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on the kit pin.
 The kit pin move does not change an installed Promptr copy or resolve its dependency drift. A live reinstall needs separate approval.
 
 ### Placeholder defaults
@@ -344,7 +344,8 @@ The files under `scripts/` are not repository checks: `e2e-live.mjs` and `e2e-li
 
 Historical evidence from Pi 1.1.0: the generated local-file `packages` entry resolves and loads the OpenViking extension.
 At that version, the kit test checks the installed resolver and rejects the former directory form. A no-model start confirms `/viking` registration.
-With Pi 1.3.0, isolated qualification passes all 295 package tests and a network-blocked resolver and factory-load check.
+With the Pi pin from `runtime.piVersion` in `config/manifest.json`, the package tests pass in isolated qualification.
+A network-blocked resolver and factory-load check also passes.
 It checks the selected file source, rejects the directory source, and confirms registration without starting a live session.
 The package stays at its kit path for dependency resolution. The generated profile needs no wrapper or extra file.
 Full strict OpenViking typing still reports four baseline diagnostics: two missing JavaScript declarations, recall-option typing, and MCP schema typing.

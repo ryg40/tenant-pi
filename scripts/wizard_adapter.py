@@ -193,14 +193,6 @@ def choice(ask, key, label, choices, default=None):
     return ask(key, label + " (" + ", ".join(choices) + ")", choices[0] if default is None else default, check)
 
 
-def text_if(ask, condition, key, label, default="", validate=None):
-    """A text that is asked only when `condition` holds. Returns None when it is not asked.
-
-    An earlier answer stays the default for a later run; the plan uses only the answers that it asked.
-    """
-    return ask(key, label, default, validate) if condition else None
-
-
 def consent(ask, key, label):
     """A consent. Only `yes` typed in full permits; the default is no. Returns a boolean."""
     return ask(key, label + " Type yes to permit; any other answer means no", "no") == "yes"
@@ -243,36 +235,6 @@ def integer(low, high, at="wizard.answer"):
         if not re.fullmatch(r"-?[0-9]{1,12}", value) or not low <= int(value) <= high:
             fail("integer_range", at)
     return check
-
-
-def json_shape(shape, at="wizard.answer"):
-    """JSON text of one shape: `str`, `int`, `float`, `bool`, `[shape]` or `{"key": shape}` (closed keys)."""
-    def check(value):
-        try:
-            data = json.loads(value)
-        except json.JSONDecodeError:
-            fail("json", at)
-        _shape(data, shape, at)
-    return check
-
-
-def _shape(data, shape, at):
-    if type(shape) is dict:
-        fields(data, tuple(shape), (), at)
-        for key, inner in shape.items():
-            _shape(data[key], inner, at + "." + key)
-    elif type(shape) is list:
-        if type(data) is not list or len(data) > MAX_ROWS:
-            fail("array", at)
-        for item in data:
-            _shape(item, shape[0], at)
-    elif shape is float:
-        if type(data) not in (int, float) or not math.isfinite(data):
-            fail("number", at)
-    elif shape is str:
-        _line(data, at, 1000)
-    elif type(data) is not shape:
-        fail(shape.__name__, at)
 
 
 class Context:

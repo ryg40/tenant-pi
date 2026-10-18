@@ -103,15 +103,14 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    Check the tested version, core npm spec, validator anchor, and accepted range from the new pin to the next minor line.
    See the [pin move rule](release-checklist.md#gates) for separately reviewed ranges and prerelease pins.
 
-   Then rebuild the pages that hold the core spec, like the `pages-*` steps of the qualification:
+   Then rebuild the public pages that hold the core spec before publication:
 
    ```sh
    PYTHONDONTWRITEBYTECODE=1 python3 scripts/architecture_build.py
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/architecture_build.py --local
    PYTHONDONTWRITEBYTECODE=1 python3 scripts/explainer_build.py
    ```
 
-   Run the local build only when `docs/architecture/local-values.json` exists; a published copy does not have it.
+   Generate the local edition separately with `python3 scripts/architecture_build.py --local` after preparing its untracked values file.
 
    Warning: the pin editor replaces both tracked files; preserve unrelated edits before running it.
 
@@ -140,7 +139,7 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    | Files | Review |
    | --- | --- |
    | `config/manifest.json`, `scripts/validate.py` | Core pin, range, core anchor, and Promptr readiness fact. |
-   | `docs/architecture.html`, `EXPLAINER.html`, and `docs/architecture-local.html` when it exists | Rebuilt pages only; no hand edit. |
+   | `docs/architecture.html` and `EXPLAINER.html` | Rebuilt pages only; no hand edit. |
    | `packages/promptr/package.json`, `packages/promptr/package-lock.json` | Exact package pins and resolved dependencies. |
    | `docs/packages.md`, `docs/workflow-modules.md` | Core and Promptr rows, package readiness, and version-scoped warnings. |
    | The foundation table of the development repository, if your copy has one | Core and Promptr rows. |
@@ -190,7 +189,6 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    The work directory needs an existing parent and cannot be a symlink, the clone, the live agent directory, or their ancestors.
    Qualification installs into a private run directory and edits only a candidate copy.
    It checks runtime versions, repository checks, package tests, generation, and one core-only loopback print reply.
-   Before the repository checks, it rebuilds the architecture pages and the explainer of the candidate copy with the new pin: the steps `pages-architecture`, `pages-architecture-local` and `pages-explainer`.
    A failure blocks the move; read its log and fix the cause before a new qualification attempt.
    Move the pins and regenerate the wizard plan fixture before this run.
    The qualifier copies those working-tree bytes and runs the full unit suite inside the candidate copy.
@@ -323,8 +321,10 @@ The commands match the release evidence, with explicit failure handling instead 
 
 4. Build without pushing and inspect the exact snapshot and tag.
 
+   A pin move changes the runtime contract, so it requires the full release class.
+
    ```sh
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_portable.py --no-push 2>&1 | tee "$LOGDIR/snapshot.log"
+   PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_portable.py --class full --no-push 2>&1 | tee "$LOGDIR/snapshot.log"
    git show portable --stat
    git tag --points-at portable --list 'portable/*'
    test "$(git rev-parse "$TAG^{commit}")" = "$(git rev-parse portable)"

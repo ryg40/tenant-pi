@@ -64,7 +64,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Publish the tickets to Gitea
 
-Publish the approved tickets as Gitea issues. Use the tracker's native blocking relationship: Gitea dependencies in pass 2. `docs/agents/issue-tracker.md` is the contract: use its sections "Generic operations", "Labels", "Wayfinding operations" and "Publication safety" for each operation. Never use a local file as the ticket. If the user requests snapshot exports, create the default directory `docs/wayfinder/issues/` when absent. It is not shipped with the kit. Snapshots are optional exports, not the tracker.
+Publish the approved tickets as Gitea issues. Use the tracker's native blocking relationship: Gitea dependencies in pass 2. `docs/agents/issue-tracker.md` is the contract: use its sections "Generic operations", "Labels", "Wayfinding operations" and "Publication safety" for each operation. Never use a local file as the ticket. If the user requests snapshot exports, write them outside the repository, in a directory that the user names. Snapshots are optional exports, not the tracker.
 
 Each ticket carries the parent label `wayfinder:parent:<map>`, where `<map>` is the number of the parent issue: the spec, or the map when the tickets come from a map. If the label does not exist, create it first (section "Labels"). When there is no parent issue, ask the user which spec or map is the parent before you publish. Each ticket carries the `ready-for-agent` triage label unless instructed otherwise; the tickets are agent-grabbable by construction. Do not apply a size label. Do not apply `wayfinder:task` to a new ticket.
 

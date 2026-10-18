@@ -8,7 +8,7 @@ import re
 import shlex
 
 from scripts.model_routes import ALIASES, ID, THINKING
-from scripts.private_init import inside
+from scripts.profile_write import inside
 from scripts.validate import ENV, absolute, fail, url
 
 # A Linux account name of the portable form.

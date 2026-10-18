@@ -14,8 +14,7 @@ import stat
 from dataclasses import dataclass
 from datetime import timezone
 
-from scripts.private_init import inside
-from scripts.profile_write import GENERATED_AT, WriteError, _ancestors, _create_file
+from scripts.profile_write import MAX_PATH, GENERATED_AT, create_new_file
 from scripts.validate import absolute, fail
 
 DIR_FIELD = "baseline.dir"
@@ -25,8 +24,6 @@ MODE = "0600"
 KINDS = ("file", "dir", "symlink", "other")
 RESULTS = ("unchanged", "changed", "no_baseline")
 FIELDS = ("schemaVersion", "dir", "recordedAt", "present", "mtimeNs", "entries")
-# Length bound of the one caller-supplied text that the report of `write` echoes.
-MAX_PATH = 1024
 # Bound of the direct entries of the directory: the rows of a record and the names of a result.
 MAX_ENTRIES = 4096
 # Bound of the entries of all levels, and of the directory levels below the directory.
@@ -212,79 +209,10 @@ def compare(saved, directory, state):
     return report
 
 
-def check_location(path, forbidden):
-    """Static refusal of a bad baseline path, before any filesystem access.
-
-    `forbidden` is a sequence of (rule, absolute root), as in `private_init.check_location`.
-    """
-    absolute(path, OUT_FIELD)
-    if len(path) > MAX_PATH:
-        fail("path_too_long", OUT_FIELD)
-    for rule, root in forbidden:
-        if inside(path, root):
-            fail(rule, OUT_FIELD)
-
-
-def _parent(path):
-    """The open parent directory and the leaf name, through the ancestor walk of the guarded writer."""
-    try:
-        return _ancestors(path)
-    except WriteError as exc:
-        raise WriteError(exc.rule, OUT_FIELD + exc.field[len("target"):]) from None
-    except FileNotFoundError:
-        raise WriteError("parent_missing", OUT_FIELD + ".parent") from None
-    except OSError:
-        raise WriteError("unsafe_path", OUT_FIELD + ".parents") from None
-
-
-def _present(parent_fd, leaf):
-    try:
-        os.stat(leaf, dir_fd=parent_fd, follow_symlinks=False)
-    except OSError:
-        return False
-    return True
-
-
-def preflight(path):
-    """Run the ancestor and absence checks without a write; raise WriteError on a refusal."""
-    parent_fd, _ = _parent(path)
-    try:
-        os.close(parent_fd)
-    except OSError:
-        raise WriteError("cleanup_failed", "baseline.descriptors") from None
-
-
 def write(path, data):
-    """Create the absent baseline file with mode 0600, or raise WriteError. Nothing existing is changed."""
-    parent_fd, leaf = _parent(path)
-    created = complete = False
-    failure = None
-    warnings = []
-    try:
-        # Exclusive creation is the ownership boundary: a baseline is never replaced.
-        _create_file(parent_fd, leaf, data)
-        created = True
-        os.fsync(parent_fd)
-        complete = True
-    except FileExistsError:
-        failure = WriteError("target_exists", OUT_FIELD)
-    except WriteError as exc:
-        # The shared file creation marks each of its failures as after creation.
-        failure = WriteError(exc.rule, OUT_FIELD, candidate_created=True)
-    except OSError:
-        created = created or _present(parent_fd, leaf)
-        failure = WriteError("write_failed" if created else "target_unavailable", OUT_FIELD, candidate_created=created)
-    finally:
-        try:
-            os.close(parent_fd)
-        except OSError:
-            if complete:
-                warnings.append("cleanup_failed: baseline.descriptors")
-            elif failure is None:
-                failure = WriteError("cleanup_failed", "baseline.descriptors", candidate_created=created)
-    if failure is not None:
-        raise failure from None
-    return BaselineResult(path, True, tuple(warnings))
+    """Create the absent baseline with mode 0600."""
+    result = create_new_file(path, data, 0o600, OUT_FIELD)
+    return BaselineResult(result.path, result.complete, result.warnings)
 
 
 def report(value, result):

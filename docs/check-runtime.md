@@ -73,7 +73,8 @@ Not verified: an interactive launch of a generated profile with the kit pin, or 
 
 ### Pi 1.3.0 evidence and release changes
 
-The current pin is Pi `1.3.0`, with accepted range `>=1.3.0 <1.4`.
+The current pin is `runtime.piVersion` in `config/manifest.json`; `runtime.piAcceptedRange` gives the accepted range.
+The release notes below describe the reviewed release, not a second source of the current pin.
 An isolated candidate installation reports `1.3.0` through `check-runtime`, alongside Node `24.21.0` and Python `3.11.2`.
 All three report `match`. This proves the version probe, not an interactive launch or an optional module load.
 
@@ -89,8 +90,8 @@ The changelog has no `Breaking Changes` heading. That does not prove compatibili
 | `done()` of `ctx.ui.custom({ overlay: true })` closes its own overlay, not the top overlay | Pi now closes the overlay through its handle. Promptr's sidebar no longer patches `hideOverlay` for the old call, and its test fixtures close an overlay through its handle. | Promptr tests pass; no interactive overlay check verified. |
 | Model switching drops thinking blocks of another model; provider, retry and catalog fixes; malformed tool-call JSON fails validation; `sessionShareDestination` for `/share` | No kit provider, profile, setting or key binding default changes. | Provider and model behavior remain unverified. |
 
-Promptr's build, 781 tests, typecheck and offline smoke pass with both exact dependencies at `1.3.0`.
-OpenViking's 295 package tests and its network-blocked resolver and factory-load check pass with Pi `1.3.0` candidate dependencies.
+Promptr's package tests pass, as do its build, typecheck and offline smoke with both exact dependencies at `1.3.0`.
+OpenViking's package tests and its network-blocked resolver and factory-load check pass with Pi `1.3.0` candidate dependencies.
 The earlier interactive no-model start at `1.1.0` remains historical evidence, not a `1.3.0` interactive trial.
 A kit dependency change does not update an installed Promptr copy or resolve its drift.
 A fast-track release retains the clean-user, interactive and live-service gaps in the release record.
@@ -116,8 +117,8 @@ The changelog has a `Breaking Changes` heading. The release requires these check
 | Herdr images, overlays, shifted-symbol keys, provider retries and OpenRouter lists change | No kit provider, profile or binding default changes. | Herdr, overlay, clipboard and provider behavior remain unverified interactively. |
 | Codemode adds tool reachability and namespace aliases; experimental exports and the chord dependency disappear | No optional codemode optimization or experimental client is adopted. npm regenerates Promptr's dependency lock. | No codemode execution verified. |
 
-Promptr's build, 783 tests, typecheck and offline smoke passed with both exact dependencies at `1.2.0`.
-OpenViking's 295 package tests and its network-blocked resolver and factory-load check passed with Pi `1.2.0` candidate dependencies.
+Promptr's package tests passed, as did its build, typecheck and offline smoke with both exact dependencies at `1.2.0`.
+OpenViking's package tests and its network-blocked resolver and factory-load check passed with Pi `1.2.0` candidate dependencies.
 
 ### What the install command fixes
 
@@ -136,7 +137,7 @@ The changelog marks one change as breaking. Three more changes touch a built-in 
 | --- | --- | --- | --- |
 | The provider `azure-openai-responses` has the new name `azure` (Pi pull request 9714). | Breaking Changes | `settings.json` (`defaultProvider`, `enabledModels`, `modelThinkingLevels`), `models.json`, `auth.json`, and the type `KnownProvider` that an extension can import from `pi-ai` | See the text below the table. |
 | Output files are readable only by the user: the full text of a truncated tool output, a binary MCP resource and a codemode image. | Changed | The built-in MCP extension (`dist/extensions/mcp/tools.js`) and the built-in tools | No effect on a kit file. Pi writes these files to the temporary directory of the system, not to the agent directory. |
-| `Home` and `End` always move the editor cursor. `Ctrl+Home` and `Ctrl+End` go to the top and the bottom of the transcript. | Changed | The default keys of four key binding IDs in `pi-tui`: `tui.editor.cursorLineStart`, `tui.editor.cursorLineEnd`, `tui.altScreen.top` and `tui.altScreen.bottom` | The kit generates no `keybindings.json`. At that review, `packages/promptr` held its own `pi-tui` 1.0.2 with the old default keys. It now pins 1.3.0; see [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). |
+| `Home` and `End` always move the editor cursor. `Ctrl+Home` and `Ctrl+End` go to the top and the bottom of the transcript. | Changed | The default keys of four key binding IDs in `pi-tui`: `tui.editor.cursorLineStart`, `tui.editor.cursorLineEnd`, `tui.altScreen.top` and `tui.altScreen.bottom` | The kit generates no `keybindings.json`. At that review, `packages/promptr` held its own `pi-tui` 1.0.2 with the old default keys. It now pins the version from `runtime.piVersion` in `config/manifest.json`; see [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). |
 | The codemode function `image()` also saves each image to a temporary file. A correction keeps codemode in operation after an update removed the running install. | New Features, Changed, Fixed | The built-in codemode extension | No effect on a kit file. |
 
 The provider name: the changelog tells the user to change the name in `auth.json` (or to run `/login` again), in `models.json` and in the three keys of `settings.json`. The kit writes these three keys from `roles` and `modelRoutes.cycle` of the overlay. It takes each provider name from the overlay. It compares the name with the `--registry` file of the user, not with the provider list of Pi. The kit holds no such list. So an overlay and a registry file that name `azure-openai-responses` must name `azure` for Pi `<reviewed release>`. No tracked file of the kit names this provider. The `AZURE_OPENAI_*` variables did not change.
@@ -208,6 +209,6 @@ A `match` then removes the gap of that tool. Another status gives a gap that nam
 - No read of the canary files `auth.json`, `models.json`, `settings.json` and `sessions` by the CLI process (file-open audit; this is a list of forbidden names, not a proof that no other file is opened, and the audit does not see the child processes). No canary text in the output, an unchanged manifest, and static diagnostics for a relative path, a missing manifest, a symlink manifest and a changed range.
 
 Not verified: that `pi --version` with `PI_CODING_AGENT_DIR` set writes nothing outside that directory and opens no network connection. The kit sets the variable and removes the directory; the behaviour of Pi is not measured.
-Not verified: the output form of `pi --version` on versions other than `1.0.0`, `1.0.2`, `1.0.3`, `1.0.4`, `1.1.0`, `1.2.0` and `1.3.0`, and behaviour on macOS, with a Node version manager shim, or with a `python3` older than 3.4 (which prints its version on standard error).
+Not verified: the output form of `pi --version` on versions other than `1.0.0`, `1.0.2`, `1.0.3`, `1.0.4`, `1.1.0`, `1.2.0` and the tested version from `runtime.piVersion` in `config/manifest.json`, and behaviour on macOS, with a Node version manager shim, or with a `python3` older than 3.4 (which prints its version on standard error).
 Not verified: that a child process of a tool stops at the timeout. The timeout stops the tool itself.
 Not verified: a real failed removal of the temporary directory. The tests force it with a patched `rmtree`.

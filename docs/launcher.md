@@ -1,6 +1,6 @@
 # Launcher file
 
-Status: offline implementation, not a qualified runtime. The `--launcher` option of `plan` and `generate` in `scripts/tenant_pi.py` gives one profile one launcher file. The file holds the exact launch line of the plan, so the user does not copy the line by hand and does not run the wrong `PI_CODING_AGENT_DIR`; see [the profile lifecycle](profile-lifecycle.md). The logic is in `scripts/launcher.py`. It uses the ancestor walk and the file creation of the guarded writer of `generate` (`scripts/profile_write.py`).
+Status: offline implementation, not a qualified runtime. The `--launcher` option of `plan` and `generate` in `scripts/tenant_pi.py` gives one profile one launcher file. The file holds the exact launch line of the plan, so the user does not copy the line by hand and does not run the wrong `PI_CODING_AGENT_DIR`; see [the profile lifecycle](private-directory.md#profile-lifecycle). The logic is in `scripts/launcher.py`. It uses the ancestor walk and the file creation of the guarded writer of `generate` (`scripts/profile_write.py`).
 
 ## Command
 
@@ -16,8 +16,6 @@ python3 scripts/tenant_pi.py generate --overlay /home/EXAMPLE_USER/.config/tenan
 - `plan --launcher` prints the path as `commands.launcherDisplayOnly`. It applies the static location rules of the table "Refusals" and writes nothing. It does not check that the file is absent.
 - `generate --launcher` applies the static rules and the ancestor and absence checks before it creates the target. It writes the launcher file only after the profile is complete (`filesComplete` is `true`). A failed generation writes no launcher file.
 - Without `--launcher`, the output of `plan` and `generate` does not change.
-
-With `--launcher`, the two actions read `HOME` to find `~/.pi/agent` and `~/.llm-wiki`, as `init-private` does. They also read `WIKI_HOME`, to find the wiki vault of that root. The launcher rules read no other environment value. `HOME` must be set and must be an absolute path without a trailing slash.
 
 ## The file
 
@@ -158,14 +156,13 @@ The only caller text in the output is the `--launcher` path. Its character class
 
 Each refusal is a static `rule: field` text. It contains no path and no value. All refusals of this table fire before any write: no target and no launcher file is created.
 
+See the [refusal rules](private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
+
 | Diagnostic | Cause |
 | --- | --- |
 | `absolute_path: launcher.path`, `text: launcher.path`, `shell_or_template: launcher.path` | The path is not an absolute POSIX path of the kit form. This includes a relative path. |
 | `path_too_long: launcher.path` | The path has more than 1024 characters. |
 | `under_target: launcher.path` | The path is the target or is under it. The target is `target.agentDir` of the overlay and, for `generate`, `--target`. |
-| `under_pi_agent: launcher.path` | The path is `~/.pi/agent` or is under it. |
-| `under_wiki_vault: launcher.path` | The path is `~/.llm-wiki` or is under it. With `WIKI_HOME` set, also `<WIKI_HOME>/.llm-wiki`. With `memory.wiki.wikiHome` in the overlay, also `<wikiHome>/.llm-wiki`. The kit writes nothing below a personal wiki vault. |
-| `under_kit: launcher.path` | The path is the kit clone or is under it. This includes `.local/` of the clone. |
 | `target_exists: launcher.path` | `generate` only. The path exists: a file, a directory, a link, a dangling link or another entry. |
 | `parent_missing: launcher.path.parent` | `generate` only. The parent, or a directory above it, does not exist. The kit does not create a parent. |
 | `unsafe_parent_owner: launcher.path.parent` | `generate` only. The parent is owned by root and the caller is not root. |
@@ -173,8 +170,6 @@ Each refusal is a static `rule: field` text. It contains no path and no value. A
 | `unsafe_permissions: launcher.path.parents` | `generate` only. The parent or a directory above it is writable by group or others and has no sticky bit. |
 | `unsafe_path: launcher.path.parents` | `generate` only. The parent or a directory above it is a symbolic link or is not a directory. |
 | `home_required: launcher.home`, `absolute_path: launcher.home` | `HOME` is not set or is not an absolute path. |
-
-The four location rules (`under_target`, `under_pi_agent`, `under_wiki_vault`, `under_kit`) compare path text. Each root counts twice: as written, and with its symbolic links resolved (this reads link targets only, no file content). The ancestor walk then refuses each symbolic link above the file, so a link cannot reach a root from another name. The path cannot start with `!`, `+` or `-` and cannot have a leading or trailing slash or a `.` or `..` segment: the absolute-path rule allows only `/` as the first character.
 
 These failures come after a complete generation. `generate` returns exit code 1 with the full report and the diagnostic under `launcher`:
 
@@ -198,9 +193,7 @@ The kit has no rollback. After a failure with `"fileCreated": true`, inspect the
 
 ## Limits
 
-`under_kit` covers only the root of the kit that runs the action. A second clone of the kit, or the main clone when the action runs from a Git worktree, is not protected.
-
-The boundary is the Linux-first boundary of the guarded writer; see [the guarded writer](profile-write.md). It does not protect against another process of the same user, against root, or against a filesystem that ignores permissions. The path comparison does not detect a root that a bind mount or a hard-linked directory shows under another name.
+The boundary is the Linux-first boundary of the guarded writer; see [the guarded writer](generator.md#guarded-new-target-writer). It does not protect against another process of the same user, against root, or against a filesystem that ignores permissions. The path comparison does not detect a root that a bind mount or a hard-linked directory shows under another name.
 
 ## Test coverage
 
@@ -210,10 +203,9 @@ The boundary is the Linux-first boundary of the guarded writer; see [the guarded
 - The file from the real CLI in a disposable `HOME` with a gateway profile and a target name with a space and quote characters: the bytes of the file equal `#!/bin/sh`, then `exec env ` plus `commands.launchDisplayOnly` of the `plan` output and of the `generate` output; mode `0700`; the gateway URL is in the line; no key name and no key value is in the file or the output. A core-only profile gives the same form.
 - The session directory (`test_inherited_session_dir_does_not_reach_pi`): with a target name that has a space and the two quote characters, the plan line and the file hold `env -u PI_CODING_AGENT_SESSION_DIR` before the `PI_CODING_AGENT_DIR` assignment. In an environment that exports `PI_CODING_AGENT_SESSION_DIR` and another `PI_CODING_AGENT_DIR`, a recording `pi` gets the target as `PI_CODING_AGENT_DIR` and no `PI_CODING_AGENT_SESSION_DIR`, from `/bin/sh -c '<plan line>'` and from the file. Another variable of the caller stays. `tests/test_profile_plan.py` checks the form for a target with a quote character.
 - The wiki home (`test_inherited_wiki_home_does_not_reach_pi`): for a wiki profile with no `wikiHome`, the plan line and the file hold `-u WIKI_HOME`. In an environment that exports `WIKI_HOME`, a recording `pi` gets no `WIKI_HOME`, from `/bin/sh -c '<plan line>'` and from the file. A control without the launch line gets the inherited value. With `wikiHome`, the recording `pi` gets the overlay value.
-- A launcher path under `~/.llm-wiki`, under `<WIKI_HOME>/.llm-wiki`, under `<wikiHome>/.llm-wiki` of the overlay, and under the real directory of a vault that is a link: `under_wiki_vault`, from `plan` and from `generate`.
 - That the file runs the same command as the plan line: a recording `pi` on `PATH` gets the same arguments and the same full environment (a sorted `env` dump, which holds `PI_CODING_AGENT_DIR`, `TENANTEXT_LITELLM_BASE_URL` and the key) from `/bin/sh -c '<plan line>'` and from the file. The key comes from the environment of the caller.
-- `plan --launcher`: the path under `commands`, no file and no target written; the refusal of a relative path and of a path under the target, the kit clone and `~/.pi/agent`. Without `--launcher`, no new key.
-- Each refusal from the CLI, with no target, no launcher and no other change in the test directory: an existing file, a relative path, a path equal to and under the target, a path under the kit clone (also `.local/`), a path under `~/.pi/agent` (also when `~/.pi/agent` is a link), an absent parent, a linked ancestor, a path that is too long, and a missing or relative `HOME`. A failed generation (an existing target, `pi_login_blocked`) writes no launcher.
+- `plan --launcher`: the path under `commands`, no file and no target written; the refusal of a relative path and of a path under the target. Without `--launcher`, no new key.
+- Each refusal from the CLI, with no target, no launcher and no other change in the test directory: an existing file, a relative path, a path equal to and under the target, an absent parent, a path that is too long, and a missing or relative `HOME`. A failed generation (an existing target, `pi_login_blocked`) writes no launcher.
 - In the module: an existing file, directory, link, dangling link and FIFO; an absent parent, a linked and a non-directory ancestor, a writable ancestor, and a parent that the caller does not own; a restrictive umask (`file_privacy`, the file stays with mode `0500`); an entry that appears after the ancestor walk; a failed creation and a failed write; a failed close before completion (the primary error stays) and after completion (a static warning).
 - After a complete generation: a failed creation, a short write and an entry that appears during the generation each give exit code 1, the full report with `filesComplete: true`, and the static diagnostic under `launcher`.
 

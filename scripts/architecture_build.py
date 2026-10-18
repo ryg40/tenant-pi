@@ -2,9 +2,10 @@
 """Build the interactive architecture diagrams of the kit as one self-contained HTML file (Python 3.11+).
 
 The public build reads `docs/architecture/model.json` and `config/manifest.json` and writes
-`docs/architecture.html`. With `--local`, the build also reads the development-only
+`docs/architecture.html`. With `--local`, the build also reads the untracked input
 `docs/architecture/local-values.json`: the real value of each placeholder and the nodes of one
-host. It writes `docs/architecture-local.html`. The output has inline CSS, JavaScript and SVG.
+host. It writes the untracked `docs/architecture-local.html`, not the values file.
+The output has inline CSS, JavaScript and SVG.
 It loads no external file and sends no request. The same input gives the same bytes.
 
 A refusal prints `rule: field` on standard error and exits with code 2. `--check` writes nothing:

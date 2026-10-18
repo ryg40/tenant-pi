@@ -371,7 +371,7 @@ The text form prints the recommended packet's prompt verbatim between
 ## Rendering
 
 The baseline renderer, `tracker/render.py`, remains the shipped page.
-The three prototypes in `tracker/designs/` stay development-only and are excluded from publication.
+The three design prototypes left the repository on 2026-10-18; the Git tag `dev-history/20261018` of the development repository keeps them.
 Promoting a prototype requires a separate design decision.
 
 `tracker.render.render(model, template=None)` validates the model first.

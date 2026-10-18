@@ -31,6 +31,10 @@ A change that an existing adapter cannot follow gets a new version number.
 A new optional method with a default in the base class keeps the version.
 A kit pins a tenant-pi release tag. Move the pin and the adapter file together.
 
+On 2026-10-18, the helpers `text_if` and `json_shape` left the seam with owner approval.
+An adapter that called them must define them itself.
+No known adapter used them; the version stays 1.
+
 ## Select an adapter
 
 `--adapter` takes `tenant-pi` (the default) or the absolute path of a Python file that ends in `.py`.
@@ -144,7 +148,6 @@ The seam exports one helper for each question type:
 | Helper | Type | Result |
 | --- | --- | --- |
 | `choice(ask, key, label, choices, default=None)` | A selection from fixed choices | The chosen text. |
-| `text_if(ask, condition, key, label, default="", validate=None)` | A text that the wizard asks only when `condition` holds | The text, or `None` when the wizard does not ask. |
 | `ask(key, label, default, validator)` | A validated value | The text. |
 | `consent(ask, key, label)` | A consent | `True` only for `yes` typed in full. The default is no. |
 
@@ -154,7 +157,6 @@ The validators are factories. Each takes an optional field name `at` for the err
 - `url()`: an HTTP or HTTPS URL without credentials and without a query. The rules are `url` and `credential_free_url`.
 - `env_name()`: an environment variable name, never a value.
 - `integer(low, high)`: a decimal integer from `low` to `high`.
-- `json_shape(shape)`: JSON text of one shape. A shape is `str`, `int`, `float`, `bool`, `[shape]` or `{"key": shape}` with closed keys.
 - `optional(validator)`: a blank answer passes; another answer goes to the validator.
 
 ### Scan

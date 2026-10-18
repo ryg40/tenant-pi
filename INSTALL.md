@@ -2,9 +2,7 @@
 
 This file is for an agent that a user points at this repository: Claude Code, Pi, or another coding agent. Read the whole file first. Then walk the user through the stages in order. Each stage has a goal, the commands, and the check that proves it is done.
 
-The kit prepares a separate Pi profile in a new directory. It never writes into an existing Pi profile directory. The companion guide `skills/tenant-pi-install/SKILL.md` follows the same order and asks a question at each stage. Its stage names and numbers differ from the ones here.
-
-The order differs from `docs/guides/setup.md` in its reference stage numbering. Both flows now scan, select and review before changes. Install commands below require the approved plan.
+The kit prepares a separate Pi profile in a new directory. It never writes into an existing Pi profile directory. The companion [question list](skills/tenant-pi-install/SKILL.md) points to these stages. Install commands below require the approved plan.
 
 `<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
 
@@ -29,11 +27,24 @@ The guided agent rechecks target facts, then obtains execution approval and sepa
 The stages below are reference procedures for that approved plan, not permission to install before selection.
 The deterministic numbered fallback remains available through `components`.
 
+## Labels for a prerequisite
+
+Each prerequisite and each stage gets one of four labels. The labels are the same in [the module guide](docs/guides/modules.md).
+
+| Label | Meaning |
+| --- | --- |
+| `ready` | The step passed an accepted live trial on the qualified platform. No module or live stage has this label in this release. |
+| `unverified` | The kit can do its offline part, but no accepted live trial proves the runtime part. |
+| `blocked` | The kit refuses the choice, or a prerequisite is missing and nothing in the kit can supply it. |
+| `skipped` | The user did not select the module or did not run the step. A skipped step is never "passed". |
+
+An offline stage that passes its own check on this machine is recorded as passed, not as `ready`. Example: `check-runtime` prints `match` for `node`.
+
 ## Rules for the agent
 
 1. Ask before each command that changes the machine: an install, a new directory, a shell file, a credential. Show the command. Run it when the user says yes. Running it yourself is allowed; running it without a yes is not.
 2. Never write, print, or paste a secret. Name a credential by its environment variable only.
-3. Never write into `~/.pi/agent` or into the directory in `PI_CODING_AGENT_DIR`. The kit generates into a new, absent directory only. `init-private --target`, `validate`, `plan` and `generate` refuse a target that is `~/.pi/agent` or is under it, with the rule `under_pi_agent`. The kit does not read `PI_CODING_AGENT_DIR`: when Stage 0 printed that variable, keep the target outside that directory yourself.
+3. Keep new profiles outside existing live directories and follow the [refusal rules](docs/private-directory.md#refusal-rules). The kit does not read `PI_CODING_AGENT_DIR`; protect that directory yourself.
 4. Adapt the syntax of a command to the machine (see "Local differences"). Do not adapt the rules of the kit: no secret in a file, no generation into an existing directory, no edit of a live profile.
 5. Record what you ran, what you skipped, and every adaptation in `<private dir>/install-log.md`. A live check that did not run is "not run", never "passed".
 6. If a stage fails, keep the earlier stages, say what failed, and stop at a state the user can resume from.
@@ -486,7 +497,7 @@ Tell the user: "Open `<private dir>/compose.env` in your editor. Put the gateway
 
 ### 5. Build and start
 
-Use the `display` lines of `commands` for the runtime of the user, `docker` or `podman`. Show each line and run it on yes: first `build`, then `up`. Each Compose line carries `KIT_COMMIT` and `--env-file`, also `ps`, `logs` and `down`. The lines have this form:
+Use the `display` lines of `commands` for the runtime of the user, `docker` or `podman`. Show each line and run it on yes: first `build`, then `up`. Each Compose line carries `KIT_COMMIT` and the env file option (`docker compose --env-file <file>`), also `ps`, `logs` and `down`. The lines have this form:
 
 ```sh
 KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml build
@@ -537,7 +548,7 @@ mkdir -p -m 700 "$HOME/.config"
 cd ~/tenant-pi && python3 scripts/tenant_pi.py init-private --dir "$HOME/.config/tenant-pi" --target "$HOME/.pi/profiles/<profile>" [--overlay <existing overlay>]
 ```
 
-With `--target`, the new `overlay.json` has that path as `target.agentDir`, and the output shows it as `targetAgentDir`. A core-only profile then needs no edit and no editor: go to the `validate` command below. The action does not create the target. It refuses a target that is `~/.pi/agent` or is under it, that is inside `<private dir>`, or that is inside the clone. `validate`, `plan` and `generate` refuse the same two places for `target.agentDir`, also in an overlay that was edited by hand: `under_pi_agent: overlay.target.agentDir` and `under_kit: overlay.target.agentDir`.
+With `--target`, the new `overlay.json` has that path as `target.agentDir`, and the output shows it as `targetAgentDir`. A core-only profile then needs no edit and no editor: go to the `validate` command below. The action does not create the target.
 
 When the host already has an overlay, for example of an earlier profile, pass `--overlay <existing overlay>` once for each such file: the action then refuses a directory under the target of that overlay. Without the option it knows only the sample target and the target of `--target`.
 
@@ -570,7 +581,7 @@ Edit `overlay.json` for the other answers of the user. A core-only profile needs
 
 1. `target.agentDir`: `--target` sets it. Change it by hand only as described above.
 2. `selection`: do "The checklist" below. The action `components` is the one source of the component list, and this file holds no copy of it. The wizard starts with core only. The legacy `components` output retains recommended marks but does not set wizard defaults. Each in-tree component is `unverified`: no test of the kit loads it with the kit pin. `promptr` needs the build step of Stage 4. Stage 4a has the questions for `herdr` and `questions`.
-3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/model-routes.md`.
+3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/guides/providers.md#pure-model-route-contract`.
 4. Gateway, only when the user routes through the Tenantext gateway: `modelRoutes.gateway` is `{"auth": "env"}`; `endpoints.codex-accounts` is the gateway URL that ends in `/v1`; `env.codex-accounts` is `${TENANTEXT_LITELLM_API_KEY}`. The user exports the key themselves.
 5. `hermes`, `wiki`, `openviking`, and `agentcore` are the memory modules. The fresh wizard leaves every memory module unchecked. Saved selections retain their memory choices. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
    - For `hermes` and `wiki`, selection is not consent. Ask explicitly about storage and recall before setting consent. With both modules on, the overlay gets these two keys:
@@ -599,6 +610,29 @@ Edit `overlay.json` for the other answers of the user. A core-only profile needs
 7. Registry, required when `modelRoutes` names a model for a role or the cycle: edit `~/.config/tenant-pi/registry.json` (mode 600; `init-private` creates it as `{}`, the fallback does not create it).
    Its whole shape is `{"<provider>": {"<model>": ["<thinking level>"]}}`, with one entry for each model of `roles` and `modelRoutes.cycle`.
    The user confirms each entry. The file is evidence of the user's choice, not a model catalog. See `docs/generator.md`.
+
+A core-only overlay looks like this. Its `selection` object is the output of `python3 scripts/tenant_pi.py components --select core`, so `disable` lists each optional component:
+
+```json
+{
+  "schemaVersion": 1,
+  "target": {"agentDir": "/home/EXAMPLE_USER/.pi/profiles/main"},
+  "selection": {
+    "enable": ["core"],
+    "disable": ["agentcore", "anthropic-usage", "codex-accounts", "context-meter", "coordinator-skills", "copilot-usage", "doctor", "herdr",
+                "herdr-relay", "herdr-watch", "hermes", "knowledge-skills", "mcp",
+                "model-routing", "openviking", "ops-footer", "promptr", "promptr-generate-task-prompt",
+                "promptr-handoff", "promptr-openknowledge-project-pages", "promptr-watch-herdr-agents", "questions",
+                "resources", "slopscore", "slopscore-pr", "tenantext", "tracker-site", "wiki"]
+  },
+  "paths": {},
+  "roles": {},
+  "endpoints": {},
+  "env": {},
+  "inputs": {"modelsFile": null, "mcpFile": null},
+  "consent": {"memoryCapture": false, "remoteMemoryWrites": false, "telemetry": false}
+}
+```
 
 ### The checklist
 
@@ -630,7 +664,7 @@ The wizard checklist supports arrows, Space, details and scrolling. It shows eve
 
 ### The LLM Wiki vault
 
-Do this part when `wiki` is on, before you write `memory.wiki`. The rule of the kit: the profile uses an existing vault of the user as it is. The kit makes no second vault. It refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`. The vaults are `.llm-wiki` in the home directory, `<WIKI_HOME>/.llm-wiki`, and, for an action that reads the overlay, `<wikiHome>/.llm-wiki`. `baseline` and `init-private` read no overlay, so they know the first two only.
+Do this part when `wiki` is on, before you write `memory.wiki`. The profile uses the existing vault as it is.
 
 ```sh
 cd ~/tenant-pi && python3 scripts/tenant_pi.py check-wiki-vault
@@ -663,6 +697,8 @@ Validate after each edit:
 ```sh
 cd ~/tenant-pi && python3 scripts/tenant_pi.py validate --overlay ~/.config/tenant-pi/overlay.json [--registry ~/.config/tenant-pi/registry.json]
 ```
+
+Add `--require-role <role>` when a later stage needs a role, for example `review`.
 
 Add `--registry` only when the overlay has `modelRoutes` with a model for a role or for the cycle. Without the option, such an overlay stops with `registry_required: registry`.
 An overlay without `modelRoutes` refuses the option with `registry_without_routes: registry`. A core-only overlay is one, and so is the recommended set with no model route.
@@ -804,6 +840,22 @@ The kit writes no credential. Two paths:
 
 For the gateway, ask how the key reaches the process: the launching shell, a launcher script the user writes, or a secret store the user already uses. Never edit a shell startup file yourself.
 
+Check that a name is set without printing its value:
+
+```sh
+test -n "${TENANTEXT_LITELLM_API_KEY:-}" && echo set || echo unset
+```
+
+### Shells that do not inherit your variables
+
+A variable that your interactive shell exports does not reach every process. These starts often miss it:
+
+- A command through SSH without a terminal, for example `ssh host 'command'`. Many `~/.bashrc` files stop early for a shell that is not interactive.
+- A terminal inside a browser page, a web IDE or a remote desktop session. It can start a login shell with another startup file, or no startup file.
+- A desktop launcher, a systemd unit, a cron job or a tmux server that started before you exported the name.
+
+In each of these, run the check above in the same shell that runs the launcher. Also run `check-runtime` there: a `PATH` line for `"$HOME/.npm-global/bin"` can be missing in the same way. Do not fix this with an edit of a shell startup file that you did not review.
+
 ### Direct providers: Codex, llama-swap and vLLM
 
 Goal: each provider that the user wants is in the profile, with no gateway.
@@ -812,7 +864,7 @@ Ask which of the three the user wants. `docs/guides/providers.md` has the comple
 
 - Codex: a provider that Pi includes. The user runs `/login` inside Pi and selects the model with `/model`. The login is separate from the gateway key.
 - llama-swap and vLLM: ask for the base address, the exact model alias, and whether the server needs a key. Use no default. Register the provider in `<target>/models.json` after generation. A key is a `$NAME` reference to an environment variable, never a value.
-- A direct provider accepts local HTTP, a LAN address and each port. The gateway route stays HTTPS only: `docs/model-routes.md`.
+- A direct provider accepts local HTTP, a LAN address and each port. The gateway route stays HTTPS only: `docs/guides/providers.md#pure-model-route-contract`.
 - Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` for validated non-secret direct providers. The wizard guide defines the supported subset and regeneration rules.
 - Do not replace a `models.json` that exists, and do not copy `auth.json` between profiles.
 
@@ -915,7 +967,7 @@ Preferred form: print mode. With `-p`, Pi sends one prompt, writes the final rep
 
 Print mode writes an error text to standard error. With the gateway, an auth error means that the key did not reach the process.
 
-Print mode uses the default model of the profile. Pi reads a provider key from the environment of the launching shell, including in a profile with no login. Not verified: which variable names Pi reads for each provider. Use the name that the Pi documentation gives. To get the reply from one named model, add `--model '<provider>/<model>'` before `-p`.
+Print mode uses the default model of the profile. Rule: Pi reads a provider key from the environment of the launching shell, including in a profile with no login. The reply can then come from a provider that you did not choose. So name the model for this check: add `--model '<provider>/<model>'` before `-p`. The plan warns when a known provider key variable is set, under `commands.providerKeyWarning`. Not verified: which variable names Pi reads for each provider. Use the name that the Pi documentation gives.
 
 Other form: a pasted screen. Use it when the user sends the prompt inside an interactive Pi session. The user types the fixed prompt and pastes the screen. A Pi screen has no labels. Its lines come in this order:
 
@@ -958,7 +1010,7 @@ With `changed`, find out whether a Pi ran in the live profile after `recordedAt`
 
 ### Check 8: the comparison of the vault
 
-Only with `wiki`, after the first launch. This check is check 8 in `INSTALL.md` and check 7 in the setup guide, `docs/guides/setup.md`. It is the same comparison. `<vault>` is the directory of the vault baseline:
+Only with `wiki`, after the first launch. `<vault>` is the directory of the vault baseline:
 
 ```sh
 cd ~/tenant-pi && python3 scripts/tenant_pi.py check-baseline --dir '<vault>' --baseline "$HOME/.config/tenant-pi/wiki-vault-baseline.json"
@@ -1037,7 +1089,7 @@ The first install ends with Stage 9. This stage is one message to the user, and 
 
 Tell the user the rule of each later change: the kit changes no profile in place. A new kit version, a new component or a new Pi pin gives a new candidate directory from the same overlay with another `target.agentDir`. The old candidate stays as the fallback. Auth, sessions and memory are not copied.
 
-[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, `compare` and `carry`, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
+[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, `python3 scripts/tenant_pi.py compare`, `python3 scripts/tenant_pi.py carry`, `python3 scripts/tenant_pi.py list`, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
 
 ## Not in this kit
 

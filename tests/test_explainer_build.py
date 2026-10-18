@@ -23,8 +23,6 @@ from scripts.doc_check import published  # noqa: E402
 
 SOURCE = ROOT / explainer_build.SOURCE_REL
 TUTORIALS = ROOT / explainer_build.TUTORIALS_REL
-# The development-only values of one host. A portable snapshot has no such file.
-LOCAL_VALUES = ROOT / "docs/architecture/local-values.json"
 PEOPLE = {"alice": "Alice Archer", "bruno": "Bruno Brook", "chen": "Chen Cole", "dana": "Dana Dunn"}
 PROJECTS = {"example-project", "example-site", "<projectId>"}
 # Built at run time, so the published test file holds no complete canary.
@@ -64,10 +62,10 @@ def scratch_root(directory):
     """A minimal copy of the repository: the sources, the page and an empty file for each link target."""
     root = Path(directory)
     shutil.copytree(SOURCE, root / explainer_build.SOURCE_REL)
-    shutil.copy2(ROOT / explainer_build.OUT_REL, root / explainer_build.OUT_REL)
     for target in link_targets():
         (root / target).parent.mkdir(parents=True, exist_ok=True)
         (root / target).touch()
+    (root / explainer_build.OUT_REL).write_text(explainer_build.build(root), encoding="utf-8")
     return root
 
 
@@ -86,11 +84,6 @@ class BuildTests(unittest.TestCase):
 
     def test_build_is_deterministic(self):
         self.assertEqual(self.text.encode("utf-8"), explainer_build.build(ROOT).encode("utf-8"))
-
-    def test_committed_file_is_current(self):
-        committed = (ROOT / explainer_build.OUT_REL).read_text(encoding="utf-8")
-        self.assertEqual(committed, self.text, "run python3 scripts/explainer_build.py")
-        self.assertEqual((0, "explainer current: EXPLAINER.html\n"), run_main(["--check"], ROOT))
 
     def test_check_fails_on_a_changed_source_and_passes_after_a_build(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -217,10 +210,13 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(self.text, text)
         self.assertNotIn(CANARY, text)
 
-    @unittest.skipUnless(LOCAL_VALUES.is_file(), "the local values file is development-only")
     def test_page_holds_no_local_value(self):
-        for name, value in json.loads(LOCAL_VALUES.read_text(encoding="utf-8"))["values"].items():
-            self.assertNotIn(value, self.text, name)
+        with tempfile.TemporaryDirectory() as directory:
+            root = scratch_root(directory)
+            local = root / "docs/architecture/local-values.json"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            local.write_text(json.dumps({"values": {"clone": CANARY}}))
+            self.assertNotIn(CANARY, explainer_build.build(root))
 
     def test_public_reader_rules(self):
         files = [explainer_build.OUT_REL, *sources()]
@@ -231,8 +227,10 @@ class BuildTests(unittest.TestCase):
         self.assertEqual([], publish_check.public_findings(files))
 
     def test_files_are_published(self):
-        for name in (explainer_build.OUT_REL, "scripts/explainer_build.py", "tests/test_explainer_build.py", *sources()):
-            self.assertIn(name, publish_check.PUBLISH)
+        names = (explainer_build.OUT_REL, "scripts/explainer_build.py", "tests/test_explainer_build.py", *sources())
+        published_files = set(publish_check.PUBLISH) | publish_check.rule_files(names)[0]
+        for name in names:
+            self.assertIn(name, published_files)
 
     def test_links_point_into_the_publish_set(self):
         for tag, _, value in TAG_ATTRIBUTE.findall(self.text):

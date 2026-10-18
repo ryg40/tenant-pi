@@ -99,22 +99,22 @@ Observed with Pi 0.99.1: `docs/mcp.md` says that an installed extension that reg
 
 Source: the in-tree package `packages/promptr` (`tree` source): `package.json`, `index.ts`, `scripts/install.mjs`, `README.md`, `src/extension/index.mts`.
 
-The table separates historical package loads on Pi 1.0.2 and Pi 1.0.3 from build and test results with the 1.3.0 dependencies. No package load on Pi 1.3.0 is verified. The component `promptr` and its four skill components are `unverified`. `met` applies only to the stated version. `open` means that the fact is a gap of the component.
+The table separates historical package loads on Pi 1.0.2 and Pi 1.0.3 from build and test results with dependencies at `runtime.piVersion` in `config/manifest.json`. No package load on the kit pin is verified. The component `promptr` and its four skill components are `unverified`. `met` applies only to the reviewed version. `open` means that the fact is a gap of the component.
 
 | Prerequisite | Fact | Status |
 | --- | --- | --- |
 | `local_package_load` | Observed with Pi 1.0.2 and Pi 1.0.3: Pi loads the built `packages/promptr` as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills. | met |
-| `pi_line_build_and_tests` | `package.json` pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` at 1.3.0. The build, the 781 tests, the typecheck and `npm run smoke` pass with those dependencies. `npm run smoke:installed` did not run on 1.3.0. | met |
+| `pi_line_build_and_tests` | `package.json` pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` at `runtime.piVersion` in `config/manifest.json`. The package tests pass, as do the build, typecheck and `npm run smoke`. `npm run smoke:installed` did not run on the kit pin. | met |
 | `build_step_required` | `packages/promptr/index.ts` re-exports `dist/src/extension/index.mjs`; `dist/` is ignored and absent in the tree. Run `npm ci --ignore-scripts` and `npm run build` in `packages/promptr` before the first start. `scripts/publish_check.py` ignores `dist/`. | open |
-| `host_module_dependency` | `dependencies` pins `@earendil-works/pi-tui@1.3.0`, because the companion process (`promptr-companion-spike`) runs outside Pi and needs it. Pi 1.0.2 and Pi 1.0.3 print one warning at each start: host packages belong under `peerDependencies`. Those releases load a second copy from `packages/promptr/node_modules` for the built files. The package pins now align at 1.3.0, and Pi 1.3.0 declares its `pi-tui` dependency at that exact version. Not verified on Pi 1.3.0: the warning and interactive key handling, including the kitty key protocol. | open |
+| `host_module_dependency` | `dependencies` pins `@earendil-works/pi-tui` at `runtime.piVersion` in `config/manifest.json`, because the companion process (`promptr-companion-spike`) runs outside Pi and needs it. Pi 1.0.2 and Pi 1.0.3 print one warning at each start: host packages belong under `peerDependencies`. Those releases load a second copy from `packages/promptr/node_modules` for the built files. The package pins now match the kit pin. Pi declares its `pi-tui` dependency at that exact version. Not verified on the kit pin: the warning and interactive key handling, including the kitty key protocol. | open |
 | `private_renderer_adapters` | The sidebar uses private Pi renderer adapters. Observed with Pi 1.0.2: the sidebar displays. Not verified: a session with a model. | open |
 | `automatic_dispatch_path_unverified` | `requestHandoff` is called with `automatic: true`; queue sends are manual, the handoff switch is unverified. | open |
 
-Historical evidence with the 1.1.0 dependencies: the build, the 778 tests, the typecheck and `npm run smoke` passed.
+Historical evidence with the 1.1.0 dependencies: the package tests passed, as did the build, typecheck and `npm run smoke`.
 Pi 1.2.0 adds fake-cursor markers to editor rows. The notebook text tests remove those markers without changing their text assertions.
 This test adjustment changes no production key handler. The kit pin move changes no installed Promptr copy.
 
-The four checked `pi-tui` 1.3.0 key defaults match 1.2.0, 1.1.0 and 1.0.4. They keep `Home` and `Ctrl+A` for line start, and `End` and `Ctrl+E` for line end. `Ctrl+Home` and `Ctrl+End` scroll the transcript to its top and bottom. The file `dist/keybindings.js` is byte-equal in `pi-tui` 1.2.0 and 1.3.0. Promptr documents `Home` and `End` for notebook lines and binds them directly for tracking navigation. It binds `Ctrl+E` to queue the composer and refuses that key in tracking dialogs. It has no explicit `Ctrl+A`, `Ctrl+Home` or `Ctrl+End` binding. These source checks do not prove interactive key handling.
+The four checked `pi-tui` key defaults at the kit pin match 1.2.0, 1.1.0 and 1.0.4. They keep `Home` and `Ctrl+A` for line start, and `End` and `Ctrl+E` for line end. `Ctrl+Home` and `Ctrl+End` scroll the transcript to its top and bottom. The file `dist/keybindings.js` is byte-equal in `pi-tui` 1.2.0 and the kit pin. Promptr documents `Home` and `End` for notebook lines and binds them directly for tracking navigation. It binds `Ctrl+E` to queue the composer and refuses that key in tracking dialogs. It has no explicit `Ctrl+A`, `Ctrl+Home` or `Ctrl+End` binding. These source checks do not prove interactive key handling.
 
 The matrix is recorded in every plan under `workflow.promptr`, whether or not Promptr is selected; `enabled` shows the selection. A plan that enables `promptr` names each open prerequisite and `kit_test_missing` under `readinessGaps`. A skill component needs `promptr` in `enable`. A fresh state is: no `<agent dir>/promptr/`, no project `.promptr/`, no tracker binding. The kit copies no queue, notebook, tracker credential, or handoff record and prints no command that sends a queued prompt.
 
@@ -126,7 +126,7 @@ The `promptr` component uses the `tree` source at `packages/promptr`; its four s
 
 ## Herdr skill: an optional component
 
-The Herdr skill is the selectable component `herdr` (`packages/tenantext`, `skills/herdr`, `unverified`). It loads from a generated profile only when the overlay enables it. The user-level install with `packages/tenantext/skills/herdr/install.sh` stays possible as a separate, approved option (install skill, Stage 8). The Herdr application is a host tool that the kit does not install; see [Herdr and the question tool](herdr-setup.md). Herdr-hosted and browser-hosted launch stay optional and unqualified in this release. A wider filter is a manifest and validator change with its own review.
+The Herdr skill is the selectable component `herdr` (`packages/tenantext`, `skills/herdr`, `unverified`). It loads from a generated profile only when the overlay enables it. The user-level install with `packages/tenantext/skills/herdr/install.sh` stays possible as a separate, approved option ([INSTALL.md](../INSTALL.md#stage-4a-herdr-and-the-question-tool)). The Herdr application is a host tool that the kit does not install; see [Herdr and the question tool](herdr-setup.md). Herdr-hosted and browser-hosted launch stay optional and unqualified in this release. A wider filter is a manifest and validator change with its own review.
 
 ## Coordinator skills: an optional component
 

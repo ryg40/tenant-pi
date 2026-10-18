@@ -32,11 +32,9 @@ For a real boundary, run each profile as a separate OS user, in a container, or 
 | A generated profile | `settings.json`, `.tenant-pi/choices.json`, `.tenant-pi/state.json`, optional module files. After launch, Pi adds `auth.json`, `models-store.json`, `sessions/`, `bin/` (only for a tool download) and module state. Pi adds `npm/` with a declared npm package. | No |
 | The live profile `~/.pi/agent` | Your existing Pi setup. | The kit never writes it. It reads it only when you name it with `--dir`: `baseline` and `check-baseline` read the name, kind, size and modification time of each entry and open no file; `inventory` reads `settings.json` and lists three directories. |
 
-Keep the private directory outside the clone. `init-private` refuses a path inside the clone, inside `~/.pi/agent` and inside a known overlay target. See [the private directory](../private-directory.md).
+See the [refusal rules](../private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
 
-Keep each generated profile outside the clone too. `validate`, `plan` and `generate` refuse a `target.agentDir` inside the clone that runs them, with `under_kit: overlay.target.agentDir`. A second clone, or the main clone when you run the kit from a Git worktree, is not protected. See [the generator](../generator.md).
-
-A personal wiki vault holds the pages of the user, and each profile of the account uses it. The kit refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`. The vaults are `.llm-wiki` in the home directory, `<WIKI_HOME>/.llm-wiki`, and, for an action that reads the overlay, `<wikiHome>/.llm-wiki` of `memory.wiki.wikiHome`. `baseline` and `init-private` read no overlay, so they know the first two only. This command reports the vault from `lstat` calls and opens no file:
+This command reports the vault from `lstat` calls and opens no file:
 
 ```sh
 python3 scripts/tenant_pi.py check-wiki-vault
@@ -45,8 +43,6 @@ python3 scripts/tenant_pi.py check-wiki-vault
 The wiki extension itself writes into the vault when the agent uses a wiki tool; see [an existing vault](../memory-modules.md#an-existing-vault).
 
 The sample overlay enables no memory module. The fresh wizard leaves optional memory unchecked and asks separately for storage and recall consent. Both store text of the sessions on this machine: Hermes below the profile, the wiki in the vault. With the explicit choice `ambientPersonalVault: true`, the wiki also adds text from the vault to each prompt in each directory, and that text goes to the model provider of the session. Without `consent.memoryCapture: true`, nothing is captured.
-
-Keep each generated profile outside the live profile. `validate`, `plan` and `generate` refuse a `target.agentDir` that is `~/.pi/agent` or is under it, with `under_pi_agent: overlay.target.agentDir`. The kit does not read `PI_CODING_AGENT_DIR`: a live profile that only this variable names is not protected.
 
 The `.gitignore` of the private directory ignores `inputs/`, `.env`, `.env.*`, `auth.json`, `models.json`, `mcp-adapter.json`, `sessions/`, `*.key`, `*.pem`, `*.db`, `*.sqlite`, `*baseline*.json`, `INSTALLER_KIT_RESULTS.md` and `results-facts.json`. It is not a security control. Read `git status` before each commit.
 

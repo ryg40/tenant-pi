@@ -51,19 +51,21 @@ Each step has `name`, `exitCode`, and an absolute `log` path. A skipped dependen
 
 1. Record a metadata baseline of `~/.pi/agent`, when it exists. No file content is read.
 2. Copy tracked kit files into the run's `kit` directory and move its pin to the requested version.
-3. Rebuild the architecture pages and the explainer of the candidate copy: the steps `pages-architecture`, `pages-architecture-local` and `pages-explainer`. The pages hold the core spec, and the unit tests compare each page with its build. A copy without the development-only `docs/architecture/local-values.json` has no local page: `pages-architecture-local` then records `not_applicable_without_local_values` with exit code 0.
-4. Install the requested version under the run's `prefix` directory with `npm install --ignore-scripts`.
-5. Run `check-runtime --pi`, the full check set through `scripts/check.py`, then `PACKAGE_PY` from the candidate copy.
-6. Copy `packages/tenantext`, `packages/promptr`, and `packages/openviking-pi` into the run directory.
-7. Run `npm ci --ignore-scripts` in each copy.
-8. Link each copy's Pi dependencies to the candidate installation. The links cover `pi-coding-agent`, `pi-ai`, `pi-tui`, and `pi-agent-core`.
-9. Run Tenantext's type check and tests. Run Promptr's build and tests. The Tenantext test file `test/pi-package-install.test.ts` checks three rules of the candidate Pi that the setup lines of the plan depend on. `update()` installs no missing npm source with an exact version. `update()` installs a missing npm source without a version. An install of a declared source by its identical string runs one install and leaves the bytes of `settings.json` equal. A failure of that file means that the setup lines of `scripts/profile_plan.py` need a review.
-10. Run every OpenViking package test, including loopback MCP fixtures and SDK lifecycle checks, with candidate Pi dependencies.
-11. Check OpenViking's explicit file source with the candidate package resolver and extension factory loader, without starting a session.
-12. Generate a core-only profile from the candidate copy in the run directory.
-13. Launch that profile in print mode against the built-in loopback endpoint for the successful reply contract.
-14. For candidate versions 1.2.0 and later, run a separate loopback launch for the output-limit truncation contract.
-15. Compare the live directory with its baseline, also after a failed step.
+3. Install the requested version under the run's `prefix` directory with `npm install --ignore-scripts`.
+4. Run `check-runtime --pi`, the full check set through `scripts/check.py`, then `PACKAGE_PY` from the candidate copy.
+5. Copy `packages/tenantext`, `packages/promptr`, and `packages/openviking-pi` into the run directory.
+6. Run `npm ci --ignore-scripts` in each copy.
+7. Link each copy's Pi dependencies to the candidate installation. The links cover `pi-coding-agent`, `pi-ai`, `pi-tui`, and `pi-agent-core`.
+8. Run Tenantext's type check and tests. Run Promptr's build and tests. The Tenantext test file `test/pi-package-install.test.ts` checks three rules of the candidate Pi that the setup lines of the plan depend on. `update()` installs no missing npm source with an exact version. `update()` installs a missing npm source without a version. An install of a declared source by its identical string runs one install and leaves the bytes of `settings.json` equal. A failure of that file means that the setup lines of `scripts/profile_plan.py` need a review.
+9. Run every OpenViking package test, including loopback MCP fixtures and SDK lifecycle checks, with candidate Pi dependencies.
+10. Check OpenViking's explicit file source with the candidate package resolver and extension factory loader, without starting a session.
+11. Generate a core-only profile from the candidate copy in the run directory.
+12. Launch that profile in print mode against the built-in loopback endpoint for the successful reply contract.
+13. For candidate versions 1.2.0 and later, run a separate loopback launch for the output-limit truncation contract.
+14. Compare the live directory with its baseline, also after a failed step.
+
+Qualification does not rebuild or check page currency. The publisher checks both public pages before a snapshot.
+Generate the local edition separately with `python3 scripts/architecture_build.py --local` after preparing its untracked values file.
 
 A failed step fails qualification. Independent later steps still run. Each package log includes its native test output.
 
@@ -164,7 +166,7 @@ Each entry has `version` and `text`. All `Breaking Changes` sections come first,
 ## Evidence and limits
 
 `tests/test_pi_update.py` uses fake npm, Node and Pi programs.
-It checks changed and unchanged pins, the page rebuild of the candidate copy, failed steps, candidate dependency links, baseline policy, notes ordering, argument errors and timeouts.
+It checks changed and unchanged pins, unchanged candidate pages, failed steps, candidate dependency links, baseline policy, notes ordering, argument errors and timeouts.
 It checks the OpenViking install, selected test inventory, candidate helper paths, and isolated resolver/load invocation.
 Missing candidate helpers cannot silently select host dependencies.
 Negative print controls reject false success, missing partial text, missing warnings, warnings on stdout, and a second request.

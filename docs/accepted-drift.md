@@ -1,6 +1,6 @@
 # Accepted drift in the overlay
 
-Status: offline implementation. The kit validates the list, records it, and uses it to sort the `compare` report. It writes no accepted value into a profile. Concept and tier model: [the profile lifecycle](profile-lifecycle.md).
+Status: offline implementation. The kit validates the list, records it, and uses it to sort the `compare` report. It writes no accepted value into a profile. Concept and tier model: [the profile lifecycle](private-directory.md#profile-lifecycle).
 
 Accepted drift is a `settings.json` difference that the user reviewed one time and decided to keep outside the overlay, for example an `npmCommand` wrapper for package updates. The overlay key `unmanaged` records the decision. Each later `compare` reports the difference under `accepted` with the reason, not under `changes` or `unsupported`.
 

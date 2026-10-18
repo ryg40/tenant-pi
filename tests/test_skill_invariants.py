@@ -7,6 +7,11 @@ A second test plants one violation of each class in a fixture and expects each f
 The forbidden tracker commands come from one rule line of the tracker document, not from this file.
 """
 import re
+import runpy
+import shutil
+import stat
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -274,13 +279,137 @@ class SkillInvariantTests(unittest.TestCase):
         self.assertTrue((directory / "SKILL.md").is_file())
         # Original kit skills have no adaptation credits requirement.
         self.assertEqual([], skill_findings([], TRACKER, sorted(directory.rglob("*.md"))))
-    def test_kit_skills_and_plugin_copies_have_no_finding(self):
-        skills = COMPONENT.parent
-        plugin = skills.parent / "claude-code"
-        directories = kit_skill_dirs(skills)
-        directories.append(plugin / "skills/herdr")
-        self.assertEqual([], skill_findings(directories, TRACKER,
-                                           [plugin / "commands/spawn_agent.md"], require_credits=False))
+    def test_kit_source_skills_have_no_finding(self):
+        self.assertEqual([], skill_findings(kit_skill_dirs(), TRACKER, require_credits=False))
+
+    def test_plugin_skill_build_matches_sources(self):
+        destination = Path(subprocess.check_output(["mktemp", "-d"], text=True).strip())
+        self.addCleanup(shutil.rmtree, destination)
+        script = COMPONENT.parent.parent / "claude-code/build-skills.py"
+        result = subprocess.run([sys.executable, str(script), str(destination)],
+                                capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        expected = {}
+        for name in ("herdr", "slopscore-pr"):
+            for path in (COMPONENT.parent / name).rglob("*"):
+                relative = path.relative_to(COMPONENT.parent)
+                if {"install.sh", "tests", "__pycache__"}.intersection(relative.parts) or path.suffix == ".pyc":
+                    continue
+                if path.is_file():
+                    expected[relative] = (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+        actual = {path.relative_to(destination): (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+                  for path in destination.rglob("*") if path.is_file()}
+        self.assertTrue(expected)
+        self.assertEqual(expected, actual)
+        self.assertEqual({"herdr", "slopscore-pr"}, {path.name for path in destination.iterdir()})
+
+    def test_plugin_skill_build_excludes_artifacts_and_replaces_only_output_paths(self):
+        build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
+        with tempfile.TemporaryDirectory() as temp:
+            source, destination = Path(temp) / "source", Path(temp) / "output"
+            for name in ("herdr", "slopscore-pr"):
+                skill = source / name
+                skill.mkdir(parents=True)
+                (skill / "SKILL.md").write_text("first\n")
+                (skill / "SKILL.md").chmod(0o751)
+                for excluded in ("install.sh", "tests/fixture.md", "__pycache__/cache.pyc", "nested/cache.pyc"):
+                    path = skill / excluded
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("excluded\n")
+            self.assertEqual(2, build(source, destination))
+            self.assertEqual({Path("herdr/SKILL.md"), Path("slopscore-pr/SKILL.md")},
+                             {path.relative_to(destination) for path in destination.rglob("*") if path.is_file()})
+            (source / "herdr/SKILL.md").write_text("second\n")
+            self.assertEqual(2, build(source, destination))
+            self.assertEqual("second\n", (destination / "herdr/SKILL.md").read_text())
+            self.assertEqual(0o751, stat.S_IMODE((destination / "herdr/SKILL.md").stat().st_mode))
+            (source / "herdr/SKILL.md").write_text("third\n")
+            (destination / "slopscore-pr/user.md").write_text("keep\n")
+            with self.assertRaisesRegex(ValueError, "unexpected entry"):
+                build(source, destination)
+            self.assertEqual("second\n", (destination / "herdr/SKILL.md").read_text())
+            self.assertEqual("keep\n", (destination / "slopscore-pr/user.md").read_text())
+
+    def test_plugin_skill_rebuild_preserves_python_byproducts(self):
+        build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp) / "output"
+            count = build(COMPONENT.parent, destination)
+            cache = destination / "herdr/scripts/__pycache__"
+            cache.mkdir()
+            byproducts = [cache / "x.pyc", destination / "herdr/scripts/x.pyc"]
+            for path in byproducts:
+                path.write_bytes(b"keep cache\n")
+            self.assertEqual(count, build(COMPONENT.parent, destination))
+            for path in byproducts:
+                self.assertEqual(b"keep cache\n", path.read_bytes())
+
+    def test_plugin_skill_rebuild_names_unexpected_entries(self):
+        build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
+        with tempfile.TemporaryDirectory() as temp:
+            destination = Path(temp) / "output"
+            build(COMPONENT.parent, destination)
+            stray = destination / "herdr/scripts/stray.txt"
+            stray.write_text("keep\n")
+            with self.assertRaisesRegex(ValueError, r"unexpected entry: herdr/scripts/stray\.txt; remove it by hand"):
+                build(COMPONENT.parent, destination)
+            self.assertEqual("keep\n", stray.read_text())
+
+    def test_plugin_skill_build_accepts_linked_parent(self):
+        build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            parent = root / "real"
+            parent.mkdir()
+            alias = root / "alias"
+            alias.symlink_to(parent, target_is_directory=True)
+            destination = alias / "nested/output"
+            count = build(COMPONENT.parent, destination)
+            self.assertEqual(count, build(COMPONENT.parent, destination))
+            self.assertEqual((COMPONENT.parent / "herdr/SKILL.md").read_bytes(),
+                             (parent / "nested/output/herdr/SKILL.md").read_bytes())
+
+    def test_plugin_skill_build_refuses_links_conflicts_and_source_overlap(self):
+        build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            for name in ("herdr", "slopscore-pr"):
+                (source / name).mkdir(parents=True)
+                (source / name / "SKILL.md").write_text("source\n")
+            outside = root / "outside"
+            outside.mkdir()
+            (outside / "user.md").write_text("keep\n")
+            for case in ("symlink-root", "symlink-dir", "symlink-file", "symlink-cache", "symlink-pyc",
+                         "hardlink-file", "conflict"):
+                with self.subTest(case=case):
+                    destination = root / case
+                    if case == "symlink-root":
+                        destination.symlink_to(outside, target_is_directory=True)
+                    else:
+                        destination.mkdir()
+                        if case == "symlink-dir":
+                            (destination / "herdr").symlink_to(outside, target_is_directory=True)
+                        elif case == "symlink-cache":
+                            (destination / "__pycache__").symlink_to(outside, target_is_directory=True)
+                        elif case == "symlink-pyc":
+                            (destination / "x.pyc").symlink_to(outside / "user.md")
+                        elif case == "conflict":
+                            (destination / "herdr").write_text("keep\n")
+                        else:
+                            (destination / "herdr").mkdir()
+                            target = destination / "herdr/SKILL.md"
+                            if case == "symlink-file":
+                                target.symlink_to(outside / "user.md")
+                            else:
+                                target.hardlink_to(outside / "user.md")
+                    with self.assertRaises(ValueError):
+                        build(source, destination)
+                    self.assertEqual("keep\n", (outside / "user.md").read_text())
+            for destination in (source, source / "herdr/output", root):
+                with self.subTest(destination=destination), self.assertRaisesRegex(ValueError, "overlaps"):
+                    build(source, destination)
+            self.assertEqual("source\n", (source / "herdr/SKILL.md").read_text())
 
     def test_present_optional_skills_are_checked(self):
         with tempfile.TemporaryDirectory() as temp:

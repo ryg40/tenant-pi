@@ -42,6 +42,8 @@ limits.
 ```bash
 python3 $S/resources.py                # all entries, with the location that is present
 python3 $S/resources.py --group web    # one group: web or local
+python3 $S/resources.py --role scout   # one role; omit --role to show every entry
+python3 $S/resources.py --group web --role scout   # one group for one role
 python3 $S/resources.py harness-web    # one entry, with all its locations
 ```
 

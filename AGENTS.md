@@ -14,4 +14,4 @@ Issues live in the development repository on Gitea. It is the `origin` remote of
 
 One glossary for the repository. See [the glossary](GLOSSARY.md).
 
-The kit's `.okf/` bundle is a frozen development record, not a published document set. Tickets do not update its log.
+The kit's `.okf/` bundle exists only in the development repository as a frozen record. Snapshots omit it. Tickets do not update its log.

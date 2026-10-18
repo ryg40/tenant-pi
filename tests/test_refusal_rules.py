@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from scripts import profile_write, tenant_pi, wizard
+from scripts import private_init, profile_write, tenant_pi, wizard
 from scripts.profile_write import check_location
 from scripts.validate import Invalid
 
@@ -32,6 +32,7 @@ class RefusalRulesTests(unittest.TestCase):
                 "launcher": common | overlay_vault | {("under_target", target)},
                 "baseline": common | {("under_dir", target)},
                 "init-private": common | {("under_overlay_target", target)},
+                "init-private-target": common | {("under_private_dir", output)},
                 "compose-plan": common | overlay_vault,
                 "results": (common - {("under_pi_agent", home + "/.pi/agent")}) | {("under_target", target)},
                 "generate": common | overlay_vault,
@@ -47,6 +48,7 @@ class RefusalRulesTests(unittest.TestCase):
                 "launcher": lambda: tenant_pi._launcher_location(output, plan, (target,), overlay),
                 "baseline": lambda: tenant_pi._baseline(SimpleNamespace(dir=target, out=output), None),
                 "init-private": lambda: tenant_pi._init_private(SimpleNamespace(dir=output, target=None, overlay=[])),
+                "init-private-target": lambda: tenant_pi._init_private(SimpleNamespace(dir=output, target=target, overlay=[])),
                 "compose-plan": lambda: tenant_pi._compose_write(
                     {"answers": {"privateDir": output}, "overlay": overlay,
                      "seatEnv": [], "composeEnv": [], "registry": {}}, b""),
@@ -58,7 +60,7 @@ class RefusalRulesTests(unittest.TestCase):
             for command, call in calls.items():
                 with self.subTest(command=command), ExitStack() as stack:
                     seen = set()
-                    destination = target if command == "generate" else output
+                    destination = target if command in ("generate", "init-private-target") else output
                     original_check = profile_write.check_location
                     original_outside = tenant_pi._outside
 
@@ -82,7 +84,7 @@ class RefusalRulesTests(unittest.TestCase):
                         stack.enter_context(patch.object(tenant_pi, name, side_effect=StopBeforeWrite))
                     stack.enter_context(patch.object(tenant_pi, "prepare", return_value=plan))
                     stack.enter_context(patch.object(wizard.wizard_adapter, "load_adapter", return_value=adapter))
-                    if command == "init-private":
+                    if command in ("init-private", "init-private-target"):
                         stack.enter_context(patch.object(tenant_pi, "_load_input", return_value=b"{}"))
                         stack.enter_context(patch.object(tenant_pi, "_parse", return_value=overlay))
 
@@ -100,6 +102,59 @@ class RefusalRulesTests(unittest.TestCase):
                     except StopBeforeWrite:
                         pass
                     self.assertEqual(expected[command], seen)
+
+    def test_wizard_checks_new_overlay_vault_before_save(self):
+        class StopBeforeSave(Exception):
+            pass
+
+        with tempfile.TemporaryDirectory(prefix="tenant-pi-overlay-after-") as temp:
+            base = Path(temp).resolve()
+            for field in ("private_dir", "target"):
+                with self.subTest(field=field), ExitStack() as stack:
+                    home, kit = str(base / "home"), str(base / "kit")
+                    paths = {name: str(base / name) for name in ("private_dir", "target")}
+                    paths[field] = str(base / ".llm-wiki" / field)
+                    state = SimpleNamespace(overlay={}, scan=None, approval=None)
+                    after = {"memory": {"wiki": {"wikiHome": str(base)}}}
+                    adapter = SimpleNamespace(destinations=("local",), options=(), scope="fixture",
+                                              start=lambda context: state, scan=lambda *args: {})
+                    args = SimpleNamespace(account="tester", home=home, **paths, adapter="tenant-pi",
+                                           destination="local", clone=None, ssh_target=None, manifest=None,
+                                           overlay=None, local_dir=None, registry=None, evidence=None, format="text")
+                    messages = []
+
+                    def show(message):
+                        messages.append(message)
+                        if message.startswith("under_wiki_vault:"):
+                            raise StopBeforeSave
+
+                    terminal = SimpleNamespace(show=show, ask=lambda _: "scan", checklist=lambda _: None)
+                    stack.enter_context(patch.dict(os.environ, {"HOME": home}, clear=True))
+                    stack.enter_context(patch.object(tenant_pi, "ROOT", Path(kit)))
+                    stack.enter_context(patch.object(wizard.wizard_adapter, "load_adapter", return_value=adapter))
+                    stack.enter_context(patch.object(wizard, "_scanned", return_value={}))
+                    stack.enter_context(patch.object(wizard, "_questions"))
+                    stack.enter_context(patch.object(wizard, "_plan", return_value={"overlayAfter": after}))
+                    save = stack.enter_context(patch.object(wizard, "_save"))
+                    with self.assertRaises(StopBeforeSave):
+                        wizard.run(args, tenant_pi, terminal=terminal)
+                    self.assertEqual("under_wiki_vault: wizard." + field, messages[-1])
+                    save.assert_not_called()
+
+    def test_init_private_reaches_exclusive_file_creation_outside_vaults(self):
+        with tempfile.TemporaryDirectory(prefix="tenant-pi-safe-write-") as temp:
+            base = Path(temp).resolve()
+            directory, target = base / "private", base / "profile"
+            with patch.dict(os.environ, {"HOME": str(base / "home")}, clear=True), \
+                    patch.object(private_init, "create_new_file", wraps=profile_write.create_new_file) as create:
+                result = tenant_pi._init_private(SimpleNamespace(dir=str(directory), target=str(target), overlay=[]))
+            self.assertTrue(result["complete"])
+            self.assertEqual(len(private_init.TEMPLATES), create.call_count)
+            for call in create.call_args_list:
+                (_, name), data, mode, _ = call.args
+                self.assertEqual(data, (directory / name).read_bytes())
+                self.assertEqual(mode, (directory / name).stat().st_mode & 0o777)
+            self.assertFalse(target.exists())
 
     def test_protected_roots_home_and_symlink_matrix(self):
         with tempfile.TemporaryDirectory(prefix="tenant-pi-location-") as temp:
@@ -164,4 +219,3 @@ class RefusalRulesTests(unittest.TestCase):
                 with patch.dict(os.environ, {} if value is None else {"HOME": value}, clear=True):
                     with self.assertRaisesRegex(Invalid, "^" + error + ": home$"):
                         tenant_pi._home("home")
-

@@ -16,7 +16,7 @@ class CheckTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name)
+        self.root = Path(self.directory.name).resolve()
         (self.root / "tests").mkdir()
         (self.root / "scripts").mkdir()
         (self.root / "tests/__init__.py").write_text("")
@@ -92,6 +92,34 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(err, "")
         self.assertEqual(self.stamps(), [])
 
+    def test_stamp_path_git_failure_keeps_checks_green(self):
+        real_run = check.run
+        def failed_git(command, root, env=None, timeout=None):
+            if "--git-common-dir" in command:
+                return subprocess.CompletedProcess(command, 1, stdout="", stderr="fixture failure")
+            return real_run(command, root, env, timeout=timeout)
+
+        with patch.object(check, "run", side_effect=failed_git) as run:
+            code, lines, err = self.invoke()
+        self.assertEqual(code, 0, err)
+        self.assertEqual(lines[-2:], [
+            "stamp: not written (OSError: Git metadata is unavailable)", "check: passed"])
+        self.assertEqual(sum("--git-common-dir" in call.args[0] for call in run.call_args_list), 2)
+        self.assertEqual(err, "")
+        self.assertEqual(self.stamps(), [])
+
+    def test_shard_timeout_fails_run_without_stamp_and_keeps_other_checks(self):
+        (self.root / "tests/test_sleep.py").write_text(
+            "import time, unittest\nclass Sleep(unittest.TestCase):\n"
+            "    def test_sleep(self): time.sleep(10)\n")
+        self.commit()
+        code, lines, err = self.invoke("--jobs", "1", "--shard-timeout", "0.5")
+        self.assertEqual(code, 1)
+        self.assertEqual(lines[1:], ["FAILED", "publish: passed", "public: passed",
+                                    "diff: passed", "check: FAILED"])
+        self.assertIn("unittest tests.test_sleep: FAILED (timed out after 0.5s)", err)
+        self.assertEqual(self.stamps(), [])
+
     def test_discovery_includes_modules_without_underscore(self):
         (self.root / "tests/testextra.py").write_text(
             "import unittest\nclass Extra(unittest.TestCase):\n"
@@ -120,7 +148,15 @@ class CheckTests(unittest.TestCase):
                 self.assertEqual(code, 1)
                 self.assertEqual(lines[-1], "check: FAILED")
                 target.write_text(original)
-        self.assertEqual(self.invoke("--stamp-status")[0], 1)
+        self.assertEqual(self.invoke("--stamp-status"),
+                         (1, ["stamp: not available (not a Git work tree)"], ""))
+
+    def test_no_git_fast_tier_reports_no_stamp(self):
+        (self.root / ".git").rename(self.root / "git-metadata")
+        code, lines, err = self.invoke("--tier", "fast")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(lines[-2:], ["stamp: not written (not a Git work tree)", "check: passed"])
+        self.assertEqual(err, "")
 
     def test_no_stamp_on_unit_failure(self):
         path = self.root / "tests/test_two.py"
@@ -197,14 +233,33 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(lines[1], "FAILED")
         self.assertEqual(self.stamps(), [])
 
-    def test_default_jobs_and_nonpositive_jobs(self):
-        with patch.object(check.os, "cpu_count", return_value=3), \
+    def test_default_jobs_timeout_and_explicit_overrides(self):
+        with patch.object(check, "default_jobs", return_value=3), \
                 patch.object(check, "checks", return_value=0) as checks:
             self.assertEqual(self.invoke()[0], 0)
-            checks.assert_called_once_with(self.root, "full", 3)
-        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as error:
-            check.main(["--jobs", "0"], root=self.root)
+            checks.assert_called_once_with(self.root, "full", 3, 900)
+            checks.reset_mock()
+            self.assertEqual(self.invoke("--jobs", "5", "--shard-timeout", "1.5")[0], 0)
+            checks.assert_called_once_with(self.root, "full", 5, 1.5)
+
+    def test_nonpositive_jobs_and_invalid_timeout_are_refused(self):
+        for args in (["--jobs", "0"], *(["--shard-timeout", value]
+                     for value in ("0", "-1", "nan", "inf", "bad"))):
+            with self.subTest(args=args), redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit) as error:
+                check.main(args, root=self.root)
+            self.assertEqual(error.exception.code, 2)
+
+    def test_excessive_shard_timeout_is_refused_before_checks(self):
+        err = io.StringIO()
+        with redirect_stderr(err), patch.object(check, "checks") as checks, \
+                self.assertRaises(SystemExit) as error:
+            check.main(["--shard-timeout", "1e30"], root=self.root)
         self.assertEqual(error.exception.code, 2)
+        self.assertIn("error: argument --shard-timeout:", err.getvalue())
+        self.assertIn("at most 86400 seconds", err.getvalue())
+        self.assertNotIn("Traceback", err.getvalue())
+        checks.assert_not_called()
 
     def test_tree_changed_during_checks_does_not_get_stamp(self):
         before = check.clean_tree(self.root)
@@ -250,3 +305,67 @@ class CheckTests(unittest.TestCase):
                 with patch.object(check, "run", side_effect=old_git):
                     self.assertEqual(check.stamp_path(self.root, "tree"),
                                      self.root / ".git/check-stamps/tree")
+
+
+class CpuLimitTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name)
+        self.membership = self.root / "membership"
+
+    def quota(self, path, text):
+        target = self.root / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+
+    def test_cgroup_v2_nested_and_parent_limits(self):
+        self.membership.write_text("0::/user.slice/task.scope\n")
+        self.quota("cpu.max", "max 100000\n")
+        self.quota("user.slice/cpu.max", "200000 100000\n")
+        self.quota("user.slice/task.scope/cpu.max", "400000 100000\n")
+        self.assertEqual(check.cgroup_jobs(self.root, self.membership), 2)
+        self.quota("user.slice/task.scope/cpu.max", "50000 100000\n")
+        self.assertEqual(check.cgroup_jobs(self.root, self.membership), 1)
+        self.quota("user.slice/task.scope/cpu.max", "150000 100000\n")
+        self.assertEqual(check.cgroup_jobs(self.root, self.membership), 2)
+
+    def test_cgroup_v1_mount_names_and_unlimited_quota(self):
+        self.membership.write_text("2:cpu,cpuacct:/job\n3:memory:/ignored\n")
+        for mount in ("cpu", "cpu,cpuacct"):
+            with self.subTest(mount=mount):
+                self.quota(f"{mount}/job/cpu.cfs_quota_us", "250000\n")
+                self.quota(f"{mount}/job/cpu.cfs_period_us", "100000\n")
+                self.assertEqual(check.cgroup_jobs(self.root, self.membership), 3)
+                self.quota(f"{mount}/job/cpu.cfs_quota_us", "-1\n")
+                self.assertIsNone(check.cgroup_jobs(self.root, self.membership))
+
+    def test_cgroup_root_limit_without_membership(self):
+        self.quota("cpu.max", "200000 100000\n")
+        self.assertEqual(check.cgroup_jobs(self.root, self.membership), 2)
+
+    def test_missing_unlimited_malformed_and_unreadable_limits_are_ignored(self):
+        self.assertIsNone(check.cgroup_jobs(self.root, self.membership))
+        for text in ("max 100000", "bad", "0 100000", "100000 0", "bad 100000", "\xff"):
+            with self.subTest(text=text):
+                self.quota("cpu.max", text)
+                self.assertIsNone(check.cgroup_jobs(self.root, self.membership))
+        with patch.object(Path, "read_text", side_effect=PermissionError):
+            self.assertIsNone(check.cgroup_jobs(self.root, self.membership))
+
+    def test_default_jobs_uses_the_smallest_available_cpu_limit(self):
+        for cpu, affinity, quota, expected in ((8, {0, 1}, None, 2), (8, set(range(8)), 3, 3),
+                                              (8, {0, 1}, 3, 2), (2, set(range(8)), 4, 2),
+                                              (None, {0, 1}, None, 1)):
+            with self.subTest(cpu=cpu, affinity=affinity, quota=quota), \
+                    patch.object(check.os, "cpu_count", return_value=cpu), \
+                    patch.object(check.os, "sched_getaffinity", return_value=affinity, create=True), \
+                    patch.object(check, "cgroup_jobs", return_value=quota):
+                self.assertEqual(check.default_jobs(), expected)
+
+    def test_default_jobs_without_affinity_support(self):
+        for error in (AttributeError, OSError):
+            with self.subTest(error=error), patch.object(check.os, "cpu_count", return_value=4), \
+                    patch.object(check.os, "sched_getaffinity", side_effect=error, create=True), \
+                    patch.object(check, "cgroup_jobs", return_value=None):
+                self.assertEqual(check.default_jobs(), 4)

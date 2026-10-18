@@ -18,7 +18,7 @@ is one line. Load the full text of an entry only when you use it.
 
 You have permission to read a repository on the web and the documentation of an app.
 
-Use the entries of `{resources_command} --group web` in their order. Read the entry before its first use.
+Use the entries of `{resources_command} --group web --role scout` in their order. Read the entry before its first use.
 
 If an entry fails or is not available, go to the next one. In your result, say
 which entry you used, which entries failed, and the exact error of each.
@@ -28,7 +28,7 @@ entries that are left.
 {absent}
 
 You can use a tool or a skill that is not in these lists. To see the lists
-again with the locations that are present now, run `{resources_command}`.
+again with the locations that are present now, run `{resources_command} --role scout`.
 
 ## Usual practice
 

@@ -9,6 +9,7 @@ The published copy of the kit is a snapshot mirror: the maintainer updates it wi
 ## Install
 
 [INSTALL.md](INSTALL.md) is the single install flow. It gives the commands and checks, and requires approval before each change.
+The flow covers inventory, requirements, the clone, Pi, packages, the overlay, generation, authentication and launch checks; later changes use POST_INSTALL.md.
 
 ## Guides
 

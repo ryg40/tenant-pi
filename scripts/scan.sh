@@ -11,6 +11,7 @@
 #   history [<range>]  the commits in <range> (git log syntax, default HEAD),
 #                      their messages and the names of the files they change;
 #                      a merge commit is compared with its first parent
+#   history --stdin    exact commit ids, one per line on standard input
 #   all                tree and history
 #   selftest           negative control: a synthetic token must give a finding
 #
@@ -92,7 +93,7 @@ sha256_stdin() {
 }
 
 usage() {
-    echo "usage: $0 [--level warn|fail] tree|staged|history [<range>]|all|selftest" >&2
+    echo "usage: $0 [--level warn|fail] tree|staged|history [<range>|--stdin]|all|selftest" >&2
     exit 2
 }
 die() {
@@ -126,7 +127,8 @@ esac
 work=$(mktemp -d "${TMPDIR:-/tmp}/scan.XXXXXX")
 # Use the resolved path, so that each path in the report starts with $work.
 work=$(CDPATH='' cd -- "$work" && pwd -P)
-trap 'rm -rf "$work"' EXIT
+git_shim=
+trap 'rm -rf "$work"; [ -z "$git_shim" ] || rm -rf "$git_shim"' EXIT
 # In sh, an INT or TERM handler does not end the script; exit runs the EXIT trap.
 trap 'exit 130' INT TERM
 
@@ -465,16 +467,11 @@ scan_staged() {
     strip_prefix "$work/staged/" <"$work/raw" | map_meta >>"$work/findings"
 }
 
-# scan_commits <range>: the messages, the file names and the new blobs of the
-# commits in <range>. Betterleaks reads neither messages nor names in git mode.
+# scan_commits: read the resolved list in $work/commits for messages, file names
+# and new blobs. Betterleaks reads neither messages nor names in git mode.
 scan_commits() {
     rm -rf "$work/hist"
     mkdir -p "$work/hist/meta"
-    # <range> is a list of git log arguments, for example "<sha> --not --remotes=origin".
-    set -f
-    # shellcheck disable=SC2086
-    git rev-list $1 >"$work/commits" || die "git rev-list $1 failed"
-    set +f
     : >"$work/blobs"
     while IFS= read -r c; do
         git log -1 --format=%B "$c" >"$work/hist/meta/msg-$c"
@@ -494,9 +491,55 @@ scan_commits() {
 # first parent; the commits of the other parents are still in the range.
 scan_history() {
     require_repo
-    gl git --log-opts="--diff-merges=first-parent $1" "$git_dir" >>"$work/findings" ||
-        die "Betterleaks failed"
-    scan_commits "$1"
+    if [ "$1" = --stdin ]; then
+        cat >"$work/history-input"
+        # Refuse options and ranges: this input is an exact set, not Git syntax.
+        awk '($0 !~ /^[0-9a-f]+$/) || (length($0) != 40 && length($0) != 64) { bad = 1 }
+            END { exit bad }' "$work/history-input" || die "stdin needs one full commit id per line"
+        [ -s "$work/history-input" ] || return 0
+        git cat-file --batch-check='%(objecttype)' <"$work/history-input" >"$work/history-types" ||
+            die "cannot read stdin commit ids"
+        awk '$0 != "commit" { bad = 1 } END { exit bad }' "$work/history-types" ||
+            die "stdin contains an unknown id or a non-commit object"
+        git rev-list --no-walk=unsorted --stdin <"$work/history-input" >"$work/commits" ||
+            die "cannot resolve stdin commit ids"
+        # Betterleaks does not forward stdin to Git. This private shim opens the
+        # list for its Git child, without putting the ids into any argument.
+        # The content scan depends on Betterleaks finding this shim through PATH.
+        # PATH cannot represent a directory with a colon. Use /tmp for the
+        # shim only when TMPDIR gives the scan such a directory.
+        git_shim=$work/git-bin
+        case $git_shim in *:*) git_shim=$(mktemp -d /tmp/scan-git.XXXXXX) ;; esac
+        mkdir -p "$git_shim"
+        cat >"$git_shim/git" <<'EOF'
+#!/bin/sh
+wc -l <"$SCAN_COMMITS" >"$SCAN_COMMITS_FED" || exit 2
+exec "$SCAN_GIT" "$@" <"$SCAN_COMMITS"
+EOF
+        chmod +x "$git_shim/git"
+        (
+            SCAN_GIT=$(command -v git)
+            SCAN_COMMITS=$work/commits
+            SCAN_COMMITS_FED=$work/commits-fed
+            PATH=$git_shim:$PATH
+            export SCAN_GIT SCAN_COMMITS SCAN_COMMITS_FED PATH
+            gl git --log-opts="--diff-merges=first-parent --no-walk=unsorted --stdin" "$git_dir"
+        ) >>"$work/findings" || die "Betterleaks failed"
+        if [ ! -f "$work/commits-fed" ] ||
+            [ "$(cat "$work/commits-fed")" != "$(wc -l <"$work/commits")" ]; then
+            echo "scan: the engine did not read the commit list; the content scan did not run" >&2
+            exit 2
+        fi
+    else
+        # <range> holds Git revisions, for example "<sha> --not --remotes=origin".
+        set -f
+        # shellcheck disable=SC2086
+        git rev-list $1 >"$work/commits" || die "git rev-list $1 failed"
+        set +f
+        gl git --log-opts="--diff-merges=first-parent $1" "$git_dir" >>"$work/findings" ||
+            die "Betterleaks failed"
+    fi
+    scan_commits
 }
 
 # apply_allow: read findings, drop each deny-list finding whose line contains

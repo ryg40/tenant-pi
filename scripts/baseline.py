@@ -14,7 +14,7 @@ import stat
 from dataclasses import dataclass
 from datetime import timezone
 
-from scripts.profile_write import MAX_PATH, GENERATED_AT, create_new_file
+from scripts.profile_write import GENERATED_AT, create_new_file
 from scripts.validate import absolute, fail
 
 DIR_FIELD = "baseline.dir"

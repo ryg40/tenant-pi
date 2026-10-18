@@ -228,7 +228,7 @@ class BuildTests(unittest.TestCase):
 
     def test_files_are_published(self):
         names = (explainer_build.OUT_REL, "scripts/explainer_build.py", "tests/test_explainer_build.py", *sources())
-        published_files = set(publish_check.PUBLISH) | publish_check.rule_files(names)[0]
+        published_files = publish_check.publish_files(publish_check.inventory_files(ROOT), root=ROOT)
         for name in names:
             self.assertIn(name, published_files)
 

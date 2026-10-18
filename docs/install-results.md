@@ -179,6 +179,7 @@ See the [refusal rules](private-directory.md#refusal-rules) for protected paths,
 
 - The action applies each refusal before the write: the location of `--out-dir`, the manifest, the overlay, the facts file and the `--target` list.
 - `--out-dir` cannot equal or descend from a `--target` directory (`under_target`).
+- With `--out-dir`, missing or invalid `HOME` gives `home_required: results.home` or `absolute_path: results.home`.
 - The action uses the ancestor walk and the exclusive file creation of the guarded writer (`scripts/profile_write.py`), as the launcher file does. A directory of the path that is a link stops the action. The file gets mode `0600`.
 - With `--replace` and an existing file, the action writes the new text to `INSTALLER_KIT_RESULTS.md.new` in the same directory and renames it over the file in one step. Only a regular file is replaced: a link or a directory at the name gives `target_not_regular`. A left `.new` file gives `temporary_exists`.
 - The action writes nothing else.

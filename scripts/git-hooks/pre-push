@@ -75,9 +75,14 @@ if [ ! -s "$work/unique" ]; then
     echo "pre-push: result pass; range empty (no new commit); level $level" >&2
     exit 0
 fi
-range="--no-walk=unsorted $(paste -sd ' ' "$work/unique")"
+count=$(wc -l <"$work/unique" | tr -d '[:space:]')
+if [ "$count" -gt 8 ]; then
+    range="$count commits, first $(head -n 1 "$work/unique") last $(tail -n 1 "$work/unique")"
+else
+    range="--no-walk=unsorted $(paste -sd ' ' "$work/unique")"
+fi
 status=0
-sh "$scan" --level "$level" history "$range" </dev/null || status=1
+sh "$scan" --level "$level" history --stdin <"$work/unique" || status=1
 if [ "$status" -eq 0 ]; then result=pass; else result=fail; fi
 echo "pre-push: result $result; range $range; level $level" >&2
 [ "$status" -eq 0 ] || echo "pre-push: push refused (docs/secret-handling.md)" >&2

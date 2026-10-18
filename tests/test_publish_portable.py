@@ -1,8 +1,10 @@
 """Portable snapshot builder tests in a disposable Git repository."""
 import contextlib
+import html
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -29,7 +31,9 @@ class RepositoryCase(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="tenant-pi-portable-test-")
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name) / "repo"
+        self.root.mkdir()
+        self.notes = Path(self.temp.name) / "notes.md"
         git(self.root, "init", "-q", "-b", "main")
         git(self.root, "config", "user.email", "test@example.invalid")
         git(self.root, "config", "user.name", "test")
@@ -127,7 +131,7 @@ class SnapshotTests(RepositoryCase):
                 mock.patch.object(publish_portable, "check", return_value=("keep.txt",)), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(0, publish_portable.main(["--new-root", "--no-push", "--notes",
-                                                       str(self.root / ".git/notes.md")]))
+                                                       str(self.notes)]))
             before = git(self.root, "show-ref")
             with self.assertRaises(SystemExit):
                 publish_portable.main(["--new-root", "--no-push"])
@@ -259,18 +263,22 @@ class CheckSetTests(RepositoryCase):
                 contextlib.redirect_stdout(output):
             arguments = [] if push else ["--no-push"]
             if not default_notes:
-                arguments += ["--notes", str(self.root / ".git/notes.md")]
+                arguments += ["--notes", str(self.notes)]
             self.assertEqual(0, publish_portable.main([*arguments, *options]))
             direct_check.assert_called_once_with()
         return output.getvalue()
 
     def test_stale_explainer_refuses_both_classes_and_current_tree_passes(self):
-        from tests.test_explainer_build import ROOT, link_targets
         import explainer_build
 
-        shutil.copy2(ROOT / "scripts/explainer_build.py", self.root / "scripts/explainer_build.py")
-        shutil.copytree(ROOT / explainer_build.SOURCE_REL, self.root / explainer_build.SOURCE_REL)
-        for target in link_targets():
+        root = Path(__file__).resolve().parents[1]
+        shutil.copy2(root / "scripts/explainer_build.py", self.root / "scripts/explainer_build.py")
+        shutil.copytree(root / explainer_build.SOURCE_REL, self.root / explainer_build.SOURCE_REL)
+        targets = {html.unescape(target).partition("#")[0]
+                   for target in re.findall(r'<a href="([^"]+)"', explainer_build.build(root))}
+        for target in sorted(targets):
+            if not target or ":" in target:
+                continue
             path = self.root / target
             path.parent.mkdir(parents=True, exist_ok=True)
             if not path.exists():
@@ -299,10 +307,13 @@ class CheckSetTests(RepositoryCase):
 
     def test_architecture_staleness_and_builder_errors_stop_before_snapshot(self):
         page = self.root / "docs/architecture.html"
-        for code, message in ((1, "page stale: docs/architecture.html"),
-                              (2, "page check failed: docs/architecture.html")):
-            with self.subTest(code=code):
-                (self.root / "scripts/architecture_build.py").write_text(f"raise SystemExit({code})\n")
+        for code, detail, message in ((1, "", "page stale: docs/architecture.html"),
+                                      (2, "", "page check failed: docs/architecture.html"),
+                                      (2, "graph_rule: view\nmore detail\n",
+                                       "page check failed: docs/architecture.html; graph_rule: view")):
+            with self.subTest(code=code, detail=detail):
+                (self.root / "scripts/architecture_build.py").write_text(
+                    f"import sys\nsys.stderr.write({detail!r})\nraise SystemExit({code})\n")
                 git(self.root, "commit", "-qam", f"builder exit {code}")
                 self.make_stamp()
                 before = git(self.root, "show-ref")
@@ -311,6 +322,29 @@ class CheckSetTests(RepositoryCase):
                 self.assertEqual(message, str(caught.exception))
                 self.assertEqual(before, git(self.root, "show-ref"))
                 self.assertEqual("current\n", page.read_text())
+                self.assertEqual([], self.calls(), "page checks must precede the check set")
+
+    def test_first_release_without_portable_tags(self):
+        self.make_stamp()
+        self.assertEqual([], release_tags(self.root))
+        self.invoke("stamp")
+        notes = self.notes.read_text()
+        self.assertIn("## Changes since <first snapshot>", notes)
+        self.assertIn("Gates 6-8: unchanged from <no full tag recorded>", notes)
+
+    def test_notes_inside_checkout_are_refused_before_checks_or_ref_changes(self):
+        linked = Path(self.temp.name) / "linked-repo"
+        linked.symlink_to(self.root, target_is_directory=True)
+        outward = self.root / ".git/outside"
+        outward.symlink_to(Path(self.temp.name), target_is_directory=True)
+        for path in (self.root / "notes.md", self.root / ".git/notes.md", linked / "notes.md", outward / "notes.md"):
+            with self.subTest(path=path):
+                before = git(self.root, "show-ref")
+                with self.assertRaisesRegex(SystemExit, "--notes must be outside the checkout"):
+                    self.invoke("stamp", "--notes", str(path))
+                self.assertEqual([], self.calls())
+                self.assertEqual(before, git(self.root, "show-ref"))
+                self.assertFalse(path.exists())
 
     def test_matching_stamp_prints_record_and_skips_full_run(self):
         tree, stamp = self.make_stamp()
@@ -393,7 +427,7 @@ class ReleaseClassTests(RepositoryCase):
                 if kind == "full":
                     git(self.root, "commit", "--allow-empty", "-qm", "full qualification")
                 output = self.invoke("stamp", "--class", kind, "--new-root")
-                notes = (self.root / ".git/notes.md").read_text()
+                notes = self.notes.read_text()
                 tag = snapshot_tags(self.root, "portable")[0]
                 self.assertIn(f"# Portable release: {kind}", notes)
                 self.assertIn(f"- Tag: {tag}", notes)
@@ -405,7 +439,7 @@ class ReleaseClassTests(RepositoryCase):
                     self.assertIn(line, notes)
                 self.assertIn("Snapshot range: not run (no push)", notes)
                 self.assertIn("## Known defects\n\n<none recorded>", notes)
-                self.assertIn(f"notes: {self.root / '.git/notes.md'}", output)
+                self.assertIn(f"notes: {self.notes}", output)
                 self.assertIn(f"\nclass: {kind}\n", git(self.root, "cat-file", "-p", tag))
                 if kind == "patch":
                     self.assertIn(f"Gates 6-8: unchanged from {self.full_tag}", notes)
@@ -425,7 +459,7 @@ class ReleaseClassTests(RepositoryCase):
         self.add_tag(legacy, None)
         self.assertEqual(release_tags(self.root)[0], (legacy, "full", git(self.root, "rev-parse", "HEAD")[:7]))
         self.invoke("stamp")
-        notes = (self.root / ".git/notes.md").read_text()
+        notes = self.notes.read_text()
         self.assertIn("# Portable release: patch", notes)
         self.assertIn(f"Gates 6-8: unchanged from {legacy}", notes)
 
@@ -439,11 +473,24 @@ class ReleaseClassTests(RepositoryCase):
 
     def test_retry_keeps_original_change_range_and_class(self):
         self.invoke("stamp")
-        first = (self.root / ".git/notes.md").read_text()
+        first = self.notes.read_text()
         self.invoke("stamp")
-        self.assertEqual(first, (self.root / ".git/notes.md").read_text())
-        with self.assertRaisesRegex(SystemExit, "different class or source"):
+        self.assertEqual(first, self.notes.read_text())
+        with self.assertRaisesRegex(SystemExit, "different class; no notes or push"):
             self.invoke("stamp", "--class", "full")
+
+    def test_unchanged_snapshot_names_source_and_combined_mismatches(self):
+        self.invoke("stamp")
+        first = self.notes.read_text()
+        git(self.root, "commit", "--allow-empty", "-qm", "private-only change")
+        self.make_stamp()
+        before = git(self.root, "show-ref")
+        for kind, difference in (("patch", "source"), ("full", "class and source")):
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(SystemExit, f"different {difference}; no notes or push"):
+                    self.invoke("stamp", "--class", kind)
+                self.assertEqual(before, git(self.root, "show-ref"))
+                self.assertEqual(first, self.notes.read_text())
 
     def test_push_copies_hook_stdout_and_stderr_without_real_push(self):
         import publish_portable
@@ -461,7 +508,7 @@ class ReleaseClassTests(RepositoryCase):
                 with mock.patch.object(publish_portable.subprocess, "run", side_effect=run):
                     output = self.invoke("stamp", push=True)
                 self.assertIn(line, output.splitlines())
-                self.assertIn(f"Snapshot range: {line}", (self.root / ".git/notes.md").read_text())
+                self.assertIn(f"Snapshot range: {line}", self.notes.read_text())
 
     def test_missing_hook_line_does_not_claim_scan_passed(self):
         import publish_portable
@@ -477,15 +524,16 @@ class ReleaseClassTests(RepositoryCase):
 
         def run(command, *args, **kwargs):
             if command[:2] == ["git", "push"]:
-                return subprocess.CompletedProcess(command, 1, "", line + "\nrefused")
+                return subprocess.CompletedProcess(command, 1, "stdout reason\n", line + "\nrefused")
             return real_run(command, *args, **kwargs)
 
         output = io.StringIO()
         with mock.patch.object(publish_portable.subprocess, "run", side_effect=run), \
                 contextlib.redirect_stdout(output):
-            with self.assertRaisesRegex(SystemExit, "push failed"):
+            with self.assertRaises(SystemExit) as caught:
                 self.invoke("stamp", push=True)
-        self.assertIn(f"Snapshot range: {line}", (self.root / ".git/notes.md").read_text())
+        self.assertEqual(f"push failed: stdout reason\n{line}\nrefused", str(caught.exception))
+        self.assertIn(f"Snapshot range: {line}", self.notes.read_text())
 
 
 class IdentityTests(RepositoryCase):

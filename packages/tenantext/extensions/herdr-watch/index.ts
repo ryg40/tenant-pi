@@ -542,7 +542,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 			prompt_file: Type.Optional(Type.String({ description: "Path of a file with the task. Give this or prompt." })),
 			timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, description: `Seconds that ask.py waits for the reply. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
 			label: Type.Optional(Type.String({ description: "A short label for the notification" })),
-			unattended: Type.Optional(Type.Boolean({ description: "claude write roles only: allow all shell commands and edits in advance. Only when the user asks for an unattended worker. Default false." })),
+			unattended: Type.Optional(Type.Boolean({ description: "claude write roles only: allow edits in advance; the auto mode still decides each shell command. Only when the user asks for an unattended worker. Default false." })),
 			strict: Type.Optional(Type.Boolean({ description: "Hard tool limits of the role (SPAWN.md). Only when the user asks for them. Default false." })),
 			extra_args: Type.Optional(Type.Array(Type.String(), { description: "Native arguments of the harness, passed after --" })),
 		}),

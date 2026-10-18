@@ -83,7 +83,7 @@ The generated runtime stays `unverified`.
 
 ## Install the dependencies by hand
 
-Follow [INSTALL.md](../../INSTALL.md#stage-1-requirements).
+Follow INSTALL.md stages [1](../../INSTALL.md#stage-1-requirements), [3](../../INSTALL.md#stage-3-install-pi), [4](../../INSTALL.md#stage-4-package-dependencies) and [7](../../INSTALL.md#stage-7-declared-npm-packages).
 The kit installs nothing. Run only the commands for the modules you select.
 
 Warning: installation commands change the machine. Review each command before running it.

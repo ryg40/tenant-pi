@@ -152,9 +152,10 @@ def json_block(lines):
     return bool(rows)
 
 
-def published(rel, root=ROOT):
+def published(rel, root=ROOT, *, entries=None):
     """Whether a link target belongs to the publish set, including optional exclusions."""
-    if rel == DEV_ONLY_REL or excluded_files({rel, rel.rstrip("/") + "/"}, private_excludes(root)):
+    entries = private_excludes(root) if entries is None else entries
+    if rel == DEV_ONLY_REL or excluded_files({rel, rel.rstrip("/") + "/"}, entries):
         return False
     if rel in PUBLISH:
         return True
@@ -218,7 +219,8 @@ def document_files(root):
     names = {name for name in explicit_files(root, PUBLISH) if name.endswith(".md")}
     names.update(path.relative_to(root).as_posix() for path in (root / "docs").rglob("*.md")
                  if path.is_file())
-    return sorted(name for name in names if published(name, root))
+    entries = private_excludes(root)
+    return sorted(name for name in names if published(name, root, entries=entries))
 
 
 def check(root=ROOT, files=None):

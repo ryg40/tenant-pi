@@ -16,7 +16,8 @@ from unittest.mock import patch
 
 from tests.test_baseline import run_main
 from scripts import launcher, profile_write, tenant_pi
-from scripts.launcher import MAX_PATH, text, write
+from scripts.launcher import text, write
+from scripts.profile_write import MAX_PATH
 from scripts.profile_write import WriteError, check_location, preflight
 from scripts.validate import Invalid, load
 from tests.test_model_routes import GATEWAY, NATIVE, REGISTRY

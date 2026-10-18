@@ -94,7 +94,7 @@ class KitCommitTests(unittest.TestCase):
             shutil.copytree(ROOT / "config", kit / "config")
             home = base / "home"
             home.mkdir(mode=0o700)
-            env = {"HOME": str(home), "PATH": os.defpath, "GIT_CONFIG_NOSYSTEM": "1",
+            env = {"HOME": str(home), "PATH": os.environ.get("PATH", os.defpath), "GIT_CONFIG_NOSYSTEM": "1",
                    "GIT_CONFIG_GLOBAL": os.devnull}
             with patch.dict(os.environ, env, clear=True):
                 subprocess.run(["git", "init", "-q", str(kit)], check=True, capture_output=True)
@@ -109,8 +109,8 @@ class KitCommitTests(unittest.TestCase):
                 git = bin_dir / "git"
                 git.write_text("#!/bin/sh\nexit 1\n")
                 git.chmod(0o700)
-                for name, root, path, wanted in (("repository", kit, os.defpath, expected),
-                                                 ("plain", plain, os.defpath, "unknown"),
+                for name, root, path, wanted in (("repository", kit, env["PATH"], expected),
+                                                 ("plain", plain, env["PATH"], "unknown"),
                                                  ("failed", kit, str(bin_dir), "unknown"),
                                                  ("absent", kit, str(base / "absent"), "unknown")):
                     with self.subTest(case=name):
@@ -129,13 +129,13 @@ class KitCommitTests(unittest.TestCase):
                         state = json.loads((target / ".tenant-pi/state.json").read_text())
                         self.assertEqual(wanted, state["provenance"]["kitCommit"])
 
-    def test_kit_copy_inside_repository(self):
+    def test_kit_copy_inside_repository_overrides_caller_ceiling(self):
         with tempfile.TemporaryDirectory(prefix="tenant-pi-nested-commit-") as temp:
             outer = Path(temp)
             kit = outer / "kit"
-            shutil.copytree(ROOT / "config", kit / "config")
-            env = {"HOME": str(outer), "PATH": os.defpath, "GIT_CONFIG_NOSYSTEM": "1",
-                   "GIT_CONFIG_GLOBAL": os.devnull}
+            kit.mkdir()
+            env = {"HOME": str(outer), "PATH": os.environ.get("PATH", os.defpath), "GIT_CONFIG_NOSYSTEM": "1",
+                   "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CEILING_DIRECTORIES": str(outer.parent)}
             with patch.dict(os.environ, env, clear=True):
                 for root in (outer, kit):
                     subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
@@ -149,6 +149,7 @@ class KitCommitTests(unittest.TestCase):
                         self.assertEqual(expected, subprocess.check_output(
                             ["git", "rev-parse", "HEAD"], cwd=kit, text=True).strip())
                         self.assertEqual("unknown", tenant_pi._kit_commit(kit))
+                    self.assertEqual(str(outer.parent), os.environ["GIT_CEILING_DIRECTORIES"])
 
     def test_git_output_and_failures(self):
         for status, output, wanted in ((0, "a" * 40 + "\n", "a" * 40), (1, "a" * 40 + "\n", "unknown"),

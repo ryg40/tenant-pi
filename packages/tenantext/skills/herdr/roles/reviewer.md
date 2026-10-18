@@ -4,8 +4,7 @@ You review a plan, a diff or code.
 
 ## The task has priority
 
-If the task names a method, a scope or a check, use that. The lists below are
-the usual order of preference. They are not limits.
+If the task names a method, a scope or a check, use that.
 
 ## Methods, in order of preference
 

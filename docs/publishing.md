@@ -15,7 +15,7 @@ python3 scripts/publish_portable.py --no-push  # build and tag locally, inspect 
 What it does, in order:
 
 1. Refuses a dirty working tree. The snapshot comes from the committed `HEAD`, never from unsaved edits.
-2. Calls `python3 scripts/check.py --stamp-status`. A matching stamp prints its tree, time, client, skipped count and result lines. Otherwise, it runs the full `python3 scripts/check.py` check set. A failure stops before the snapshot build. It then checks public page currency and calls the publish check directly to validate the snapshot file list.
+2. Checks public page currency, then calls `python3 scripts/check.py --stamp-status`. For a matching stamp, the publisher prints its tree, time, client, skipped count and result lines. Otherwise, it runs the full `python3 scripts/check.py` check set. A failure stops before the snapshot build. It then calls the publish check directly to validate the snapshot file list.
 3. Builds a Git tree from `HEAD` that contains only the files in `PUBLISH` and in the `PUBLISH_DIRS` rules in `scripts/publish_check.py`, through a temporary index. The working tree is not touched.
 4. Builds the snapshot commit and annotated tag objects. The commit uses the previous snapshot as parent, unless `--new-root` is set.
 5. Updates the branch and creates `portable/<yyyymmdd>-<source sha>` in one Git transaction. A tag collision or changed branch value moves neither ref.
@@ -37,10 +37,15 @@ python3 scripts/check.py --stamp-status
 ```
 
 The full tier runs one unittest process per test module, then the publish check, the public reader check and `git diff --check`.
-Without `.git`, it runs the unit and publish checks, prints `diff: skipped (not a Git work tree)`, and writes no stamp.
+Without `.git`, both tiers run the unit, publish and public checks and print `diff: skipped (not a Git work tree)`.
+Both tiers also print `stamp: not written (not a Git work tree)` and write no stamp.
 The unit suite already includes the examples, sample overlay, documentation and builder determinism tests, but not page currency checks.
-The worker pool defaults to `os.cpu_count()`, or one worker when that value is unavailable.
-Use `python3 scripts/check.py --jobs 4` to set a smaller pool.
+The worker pool starts with `os.cpu_count()`, or one worker when that value is unavailable.
+It uses the smaller CPU affinity count or cgroup CPU quota when available, with at least one worker.
+A fractional CPU quota rounds up to a whole worker.
+Use `python3 scripts/check.py --jobs 4` to set the pool explicitly.
+Each unittest process has a timeout of 900 seconds. Use `--shard-timeout SECONDS` to change it.
+A timeout fails the run and prints the module name and timeout to standard error.
 The combined unit result prints `Ran N tests` and `OK (skipped=K)`, or `FAILED`.
 Each other check prints one result line. The final line is `check: passed` or `check: FAILED`.
 A failed check gives exit code 1. Failure details go to standard error.
@@ -68,8 +73,11 @@ Docker availability does not prove that a daemon is running.
 The stamp stays local and is never pushed.
 Dirty trees, failed runs and fast runs write no stamp.
 A fast run does not remove an existing full-run stamp.
+A stamp path or write failure prints `stamp: not written (...)`.
+A missing stamp does not fail the checks: a successful run still ends with `check: passed` and exits 0.
 
 `python3 scripts/check.py --stamp-status` exits 0 for a matching stamp on a clean tree, or 1 otherwise.
+Without `.git`, it prints only `stamp: not available (not a Git work tree)` and exits 1.
 It also requires the current check-set version, Python version and client details to match.
 The stamp records offline evidence, not live-service qualification or approval to publish.
 The publisher reads a matching stamp and prints `tree`, `when`, `client`, `skipped` and `resultLines`.
@@ -77,12 +85,14 @@ Otherwise, it runs the full check set and requires exit code 0 with the final li
 The publish check remains a direct call because the snapshot build needs its file list.
 Run the full check set once per clean tree and client.
 Build with `--no-push`, inspect the snapshot, then run the publisher once to push after approval.
+Before the next build, publish that snapshot or delete its local `portable/*` tag after review.
+Local unpublished tags count as previous releases and can shorten the next changes list.
 Both publisher runs reuse the stamp while the tree, check-set version, Python version and client details still match.
 If a stamp is missing or stale, the publisher runs the full check set again.
 
 ## Public pages
 
-Both release classes compare the public pages after the check set and before any snapshot ref changes.
+Both release classes compare the public pages before the check set and before any snapshot ref changes.
 The publisher runs `python3 scripts/architecture_build.py --check` and `python3 scripts/explainer_build.py --check` without writing pages.
 A stale page stops publication with one line, such as `page stale: EXPLAINER.html`.
 Regenerate the page with its builder and commit it before publishing.
@@ -95,7 +105,7 @@ Regenerate the page with its builder and commit it before publishing.
 | `--branch` | Local snapshot branch: `portable`, `portable-*` or `portable/*` in both modes. Default `portable`. No worktree may check it out. |
 | `--no-push` | Inspect with `git show portable --stat` before publishing. |
 | `--class` | Select `patch` (the default) or `full` for the release record. |
-| `--notes` | Write draft release notes to this path instead of a new system temporary file. |
+| `--notes` | Write draft release notes outside the checkout at this path instead of a new system temporary file. |
 | `--force` | Replace the remote branch, including an existing snapshot chain, with `--force-with-lease`. It does not remove remote tags. Not for routine runs. |
 | `--new-root` | Start a parentless snapshot. Needs `--no-push` and a branch named `portable`, `portable-*` or `portable/*` that no worktree checks out. |
 
@@ -131,7 +141,7 @@ A new file under those directories enters automatically unless `scripts/dev-only
 Review each new file before committing it. The pre-commit host-value scan and the [public reader rules](#public-reader-rules) still apply.
 The publish check scans each selected file for private-key and token patterns and rejects an `.env.example` with values.
 Files outside directory rules need an exact path in `PUBLISH` after review.
-The kit's `.okf/` bundle stays in the development tree, excluded through the deny list.
+The kit's `.okf/` bundle exists only in the development repository; the deny list excludes it from snapshots.
 
 For your private copy, use `scripts/dev-only-files.txt` as the optional deny list after reviewing each exclusion.
 Use one repository-relative file path or directory prefix ending in `/` per line. Blank lines and full-line `#` comments are ignored.

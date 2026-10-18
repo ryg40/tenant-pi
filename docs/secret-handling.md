@@ -93,6 +93,7 @@ Content does not switch the scan off. A "gitleaks:allow" or "betterleaks:allow" 
 scripts/scan.sh tree                   # tracked files (working tree) and the staged content
 scripts/scan.sh staged                 # the staged changes only (pre-commit, pre-merge-commit)
 scripts/scan.sh history [<range>]      # commits in <range>, git log syntax, default HEAD
+scripts/scan.sh history --stdin        # exact commit ids, one per line on standard input
 scripts/scan.sh all                    # tree and history
 scripts/scan.sh selftest               # negative control
 ```
@@ -320,17 +321,24 @@ The pre-push hook scans the commits that the push sends. The table gives the ran
 | The pushed remote has no remote-tracking ref, or the push names a URL and not a remote | All of the history of the local ref. |
 
 The hook resolves each ref's range separately, then scans their union once with `--no-walk=unsorted` and explicit commit ids.
+It passes the ids through standard input, not a command argument.
+The scan saves this list and gives it through standard input to each Git process that Betterleaks starts.
+Betterleaks does not forward standard input to Git, so a temporary Git wrapper opens the list for its child process.
+The wrapper uses a temporary directory under `TMPDIR` (`/tmp` when `TMPDIR` contains a colon), which the scan deletes at exit.
 It does not combine exclusions across refs, because one ref's exclusion could hide a commit sent by another ref.
 A branch and tag that share commits therefore scan those commits once.
 If any local or remote ref requires `fail`, the whole union uses `fail`.
-The hook prints one `pre-push: result <pass|fail>; range <revisions>; level <level>` line for the release record.
+The hook prints one `pre-push: result <pass|fail>; range <revisions>; level <level>` line for the snapshot-range record.
+Up to 8 commits, `<revisions>` is `--no-walk=unsorted` followed by each sha, including the single-commit case.
+Above 8 commits, it is `<count> commits, first <sha> last <sha>`.
+The first and last ids come from the sorted union, not the commit dates.
+The publisher copies this line into the release notes.
 An empty union prints `range empty (no new commit)` and starts no scan.
 
 The rule is the same for each ref. The level `fail` of a portable ref does not change the range. A new `portable/*` tag is scanned only in the commits that the remote does not have. Reason: each snapshot has each earlier snapshot as an ancestor. A scan of all of the history would refuse each new snapshot tag for one finding in an old snapshot commit. A new branch `portable` follows the same rule as the tag, for the same reason: the remote already holds the old commits, and a second scan cannot remove them.
 
 Limits of the range:
 
-- Follow-up: the union is one argument; a 128 KiB argument limit permits about 3,100 commits, and the result line lists every commit.
 - Git gives the hook no list of the remote commits. The hook reads the remote-tracking refs, so the range is only as current as the last `git fetch <remote>` or `git push` to that remote.
 - A remote-tracking ref that is older than the remote makes the range larger. The hook can then refuse a push for a commit that the remote already has. Run `git fetch <remote>` and push again.
 - A remote-tracking ref can name a commit that the remote lost, for example after a forced push from another clone. The hook does not scan that commit. Run `git fetch --prune <remote>` before the push when the remote history can have changed.

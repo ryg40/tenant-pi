@@ -141,6 +141,30 @@ class InstallExampleTests(unittest.TestCase):
     def setUpClass(cls):
         cls.texts = {name: (ROOT / name).read_text(encoding="utf-8") for name in cls.DOCS}
 
+    def test_peer_override_uses_the_clone_path(self):
+        shown = re.compile(r"PI_CODING_AGENT_DIR=\S+ node (\S+)")
+        for name in (*self.DOCS, "POST_INSTALL.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            with self.subTest(name=name):
+                self.assertNotIn("node scripts/patch_extension_peers.mjs", text)
+                paths = shown.findall(text)
+                self.assertTrue(paths)
+                for path in paths:
+                    self.assertIn(path, ("<clone>/scripts/patch_extension_peers.mjs",
+                                         '"$HOME/tenant-pi/scripts/patch_extension_peers.mjs"'))
+
+    def test_no_guide_copies_the_component_list(self):
+        from scripts.components import RECOMMENDED
+        components = json.loads((ROOT / "config/manifest.json").read_text())["components"]
+        patterns = [re.compile(r"(?<![\w-])" + re.escape(cid) + r"(?![\w-])") for cid in components]
+        for name in (*self.DOCS, "skills/tenant-pi-install/SKILL.md", "docs/guides/setup.md"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            for number, line in enumerate(text.splitlines(), 1):
+                with self.subTest(name=name, line=number):
+                    self.assertLess(sum(bool(pattern.search(line)) for pattern in patterns), 10)
+        copied = "Recommended: " + ", ".join(RECOMMENDED)
+        self.assertGreaterEqual(sum(bool(pattern.search(copied)) for pattern in patterns), 10)
+
     def memory_example(self, name):
         """The one JSON example of a guide that holds the consent key and the `memory` block."""
         found = []
@@ -214,7 +238,9 @@ class PublicTextTests(unittest.TestCase):
             name = "docs/explainer/new-guide.md"
             (root / name).write_text("# New guide\n")
             self.assertNotIn(name, doc_check.PUBLISH)
-            self.assertIn(name, doc_check.document_files(root))
+            with mock.patch.object(doc_check, "private_excludes", wraps=doc_check.private_excludes) as excludes:
+                self.assertIn(name, doc_check.document_files(root))
+                excludes.assert_called_once_with(root)
             (root / doc_check.DEV_ONLY_REL).write_text(name + "\n")
             self.assertNotIn(name, doc_check.document_files(root))
             self.assertFalse(doc_check.published(name, root))
@@ -317,6 +343,7 @@ class PostInstallTests(unittest.TestCase):
             self.assertIn("the kit changes no profile in place", stage, name)
             # The commands of an update are in the one file; the stage holds no second copy.
             self.assertNotIn("```", stage, name)
+            self.assertNotIn("tenant_pi.py", stage, name)
             self.assertIn("This stage is one message to the user, and it runs no command.", stage, name)
 
     def test_the_document_lists_name_the_file(self):
@@ -367,7 +394,8 @@ class TreeTests(unittest.TestCase):
     def test_clean_tree(self):
         findings, counts = self.run_check()
         self.assertEqual([], findings)
-        actions = 16 + int(doc_check.tenant_pi.HAS_CARRY) + int(doc_check.tenant_pi.HAS_LIST)
+        published = set(cli_tree()[1]) - set(doc_check.DEV_ONLY_ACTIONS)
+        actions = len(published) + int(doc_check.tenant_pi.HAS_CARRY) + int(doc_check.tenant_pi.HAS_LIST)
         self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": actions}, counts)
 
     def test_each_rule(self):

@@ -15,7 +15,7 @@ is one line. Load the full text of an entry only when you use it.
 
 ## Local, when the answer is on the machine
 
-Use the entries of `{resources_command} --group local` in their order.
+Use the entries of `{resources_command} --group local --role researcher` in their order.
 
 If an entry fails or is not available, go to the next one. In your result, say
 which entry you used, which entries failed, and the exact error of each.
@@ -25,7 +25,7 @@ entries that are left.
 {absent}
 
 You can use a tool or a skill that is not in these lists. To see the lists
-again with the locations that are present now, run `{resources_command}`.
+again with the locations that are present now, run `{resources_command} --role researcher`.
 
 ## Usual practice
 

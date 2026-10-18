@@ -346,14 +346,34 @@ class SkillInvariantTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             destination = Path(temp) / "output"
             count = build(COMPONENT.parent, destination)
-            cache = destination / "herdr/scripts/__pycache__"
-            cache.mkdir()
-            byproducts = [cache / "x.pyc", destination / "herdr/scripts/x.pyc"]
+            byproducts = [destination / name / relative for name in ("herdr", "slopscore-pr")
+                          for relative in ("__pycache__/x.pyc", "x.pyc", "scripts/__pycache__/x.pyc", "scripts/x.pyc")]
             for path in byproducts:
+                path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(b"keep cache\n")
             self.assertEqual(count, build(COMPONENT.parent, destination))
             for path in byproducts:
                 self.assertEqual(b"keep cache\n", path.read_bytes())
+
+    def test_plugin_skill_rebuild_refuses_root_python_byproducts(self):
+        build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            for entry in ("__pycache__/x.pyc", "x.pyc"):
+                with self.subTest(entry=entry):
+                    destination = root / entry.split("/")[0]
+                    build(COMPONENT.parent, destination)
+                    byproduct = destination / entry
+                    byproduct.parent.mkdir(parents=True, exist_ok=True)
+                    byproduct.write_bytes(b"keep cache\n")
+                    skill = destination / "herdr/SKILL.md"
+                    skill.write_text("keep skill\n")
+                    refused = destination / entry.split("/")[0]
+                    with self.assertRaisesRegex(ValueError, re.escape(
+                            f"unexpected entry: {refused.resolve()}; remove it by hand")):
+                        build(COMPONENT.parent, destination)
+                    self.assertEqual(b"keep cache\n", byproduct.read_bytes())
+                    self.assertEqual("keep skill\n", skill.read_text())
 
     def test_plugin_skill_rebuild_names_unexpected_entries(self):
         build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
@@ -362,7 +382,7 @@ class SkillInvariantTests(unittest.TestCase):
             build(COMPONENT.parent, destination)
             stray = destination / "herdr/scripts/stray.txt"
             stray.write_text("keep\n")
-            with self.assertRaisesRegex(ValueError, r"unexpected entry: herdr/scripts/stray\.txt; remove it by hand"):
+            with self.assertRaisesRegex(ValueError, re.escape(f"unexpected entry: {stray.resolve()}; remove it by hand")):
                 build(COMPONENT.parent, destination)
             self.assertEqual("keep\n", stray.read_text())
 
@@ -379,6 +399,39 @@ class SkillInvariantTests(unittest.TestCase):
             self.assertEqual(count, build(COMPONENT.parent, destination))
             self.assertEqual((COMPONENT.parent / "herdr/SKILL.md").read_bytes(),
                              (parent / "nested/output/herdr/SKILL.md").read_bytes())
+
+    def test_plugin_skill_build_refuses_source_overlap_through_parent_alias(self):
+        build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source"
+            for name in ("herdr", "slopscore-pr"):
+                (source / name).mkdir(parents=True)
+                (source / name / "SKILL.md").write_text("source\n")
+            alias = root / "alias"
+            alias.symlink_to(source, target_is_directory=True)
+            destination = alias / "herdr/output"
+            with self.assertRaisesRegex(ValueError, "overlaps the source skills"):
+                build(source, destination)
+            self.assertFalse((source / "herdr/output").exists())
+            for name in ("herdr", "slopscore-pr"):
+                self.assertEqual("source\n", (source / name / "SKILL.md").read_text())
+
+    def test_plugin_skill_build_reports_a_file_in_the_parent_chain(self):
+        script = COMPONENT.parent.parent / "claude-code/build-skills.py"
+        with tempfile.TemporaryDirectory() as temp:
+            parent = Path(temp) / "file"
+            parent.write_text("keep\n")
+            for relative in ("output", "nested/output"):
+                with self.subTest(relative=relative):
+                    destination = parent / relative
+                    result = subprocess.run([sys.executable, str(script), str(destination)],
+                                            capture_output=True, text=True)
+                    self.assertEqual(1, result.returncode)
+                    self.assertEqual("", result.stdout)
+                    self.assertEqual(f"build-skills: cannot inspect destination path: {destination.resolve()}; "
+                                     "check its parent directories\n", result.stderr)
+                    self.assertEqual("keep\n", parent.read_text())
 
     def test_plugin_skill_build_refuses_links_conflicts_and_source_overlap(self):
         build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]

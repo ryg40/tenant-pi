@@ -31,7 +31,7 @@ A change that an existing adapter cannot follow gets a new version number.
 A new optional method with a default in the base class keeps the version.
 A kit pins a tenant-pi release tag. Move the pin and the adapter file together.
 
-On 2026-10-18, the helpers `text_if` and `json_shape` left the seam with owner approval.
+On 2026-10-18, the helpers `text_if` and `json_shape` left the seam by decision of the maintainers.
 An adapter that called them must define them itself.
 No known adapter used them; the version stays 1.
 

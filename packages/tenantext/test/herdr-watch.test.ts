@@ -386,6 +386,15 @@ test("herdr_spawn starts the pane with spawn.py, watches it, and returns the spa
 	assert.equal(rendered[1], "Done: the change");
 });
 
+test("the unattended description keeps shell decisions in auto mode", () => {
+	const text = readFileSync(new URL("../extensions/herdr-watch/index.ts", import.meta.url), "utf8");
+	const description = "claude write roles only: allow edits in advance; the auto mode still decides each shell command. "
+		+ "Only when the user asks for an unattended worker. Default false.";
+	const line = text.split("\n").find(line => line.trimStart().startsWith("unattended: Type."));
+	assert.ok(line?.includes(`description: "${description}"`));
+	assert.ok(!text.includes("all shell commands"));
+});
+
 test("herdr_spawn passes unattended, strict and extra_args to spawn.py, and the native arguments after --", async t => {
 	const f = fixture(t);
 	const result = await f.run("herdr_spawn", spawnTask(f.root, { reply: "ok" }, {

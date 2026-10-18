@@ -293,9 +293,7 @@ publish set valid: <count> files, <count> explicit (not a release approval)
 ```
 
 The last test line starts with `OK`; a skipped-test count is expected and depends on the client.
-Observed on three client types: root with Docker and Node skips 1 test.
-A non-root client with Node and without Docker skips 4 tests.
-A client without Node skips 7 tests.
+Record the skipped count from the current check result, not from a previous client run.
 
 Run each later command of this document from the clone directory.
 
@@ -521,7 +519,7 @@ In `scripts/tenant_pi.py`, `main()` calls `_init_private()`:
 `init()` calls the shared guarded writer in `scripts/profile_write.py`. Steps 9 and 12 also use this module:
 
 - `open_new_parent()` calls `_ancestors()` to open each directory above the new one, without following a symbolic link. Each must be owned by you or by root. None can be writable by group or others, unless it has the sticky bit as `/tmp` has. The direct parent must be owned by you. The new name must not exist.
-- `profile_write.create_new_file()` holds the file checks and diagnostics. Its internal `_create_file()` uses an exclusive create, so it never replaces a file. It checks the mode and the owner, writes the bytes and syncs the file.
+- `profile_write.create_new_file()` checks the file; `init()` uses its descriptor form and owns the directory transaction diagnostics. Its internal `_create_file()` uses an exclusive create, so it never replaces a file. It checks the mode and the owner, writes the bytes and syncs the file.
 
 The kit creates the directory with `os.mkdir` and mode `0700`.
 An exclusive create prevents replacement of an existing entry. The kit writes the private templates only into its new directory.
@@ -1142,7 +1140,7 @@ You see `set` or `unset`.
 
 - The kit reads no credential file or credential value. Its path guards and vault check read `HOME` and `WIKI_HOME`, including the guards of `compose-plan --write`. `plan` also tests known provider key names for presence. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable). `check-runtime` and `check-herdr` pass the caller's environment to their child processes.
 - `check-runtime` reads `PATH` to find the tools, and `TMPDIR` (or `TEMP` or `TMP`) for its temporary directory. It passes the whole environment of the shell to the three `--version` processes, with `PI_CODING_AGENT_DIR` replaced for Pi. So a provider key that the shell exports reaches these three processes.
-- The other actions read no environment value.
+- `generate` and `results` each make one read-only Git call. Git inherits the shell environment, except `GIT_CEILING_DIRECTORIES`, which stops repository discovery at the kit root. The kit's Python logic does not inspect the environment values that it passes to Git. Python copies those values when it starts Git.
 - `auth.json` of the live profile. The kit copies no login from one profile to another, so the new profile starts with no login.
 
 </details>
@@ -1192,7 +1190,7 @@ In `scripts/tenant_pi.py`, `main()` calls `_baseline()`:
 
 1. `_home()` reads `HOME`.
 2. The shared `profile_write.check_location()` refuses an `--out` path in the clone, in `~/.pi/agent` or in `--dir`.
-3. The shared `profile_write.preflight()` checks the parent of `--out` and that the file is absent, with `_ancestors()` as in step 4.
+3. The shared `profile_write.preflight()` checks the parent of `--out` and that the file is absent. Its `_ancestors()` check matches [private directory creation](#step-4-create-the-private-directory).
 4. `_dir_state()` opens `--dir` and calls `scan()`.
 5. `scan()` lists the directory at each level and makes one status call for each entry. It opens directories only and follows no symbolic link.
 6. `record()` and `encode()` make the bytes of the file. `write()` calls `profile_write.create_new_file()`, which holds the preflight and diagnostics.

@@ -17,6 +17,8 @@ python3 scripts/tenant_pi.py generate --overlay /home/EXAMPLE_USER/.config/tenan
 - `generate --launcher` applies the static rules and the ancestor and absence checks before it creates the target. It writes the launcher file only after the profile is complete (`filesComplete` is `true`). A failed generation writes no launcher file.
 - Without `--launcher`, the output of `plan` and `generate` does not change.
 
+The launcher location checks read only `HOME` and `WIKI_HOME` from the environment; `HOME` must be absolute without a trailing slash.
+
 ## The file
 
 The file has mode `0700` and exactly two lines:
@@ -160,7 +162,7 @@ See the [refusal rules](private-directory.md#refusal-rules) for protected paths,
 
 | Diagnostic | Cause |
 | --- | --- |
-| `absolute_path: launcher.path`, `text: launcher.path`, `shell_or_template: launcher.path` | The path is not an absolute POSIX path of the kit form. This includes a relative path. |
+| `absolute_path: launcher.path`, `text: launcher.path`, `shell_or_template: launcher.path` | The path is not an absolute POSIX path of the kit form. It must start with `/`, end without `/`, and contain no `.` or `..` segment. |
 | `path_too_long: launcher.path` | The path has more than 1024 characters. |
 | `under_target: launcher.path` | The path is the target or is under it. The target is `target.agentDir` of the overlay and, for `generate`, `--target`. |
 | `target_exists: launcher.path` | `generate` only. The path exists: a file, a directory, a link, a dangling link or another entry. |

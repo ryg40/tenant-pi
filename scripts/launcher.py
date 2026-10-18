@@ -2,7 +2,7 @@
 import re
 from dataclasses import dataclass
 
-from scripts.profile_write import MAX_PATH, create_new_file
+from scripts.profile_write import create_new_file
 from scripts.validate import fail
 
 FIELD = "launcher.path"

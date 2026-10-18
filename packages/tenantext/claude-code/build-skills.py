@@ -45,6 +45,8 @@ def build(source, destination):
             mode = path.lstat().st_mode
         except FileNotFoundError:
             continue
+        except OSError as error:
+            raise ValueError(f"cannot inspect destination path: {path}; check its parent directories") from error
         if not stat.S_ISDIR(mode):
             raise ValueError(f"destination path is not a plain directory: {path}")
     resolved_source, resolved_destination = source.resolve(), destination.resolve()
@@ -55,17 +57,20 @@ def build(source, destination):
 
     def validate(path):
         relative = path.relative_to(destination)
+        inside_skill = len(relative.parts) > 1 and relative.parts[0] in SKILLS
         metadata = path.lstat()
         if stat.S_ISLNK(metadata.st_mode):
-            raise ValueError(f"destination contains a symlink: {relative}")
-        if stat.S_ISDIR(metadata.st_mode) and (relative in expected_directories or path.name == "__pycache__"):
+            raise ValueError(f"destination contains a symlink: {path}")
+        if stat.S_ISDIR(metadata.st_mode) and (relative in expected_directories
+                                             or (inside_skill and path.name == "__pycache__")):
             for child in path.iterdir():
                 validate(child)
-        elif stat.S_ISREG(metadata.st_mode) and (relative in expected_files or path.suffix == ".pyc"):
+        elif stat.S_ISREG(metadata.st_mode) and (relative in expected_files
+                                                or (inside_skill and path.suffix == ".pyc")):
             if metadata.st_nlink != 1:
-                raise ValueError(f"destination contains a hard-linked file: {relative}")
+                raise ValueError(f"destination contains a hard-linked file: {path}")
         else:
-            raise ValueError(f"destination contains an unexpected entry: {relative}; remove it by hand")
+            raise ValueError(f"destination contains an unexpected entry: {path}; remove it by hand")
 
     if destination.exists():
         for child in destination.iterdir():

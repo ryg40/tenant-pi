@@ -242,6 +242,6 @@ A candidate with `modelsDefinitions` in its kit choices also declares `models.js
 - `kitCommit` names the commit of the kit clone at generation time. Not verified: that the working tree of the clone was clean at that time. Uncommitted kit changes are not visible in the record.
 - `generatedAt` comes from the host clock. Not verified: that the host clock was correct.
 
-### Test coverage
+### Provenance test coverage
 
 `tests/test_profile_write.py` and `tests/test_cli.py` cover the two new fields in `state.json`.

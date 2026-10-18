@@ -104,7 +104,7 @@ A build with `--no-push` has no pre-push record; mark the snapshot-range check a
 ### Gate 6: the clean Linux core trial
 
 - Use a Linux user with no Pi profile of its own, no kit credentials and no optional services.
-- Follow [the setup guide](setup.md) with a core-only overlay.
+- Follow [INSTALL.md](../../INSTALL.md) with a core-only overlay.
 - Record the Pi version, the Node version and the Python version from `check-runtime`.
 - Record the `check-baseline` result for `~/.pi/agent` of that user (INSTALL.md Stage 9 check 4). For a user with no Pi profile the result is `unchanged`, with `was` and `now` both `absent`.
 - A model reply (Stage 9 check 3) needs a credential. Report it separately as passed, failed, blocked or not run.
@@ -202,7 +202,7 @@ Full notes also hold:
 - The tag, the source commit and the snapshot commit.
 - The Pi pin (`runtime.piVersion`) and the accepted range (`runtime.piAcceptedRange`).
 - The qualification: full qualification, or a fast track with gate 6 not run.
-- The check-set stamp: tree hash, time, result lines, client and skipped count.
+- The check-set stamp from the `publish_portable.py` output: tree hash, time, result lines, client and skipped count.
 - Gates 1, 5 and 6 with one word: passed, failed, blocked or not run. Include each gate's record.
 - The stamp's public reader result. The unit result includes the documentation check.
 - Gate 7 and gate 8 with one word for each part. These two gates have no word for the whole gate.
@@ -221,6 +221,8 @@ Warning: a release entry is public when the repository is public.
 
 The skipped-test count depends on the client. Record the count from the check result, not from this guide.
 Record the client alongside the actual count, rather than copying one count to another client.
+Take the stamp fields for both templates from the `publish_portable.py` output.
+`check.py --stamp-status` prints only the stamp status line, not those fields.
 
 Replace each placeholder in angle brackets. Do not replace an unrun gate with a passed result.
 The release entry is Markdown: each list item is one line on the release page.

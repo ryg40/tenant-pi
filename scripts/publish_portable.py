@@ -261,7 +261,9 @@ def check_pages(root):
                                 text=True, capture_output=True)
         if result.returncode:
             reason = "stale" if result.returncode == 1 else "check failed"
-            raise SystemExit(f"page {reason}: {page}")
+            detail = result.stderr.splitlines()
+            suffix = f"; {detail[0]}" if detail else ""
+            raise SystemExit(f"page {reason}: {page}{suffix}")
 
 
 def main(argv=None):
@@ -286,12 +288,17 @@ def main(argv=None):
     if args.new_root and not args.no_push:
         raise SystemExit("--new-root needs --no-push: the push of a new history is a separate, manual step")
 
+    if args.notes is not None:
+        notes_path = args.notes.absolute()
+        if any(path.is_relative_to(ROOT.resolve()) for path in (notes_path, notes_path.resolve())):
+            raise SystemExit("--notes must be outside the checkout")
+
     if git("status", "--porcelain", "--untracked-files=all"):
         raise SystemExit("working tree not clean: commit or stash first; the snapshot comes from HEAD only")
     head = git("rev-parse", "HEAD")
     short = head[:7]
-    record = check_set(ROOT)
     check_pages(ROOT)
+    record = check_set(ROOT)
     tags_before = release_tags(ROOT)
     names = check()
     print(f"check ok: publish set ({len(names)} files)")
@@ -316,8 +323,13 @@ def main(argv=None):
         if existing is None:
             raise SystemExit("unchanged snapshot has no release tag; no notes or push")
         tag, release_class, source = existing
-        if release_class != args.release_class or git("rev-parse", source, root=ROOT) != head:
-            raise SystemExit("unchanged snapshot has a different class or source; no notes or push")
+        differences = []
+        if release_class != args.release_class:
+            differences.append("class")
+        if git("rev-parse", source, root=ROOT) != head:
+            differences.append("source")
+        if differences:
+            raise SystemExit(f"unchanged snapshot has a different {' and '.join(differences)}; no notes or push")
         tags_before = [entry for entry in tags_before if entry[0] != tag]
     # Render before the push so missing source metadata cannot cause a publication without notes.
     notes = release_notes(ROOT, tag, head, commit, args.release_class, tags_before, record,
@@ -334,7 +346,8 @@ def main(argv=None):
                               encoding="utf-8")
         print(f"notes: {args.notes}", flush=True)
         if result.returncode:
-            raise SystemExit(f"push failed: {result.stderr.strip()}")
+            detail = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+            raise SystemExit(f"push failed: {detail}")
         print(f"pushed {args.branch} to {args.remote}/{args.remote_branch}" + "".join(f", tag {tag}" for tag in tags))
     else:
         print(f"notes: {args.notes}", flush=True)

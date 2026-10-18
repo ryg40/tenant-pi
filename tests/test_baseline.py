@@ -14,7 +14,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts import baseline, tenant_pi
-from scripts.baseline import MAX_PATH, compare, encode, record, saved_record, scan, write
+from scripts.baseline import compare, encode, record, saved_record, scan, write
+from scripts.profile_write import MAX_PATH
 from scripts.profile_write import WriteError, check_location, preflight
 from scripts import profile_write
 from scripts.validate import Invalid

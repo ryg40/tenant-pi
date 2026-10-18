@@ -395,11 +395,16 @@ def resolve_resource(entry):
     return None, False
 
 
+def role_matches(entry, role):
+    """Without a role filter, include even an entry with an empty roles list."""
+    return role is None or "roles" not in entry or role in entry["roles"]
+
+
 def catalog_lines(resources, group, role=None):
     """Return (lines for the role prompt, titles that are not on the machine)."""
     lines, absent = [], []
     chosen = sorted((e.get("order", 100), rid, e) for rid, e in resources.items()
-                    if e.get("group") == group and (role is None or "roles" not in e or role in e["roles"]))
+                    if e.get("group") == group and role_matches(e, role))
     for _, rid, e in chosen:
         where, found = resolve_resource(e)
         if found is False:

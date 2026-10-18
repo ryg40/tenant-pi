@@ -3,6 +3,7 @@
 This file is for an agent that a user points at this repository: Claude Code, Pi, or another coding agent. Read the whole file first. Then walk the user through the stages in order. Each stage has a goal, the commands, and the check that proves it is done.
 
 The kit prepares a separate Pi profile in a new directory. It never writes into an existing Pi profile directory. The companion [question list](skills/tenant-pi-install/SKILL.md) points to these stages. Install commands below require the approved plan.
+For Apple silicon, use the [macOS adaptation](docs/guides/macos.md).
 
 `<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
 
@@ -44,7 +45,7 @@ An offline stage that passes its own check on this machine is recorded as passed
 
 1. Ask before each command that changes the machine: an install, a new directory, a shell file, a credential. Show the command. Run it when the user says yes. Running it yourself is allowed; running it without a yes is not.
 2. Never write, print, or paste a secret. Name a credential by its environment variable only.
-3. Keep new profiles outside existing live directories and follow the [refusal rules](docs/private-directory.md#refusal-rules). The kit does not read `PI_CODING_AGENT_DIR`; protect that directory yourself.
+3. Never write into `~/.pi/agent` or the directory in `PI_CODING_AGENT_DIR`. Keep new profiles outside existing live directories and follow the [refusal rules](docs/private-directory.md#refusal-rules). The kit does not read `PI_CODING_AGENT_DIR`; protect that directory yourself.
 4. Adapt the syntax of a command to the machine (see "Local differences"). Do not adapt the rules of the kit: no secret in a file, no generation into an existing directory, no edit of a live profile.
 5. Record what you ran, what you skipped, and every adaptation in `<private dir>/install-log.md`. A live check that did not run is "not run", never "passed".
 6. If a stage fails, keep the earlier stages, say what failed, and stop at a state the user can resume from.
@@ -741,7 +742,7 @@ Add `--local-dir ~/.config/tenant-pi` to both commands when `mcp` is enabled.
 
 Add `--launcher ~/.config/tenant-pi/launch-<name>.sh` to both commands to get the launcher file of Stage 9. The file must not exist. `plan` only prints the path; `generate` writes the file after the profile is complete.
 
-Give both commands the runtime versions, so that the gaps show the measured state. `plan` starts no process. `generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. Neither action runs a runtime probe. Save the report of `check-runtime` first, in the shell that will launch Pi:
+Give both commands the runtime versions, so that the gaps show the measured state. `plan` starts no process. `generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. Git inherits the shell environment. The kit stops repository discovery at the kit root, overriding the caller's ceiling value. The kit's Python logic does not inspect the environment values that it passes to Git. Python copies those values when it starts Git. Neither action runs a runtime probe. Save the report of `check-runtime` first, in the shell that will launch Pi:
 
 ```sh
 python3 scripts/tenant_pi.py check-runtime > ~/.config/tenant-pi/runtime.json
@@ -1089,7 +1090,7 @@ The first install ends with Stage 9. This stage is one message to the user, and 
 
 Tell the user the rule of each later change: the kit changes no profile in place. A new kit version, a new component or a new Pi pin gives a new candidate directory from the same overlay with another `target.agentDir`. The old candidate stays as the fallback. Auth, sessions and memory are not copied.
 
-[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, `python3 scripts/tenant_pi.py compare`, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
+[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, a candidate comparison, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
 
 ## Not in this kit
 

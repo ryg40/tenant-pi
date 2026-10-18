@@ -171,9 +171,10 @@ def resolve_pi_model(asked):
 
 
 def render_methods(text, resources, role=None):
-    """Replace {methods:<group>} with the catalog entries for this role."""
+    """Render method lists and collect absent entries from lists and group pointers."""
     absent_all = []
-    for group in re.findall(r"\{methods:([a-z]+)\}", text):
+    groups = re.findall(r"\{methods:([a-z]+)\}", text) + re.findall(r"--group ([a-z]+)\b", text)
+    for group in dict.fromkeys(groups):
         lines, absent = catalog_lines(resources, group, role)
         absent_all += absent
         text = text.replace("{methods:" + group + "}", "\n".join(lines))

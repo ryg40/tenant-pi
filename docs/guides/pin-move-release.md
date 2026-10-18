@@ -141,9 +141,9 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    | `config/manifest.json`, `scripts/validate.py` | Core pin, range, core anchor, and Promptr readiness fact. |
    | `docs/architecture.html` and `EXPLAINER.html` | Rebuilt pages only; no hand edit. |
    | `packages/promptr/package.json`, `packages/promptr/package-lock.json` | Exact package pins and resolved dependencies. |
-   | `docs/packages.md`, `docs/workflow-modules.md` | Core and Promptr rows, package readiness, and version-scoped warnings. |
+   | `docs/packages.md`, `docs/workflow-modules.md` | Check manifest-derived pin references and readiness gaps; preserve version-scoped historical evidence. |
    | The foundation table of the development repository, if your copy has one | Core and Promptr rows. |
-   | `scripts/workflow_modules.py`, `tests/test_workflow_modules.py` | Measured sentences and their exact assertions. |
+   | `scripts/workflow_modules.py`, `tests/test_workflow_modules.py` | Check manifest-derived readiness facts and structural assertions; do not add version or test-count literals. |
    | `docs/check-runtime.md` | Version-probe evidence; preserve its explicitly defined historical reviewed release. |
    | A private chronology file, if your copy has one | Do not publish a dated machine record. |
    | `packages/promptr/README.md`, `packages/promptr/docs/sidebar-prototype.md`, `packages/promptr/src/doctor/doctor.mts` | Current compatibility statements and comments. |

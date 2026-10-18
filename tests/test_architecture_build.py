@@ -73,7 +73,7 @@ class PublicBuildTests(unittest.TestCase):
 
     def test_public_files_are_published(self):
         names = (*PUBLIC_FILES, "scripts/architecture_build.py", "tests/test_architecture_build.py")
-        published_files = set(publish_check.PUBLISH) | publish_check.rule_files(names)[0]
+        published_files = publish_check.publish_files(publish_check.inventory_files(ROOT), root=ROOT)
         for name in names:
             self.assertIn(name, published_files)
 

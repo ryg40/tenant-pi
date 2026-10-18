@@ -715,7 +715,8 @@ class Roles256(IsolatedConfig):
     def test_worker_keeps_task_priority_without_the_dangling_sentence(self):
         text = " ".join(self.prompt("worker").split())
         self.assertIn("If the task names a tool, a method or a check, use that.", text)
-        self.assertNotIn("The lists below are the usual order of preference. They are not limits.", text)
+        self.assertNotIn("The lists below are the usual order of preference. They are "
+                         "not limits.", text)
 
     def test_reviewer_method_two_reads_the_commit_before_a_targeted_check(self):
         text = self.prompt("reviewer")
@@ -736,7 +737,7 @@ class Roles256(IsolatedConfig):
 
     def test_rendered_prompt_sizes_stay_within_the_corrected_limits(self):
         self.assertLessEqual(abs(len(self.prompt("worker")) - 2341), 150)
-        self.assertLessEqual(len(self.prompt("reviewer")), 2650)
+        self.assertLessEqual(len(self.prompt("reviewer")), 2578)
 
 
 class Roles255(IsolatedConfig):
@@ -757,7 +758,7 @@ class Roles255(IsolatedConfig):
                     self.assertIn("\n".join(first_lines), text)
                     for line in second_lines:
                         self.assertNotIn(line, text)
-                    pointer = f"Use the entries of `{command} --group {second}` in their order."
+                    pointer = f"Use the entries of `{command} --group {second} --role {role}` in their order."
                     if role == "scout":
                         pointer += " Read the entry before its first use."
                     self.assertIn(pointer, text)
@@ -781,7 +782,7 @@ class Roles255(IsolatedConfig):
                     self.assertEqual("--strict-mcp-config" in args, strict)
                     with open(args[args.index("--append-system-prompt-file") + 1], encoding="utf-8") as f:
                         text = f.read()
-                    self.assertIn("resources.py --group web` in their order. Read the entry before its first use.", text)
+                    self.assertIn("resources.py --group web --role scout` in their order. Read the entry before its first use.", text)
                     self.assertNotIn("**DonSeTch MCP", text)
 
     def test_scout_focus_routes_diff_judgements_to_a_reviewer(self):
@@ -962,6 +963,107 @@ class Roles253(IsolatedConfig):
             _common.load_catalog()
         self.assertEqual(exc.exception.code, 2)
         self.assertIn(path + ": resources.example.roles must be a list of known role names:", err.getvalue())
+
+
+class Roles263(IsolatedConfig):
+    def test_reviewer_task_priority_has_only_the_task_rule(self):
+        for harness in ("pi", "claude"):
+            with self.subTest(harness=harness):
+                resolved = spawn.resolve(opts(harness=harness, role="reviewer"), CFG)
+                text = spawn.system_prompt(resolved, CFG)
+                priority = text.split("## The task has priority\n\n", 1)[1].split("\n\n", 1)[0]
+                self.assertEqual(priority, "If the task names a method, a scope or a check, use that.")
+                self.assertNotIn("They are " "not limits.", text)
+
+
+class Roles262(IsolatedConfig):
+    def resources_command(self, *args):
+        path = os.path.join(os.path.dirname(self.models_path), "resources.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"resources": {
+                "scoped": {"group": "web", "roles": ["scout", "worker"]},
+                "empty": {"group": "web", "roles": []}}}, f)
+        return subprocess.run([sys.executable, os.path.join(SKILL, "scripts", "resources.py"), *args],
+                              capture_output=True, text=True,
+                              env=dict(os.environ, HERDR_SKILL_RESOURCES=path))
+
+    def test_resources_role_filter_and_roles_column(self):
+        for role in (None, "scout", "researcher"):
+            role_args = ["--role", role] if role else []
+            for args, group in ((role_args, None), (role_args + ["--group", "web"], "web"),
+                                (["--group", "web"] + role_args, "web")):
+                with self.subTest(args=args):
+                    result = self.resources_command(*args)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    table = result.stdout.split("\n\n", 1)[0].splitlines()
+                    header = table[0].split("\t")
+                    self.assertIn("ROLES", header)
+                    rows = {row["ID"]: row for row in (dict(zip(header, line.split("\t")))
+                                                     for line in table[1:])}
+                    expected = {rid for rid, entry in _common.load_catalog().items()
+                                if group is None or entry["group"] == group}
+                    if role in (None, "scout"):
+                        expected.add("scoped")
+                        self.assertEqual(rows["scoped"]["ROLES"], "scout,worker")
+                    if role is None:
+                        expected.add("empty")
+                        self.assertEqual(rows["empty"]["ROLES"], "-")
+                    self.assertEqual(set(rows), expected)
+                    self.assertEqual(rows["harness-web"]["ROLES"], "-")
+
+    def test_unknown_role_error_lists_known_roles(self):
+        result = self.resources_command("--role", "unknown")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("error:", result.stderr)
+        self.assertIn("unknown", result.stderr)
+        for role in _common.ROLES:
+            self.assertIn(role, result.stderr)
+
+    def test_rendered_pointers_and_list_command_name_the_role(self):
+        command = f"python3 {spawn.HERE}/resources.py"
+        for harness in ("pi", "claude"):
+            for role, group in (("researcher", "local"), ("scout", "web")):
+                with self.subTest(harness=harness, role=role):
+                    text = spawn.system_prompt(spawn.resolve(opts(harness=harness, role=role), CFG), CFG)
+                    self.assertIn(f"`{command} --group {group} --role {role}`", text)
+                    self.assertIn(f"run `{command} --role {role}`.", text)
+                    self.assertNotRegex(text, r"\{[a-z_:]+\}")
+
+    def test_absent_note_includes_role_filtered_pointer_groups(self):
+        missing = os.path.join(os.path.dirname(self.models_path), "absent-skill.md")
+        resources = _common.load_catalog()
+        for rid in ("local-machine", "harness-web"):
+            resources[rid]["locations"] = [{"file": missing}]
+            resources[rid]["roles"] = ["researcher", "scout"]
+        for group in ("local", "web"):
+            for suffix, roles in (("worker-only", ["worker"]), ("empty", [])):
+                resources[f"{group}-{suffix}"] = {
+                    "group": group, "roles": roles, "locations": [{"file": missing}]}
+        for role, first, pointer in (("researcher", "harness-web", "local-machine"),
+                                     ("scout", "local-machine", "harness-web")):
+            with self.subTest(role=role), mock.patch.object(spawn, "load_catalog", return_value=resources), \
+                    mock.patch.object(_common, "resolve_resource", wraps=_common.resolve_resource) as resolve:
+                text = spawn.system_prompt(spawn.resolve(opts(harness="claude", role=role), CFG), CFG)
+                note = next(line for line in text.splitlines() if line.startswith("Not found on this machine"))
+                self.assertEqual(note, "Not found on this machine when you started: "
+                                 + resources[first]["title"] + ", " + resources[pointer]["title"]
+                                 + ". Try one of them only if the task asks for it.")
+                self.assertEqual(resolve.call_count, 4)
+                for call in resolve.call_args_list:
+                    self.assertNotIn(call.args[0].get("roles"), (["worker"], []))
+                self.assertNotIn("{absent}", text)
+
+    def test_absent_group_is_collected_once_for_lists_and_pointers(self):
+        resources = {"missing": {"group": "local", "title": "Missing local entry",
+                                 "locations": [{"file": self.models_path}]}}
+        template = ("{methods:local}\n{resources_command} --group local --role researcher\n"
+                    "{resources_command} --group local --role researcher\n{absent}")
+        with mock.patch.object(_common, "resolve_resource", wraps=_common.resolve_resource) as resolve:
+            text = spawn.render_methods(template, resources, "researcher")
+        resolve.assert_called_once_with(resources["missing"])
+        self.assertEqual(text.count("Missing local entry"), 1)
 
 
 if __name__ == "__main__":

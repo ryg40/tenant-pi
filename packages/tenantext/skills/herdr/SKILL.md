@@ -133,9 +133,9 @@ The skill ships no model choice. See `models.example.json`.
 A role gives the agent an order of preference for its tools, with fallbacks.
 It removes no tool. The task that you send has priority over the role.
 The tools and skills come from the catalog `resources.json`, with the location
-of each on this machine. `python3 $S/resources.py` shows the catalog. A search
-MCP server and a desktop browser skill are optional entries of a machine file;
-`SPAWN.md` section 2a explains them.
+of each on this machine. `python3 $S/resources.py --role <role>` shows the
+entries for that role. A search MCP server and a desktop browser skill are
+optional entries of a machine file; `SPAWN.md` section 2a explains them.
 
 `spawn.py` chooses the tab, the pane and the name:
 

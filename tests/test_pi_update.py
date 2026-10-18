@@ -181,9 +181,10 @@ class UpdateTests(unittest.TestCase):
                 return 1
         return 0
 
-    def qualify(self, requested=PIN, *, real=False, **kwargs):
+    def qualify(self, requested=PIN, *, real=False, offline=None, **kwargs):
         # Real-copy smoke tests retain the executable/environment and pin contracts.
-        offline = (("offline-fixture", ["-c", "print('offline fixture')"]),)
+        if offline is None:
+            offline = (("offline-fixture", ["-c", "print('offline fixture')"]),)
         endpoint = update.endpoint
         with patch.object(update, "OFFLINE", offline), \
                 patch.object(update, "PACKAGE_PY", ((".", ["-c", "print('package fixture')"]),)), \
@@ -240,6 +241,23 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(codes["PACKAGE_PY"], 1)
         self.assertEqual(codes["tenantext-test"], 0)
         self.assertEqual(codes["baseline-compare"], 0)
+
+    def test_failed_check_set_fails_qualification_but_later_steps_run(self):
+        runner = self.recording_runner
+        def failed(command, **options):
+            code = runner(command, **options)
+            return 1 if options["log"].stem == "check-set" else code
+        with patch.object(self, "recording_runner", side_effect=failed):
+            report = self.qualify(offline=update.OFFLINE)
+        self.assertFalse(report["passed"])
+        codes = {row["name"]: row["exitCode"] for row in report["steps"]}
+        self.assertEqual(codes["check-set"], 1)
+        for name in ("PACKAGE_PY", "tenantext-test", "print-response", "baseline-compare"):
+            self.assertEqual(codes[name], 0)
+        command = next(row for row in self.recorded if row[0] == "check-set")
+        self.assertEqual(command[1], [sys.executable, "-B", "scripts/check.py"])
+        self.assertEqual(command[2], Path(report["workdir"]) / "kit")
+        self.assertEqual(command[3]["PYTHONDONTWRITEBYTECODE"], "1")
 
     def test_pin_contents_changes_only_the_manifest_pin_and_reviewed_anchor(self):
         manifest_text = ('{\n  "runtime": {\n    "piVersion": "1.0.3",\n    "piAcceptedRange": ">=1.0.3 <1.1"\n  },\n'

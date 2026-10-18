@@ -66,6 +66,13 @@ The same rules apply to each JSON input, with another field: `manifest.file`, `r
 
 See the [refusal rules](../private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
 
+For `under_kit`, choose a path outside the clone, such as `"$HOME/.config/tenant-pi"` for a private directory.
+For `under_pi_agent`, choose a path outside the live profile, such as `"$HOME/.pi/profiles/main"` for a target.
+Set `target.agentDir` to the new target when you change the target path.
+For `under_wiki_vault`, choose a path outside the vault.
+To record vault metadata, use `baseline --dir` with `--out` in the private directory.
+For `init-private --target`, keep the target outside the private directory, live profile and clone.
+
 | Diagnostic | Cause | Fix |
 | --- | --- | --- |
 | `invalid_plan: target_mismatch: plan.targetAgentDir` | `--target` differs from `target.agentDir` of the overlay. | Use the same absolute path in both places. |
@@ -98,6 +105,7 @@ The `compose-plan` action refuses an answer or a file with one of these rules. W
 | `public_key_count: compose-plan.public_key has <n> key lines` | The file has more than one key line. The seat takes exactly one. (documented) | Give a file with one key. To add a key later, edit `<private dir>/authorized_keys` and start the seat again. |
 | `private_key: compose-plan.public_key` | The file holds the text `PRIVATE KEY`. (documented) | Give the `.pub` file. Never give a private key to the kit. |
 | `private_dir_missing: compose-plan.private_dir` | With `--write`: the private directory does not exist. (documented) | Create it with `mkdir -p` and give it mode 700. Then run the command again. |
+| `under_kit: compose-plan.private_dir` | The private directory overlaps the clone. | Choose a separate directory, such as `"$HOME/.config/tenant-pi"`. |
 | `private_dir_unsafe: compose-plan.private_dir` | With `--write`: the directory or a directory above it is a symbolic link or is not a directory. (documented) | Give a path through real directories. |
 | `target_exists: compose-plan.<file>` | With `--write`: one of the five files exists. The action then writes none. (documented) | Move the file after review, or name another private directory. Do not delete a file to make the action pass. |
 | `credential_free_https_url: compose-plan.gateway_url` | The URL breaks the gateway rule of the overlay: it is not HTTPS on port 443, or it holds a credential, a query or a fragment. (documented) | Give an HTTPS URL on port 443 without a user name, a password, a key, a `?` part or a `#` part. |

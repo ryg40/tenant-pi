@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import BLOCK_PROCESS_HOOK, slow
 from pathlib import Path
 
 from scripts.candidate_compare import FILES, compare
@@ -450,7 +450,7 @@ class WorkflowPublicationTests(unittest.TestCase):
         hook = self.base_dir / "sitecustomize.py"
         hook.write_text("import sys, os\nsys.dont_write_bytecode = True\nimport socket, subprocess\n"
                         "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
-                        "socket.socket.connect = blocked\nsubprocess.Popen = blocked\n"
+                        "socket.socket.connect = blocked\n" + BLOCK_PROCESS_HOOK +
                         "_log = os.open(" + repr(str(log)) + ", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n"
                         "def _write(text): os.write(_log, (text + '\\n').encode('utf-8', 'replace'))\n"
                         # The audit event has no dir_fd, so a wrapper of os.open records the full path of each open.

@@ -6,11 +6,19 @@ import stat
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from scripts.kit_commit import UNKNOWN, commit
 from scripts.memory_modules import HERMES_CONFIG
 from scripts.profile_plan import OUTPUTS, source_pin
 from scripts.workflow_modules import MCP_CONFIG
 from scripts.validate import Invalid, absolute, fail, relative
+
+UNKNOWN = "unknown"
+COMMIT = re.compile(r"[0-9a-f]{40}\Z")
+
+
+def commit(value):
+    """`value` when it is a 40-hex commit or `UNKNOWN`, else `None`."""
+    return value if type(value) is str and (value == UNKNOWN or COMMIT.fullmatch(value)) else None
+
 
 STATE = ".tenant-pi/state.json"  # Writer-owned; not a planner output.
 OPTIONAL_OUTPUTS = (HERMES_CONFIG, MCP_CONFIG, "models.json")  # Whole extra profile files an optional module may own.

@@ -6,19 +6,25 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse
+from collections import ChainMap
 import errno
 import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.candidate_compare import FILES, compare
 from scripts import baseline
-from scripts.carry import carry, report_entries
-from scripts.candidate_list import child, report as list_report, safe_name, select
-from scripts import kit_commit
+# Portable copies omit these development-only modules.
+HAS_CARRY = (ROOT / "scripts/carry.py").is_file()
+HAS_LIST = (ROOT / "scripts/candidate_list.py").is_file()
+if HAS_CARRY:
+    from scripts.carry import carry, report_entries
+if HAS_LIST:
+    from scripts.candidate_list import child, report as list_report, safe_name, select
 from scripts.profile_inventory import RESOURCE_DIRS, coordination_files, inventory
 from scripts.check_runtime import HERDR, TOOLS, check, check_herdr, matches
 from scripts import components as checklist
@@ -29,7 +35,7 @@ from scripts.model_routes import render
 from scripts.private_init import TARGET, TEMPLATES, check_target, init, report as init_report, with_target
 from scripts.profile_plan import (PROVIDER_KEY_NAMES, herdr_report, prepare, provider_key_warning, readiness,
                                    runtime_report, setup_commands)
-from scripts.profile_write import WriteError, check_location, inside, preflight, utc_now, write
+from scripts.profile_write import UNKNOWN, WriteError, check_location, commit, inside, preflight, utc_now, write
 from scripts.remote_plan import remote_plan
 from scripts import wiki_vault
 from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, overlay, parse, place, fail
@@ -247,52 +253,16 @@ def _profile(directory, field):
                      _managed(directory, field + ".state.json"), present)
 
 
-def _git_file(path, limit=kit_commit.MAX_METADATA):
-    """Bytes of one Git metadata file through the bounded loader, or None on any failure."""
-    try:
-        return _load_input(path, "kit_commit", optional=True, raw=True, limit=limit)
-    except Invalid:
-        return None
-
-
-def _git_path(base, value):
-    """An absolute, lexically normalized metadata path; the loader then refuses every symlink."""
-    path = os.path.normpath(value if value.startswith("/") else base + "/" + value)
-    return path if path.startswith("/") and not path.startswith("//") else None
-
-
 def _kit_commit(root=None):
-    """The commit of the kit clone, read from its Git metadata files without a process.
-
-    The same value as `git rev-parse HEAD` for a plain clone or a worktree, else `unknown`.
-    A `.git` file (`gitdir: <path>`) and a worktree `commondir` file are followed once each.
-    """
-    root = str(ROOT if root is None else root)
-    gitdir = root + "/.git"
-    if (data := _git_file(gitdir)) is not None:
-        # A file `.git`: a worktree or a separate Git directory. A directory fails the loader.
-        target = kit_commit.pointer(data, "gitdir: ")
-        if target is None or (gitdir := _git_path(root, target)) is None:
-            return kit_commit.UNKNOWN
-    common = gitdir
-    if (data := _git_file(gitdir + "/commondir")) is not None:
-        target = kit_commit.pointer(data)
-        if target is None or (common := _git_path(gitdir, target)) is None:
-            return kit_commit.UNKNOWN
-    found = kit_commit.head(_git_file(gitdir + "/HEAD"))
-    if found is None:
-        return kit_commit.UNKNOWN
-    kind, value = found
-    if kind == "commit":
-        return value
+    """Read the kit commit with one Git call; a missing or failed Git gives `unknown`."""
+    root = root or ROOT
+    env = ChainMap({"GIT_CEILING_DIRECTORIES": os.path.dirname(root)}, os.environ)
     try:
-        data = _load_input(common + "/" + value, "kit_commit", optional=True, raw=True, limit=kit_commit.MAX_METADATA)
-    except Invalid:
-        return kit_commit.UNKNOWN
-    if data is not None:
-        # A present loose ref wins. When it does not parse, Git fails too: never fall back to a stale packed value.
-        return kit_commit.loose(data) or kit_commit.UNKNOWN
-    return kit_commit.packed(_git_file(common + "/packed-refs", MAX_INPUT), value) or kit_commit.UNKNOWN
+        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, env=env,
+                                timeout=5, check=False, capture_output=True, text=True)
+    except (OSError, subprocess.TimeoutExpired, UnicodeError):
+        return UNKNOWN
+    return (commit(result.stdout.removesuffix("\n")) or UNKNOWN) if result.returncode == 0 else UNKNOWN
 
 
 def _parent_entries(parent):
@@ -678,16 +648,18 @@ def main(argv=None, *, clock=utc_now):
     cmp = subs.add_parser("compare", help="redacted field comparison of two explicit profile directories")
     cmp.add_argument("--left", required=True, help="absolute path of the previous candidate or profile")
     cmp.add_argument("--right", required=True, help="absolute path of the new candidate")
-    car = subs.add_parser("carry", help="print overlay patches that adopt owner-owned changes of a compare report")
-    car.add_argument("--report", required=True, help="explicit JSON output of a previous compare run")
-    car.add_argument("--overlay", required=True, help="explicit local JSON choices file that the patches target")
-    car.add_argument("--right", required=True, help="absolute path of the report's right side")
-    car.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
-                     help="reviewed kit manifest (override remains strictly validated)")
+    if HAS_CARRY:
+        car = subs.add_parser("carry", help="print overlay patches that adopt owner-owned changes of a compare report")
+        car.add_argument("--report", required=True, help="explicit JSON output of a previous compare run")
+        car.add_argument("--overlay", required=True, help="explicit local JSON choices file that the patches target")
+        car.add_argument("--right", required=True, help="absolute path of the report's right side")
+        car.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
+                         help="reviewed kit manifest (override remains strictly validated)")
     inv = subs.add_parser("inventory", help="names-only resource list of one explicit profile directory")
     inv.add_argument("--dir", required=True, help="absolute path of the profile or candidate directory")
-    lst = subs.add_parser("list", help="read-only state list of the candidate directories under one explicit parent")
-    lst.add_argument("--parent", required=True, help="absolute path of the directory that holds the candidates")
+    if HAS_LIST:
+        lst = subs.add_parser("list", help="read-only state list of the candidate directories under one explicit parent")
+        lst.add_argument("--parent", required=True, help="absolute path of the directory that holds the candidates")
     base = subs.add_parser("baseline", help="record names, sizes and modification times of one explicit directory")
     base.add_argument("--dir", required=True, help="absolute path of the directory to record; it can be absent")
     base.add_argument("--out", required=True, help="absolute path of the absent baseline file; its parent exists")
@@ -787,7 +759,7 @@ def main(argv=None, *, clock=utc_now):
                               **{k: v for k, v in report.items() if k not in ("left", "right")}},
                              sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
-        if args.action == "carry":
+        if HAS_CARRY and args.action == "carry":
             # Prints only: no file is written and no patch is applied.
             absolute(args.right, "carry.right")
             report = _load_input(args.report, "carry.report")
@@ -801,7 +773,7 @@ def main(argv=None, *, clock=utc_now):
         if args.action == "inventory":
             print(json.dumps(_profile(args.dir, "inventory.dir"), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
-        if args.action == "list":
+        if HAS_LIST and args.action == "list":
             print(json.dumps(_list(args.parent), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
         if args.action == "baseline":
@@ -873,7 +845,7 @@ def main(argv=None, *, clock=utc_now):
         if type(inputs) is dict and inputs.get("modelsFile") == "inputs/models.json":
             absolute(args.local_dir, "local_dir")
             models_data = _load_input(args.local_dir + "/inputs/models.json", "models.file")
-        # `plan` and `generate` start no process: the caller gives the report of `check-runtime` as a file.
+        # Neither action runs a runtime probe. `generate` runs only one read-only Git call for the kit commit.
         report = getattr(args, "runtime_report", None)
         if report is not None:
             report = _load_input(report, "runtime_report.file")

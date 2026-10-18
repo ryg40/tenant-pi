@@ -96,7 +96,7 @@ The factory must load without errors and register `/viking` and `before_agent_st
 The probe blocks fetch and socket connections and requires zero attempted connections.
 It never dispatches session or model events, so this check does not prove lifecycle behavior.
 
-The candidate copy changes `runtime.piVersion`, `runtime.piAcceptedRange` and the core spec in `config/manifest.json`, plus the core anchor in `scripts/validate.py`. A changed stable pin sets the lower bound to that version and the upper bound to the next minor line. See [the pin move rule](guides/release-checklist.md#gates). The update request adapter imports this file by path and calls the same `pin_contents` function. The checkout stays unchanged.
+The candidate copy changes `runtime.piVersion`, `runtime.piAcceptedRange` and the core spec in `config/manifest.json`, plus the core anchor in `scripts/validate.py`. A changed stable pin sets the lower bound to that version and the upper bound to the next minor line. See [the pin move rule](guides/release-checklist.md#gates). The manual pin move guide uses the same `pin_contents` function. The checkout stays unchanged.
 
 With `.git` present, the copy takes the working-tree bytes of tracked files, including uncommitted edits. Without `.git`, it copies every file, except entries under `.git`, `.local`, `node_modules`, or `__pycache__`. Those directories are excluded in both cases. This includes untracked files such as `.env` in a tree without Git metadata. Symbolic-link sources are refused. The copy has no Git metadata.
 
@@ -149,7 +149,7 @@ The result has `isolation: unchanged` or `isolation: changed_unattributed`, with
 
 By default, baseline drift does not change `passed`. Use `--strict-baseline` when live-profile writes are quiescent; a change then fails qualification. An unreadable baseline remains a failure. An unavailable final comparison reports `isolation: unavailable`.
 
-The baseline path comes from the caller's `HOME`. A CI adapter that supplies a temporary `HOME` checks that temporary directory, not another live profile.
+The baseline path comes from the caller's `HOME`. A temporary `HOME` checks that temporary directory, not another live profile.
 
 Warning: This is process configuration, not an operating-system sandbox. Run only trusted package versions and trusted kit tests.
 

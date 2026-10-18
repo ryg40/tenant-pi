@@ -744,7 +744,7 @@ Three options exist for an overlay with optional modules: `--registry`, `--local
 
 ### Step 8: Plan
 
-The plan shows what `generate` will write, before a write. First you save the report of step 3 as a file, because `plan` and `generate` start no process. Read the plan before you continue.
+The plan shows what `generate` will write, before a write. First you save the report of step 3 as a file, because neither `plan` nor `generate` runs a runtime probe. `generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. Read the plan before you continue.
 
 ```sh
 python3 scripts/tenant_pi.py check-runtime > "$HOME/.config/tenant-pi/runtime.json"
@@ -922,7 +922,7 @@ The profile is complete when `filesComplete` is `true`.
 `generate` does the shared steps of steps 7 and 8, and then these:
 
 1. The shared `profile_write.preflight()` checks the launcher path before a write: its parent is safe and the file is absent.
-2. `_kit_commit()` reads the commit of the clone from the files in `.git`. It starts no `git` process.
+2. `_kit_commit()` reads the commit with one read-only `git rev-parse HEAD` call in the kit directory. It uses no shell and a 5 second timeout; a missing or failed Git gives `unknown`.
 3. `write()` of `scripts/profile_write.py`, the **writer**, creates the profile.
 4. `_preview()` makes the output, as in step 8.
 5. `write()` of `scripts/launcher.py` calls `profile_write.create_new_file()`, which holds the preflight and diagnostics. This is the last write, after the profile is complete.
@@ -1693,13 +1693,10 @@ The reasons for this structure:
 | `scripts/wiki_vault.py` | The `lstat` calls of `check-wiki-vault`. |
 | `scripts/remote_plan.py` | The SSH command lines of `remote-plan`, as data. |
 | `scripts/baseline.py` | The scan and the comparison of `baseline` and `check-baseline`. |
-| `scripts/kit_commit.py` | Reads the commit of the clone without a Git process. |
 | `scripts/model_routes.py` | Adds model routes to the plan. |
 | `scripts/memory_modules.py` | Adds memory configuration to the plan. |
 | `scripts/workflow_modules.py` | Adds workflow configuration to the plan. |
 | `scripts/candidate_compare.py` | Compares candidate profiles. |
-| `scripts/carry.py` | Prints patches for selected differences. |
-| `scripts/candidate_list.py` | Lists candidates under a parent. |
 | `scripts/profile_inventory.py` | Lists one profile's resources by name. |
 | `scripts/publish_check.py` | Checks the publish inventory and public text. |
 | `scripts/doc_check.py` | Checks Markdown links, JSON examples and CLI names. |
@@ -1708,7 +1705,6 @@ The reasons for this structure:
 | `scripts/patch_extension_peers.mjs` | Corrects host-provided peers in installed extension manifests. |
 | `scripts/pi_npm_wrapper.sh` | Runs the package manager, then reapplies peer overrides. |
 | `scripts/pi_update.py` | Detects and qualifies Pi updates without changing an installed profile. |
-| `scripts/ci_update.py` | Adapts update jobs; only its request action writes to the network. |
 | `scripts/publish_portable.py` | Publishes the reviewed set as a portable snapshot. |
 | `scripts/scan.sh` | Scans tracked content and history for secrets and host values. |
 | `scripts/install-hooks.sh` | Installs, checks or removes the scan hooks. Not part of this base install. |
@@ -1769,14 +1765,13 @@ What the install does not change:
 - System packages, services and timers.
 - The clone, after step 2.
 
-Two kit actions show the kit profiles of the machine. Both are read-only:
+One kit action shows the resources of a profile. It is read-only:
 
 ```sh
-python3 scripts/tenant_pi.py list --parent "$HOME/.pi/profiles"
 python3 scripts/tenant_pi.py inventory --dir "$HOME/.pi/profiles/main"
 ```
 
-`list` reads `.tenant-pi/state.json` of each directory below the parent. `inventory` names the packages, extensions, skills and prompts of one profile. See [the candidate list](docs/candidate-compare.md#candidate-list) and [the profile inventory](docs/profile-inventory.md).
+`inventory` names the packages, extensions, skills and prompts of one profile. See [the profile inventory](docs/profile-inventory.md).
 
 ### Configuration files
 

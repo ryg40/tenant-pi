@@ -50,9 +50,9 @@ The `.gitignore` of the private directory ignores `inputs/`, `.env`, `.env.*`, `
 
 ## What the kit never does
 
-The kit has 17 actions:
+The kit has 16 actions:
 
-- `validate`, `plan`, `generate`, `compare`, `carry`, `inventory`, `list`;
+- `wizard`, `validate`, `plan`, `generate`, `compare`, `inventory`;
 - `check-runtime`, `check-herdr`, `check-wiki-vault`, `remote-plan`, `compose-plan`;
 - `components`, `init-private`, `baseline`, `check-baseline`, `results`.
 
@@ -63,7 +63,7 @@ None of them:
 - starts, stops or configures a service, a timer or a daemon;
 - runs `pi`, except `pi --version` inside `check-runtime` with an empty temporary `PI_CODING_AGENT_DIR`;
 - opens a network connection or makes a model call;
-- reads `auth.json`, a session or a memory store. Explicit validated model inputs and kit-declared candidate model files are the only model-registration reads. `inventory`, `compare` and `carry` can read `settings.json` in a directory that the user names. `baseline` and `check-baseline` read entry metadata and open no file; see [the directory baseline](../directory-baseline.md);
+- reads `auth.json`, a session or a memory store. Explicit validated model inputs and kit-declared candidate model files are the only model-registration reads. `inventory` and `compare` can read `settings.json` in a directory that the user names. `baseline` and `check-baseline` read entry metadata and open no file; see [the directory baseline](../directory-baseline.md);
 - copies auth, sessions, memory, queues, keyring state or installed packages between profiles;
 - writes, prints or resolves a secret value.
 
@@ -83,7 +83,7 @@ The plan prints dependency and launch commands as display text (`setupDisplayOnl
 - No credential store is required. Export the name in the launching shell, or read it from a store that you already use. A password manager is one example.
 - `TENANTEXT_LITELLM_BASE_URL` is public configuration on the launch line. `TENANTEXT_LITELLM_API_KEY` is a secret and never enters a file of the kit.
 - Pi native `/login` writes `<target>/auth.json`. That file belongs to Pi.
-- A `compare` report shows a marker, not a value, for a private field. A `carry` patch prints overlay values such as an endpoint URL or a package path. Treat a `carry` output like the overlay.
+- A `compare` report shows a marker, not a value, for a private field.
 
 ## Component reads, requests and writes
 

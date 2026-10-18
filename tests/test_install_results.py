@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import BLOCK_PROCESS_HOOK, slow
 from pathlib import Path
 from unittest.mock import patch
 
@@ -555,7 +555,7 @@ class CliTests(unittest.TestCase):
         (self.base / "sitecustomize.py").write_text(
             "import sys\nsys.dont_write_bytecode = True\nimport os, socket, subprocess\n"
             "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
-            "socket.socket.connect = blocked\nsubprocess.Popen = blocked\n"
+            "socket.socket.connect = blocked\n" + BLOCK_PROCESS_HOOK +
             "_log = os.open(" + repr(str(self.log)) + ", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n"
             "_START = ('subprocess.Popen', 'os.system', 'os.exec', 'os.spawn', 'os.posix_spawn', 'os.fork', 'os.forkpty')\n"
             "def _audit(event, args):\n"
@@ -617,7 +617,7 @@ class CliTests(unittest.TestCase):
         value = first.stdout
         self.assertEqual(list(HEADINGS), [line[3:] for line in value.split("\n") if line.startswith("## ")])
         found = frontmatter(value)
-        self.assertIn('kitCommit: "' + tenant_pi._kit_commit() + '"', found)
+        self.assertIn('kitCommit: "unknown"', found)
         self.assertIn('clone: "' + str(ROOT) + '"', found)
         self.assertIn('privateDirectory: "' + str(self.private) + '"', found)
         self.assertIn('    launcher: "' + str(self.launcher) + '"', found)

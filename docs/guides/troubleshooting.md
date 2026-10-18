@@ -114,7 +114,7 @@ Faults of a seat that starts or updates:
 - `up` fails on the projects bind. Create the directory as the operator before the start, or leave out `compose.projects.yaml`. Not verified: a missing directory under Docker may be created with root as owner, and Podman may refuse the start.
 - Pi gets no reply from the gateway. The URL must be HTTPS on port 443, reachable from inside the container. See [the gateway route](compose-seat.md#the-gateway-route).
 
-## Comparison and carry
+## Comparison
 
 | Diagnostic | Cause | Fix |
 | --- | --- | --- |
@@ -122,7 +122,6 @@ Faults of a seat that starts or updates:
 | `absolute_path: compare.left` | A side is a relative path. | Give absolute paths. |
 | `settings_missing` | A side has no `settings.json`. (documented) | Check the path. |
 | `unsupported_schema_version` | A side comes from a kit with another schema. (documented) | Follow the migration steps of [candidate comparison](../candidate-compare.md#schema-versions-and-migration). |
-| `report_right_mismatch: report.right.path` | `carry --right` differs from `right.path` of the report. (documented) | Use the exact `--right` path of the `compare` run. |
 
 ## Runtime and environment
 
@@ -226,4 +225,4 @@ Run `PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py` to see the findings
 
 1. Keep every directory as it is. Do not retry `generate` into the same target.
 2. Write the exact diagnostic, the command and the stage into `install-log.md` of the private directory.
-3. Read the document of the action: [generator](../generator.md), [private directory](../private-directory.md), [launcher](../launcher.md), [candidate comparison](../candidate-compare.md), [carry](../carry.md).
+3. Read the document of the action: [generator](../generator.md), [private directory](../private-directory.md), [launcher](../launcher.md), [candidate comparison](../candidate-compare.md).

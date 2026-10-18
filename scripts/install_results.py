@@ -18,7 +18,7 @@ import stat
 from dataclasses import dataclass
 from datetime import date
 
-from scripts.candidate_list import child
+from scripts.candidate_compare import child
 from scripts.components import names as resource_names
 from scripts.memory_modules import MEMORY
 from scripts.profile_write import MAX_PATH, WriteError, create_new_file, open_new_parent

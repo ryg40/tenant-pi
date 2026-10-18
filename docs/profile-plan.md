@@ -54,7 +54,7 @@ The `python` entry of the report adds no gap. Python runs the kit, not the profi
 
 ### The report file
 
-`plan` and `generate` start no process and do not run the probe themselves. `check-runtime` and `check-herdr` are the only actions that start a process. The caller runs `check-runtime` first and gives its output as a file:
+`plan` starts no process. `generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. Neither action runs a runtime probe. The caller runs `check-runtime` first and gives its output as a file:
 
 ```sh
 python3 scripts/tenant_pi.py check-runtime > /path/to/runtime.json
@@ -79,7 +79,7 @@ Limits:
 - The report changes the printed output only. `settings.json`, `.tenant-pi/choices.json` and `.tenant-pi/state.json` have the same content with and without it.
 - A `match` is a version fact. It does not prove that Pi starts, loads a package or gets a model reply.
 
-Tests: `tests/test_profile_plan.py` (`ReadinessTests`) covers no report, `match`, `untested_in_range`, `mismatch`, an absent Pi, `unparsed`, a profile with another gap and each refusal of the validator. `tests/test_cli.py` runs `plan` and `generate` with a report file while every process of the CLI is blocked, and compares the bytes of the generated files with and without a report. `tests/test_check_runtime.py` gives each report of `check` to the validator.
+Tests: `tests/test_profile_plan.py` (`ReadinessTests`) covers no report, `match`, `untested_in_range`, `mismatch`, an absent Pi, `unparsed`, a profile with another gap and each refusal of the validator. `tests/test_cli.py` runs `plan` and `generate` with a report file while the fixture models absent Git and blocks every other process, and compares the bytes of the generated files with and without a report. `tests/test_check_runtime.py` gives each report of `check` to the validator.
 
 ## The mark of the Pi install line
 

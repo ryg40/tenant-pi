@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import BLOCK_PROCESS_HOOK, slow
 from unittest.mock import patch
 
 from scripts import tenant_pi
@@ -82,6 +82,87 @@ SOURCE_INVENTORY = inventory(ROOT)
 def tearDownModule():
     if SOURCE_INVENTORY != inventory(ROOT):
         raise AssertionError("CLI tests changed the source checkout")
+
+
+class KitCommitTests(unittest.TestCase):
+    def test_generate_with_repository_without_metadata_and_failed_git(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        with tempfile.TemporaryDirectory(prefix="tenant-pi-commit-") as temp:
+            base = Path(temp)
+            kit = base / "kit"
+            shutil.copytree(ROOT / "config", kit / "config")
+            home = base / "home"
+            home.mkdir(mode=0o700)
+            env = {"HOME": str(home), "PATH": os.defpath, "GIT_CONFIG_NOSYSTEM": "1",
+                   "GIT_CONFIG_GLOBAL": os.devnull}
+            with patch.dict(os.environ, env, clear=True):
+                subprocess.run(["git", "init", "-q", str(kit)], check=True, capture_output=True)
+                subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                                "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "fixture"],
+                               cwd=kit, check=True, capture_output=True)
+                expected = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=kit, text=True).strip()
+                plain = base / "plain"
+                shutil.copytree(kit, plain, ignore=shutil.ignore_patterns(".git"))
+                bin_dir = base / "bin"
+                bin_dir.mkdir()
+                git = bin_dir / "git"
+                git.write_text("#!/bin/sh\nexit 1\n")
+                git.chmod(0o700)
+                for name, root, path, wanted in (("repository", kit, os.defpath, expected),
+                                                 ("plain", plain, os.defpath, "unknown"),
+                                                 ("failed", kit, str(bin_dir), "unknown"),
+                                                 ("absent", kit, str(base / "absent"), "unknown")):
+                    with self.subTest(case=name):
+                        target = base / ("profile-" + name)
+                        data = load(ROOT / "config/config.example.json")
+                        data["target"]["agentDir"] = str(target)
+                        overlay = base / "overlay.json"
+                        overlay.write_text(json.dumps(data))
+                        with patch.object(tenant_pi, "ROOT", root), patch.dict(os.environ, {"PATH": path}), \
+                                patch.object(subprocess, "run", wraps=subprocess.run) as run, redirect_stdout(StringIO()):
+                            code = tenant_pi.main(["generate", "--overlay", str(overlay), "--target", str(target)])
+                            run.assert_called_once_with(["git", "rev-parse", "HEAD"], cwd=root,
+                                                        env=dict(os.environ, GIT_CEILING_DIRECTORIES=os.path.dirname(root)),
+                                                        timeout=5, check=False, capture_output=True, text=True)
+                        self.assertEqual(0, code)
+                        state = json.loads((target / ".tenant-pi/state.json").read_text())
+                        self.assertEqual(wanted, state["provenance"]["kitCommit"])
+
+    def test_kit_copy_inside_repository(self):
+        with tempfile.TemporaryDirectory(prefix="tenant-pi-nested-commit-") as temp:
+            outer = Path(temp)
+            kit = outer / "kit"
+            shutil.copytree(ROOT / "config", kit / "config")
+            env = {"HOME": str(outer), "PATH": os.defpath, "GIT_CONFIG_NOSYSTEM": "1",
+                   "GIT_CONFIG_GLOBAL": os.devnull}
+            with patch.dict(os.environ, env, clear=True):
+                for root in (outer, kit):
+                    subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+                    subprocess.run(["git", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                                    "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", root.name],
+                                   cwd=root, check=True, capture_output=True)
+                    expected = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+                    self.assertEqual(expected, tenant_pi._kit_commit(root))
+                    if root == outer:
+                        self.assertFalse((kit / ".git").exists())
+                        self.assertEqual(expected, subprocess.check_output(
+                            ["git", "rev-parse", "HEAD"], cwd=kit, text=True).strip())
+                        self.assertEqual("unknown", tenant_pi._kit_commit(kit))
+
+    def test_git_output_and_failures(self):
+        for status, output, wanted in ((0, "a" * 40 + "\n", "a" * 40), (1, "a" * 40 + "\n", "unknown"),
+                                       (0, "A" * 40 + "\n", "unknown"), (0, "a" * 64, "unknown"),
+                                       (0, "a" * 40 + "\n\n", "unknown"), (0, "invalid", "unknown")):
+            with self.subTest(output=output), patch.object(subprocess, "run", return_value=
+                    subprocess.CompletedProcess([], status, output)) as run:
+                self.assertEqual(wanted, tenant_pi._kit_commit())
+                run.assert_called_once_with(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                            env=dict(os.environ, GIT_CEILING_DIRECTORIES=os.path.dirname(ROOT)),
+                                            timeout=5, check=False, capture_output=True, text=True)
+        for error in (FileNotFoundError(), PermissionError(), subprocess.TimeoutExpired("git", 5), UnicodeError()):
+            with self.subTest(error=type(error).__name__), patch.object(subprocess, "run", side_effect=error):
+                self.assertEqual("unknown", tenant_pi._kit_commit())
 
 
 class LocationTests(unittest.TestCase):
@@ -204,7 +285,7 @@ class CliTests(unittest.TestCase):
         hook.write_text("import sys\nsys.dont_write_bytecode = True\n"
                         "import socket, subprocess\n"
                         "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
-                        "socket.socket.connect = blocked\nsubprocess.Popen = blocked\n")
+                        "socket.socket.connect = blocked\n" + BLOCK_PROCESS_HOOK)
         self.env = dict(os.environ, HOME=str(self.home), PATH=str(self.bin),
                         PYTHONPATH=str(self.base))
         self.env["PYTHONDONTWRITEBYTECODE"] = "1"
@@ -287,7 +368,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual("KEEP", self.sentinel.read_text())
         self.assertFalse((self.base / "called").exists())
 
-    def test_generate_records_time_and_kit_commit_without_a_process(self):
+    def test_generate_records_time_and_kit_commit(self):
         from contextlib import redirect_stdout
         from datetime import datetime, timezone
         from io import StringIO
@@ -298,14 +379,14 @@ class CliTests(unittest.TestCase):
         self.assertEqual(0, code)
         record = json.loads((self.target / ".tenant-pi/state.json").read_text())["provenance"]
         self.assertEqual(("2026-10-02T08:00:00Z", "b" * 40), (record["generatedAt"], record["kitCommit"]))
-        # The real path: the sitecustomize fixture blocks every process, and the commit is the kit's own.
+        # The fixture models absent Git; generation still records its time.
         other = self.parent / "other"
         self.data["target"]["agentDir"] = str(other)
         self.save()
         result = self.run_cli("generate", "--target", str(other))
         self.assertEqual(0, result.returncode, result.stderr)
         record = json.loads((other / ".tenant-pi/state.json").read_text())["provenance"]
-        self.assertEqual(tenant_pi._kit_commit(), record["kitCommit"])
+        self.assertEqual("unknown", record["kitCommit"])
         self.assertRegex(record["generatedAt"], r"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
         self.assertNotIn("generatedAt", result.stdout)
         self.assertFalse((self.base / "called").exists())
@@ -1116,108 +1197,6 @@ class CliTests(unittest.TestCase):
     def run_compare(self, left, right):
         return subprocess.run([sys.executable, str(CLI), "compare", "--left", str(left), "--right", str(right)],
                               cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
-
-    @slow
-    def test_embedding_compare_carry_regenerate_without_credential_reads(self):
-        from tests.test_carry import apply_patches
-
-        secret = "SYNTHETIC_CREDENTIAL_CANARY"
-        private = {"provider": "openai-compatible", "baseUrl": "http://127.0.0.1:8080/PRIVATE_ENDPOINT/v1",
-                   "model": "PRIVATE_MODEL", "auth": {"envVar": "EXAMPLE_EMBEDDING_KEY"}, "expectedDimensions": 1024}
-        vault = self.home / ".llm-wiki"
-        (vault / "meta").mkdir(parents=True)
-        (vault / "page.md").write_text("KEEP PAGE")
-        (vault / "meta/embeddings.json").write_text("KEEP VECTORS")
-        preserved = {p: p.read_bytes() for p in (self.old / "settings.json", vault / "page.md", vault / "meta/embeddings.json")}
-        log = self.base / "embedding-reads.log"
-        hook = self.base / "sitecustomize.py"
-        hook.write_text(hook.read_text() +
-                        "import os\noriginal = os._Environ.__getitem__\n"
-                        "def guarded(self, key):\n"
-                        "    if key in ('EXAMPLE_EMBEDDING_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL'):\n"
-                        "        raise AssertionError('credential value read')\n"
-                        "    return original(self, key)\n"
-                        "os._Environ.__getitem__ = guarded\n"
-                        "os._Environ.__contains__ = lambda self, key: self.encodekey(key) in self._data\n"
-                        "_log = os.open(" + repr(str(log)) + ", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n"
-                        "def audit(event, args):\n"
-                        "    if event == 'open':\n"
-                        "        os.write(_log, (str(args[0]) + '\\n').encode('utf-8', 'replace'))\n"
-                        "        if isinstance(args[0], str) and (args[0].startswith(" + repr(str(vault)) + ") or args[0] in ('auth.json', 'embeddings.json', 'page.md')):\n"
-                        "            raise AssertionError('private data read')\n"
-                        "sys.addaudithook(audit)\n")
-        self.env.update(EXAMPLE_EMBEDDING_KEY=secret, OPENAI_API_KEY=secret, OPENAI_BASE_URL=secret)
-        self.data["selection"] = {"enable": ["core", "wiki"], "disable": []}
-        self.data["consent"]["memoryCapture"] = True
-        self.data["memory"] = {"schemaVersion": 1, "hermes": None, "openviking": None,
-                               "wiki": {"ambientPersonalVault": False, "backgroundTasks": False}}
-        overlays, targets = {}, {}
-        for name in ("old", "env", "none", "off"):
-            data = copy.deepcopy(self.data)
-            target = self.parent / name
-            data["target"]["agentDir"] = str(target)
-            if name != "old":
-                data["consent"]["embeddingTextTransfer"] = name != "off"
-                data["memory"]["wiki"]["embedding"] = None if name == "off" else copy.deepcopy(private)
-                if name == "none":
-                    data["memory"]["wiki"]["embedding"]["auth"] = {"mode": "none"}
-            self.overlay.write_text(json.dumps(data))
-            for action, extra in (("validate", ()), ("plan", ()), ("generate", ("--target", str(target)))):
-                result = self.run_cli(action, *extra)
-                self.assertEqual((0, ""), (result.returncode, result.stderr))
-                self.assertNotIn(secret, result.stdout)
-            overlays[name], targets[name] = data, target
-            (target / "auth.json").write_text(secret)
-        # A previous generator lacks only the inert activation record.
-        record = targets["old"] / ".tenant-pi/choices.json"
-        old_choices = json.loads(record.read_text())
-        del old_choices["memory"]["activation"]["wiki"]["embeddings"]
-        record.write_text(json.dumps(old_choices))
-        for index, (left_name, right_name, rule) in enumerate((
-                ("old", "env", "embedding_consent_missing"), ("env", "none", None),
-                ("none", "env", None), ("env", "off", "embedding_consent_unused"),
-                ("off", "old", None))):
-            with self.subTest(left=left_name, right=right_name):
-                left, right = targets[left_name], targets[right_name]
-                result = self.run_compare(left, right)
-                self.assertEqual((0, ""), (result.returncode, result.stderr))
-                for value in (private["baseUrl"], private["model"], private["auth"]["envVar"], secret):
-                    self.assertNotIn(value, result.stdout)
-                report_file = self.base / "embedding-report.json"
-                report_file.write_text(result.stdout)
-                self.overlay.write_text(json.dumps(overlays[left_name]))
-                before = {p: p.read_bytes() for t in targets.values() for p in t.rglob("*") if p.is_file()}
-                result = self.run_cli("carry", "--report", str(report_file), "--right", str(right))
-                self.assertEqual((0, ""), (result.returncode, result.stderr))
-                self.assertNotIn(secret, result.stdout)
-                output = json.loads(result.stdout)
-                self.assertEqual([], [p for p in output["patches"] if p["path"].startswith("/consent")])
-                expected = {"status": "invalid", "rule": rule + ": overlay.consent.embeddingTextTransfer"} if rule else {"status": "valid"}
-                self.assertEqual(expected, output["patchedOverlay"])
-                patched = apply_patches(overlays[left_name], output["patches"])
-                self.assertEqual(overlays[left_name]["consent"], patched["consent"])
-                if rule:
-                    self.overlay.write_text(json.dumps(patched))
-                    invalid = self.run_cli("validate")
-                    self.assertEqual(2, invalid.returncode)
-                    self.assertIn(rule, invalid.stderr)
-                    self.assertNotIn(secret, invalid.stderr)
-                # The test makes the separate consent decision; carry never does.
-                patched["consent"] = copy.deepcopy(overlays[right_name]["consent"])
-                target = self.parent / ("regenerated-" + str(index))
-                patched["target"]["agentDir"] = str(target)
-                self.overlay.write_text(json.dumps(patched))
-                result = self.run_cli("generate", "--target", str(target))
-                self.assertEqual((0, ""), (result.returncode, result.stderr))
-                self.assertNotIn(secret, result.stdout)
-                self.assertEqual((right / "settings.json").read_bytes(), (target / "settings.json").read_bytes())
-                regenerated = json.loads(self.run_compare(right, target).stdout)
-                self.assertEqual(["/overlay/target/agentDir"], [c["field"] for c in regenerated["changes"]])
-                self.assertEqual("unchanged", regenerated["right"]["drift"]["metadata"])
-                self.assertEqual(before, {p: p.read_bytes() for p in before})
-        self.assertEqual(preserved, {p: p.read_bytes() for p in preserved})
-        self.assertTrue({"settings.json", "choices.json", "state.json"} <= set(log.read_text().splitlines()))
-        self.assertFalse((self.base / "called").exists())
 
     def wiki_fixture(self, variant, root=None):
         """A fixture vault at `<root>/.llm-wiki` with invented content and one old time on each file and directory.

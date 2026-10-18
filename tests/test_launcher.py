@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import BLOCK_PROCESS_HOOK, slow
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
@@ -220,7 +220,7 @@ class CliTests(Fixture):
             "import sys\nsys.dont_write_bytecode = True\n"
             "import socket, subprocess\n"
             "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
-            "socket.socket.connect = blocked\nsubprocess.Popen = blocked\n")
+            "socket.socket.connect = blocked\n" + BLOCK_PROCESS_HOOK)
         self.env = {"HOME": str(self.home), "PATH": str(self.bin), "PYTHONPATH": str(self.base),
                     "PYTHONDONTWRITEBYTECODE": "1", "TENANTEXT_LITELLM_API_KEY": "CANARY_SECRET_VALUE"}
 

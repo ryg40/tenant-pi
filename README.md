@@ -24,7 +24,7 @@ The published copy of the kit is a snapshot mirror: the maintainer updates it wi
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
 | [After the install](POST_INSTALL.md) | The commands for each update and change after a base install. You do not read the install text again. |
 | [Pi update checks](docs/pi-update.md) | Detect npm releases, qualify an isolated candidate, and read breaking changes. |
-| [Continuous integration](docs/publishing.md#continuous-integration) | Offline checks, scheduled Pi qualification, and update pull requests. |
+| [Continuous integration](docs/publishing.md#continuous-integration) | GitHub offline checks of the published snapshot. |
 | [Privacy](docs/guides/privacy.md) | What the kit separates, what it never does, what the scanner checks. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [Release checklist](docs/guides/release-checklist.md) | The gates and steps of a portable release. |
@@ -43,9 +43,7 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 | `generate` | Writes a new profile into an absent target. With `--launcher`, also a launcher file. | [the CLI contract](docs/generator.md), [the launcher file](docs/launcher.md) |
 | `init-private` | Creates the private directory from templates. | [the private directory](docs/private-directory.md) |
 | `compare` | Redacted comparison of two profile directories. Read-only. | [candidate comparison](docs/candidate-compare.md) |
-| `carry` | Prints overlay patches from a `compare` report. Writes nothing. | [carrying drift into the overlay](docs/carry.md) |
 | `inventory` | Names-only list of the resources of one profile. Read-only. | [profile inventory](docs/profile-inventory.md) |
-| `list` | Lists the candidates under one parent directory. Read-only. | [the candidate list](docs/candidate-compare.md#candidate-list) |
 | `wizard` | Scans the confirmed target, opens a terminal checklist and saves only an explicitly approved private handoff. | [wizard guide](docs/guides/wizard.md) |
 | `components` | Prints the checklist of all components: as data, as a numbered list, or as a selection. Read-only. | [the CLI contract](docs/generator.md#components-the-checklist-of-the-components) |
 | `check-runtime` | Compares the installed Pi, Node and Python with the pins. | [the runtime version check](docs/check-runtime.md) |

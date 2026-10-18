@@ -416,6 +416,8 @@ class CliTests(Fixture):
         self.assertEqual((0, ""), (plan.returncode, plan.stderr))
         self.assertEqual(str(target), json.loads(plan.stdout)["targetAgentDir"])
         self.assertFalse(os.path.lexists(target))
+        # A failed Git still records unknown; the only process is the provenance read.
+        (self.bin / "git").write_text("#!/bin/sh\nexit 1\n")
         generated = subprocess.run([sys.executable, validate[0], "generate", *options, "--target", str(target)],
                                    cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
         self.assertEqual((0, ""), (generated.returncode, generated.stderr))
@@ -424,9 +426,10 @@ class CliTests(Fixture):
         choices = json.loads((target / ".tenant-pi/choices.json").read_text())
         self.assertEqual((str(target), ["core"]), (choices["overlay"]["target"]["agentDir"], choices["overlay"]["selection"]["enable"]))
         self.assertTrue((target / "settings.json").is_file())
-        # The four runs start no process, and the live profile files stay unopened and unchanged.
+        # Only generate starts Git; the live profile files stay unopened and unchanged.
         events = self.log.read_text().splitlines()
-        self.assertEqual([], [line for line in events if not line.startswith("open ")])
+        self.assertEqual(["subprocess.Popen git"], [line for line in events if not line.startswith("open ")])
+        self.assertEqual("unknown", json.loads((target / ".tenant-pi/state.json").read_text())["provenance"]["kitCommit"])
         self.assertEqual([], [line for line in events if str(self.agent) in line])
         for name in ("auth.json", "models.json", "sessions"):
             self.assertEqual([], [line for line in events if line.endswith(("/" + name, " " + name))])

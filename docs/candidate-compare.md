@@ -38,7 +38,7 @@ The output is one deterministic JSON object. Two runs on unchanged inputs produc
 - `unchanged`: the declared fields that are equal on both sides. Only names, never values.
 - `unsupported`: fields the comparison does not interpret. `unsupported_field` names an unknown key, `unsupported_shape` marks a known key with an unexpected type, `missing_section` marks a known section that is absent, `unsupported_field_name` replaces a key name that contains characters outside `A-Za-z0-9_.:@-` with `<redacted>`.
 - `accepted`: the `settings.json` differences that the overlay key `unmanaged` of either side lists. An entry keeps its `change`, or its `side` and `status`, and adds the recorded `reason`. It never carries a value. An accepted difference is not in `changes` or `unsupported`. The pointer is compared as an exact string with the `field` path of `settings.json`: `/<key>`, `/packages/<index>/source`, `/packages/<index>/resources`, `/llm-wiki/<key>`. See `docs/accepted-drift.md`.
-- `markers`: the two provenance fields `/provenance/generatedAt` and `/provenance/kitCommit` of `state.json` when they differ, with `change` of `added`, `removed`, or `changed` and never a value. They differ between any two generations, so they are never in `changes`. Equal values are in `unchanged`. See `docs/candidate-compare.md#candidate-list`.
+- `markers`: the two provenance fields `/provenance/generatedAt` and `/provenance/kitCommit` of `state.json` when they differ, with `change` of `added`, `removed`, or `changed` and never a value. They differ between any two generations, so they are never in `changes`. Equal values are in `unchanged`.
 - `summary`: counts of each change class, plus `accepted` and `markers`. The other counts exclude the accepted and the marker entries.
 - `manualSwitch`: the fixed statement that switching is a manual launch choice.
 
@@ -89,7 +89,6 @@ Unknown key names are shown when they use safe characters, so that an unsupporte
 - Other activation shapes still differ. Unknown fields and malformed shapes are not normalized away.
 - Generated `llm-wiki.embeddingProvider` compares by value. `embeddingBaseUrl`, `embeddingModel`, `embeddingApiKeyEnv`, and `embeddingApiKey` remain markers.
 - `consent.embeddingTextTransfer` compares as a boolean. Neither comparison nor its offline diagnostics checks credential values.
-- `carry` maps each field entry to one overlay patch; see `docs/carry.md`.
 
 ### Drift: owner edits inside a candidate
 
@@ -103,7 +102,7 @@ The `drift` section is not filtered by the `unmanaged` list: an accepted hand ed
 
 `metadata` is `unchanged` when `choices.json` still equals the planner's record, and `changed` when it was edited after generation.
 
-A candidate is derived from the overlay, not from the previous candidate. A user edit inside Pi does not flow into the next regeneration. To keep an approved edit, carry it into the overlay first. For a change of the right side's recorded overlay in an owner-owned key, `carry` prints the overlay patches; see `docs/carry.md`. For a hand edit, use this table:
+A candidate is derived from the overlay, not from the previous candidate. A user edit inside Pi does not flow into the next regeneration. To keep an approved edit, carry it into the overlay first. For a hand edit, use this table:
 
 | Edited `settings.json` field | Overlay field |
 | --- | --- |
@@ -122,9 +121,10 @@ A candidate is derived from the overlay, not from the previous candidate. A user
 The guarded writer stores a minimal non-secret record inside the writer-owned `.tenant-pi/state.json`: `kitSchemaVersion`, `piVersion`, `nodeRange`, the sorted `enabled` component list, the `pins` of those components, the declared `outputs`, `generatedAt` and `kitCommit`. It contains no target path, endpoint, role, credential name, or registry data.
 
 - `generatedAt` is the UTC time of the generation as `YYYY-MM-DDTHH:MM:SSZ`.
-- `kitCommit` is the commit of the kit clone as 40 hex characters, or `unknown`. It is the value that `git rev-parse HEAD` prints; the kit reads it from the Git metadata files and starts no process. See `docs/candidate-compare.md#candidate-list` for the steps and the limits.
+- `kitCommit` is the commit of the kit clone as 40 hex characters, or `unknown`. `generate` reads it with one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git.
 - `compare` lists both fields under `markers`, never under `changes`, and never shows their values. Two candidates of the same overlay and kit differ only in `/overlay/target/agentDir` and in these markers.
-- The `list` action shows both values per candidate under one parent directory; see `docs/candidate-compare.md#candidate-list`. The record documents what produced the files. It is not authority to overwrite any installed file, and no hash or record in the kit claims ongoing ownership of a field.
+
+The record documents what produced the files. It is not authority to overwrite any installed file, and no hash or record in the kit claims ongoing ownership of a field.
 
 ## Schema versions and migration
 
@@ -158,15 +158,13 @@ The overlay and `choices.json` retain schema version 1. The comparison report de
 
 - A `choices.json` without an overlay `memory` block, or without the `/memory` record, and a `state.json` without a `provenance` record still compare. Against a side with the block, each memory field is an `added` or `removed` change.
 - A report for a candidate with a valid `memory` block includes `/overlay/memory/...` entries under `changes` or `unchanged`. It has no `unsupported_field` entry at `/overlay/memory`. The counts in `summary` include the field entries.
-- A report without `/overlay/memory/...` entries gives no memory field patch. Run `compare` again before `carry`.
 
 ### Migration note: Wiki embeddings
 
 The overlay schema stays at version 1. An old overlay without embeddings stays valid.
 The exact disabled activation record introduces no comparison change against an older candidate without that record.
-An explicitly null overlay `embedding` still differs from an omitted field, so carry can reproduce either form.
-Run `compare` again to get nested embedding fields before carry.
-An old whole-object embedding marker cannot replace an existing target embedding object; it gives `overlay_matches` instead.
+An explicitly null overlay `embedding` still differs from an omitted field.
+Run `compare` again to get nested embedding fields.
 No offline action resolves the credential reference or probes the endpoint.
 
 ### Migration note: `ownerResources`
@@ -226,98 +224,24 @@ Limits:
 
 A candidate with `modelsDefinitions` in its kit choices also declares `models.json`. Compare reads that file through the bounded loader and emits only change markers. An unmanaged model file stays unread.
 
-## Candidate list
-
-Status: offline implementation, read-only. `scripts/candidate_list.py` is a pure module. The `list` action of `scripts/tenant_pi.py` reads at most one file per child directory and writes nothing. It starts no process and opens no network connection.
-
-### Question
-
-Which candidate is current, and which kit commit produced each one? The `list` action gives the facts for that decision. It does not make the decision: it writes no "current" marker, and it deletes or prunes nothing.
-
-```sh
-python3 scripts/tenant_pi.py list --parent '/owned/parent'
-```
-
-### What `list` reads
-
-`--parent` is one absolute path that the user names explicitly. It has the same form as every other path of the kit: no `.` or `..` segment, no trailing `/`, no shell or template characters. A relative path fails with `absolute_path: list.parent`. An absent parent fails with `parent_missing: list.parent`. A parent that is a file, or that has a symlink in any path component, fails with `read_or_json: list.parent`.
-
-The action lists the direct entries of the parent through a directory descriptor. It does not follow a symlink. For each child directory it reads only `<child>/.tenant-pi/state.json`, through the bounded no-follow loader of the other actions: a regular file, 1 MiB maximum, 64 nesting levels maximum, unique JSON keys, no symlink in any path component. `settings.json`, `choices.json`, `auth.json`, `models.json`, sessions, memory stores and every other file stay unread. The tests prove this with an audit hook that records every file open, directory listing and process start, while private canary files sit in the children.
-
-### Output
-
-The output is one deterministic JSON object, with sorted keys and fixed separators. Two runs on an unchanged tree give identical bytes.
-
-- `parent`: the given path.
-- `children`: one row per child, sorted by the child name.
-- `summary`: the count of each status, plus `children` (rows shown), `omitted` (rows over the bound) and `notDirectory` (regular files and other entries that are not a child).
-- `diagnostics`: sorted static `rule: field` lines. Empty when nothing went wrong.
-- `scope`: a fixed statement of what the action reads.
-
-Each row has `name` and `status`:
-
-| `status` | Meaning | Other keys |
-| --- | --- | --- |
-| `candidate` | The child has a schema-1 `state.json`. | `kitSchemaVersion`, `piVersion`, `filesComplete`, `generatedAt`, `kitCommit`, `unsupported` |
-| `unmanaged` | The child has no `.tenant-pi/state.json`, or no `.tenant-pi` directory. An unmanaged Pi profile is listed this way. | none |
-| `symlink` | The child is a symlink. The action does not enter it, also when it points to a candidate. | none |
-| `invalid` | `state.json` failed the loader or the schema check. | `reason`: a static rule code |
-| `unsupported_name` | The child name is outside the safe form. The action does not enter the child. | `name` is `null` |
-
-#### Candidate fields
-
-| Field | Source in `state.json` | Public form; otherwise `null` and listed in `unsupported` |
-| --- | --- | --- |
-| `kitSchemaVersion` | `provenance.kitSchemaVersion` | Small integer |
-| `piVersion` | `provenance.piVersion` | Plain `X.Y.Z`; a prerelease tag is not echoed |
-| `filesComplete` | `status` | `true` for `complete`, `false` for `incomplete` |
-| `generatedAt` | `provenance.generatedAt` | `YYYY-MM-DDTHH:MM:SSZ`, a real calendar instant |
-| `kitCommit` | `provenance.kitCommit` | 40 lowercase hex characters, or `unknown` |
-
-A field that is absent is `null` and is not listed in `unsupported`. A `state.json` without `generatedAt` and `kitCommit` shows `null` for both. A `provenance` value that is not an object adds `provenance` to `unsupported`.
-
-#### Reasons of an `invalid` row
-
-`reason` is the rule part of the loader diagnostic, for example `invalid_json`, `input_encoding`, `input_not_regular`, `input_too_large` or `duplicate_key`, or one of two schema codes: `unsupported_schema_version` (a `schemaVersion` other than the integer `1`) and `unsupported_shape` (the file is not a JSON object). `docs/generator.md` ("Input file errors") lists the loader rules. A `.tenant-pi` that is a file or a symlink gives `input_path_unsafe`. A `state.json` that is a symlink or a directory gives `input_not_regular`. The row never carries a value or a path from the file, and it has no `line` or `column` of a syntax error. A rule that is not lower-case letters and `_` (40 characters maximum) shows as `read_or_json`; no loader rule has another form.
-
-#### Child names
-
-A child name is echoed and entered only in the target segment form of the kit: letters, digits, `_`, `.`, space, `'`, `"` and `-`, at most 255 characters, no leading or trailing space, not `.` or `..`. This is the same form that `generate --target` accepts for a path segment. Every other name, for example one with `$`, a backtick, a control character or a non-ASCII character, gives a row with `name: null` and status `unsupported_name`. These rows sort after the named rows.
-
-### Bounds
-
-- The action lists at most 4096 direct entries of the parent (`MAX_ENTRIES`, the bound of `inventory`). More entries fail with `input_too_large: list.parent`; no partial report is printed.
-- The report shows at most 1000 children (`MAX_CHILDREN`), the first 1000 in name order. The rest count in `summary.omitted`, and `diagnostics` contains `child_limit: list.parent`.
-- A failure to close the parent descriptor adds `cleanup_failed: list.parent` to `diagnostics`. The report is still printed.
-
-### Provenance fields that `generate` writes
+## Provenance fields that `generate` writes
 
 `generate` adds two fields to the provenance record of `.tenant-pi/state.json`:
 
 - `generatedAt`: the UTC time of the generation, in the form `YYYY-MM-DDTHH:MM:SSZ`. The writer calls its clock once, so the `incomplete` and the `complete` state carry the same value. The clock is one injectable parameter of `write()` and `main()`; its default is `datetime.now(timezone.utc)`. A clock that fails or that returns a time without a zone stops the generation with `clock: state.generatedAt` before the first write.
 - `kitCommit`: the commit of the kit clone, or `unknown`.
 
-`git -C <clone> rev-parse HEAD` prints the value of `kitCommit`. The kit reads the same value from the Git metadata files instead, because the generator starts no process. The steps are:
+`generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. The call uses an argument list, no shell, a 5 second timeout, and `check=False`. Git inherits the environment, except `GIT_CEILING_DIRECTORIES`, which stops repository discovery at the kit root. A successful call must return 40 lowercase hex characters. A failed call, timeout, missing repository, or invalid output records `unknown`.
 
-1. Read `<kit>/.git` as a file. A worktree or a separate Git directory has a `.git` file with the line `gitdir: <path>`. The kit follows that line once. A relative path resolves against the kit clone. When `.git` is a directory, it is the Git directory.
-2. Read `<gitdir>/commondir` when it exists. A worktree keeps its branch refs in the common directory. The kit follows that line once.
-3. Read `<gitdir>/HEAD`. A detached `HEAD` holds the commit. `ref: refs/...` names a ref.
-4. Read the loose ref file in the common directory. When it is absent, look up the ref in `packed-refs`.
-
-Every read uses the bounded no-follow loader. `.git`, `commondir`, `HEAD` and a loose ref file have a 1 KiB bound; `packed-refs` has the 1 MiB bound. A ref name must match `refs/<segment>[/<segment>...]` with letters, digits, `.`, `_` and `-`, no `..`, no leading `.` in a segment, and no `.lock` end. A branch name outside this closed grammar, for example `release+1`, `a@b` or `fix#1`, records `unknown`, although Git accepts it. A loose ref that is itself a symbolic ref is not followed. A loose ref file that exists but does not parse, or that fails the loader, records `unknown`; the kit does not fall back to `packed-refs` then. The result must be 40 lowercase hex characters. Every other case records `unknown`: no `.git`, a symlink in the path, a malformed or oversized file, a SHA-256 repository, or an absent ref.
-
-The test `tests/test_kit_commit.py` compares the value with `git rev-parse HEAD` of the clone that runs the tests; the test itself runs Git, the kit does not. Not verified: shallow clones, a `HEAD` that names a ref in a `refs/worktree/` namespace, and Git reference backends other than files, such as `reftable`. In those cases the kit records `unknown` or the value of the files, which can differ from `git rev-parse HEAD`.
+`tests/test_cli.py` covers generation from a fixture repository and a copy without `.git`. It also covers a failing Git stub, absent Git, timeout, invalid output, and the exact call options. Git resolves its own references; the kit has no Git metadata parser.
 
 `compare` lists both fields under `markers`, never under `changes`; see `docs/candidate-compare.md`.
 
-### Limits
+### Limits of the provenance record
 
-- `list` shows recorded facts. It does not check that the files of a candidate are still the files that `generate` wrote; use `compare` for that.
 - `kitCommit` names the commit of the kit clone at generation time. Not verified: that the working tree of the clone was clean at that time. Uncommitted kit changes are not visible in the record.
-- The bounds are per file (1 MiB for each `state.json`) and per child count (1000 rows, 4096 entries). There is no bound on the total bytes that one run parses: at most 1000 files of 1 MiB each. This costs only CPU time and memory for one file at a time.
 - `generatedAt` comes from the host clock. Not verified: that the host clock was correct.
-- A candidate directory is not an OS sandbox, and a `complete` state means only that files were published; see `docs/candidate-compare.md`.
 
 ### Test coverage
 
-`tests/test_candidate_list.py` covers a tree with two candidates, one unmanaged directory, a symlinked child that is reported as `symlink` and not entered, a regular file, private canary files that stay unopened, invalid state files, unsupported names, the entry and child bounds, a cleanup failure, an older state without the new fields, hostile field values, and two CLI runs with identical bytes in a process that blocks every subprocess and socket. `tests/test_kit_commit.py` covers the metadata parsers, a clone, a worktree, packed refs, symlinks and malformed files. `tests/test_profile_write.py` and `tests/test_cli.py` cover the two new fields in `state.json`.
+`tests/test_profile_write.py` and `tests/test_cli.py` cover the two new fields in `state.json`.

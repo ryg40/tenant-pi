@@ -4,12 +4,14 @@ Inputs are the already-loaded JSON objects of the declared kit files of each sid
 (`None` for an absent file). The module reads no file, environment, or host state. It
 shows change markers for private values and echoes only reviewed public values.
 """
+from datetime import datetime
 import json
 import re
 
+from scripts.profile_write import GENERATED_AT, commit
 from scripts.memory_modules import HERMES_CONFIG, MEMORY, MODULE_FIELDS
 from scripts.profile_plan import prepare, source_pin
-from scripts.validate import HEX, ID, OWNER_RESOURCES, REVIEWED_SOURCES, ROLE_NAMES, Invalid, fail, npm_name, npm_parts, unmanaged
+from scripts.validate import HEX, ID, OWNER_RESOURCES, REVIEWED_SOURCES, ROLE_NAMES, Invalid, fail, path_segment, npm_name, npm_parts, unmanaged
 from scripts.workflow_modules import LIFECYCLES, MCP_CONFIG, SERVER_NAME
 
 FILES = ("settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json", HERMES_CONFIG, MCP_CONFIG, "models.json")
@@ -49,6 +51,10 @@ EMBEDDING_AUTH_POLICIES = {"envVar": "marker", "mode": "embedding_auth"}
 MISSING = object()
 # Provenance fields that differ between any two generations: listed under `markers`, never under `changes`.
 MARKERS = frozenset((".tenant-pi/state.json", "/provenance/" + key) for key in ("generatedAt", "kitCommit"))
+
+MAX_NAME = 255
+STATE_FIELDS = ("kitSchemaVersion", "piVersion", "filesComplete", "generatedAt", "kitCommit")
+STATE_RULE = re.compile(r"[a-z_]{1,40}\Z")
 
 
 def _pin_public(value):
@@ -614,3 +620,65 @@ def compare(left_files, right_files):
                     "markers": len(markers)},
         "manualSwitch": "Switching profiles is a manual PI_CODING_AGENT_DIR launch choice. The kit moves no auth, session, memory, queue, or keychain data and guarantees no rollback.",
     }
+
+
+def safe_name(name):
+    """Whether a child name may be echoed and entered: the kit's target segment form, no edge space."""
+    return (type(name) is str and len(name) <= MAX_NAME and name == name.strip()
+            and path_segment(name, quotes=True))
+
+
+def _generated_at(value):
+    if type(value) is not str or not GENERATED_AT.fullmatch(value):
+        return False
+    try:
+        # A real calendar instant; no `strptime`, which imports a module at first use.
+        datetime(*(int(value[start:start + size]) for start, size in ((0, 4), (5, 2), (8, 2), (11, 2), (14, 2), (17, 2))))
+    except ValueError:
+        return False
+    return True
+
+
+STATE_PUBLIC = {
+    "kitSchemaVersion": lambda v: type(v) is int and 0 <= v < 10 ** 6,
+    "piVersion": lambda v: type(v) is str and bool(PLAIN_VERSION.fullmatch(v)),
+    "generatedAt": _generated_at,
+    "kitCommit": lambda v: commit(v) is not None,
+}
+
+
+def child(name, kind, state=None, error=None):
+    """One row. `state` is the loaded record (`None` when absent); `error` is a loader rule."""
+    if not safe_name(name):
+        return {"name": None, "status": "unsupported_name"}
+    if kind == "symlink":
+        return {"name": name, "status": "symlink"}
+    if kind != "dir":
+        fail("entry", "list.entries")
+    if error is not None:
+        return {"name": name, "status": "invalid", "reason": error if type(error) is str and STATE_RULE.fullmatch(error) else "read_or_json"}
+    if state is None:
+        return {"name": name, "status": "unmanaged"}
+    if type(state) is not dict:
+        return {"name": name, "status": "invalid", "reason": "unsupported_shape"}
+    if type(state.get("schemaVersion")) is not int or state["schemaVersion"] != 1:
+        return {"name": name, "status": "invalid", "reason": "unsupported_schema_version"}
+    row = {"name": name, "status": "candidate", **dict.fromkeys(STATE_FIELDS), "unsupported": []}
+    status = state.get("status")
+    if status in ("complete", "incomplete"):
+        row["filesComplete"] = status == "complete"
+    elif "status" in state:
+        row["unsupported"].append("filesComplete")
+    record = state.get("provenance")
+    if "provenance" in state and type(record) is not dict:
+        row["unsupported"].append("provenance")
+    elif type(record) is dict:
+        for field, public in STATE_PUBLIC.items():
+            if field not in record:
+                continue  # An older record has no `generatedAt` or `kitCommit`: the value stays null.
+            if public(record[field]):
+                row[field] = record[field]
+            else:
+                row["unsupported"].append(field)
+    row["unsupported"].sort()
+    return row

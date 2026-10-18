@@ -71,7 +71,7 @@ With `herdr` in `selection.enable`, `plan` and `generate` list these gaps with t
 
 With `questions`, the gap `question_ui_unverified` stays in every plan. No kit action opens a question dialog.
 
-`plan` and `generate` start no process. Give them the report as a file:
+`plan` starts no process. `generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. Neither action probes Herdr. Give them the report as a file:
 
 ```sh
 python3 scripts/tenant_pi.py check-herdr > /path/to/herdr.json

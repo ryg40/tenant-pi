@@ -1,6 +1,6 @@
 # Workflow modules: MCP adapter and Promptr
 
-Status: offline implementation, not a qualified runtime. `scripts/workflow_modules.py` is a pure module: no file, environment, subprocess, or network access. Validation, planning, and generation open no MCP server, spawn no process, and touch no keyring. The tests prove this with a blocked-socket, blocked-subprocess, file-open-audited fixture in a disposable HOME. The MCP module targets `pi-mcp-adapter`, not the native Pi MCP. The kit has no `pi-subagents` component. The source facts below apply to adapter version 3.2.0.
+Status: offline implementation, not a qualified runtime. `scripts/workflow_modules.py` is a pure module: no file, environment, subprocess, or network access. Validation, planning, and generation open no MCP server and touch no keyring. Only generation makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. The tests prove this with a blocked-socket, file-open-audited fixture that models absent Git and blocks every other process in a disposable HOME. The MCP module targets `pi-mcp-adapter`, not the native Pi MCP. The kit has no `pi-subagents` component. The source facts below apply to adapter version 3.2.0.
 
 One module can be enabled: `mcp` (`pi-mcp-adapter`, declared without a version; the source facts below were read at 3.2.0). `promptr` is `unverified` and has a named readiness matrix. No overlay block exists for either module; the MCP definitions come from the fixed input slot.
 

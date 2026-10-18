@@ -53,7 +53,7 @@ The test `tests/test_skill_invariants.py` reads their Markdown and the label tab
 A finding fails the unit tests.
 
 A pin move changes two tracked files: `config/manifest.json` and the reviewed core anchor in `scripts/validate.py`.
-Use `scripts/pi_update.py` function `pin_contents` for both edits; the CI request calls the same function.
+Use `scripts/pi_update.py` function `pin_contents` for both edits.
 `runtime.piVersion` is the tested version. `runtime.piAcceptedRange` is the accepted range.
 A changed stable pin automatically sets `>=<new version> <next minor>` in the same manifest edit.
 The range therefore moves with the pin, including a move to another minor or major line.

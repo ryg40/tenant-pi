@@ -24,6 +24,8 @@ from scripts import tenant_pi
 from scripts.validate import load, manifest
 
 GUIDES = "docs/guides/"
+# These actions exist only in a development checkout and have a private reference page.
+DEV_ONLY_ACTIONS = ("carry", "list")
 # Optional private-copy link targets. A portable copy can omit them. The list is empty.
 DEV_ONLY_TARGETS = ()
 # Flags of other programs that the guides, INSTALL.md and README.md name in a standalone code span.
@@ -320,7 +322,7 @@ def check(root=ROOT, files=None):
         rows = [match.group(1) for match in map(SKILL_ROW.match, skill_table(lines)) if match]
         if rows != expected:
             findings.add(f"skill_list: {name}")
-    for action in sorted(set(actions) - guided):
+    for action in sorted(set(actions) - guided - set(DEV_ONLY_ACTIONS)):
         findings.add(f"action_unguided: scripts/tenant_pi.py:{action}")
     counts["actions"] = len(actions)
     return sorted(findings), counts

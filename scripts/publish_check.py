@@ -14,8 +14,6 @@ from examples import render
 
 # Required paths outside the script, test and documentation directory rules.
 PUBLISH = (
-    ".gitea/workflows/pi-update.yml",
-    ".gitea/workflows/checks.yml",
     ".github/workflows/checks.yml",
     ".gitignore",
     ".env.example",

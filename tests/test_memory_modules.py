@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import BLOCK_PROCESS_HOOK, slow
 from pathlib import Path
 
 from scripts.candidate_compare import FILES, compare
@@ -433,32 +433,6 @@ class MemoryContractTests(unittest.TestCase):
             render_memory(data, self.components)
         self.assertEqual(before, data)
 
-    def test_agentcore_compare_marks_the_config_file_and_carry_patches_it(self):
-        from scripts.carry import carry
-        from scripts.profile_write import _provenance
-
-        def files(data):
-            plan = prepare(self.manifest_data, data)
-            found = {name: copy.deepcopy(item["content"]) for name, item in plan["files"].items()}
-            found[STATE] = {"schemaVersion": 1, "status": "complete",
-                            "provenance": _provenance(found[".tenant-pi/choices.json"], list(found))}
-            return found
-
-        left = self.remote(("agentcore",))
-        right = copy.deepcopy(left)
-        right["memory"]["agentcore"]["configFile"] = "/home/" + CANARY + "/config.json"
-        a, b = files(left), files(right)
-        report = compare(a, b)
-        self.assertNotIn(CANARY, json.dumps(report))
-        self.assertNotIn(AGENTCORE["configFile"], json.dumps(report))
-        self.assertIn("/overlay/memory/agentcore/configFile", json.dumps(report))
-        self.assertEqual([], compare(a, files(copy.deepcopy(left)))["unsupported"])
-        report["right"] = {"path": "/candidate/right"}
-        result = carry(report, left, self.manifest_data, b, "/candidate/right")
-        self.assertEqual([{"op": "replace", "path": "/memory/agentcore/configFile", "value": "/home/" + CANARY + "/config.json"}],
-                         [p for p in result["patches"] if p["path"].startswith("/memory")])
-        self.assertFalse(any(p["path"].startswith("/consent") for p in result["patches"]))
-
     def test_local_only_consent_disables_every_background_model_path(self):
         data = self.base("hermes", "wiki", memory={"hermes": HERMES_OFF, "wiki": WIKI_OFF})
         overlay(data, self.components)
@@ -853,7 +827,7 @@ class MemoryPublicationTests(unittest.TestCase):
         hook = self.base_dir / "sitecustomize.py"
         hook.write_text("import sys\nsys.dont_write_bytecode = True\nimport socket, subprocess\n"
                         "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
-                        "socket.socket.connect = blocked\nsubprocess.Popen = blocked\n")
+                        "socket.socket.connect = blocked\n" + BLOCK_PROCESS_HOOK)
         env = dict(os.environ, HOME=str(self.home), PATH=str(bin_dir), PYTHONPATH=str(self.base_dir), PYTHONDONTWRITEBYTECODE="1")
         # Ambient host state beside the candidate must stay unread and unchanged.
         (self.home / ".llm-wiki").mkdir()
@@ -914,7 +888,8 @@ class MemoryPublicationTests(unittest.TestCase):
             "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
             "socket.socket.connect = blocked\nsocket.socket.connect_ex = blocked\n"
             "socket.create_connection = blocked\nsocket.getaddrinfo = blocked\n"
-            "subprocess.Popen = blocked\nos.system = blocked\nurllib.request.urlopen = blocked\n"
+            + BLOCK_PROCESS_HOOK +
+            "os.system = blocked\nurllib.request.urlopen = blocked\n"
             "original = os._Environ.__getitem__\n"
             "def guarded(self, key):\n"
             "    if key in ('EXAMPLE_EMBEDDING_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL'):\n"
@@ -1028,7 +1003,7 @@ class MemoryPublicationTests(unittest.TestCase):
         hook = self.base_dir / "sitecustomize.py"
         hook.write_text("import sys\nsys.dont_write_bytecode = True\nimport socket, subprocess\n"
                         "def blocked(*args, **kwargs): raise AssertionError('external operation')\n"
-                        "socket.socket.connect = blocked\nsubprocess.Popen = blocked\n")
+                        "socket.socket.connect = blocked\n" + BLOCK_PROCESS_HOOK)
         # The credential files and the variables of the extension stay unread: the canary is in none of the output.
         (self.home / ".openviking").mkdir()
         for name in ("ovcli.conf", "ov.conf"):

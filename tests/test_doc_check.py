@@ -45,6 +45,15 @@ class UnitTests(unittest.TestCase):
         self.assertEqual({"a", "a-1", "b-c"}, anchors(prose))
         self.assertEqual([("sh", 5, [(6, "# not a heading")])], blocks)
 
+    def test_parser_without_development_modules_keeps_compare(self):
+        _, development = cli_tree()
+        with mock.patch.object(doc_check.tenant_pi, "HAS_CARRY", False), \
+                mock.patch.object(doc_check.tenant_pi, "HAS_LIST", False):
+            _, portable = cli_tree()
+        self.assertNotIn("carry", portable)
+        self.assertNotIn("list", portable)
+        self.assertEqual(development["compare"], portable["compare"])
+
     def test_json_block(self):
         self.assertTrue(json_block(['{"a": 1}']))
         self.assertTrue(json_block(['{"a": 1}', "", '{"b": 2}']))
@@ -61,8 +70,13 @@ class UnitTests(unittest.TestCase):
     def test_cli_tree_is_the_real_parser(self):
         top, actions = cli_tree()
         self.assertIn("--help", top)
-        self.assertEqual({"wizard", "compare", "carry", "inventory", "list", "check-runtime", "check-herdr", "check-wiki-vault", "remote-plan", "compose-plan", "components",
-                          "init-private", "baseline", "check-baseline", "results", "validate", "plan", "generate"}, set(actions))
+        expected = {"wizard", "compare", "inventory", "check-runtime", "check-herdr", "check-wiki-vault", "remote-plan", "compose-plan", "components",
+                    "init-private", "baseline", "check-baseline", "results", "validate", "plan", "generate"}
+        if doc_check.tenant_pi.HAS_CARRY:
+            expected.add("carry")
+        if doc_check.tenant_pi.HAS_LIST:
+            expected.add("list")
+        self.assertEqual(expected, set(actions))
         self.assertIn("--launcher", actions["generate"])
         self.assertIn("--launcher", actions["plan"])
         self.assertNotIn("--launcher", actions["validate"])
@@ -184,7 +198,7 @@ class InstallExampleTests(unittest.TestCase):
 
 class PublicTextTests(unittest.TestCase):
     def test_lifecycle_links(self):
-        targets = ("accepted-drift.md", "carry.md", "launcher.md", "candidate-compare.md#candidate-list",
+        targets = ("accepted-drift.md", "launcher.md",
                    "check-runtime.md", "private-directory.md", "profile-inventory.md",
                    "owner-extensions.md#owner-package-paths-in-the-overlay",
                    "owner-extensions.md#owner-skill-and-prompt-directories-in-the-overlay")
@@ -238,7 +252,7 @@ class PostInstallTests(unittest.TestCase):
         "Update a Compose seat",
         "Write the results file again",
     )
-    ACTIONS = {"list", "inventory", "check-runtime", "validate", "plan", "generate", "compare", "carry",
+    ACTIONS = {"inventory", "check-runtime", "validate", "plan", "generate", "compare",
                "components", "check-wiki-vault", "baseline", "check-baseline", "results"}
 
     @classmethod
@@ -353,7 +367,8 @@ class TreeTests(unittest.TestCase):
     def test_clean_tree(self):
         findings, counts = self.run_check()
         self.assertEqual([], findings)
-        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": 18}, counts)
+        actions = 16 + int(doc_check.tenant_pi.HAS_CARRY) + int(doc_check.tenant_pi.HAS_LIST)
+        self.assertEqual({"files": 3, "links": 2, "json": 0, "actions": actions}, counts)
 
     def test_each_rule(self):
         cases = {
@@ -418,9 +433,11 @@ class TreeTests(unittest.TestCase):
 
     def test_action_coverage_excludes_reference_pages(self):
         self.files["docs/guides/setup.md"] = "# Setup\n\n`python3 scripts/tenant_pi.py plan --help`\n"
-        findings, _ = self.run_check({"docs/other.md": "`python3 scripts/tenant_pi.py list --help`\n"})
-        self.assertIn("action_unguided: scripts/tenant_pi.py:list", findings)
+        findings, _ = self.run_check({"docs/other.md": "`python3 scripts/tenant_pi.py compare --help`\n"})
+        self.assertIn("action_unguided: scripts/tenant_pi.py:compare", findings)
         self.assertNotIn("action_unguided: scripts/tenant_pi.py:plan", findings)
+        for action in ("carry", "list"):
+            self.assertNotIn(f"action_unguided: scripts/tenant_pi.py:{action}", findings)
 
     def test_dev_only_target(self):
         text = "[notes](dev/notes.md)"

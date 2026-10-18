@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import block_process, slow
 from contextlib import chdir, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
@@ -64,7 +64,7 @@ def run_main(argv, cwd, env):
     out, err = StringIO(), StringIO()
     with chdir(cwd), patch.dict(os.environ, env, clear=True), \
             redirect_stdout(out), redirect_stderr(err), \
-            patch("subprocess.Popen", side_effect=AssertionError("external operation")):
+            patch("subprocess.Popen", side_effect=block_process):
         try:
             code = tenant_pi.main(argv)
         except SystemExit as stop:

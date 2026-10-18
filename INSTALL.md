@@ -741,7 +741,7 @@ Add `--local-dir ~/.config/tenant-pi` to both commands when `mcp` is enabled.
 
 Add `--launcher ~/.config/tenant-pi/launch-<name>.sh` to both commands to get the launcher file of Stage 9. The file must not exist. `plan` only prints the path; `generate` writes the file after the profile is complete.
 
-Give both commands the runtime versions, so that the gaps show the measured state. `plan` and `generate` start no process, so save the report of `check-runtime` first, in the shell that will launch Pi:
+Give both commands the runtime versions, so that the gaps show the measured state. `plan` starts no process. `generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. Neither action runs a runtime probe. Save the report of `check-runtime` first, in the shell that will launch Pi:
 
 ```sh
 python3 scripts/tenant_pi.py check-runtime > ~/.config/tenant-pi/runtime.json
@@ -1089,7 +1089,7 @@ The first install ends with Stage 9. This stage is one message to the user, and 
 
 Tell the user the rule of each later change: the kit changes no profile in place. A new kit version, a new component or a new Pi pin gives a new candidate directory from the same overlay with another `target.agentDir`. The old candidate stays as the fallback. Auth, sessions and memory are not copied.
 
-[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, `python3 scripts/tenant_pi.py compare`, `python3 scripts/tenant_pi.py carry`, `python3 scripts/tenant_pi.py list`, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
+[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, `python3 scripts/tenant_pi.py compare`, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
 
 ## Not in this kit
 

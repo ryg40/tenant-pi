@@ -152,8 +152,6 @@ The bounds (64 entries, 1024 characters) and the character class limit each path
 
 Each index is positional. An entry inserted before another entry shows as a change of each later index.
 
-`carry` turns a change of the recorded entries into one patch of the whole `skills` or `prompts` list, from the right side's overlay copy ([carrying drift](carry.md)).
-
 A `skills` or `prompts` value that is not a list of strings is reported as `unsupported_shape`. A recorded `ownerResources` key other than `skills` and `prompts` is reported as `unsupported_field`.
 
 ### The `/resources` command

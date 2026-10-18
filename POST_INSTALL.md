@@ -19,14 +19,13 @@ The rules of the install stay in force. Write no secret into a file. Never write
 ## Confirm the base install
 
 1. Read `<private dir>/INSTALLER_KIT_RESULTS.md`. It must name one candidate or more with the state `complete`, each with its launcher.
-2. List the candidates, and list what the candidate in use declares:
+2. List what the candidate in use declares:
 
    ```sh
-   python3 scripts/tenant_pi.py list --parent '<parent>'
    python3 scripts/tenant_pi.py inventory --dir '<old target>'
    ```
 
-   `list` shows the candidate with `"status":"candidate"` and `"filesComplete":true`. `inventory` shows `"managed":true` and the package sources of the candidate. See [the candidate list](docs/candidate-compare.md#candidate-list).
+   `inventory` shows `"managed":true` and the package sources of the candidate. See [the profile inventory](docs/profile-inventory.md).
 3. Compare the runtime with the kit, in the shell that launches Pi:
 
    ```sh
@@ -224,20 +223,19 @@ All candidates of one account share what is outside the candidate directories: t
 
 ## Take over a choice that you made inside Pi
 
-1. Compare, with the candidate that holds the choice on the right. Then print the overlay patches:
+1. Compare, with the candidate that holds the choice on the right. Read the report:
 
    ```sh
    python3 scripts/tenant_pi.py compare --left '<old target>' --right '<target>' > '<private dir>/report.json'
-   python3 scripts/tenant_pi.py carry --report '<private dir>/report.json' --overlay '<overlay>' --right '<target>'
    ```
 
-   `right.drift` of the report has `"status":"owner_edits"`, and `fields` lists each key of `settings.json` that changed after the generation. `carry` writes no file. `--right` is the exact `right.path` of the report.
-2. Apply each patch of `patches` to `<overlay>` by hand.
-3. Read `notCarried`. A consent change has the reason `consent_decision`: set it by hand after your own decision. A hand edit of `settings.json`, for example `/model`, has the reason `rendered_field`: put it into the overlay field of [the table](docs/candidate-compare.md#drift-owner-edits-inside-a-candidate).
+   `right.drift` of the report has `"status":"owner_edits"`, and `fields` lists each key of `settings.json` that changed after the generation.
+2. Put each approved choice into the overlay field of [the table](docs/candidate-compare.md#drift-owner-edits-inside-a-candidate).
+3. Set each consent by hand after your own decision.
 
 The user-owned keys are `roles`, `modelRoutes`, `selection`, `endpoints`, `env`, `ownerPackages`, `unmanaged`, `memory` and `ownerResources`.
 
-For each difference, select one of three actions: carry it, accept it as drift, or drop it. To drop it, do nothing: the next candidate does not have the change. Details: [carry](docs/carry.md).
+For each difference, select one of three actions: carry it, accept it as drift, or drop it. To drop it, do nothing: the next candidate does not have the change.
 
 ### After a native Pi operation
 
@@ -276,10 +274,9 @@ The second line prints `"result":"unchanged"`, or `changed` with only `"modified
 
 The kit has no remove action and deletes nothing. You remove a candidate by hand. Details: [switching profiles](#switch-profiles).
 
-1. List the candidates, look at the directory, and find each launcher that points at it:
+1. Look at the directory, and find each launcher that points at it:
 
    ```sh
-   python3 scripts/tenant_pi.py list --parent '<parent>'
    ls -la '<old target>'
    grep -l -- '<old target> ' '<private dir>'/launch-*.sh
    ```

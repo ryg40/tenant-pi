@@ -101,6 +101,28 @@ Load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in P
 
 A pane is never reused: each ticket, each fix round after a review and each review starts a new pane with its own task file. The coordinator records the result; a pane never writes a report file as its result channel.
 
+For a worker that changes this kit, use this task-file template:
+
+```markdown
+## Task
+
+<ticket name, scope, worktree, branch, acceptance criteria and result form>
+
+## Check
+
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast
+
+## Commit rule
+
+Accepted baseline failures: <exact test names and evidence, or none>.
+Commit after the check passes, or only the named baseline failures remain.
+Put the result lines, decisions and unproved items in the commit body.
+An unexplained failure blocks the commit. Do not push.
+```
+
+The reviewer reads the diff and the commit result lines and runs no suite.
+The coordinator owns the full run on `main`, the stamp evidence and the revert rule in [Merge](#merge).
+
 ## Knowledge read order
 
 Before a decision, read the facts in this order:
@@ -162,14 +184,21 @@ The coordinator may run unblocked tickets in parallel panes, and the user may ru
 
 ### Merge
 
-Each ticket that changes files runs on its own branch in its own worktree. The coordinator merges a reviewed ticket branch into the main branch with a merge commit (`--no-ff`), runs the project checks on the main branch, and pushes.
+Each ticket that changes files runs on its own branch in its own worktree.
+The worker runs `python3 scripts/check.py --tier fast` and commits its result lines.
+The reviewer reads the diff and result lines and runs no suite.
+The coordinator merges the reviewed branch with `--no-ff` and runs `python3 scripts/check.py` once on `main`.
+Read `python3 scripts/check.py --stamp-status` after the run and paste its stamp line and the check result lines into the merge record.
+A matching stamp replaces another full run on that unchanged tree and client.
+On failure, run `git revert -m 1 <merge>` and open a fix round in a new worker pane.
+Push only after the merged tree passes; do not fix a failed merge in place on `main`.
 
 Parallel tickets often edit the same list lines: a manifest list, a registry tuple, a table in a README, an expected list in a test. The coordinator does not resolve a merge conflict on the main checkout. When the merge conflicts:
 
 1. Abort the merge.
-2. Write a **merge-forward task** file. It asks for a merge of the main branch into the ticket branch. Each conflict resolves as the union of both sides in a stable order. The pane runs the project checks and commits the merge.
+2. Write a **merge-forward task** file. It asks for a merge of the main branch into the ticket branch. Each conflict resolves as the union of both sides in a stable order. The worker runs the fast-tier command from the task-file template and commits the merge with its result lines.
 3. Load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. Start a new worker pane in the worktree of the ticket and send it the task (see [Panes](#panes)).
-4. Merge the ticket branch into the main branch. The merge is clean now. Run the project checks and push.
+4. Merge the ticket branch with `--no-ff` into `main`. Apply the full-run, stamp and revert rule above before pushing.
 
 One ticket merges at a time: the next ticket merges forward after the previous ticket is on the main branch.
 

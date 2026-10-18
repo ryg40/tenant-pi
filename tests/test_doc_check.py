@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from unittest import mock
 
 from scripts import doc_check
@@ -121,6 +122,7 @@ class PiInstallRuleTests(unittest.TestCase):
             self.assertEqual([options[0], options[0] + 1, options[0] + 2], options)
             self.assertEqual(options[2] + 2, next(i for i, line in enumerate(lines) if self.LINES[8] in line))
 
+    @slow
     def test_install_blocks_read_and_use_the_pin_in_one_shell(self):
         shells = ["/bin/sh"]
         if shutil.which("bash"):
@@ -726,6 +728,7 @@ class TreeTests(unittest.TestCase):
         self.assertEqual(["link_unpublished: docs/other.md:3"], self.run_check({"docs/other.md": "# Other\n\n" + text + "\n"})[0])
 
 
+@slow
 class DocCheckRepoTests(unittest.TestCase):
     """The documentation check on the real publish set of this repository: the unit test run holds it."""
 

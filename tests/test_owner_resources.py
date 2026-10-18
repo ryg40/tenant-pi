@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from pathlib import Path
 
 from scripts.candidate_compare import compare
@@ -308,6 +309,7 @@ class OwnerResourceCliTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), action, "--overlay", str(self.file), *extra],
                               cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
 
+    @slow
     def test_validate_plan_generate_and_compare(self):
         self.data["ownerResources"] = {"skills": self.skills, "prompts": self.prompts}
         result = self.run_cli("validate")
@@ -363,6 +365,7 @@ class OwnerResourceCliTests(unittest.TestCase):
         self.assertEqual({"skills": [], "prompts": []}, json.loads(result.stdout)["ownerResources"])
         self.assertNotIn("owner_resource_unqualified", result.stdout)
 
+    @slow
     def test_each_rule_fails_with_a_static_diagnostic_and_no_target(self):
         cases = (({"skills": ["relative/" + CANARY]}, "absolute_path: overlay.ownerResources.skills"),
                  ({"prompts": ["-/srv/" + CANARY]}, "resource_directive: overlay.ownerResources.prompts"),

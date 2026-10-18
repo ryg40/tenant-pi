@@ -6,20 +6,31 @@ Record each gate as passed, failed, blocked or not run. Never write "passed" for
 For a pin change followed by a snapshot, use the [pin move and release guide](pin-move-release.md).
 It records a maintainer-approved fast track with gate 6 not run, not full release qualification.
 
+## Combined offline check
+
+Run `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py` for the parallel unit suite, publish checks and whitespace check.
+The final line is `check: passed` only when every check succeeds.
+Use `python3 scripts/check.py --tier fast` for development feedback; it skips measured slow tests and gives no release qualification.
+A clean full run records a local Git-tree stamp. Check it with `python3 scripts/check.py --stamp-status`.
+See [offline checks and local stamps](../publishing.md#offline-checks-and-local-stamps) for the fields and matching rules.
+The publisher reads a matching stamp instead of repeating the check set.
+A missing or stale stamp triggers a full check set. Live-trial requirements remain unchanged.
+
 ## Gates
 
 | Gate | Command or evidence | Required |
 | --- | --- | --- |
-| 1. Offline unit tests | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q` ends with a line starting with `OK`; a skipped-test count is expected | Yes |
-| 2. Examples | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py` prints `examples valid` | Yes |
-| 3. Sample overlay | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json` prints `valid: ...` | Yes |
-| 4. Publish set | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py` prints `publish set valid: ...` | Yes |
-| 5. Scanner | `scripts/scan.sh all` exits with 0. On `portable` the level is `fail`. Record the result line. | Yes |
+| 1. The check set (replaces gates 1 to 4) | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py` ends with `check: passed`; record the clean-tree stamp | Yes |
+| 5. Scanner | `scripts/scan.sh all`: required for a pin move or a new component, else `scripts/scan.sh history <last portable tag>..HEAD`. Require exit 0 and record the result. The pre-push result line records the snapshot range at level `fail`; do not repeat that scan manually. | Yes |
 | 6. Clean Linux core trial | A core-only profile on a clean Linux user: setup Stages 1 to 9, with Stage 9 checks 1, 2 and 4 recorded. | Yes |
 | 7. Optional live services | Each optional module, the gateway and each MCP server: passed, failed, blocked or not run. | Report only |
 | 8. Compose seat | `docker compose config` reads the two Compose files: the short offline check. `docker compose build`: passed, failed or not run. The qualification table of [the Compose seat guide](compose-seat.md#qualification) matches the recorded trials. | Report only |
 
-Gates 1 to 4 are the four offline checks that `scripts/publish_portable.py` runs itself. Gate 1 includes [the documentation check](#documentation-check). The test `DocCheckRepoTests` of `tests/test_doc_check.py` runs it on the publish set. A finding fails the unit tests. Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
+Gate 1 replaces the former gates 1 to 4 with one check set and one stamp record.
+Gates 5 to 8 keep their numbers.
+The unit suite includes the examples, sample overlay, generated pages and [documentation check](#documentation-check).
+The test `DocCheckRepoTests` of `tests/test_doc_check.py` checks the publish set documentation. A finding fails the unit tests.
+Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
 
 Gate 1 also checks the text of `coordinator-skills` and `knowledge-skills` under `packages/tenantext/skills/`.
 The test `tests/test_skill_invariants.py` reads their Markdown and the label table of [the issue tracker document](../agents/issue-tracker.md).
@@ -61,6 +72,16 @@ The `questions` component has its own pin: the exact version 2.13.8 of `@juicesh
 The source of that version was not reviewed.
 `scripts/pi_update.py detect` exits 10 while the registry has a newer version.
 This continues until the maintainer of the release reviews the newer version and moves the pin.
+
+### Gate 5: the scan record
+
+Release classes are not implemented yet. A pin move or a new component requires `scripts/scan.sh all`.
+For other changes, run `scripts/scan.sh history <last portable tag>..HEAD`.
+Without a previous portable tag, run `scripts/scan.sh all`.
+The pre-push hook scans the union of the branch and tag commit sets once.
+Use its `pre-push: result pass; range <revisions>; level fail` line as the snapshot-range record.
+Do not run a separate manual snapshot-range scan.
+A build with `--no-push` has no pre-push record; mark the snapshot-range check as not run until the approved push.
 
 ### Gate 6: the clean Linux core trial
 
@@ -113,26 +134,29 @@ Each run needs a record with the exact commands, the versions, and each check as
 These steps come from [publishing](../publishing.md).
 
 1. Commit every change on your source branch. The publish command refuses a dirty working tree.
-2. Run gates 1 to 5. Record the last line of each.
+2. Run the check set once on the clean tree, then the development scan of gate 5. Keep the stamp and the scanner result lines.
 3. Build the snapshot without a push:
 
    ```sh
    python3 scripts/publish_portable.py --no-push
    ```
 
+   The publisher prints the matching stamp without repeating the check set.
+
 4. Inspect the snapshot: `git show portable --stat`. Check that each new file is in `PUBLISH` of `scripts/publish_check.py`.
-5. Push only after the maintainer approves the release:
+5. Run the publisher once to push, only after the maintainer approves the release:
 
    ```sh
    python3 scripts/publish_portable.py
    ```
 
+   The second run reads the same stamp and does not repeat the check set.
+   A changed tree or client needs a new full check set and snapshot review before approval.
+
    The command pushes two refs by name: the branch `portable` to the destination named by `--remote` and `--remote-branch`, and the tag `portable/<yyyymmdd>-<source sha>` of this snapshot. It pushes no other tag and no other branch. When the snapshot did not change, for example after a build with `--no-push`, it pushes the snapshot tag that already points at the snapshot commit. The commit and the tag carry the neutral identity `tenant-pi portable`.
 
 6. Write [the release notes](#release-notes) after the last gate, as a release entry on the tag at the publication service. A notes file in the snapshot changes the tree after the gates. The tested snapshot must ship with no later change.
 7. Update the documentation site of the kit, if you maintain one: set the new tag in its version file, run its capture script, and update the pages that changed. (The maintainers' site is tenant-docs; its `README.md` section `New release of a project` has the steps.)
-
-Never publish with `--skip-checks`.
 
 Warning: `--force` can replace an existing remote snapshot chain, but it does not remove earlier tags.
 
@@ -147,8 +171,9 @@ The notes hold:
 - The tag, the source commit and the snapshot commit.
 - The Pi pin (`runtime.piVersion`) and the accepted range (`runtime.piAcceptedRange`).
 - The kind of release: full qualification, or a fast track with gate 6 not run.
-- Each gate 1 to 6 with one word and its result line. The word is passed, failed, blocked or not run.
-- The result line of the public reader check and of the documentation check.
+- The check-set stamp: tree hash, time, result lines, client and skipped count.
+- Gates 1, 5 and 6 with one word: passed, failed, blocked or not run. Include each gate's record.
+- The stamp's public reader result. The unit result includes the documentation check.
 - Gate 7 and gate 8 with one word for each part. These two gates have no word for the whole gate.
 - For gate 7, one line for each optional module, route and service, as [the section of gate 7](#gate-7-optional-live-services-are-never-implied) says.
 - The changes since the previous tag, as a short list.
@@ -178,15 +203,15 @@ Use this template. Replace each placeholder in angle brackets. The release entry
 
 Gates
 
-1. Offline unit tests: <passed, failed, blocked or not run> - <result line, test count and skipped count>; client: <root or non-root, Docker availability, Node availability>
-2. Examples: <passed, failed, blocked or not run> - <result line>
-3. Sample overlay: <passed, failed, blocked or not run> - <result line>
-4. Publish set: <passed, failed, blocked or not run> - <result line>
-   - Public reader check: <result line of publish_check.py --public>
-   - Documentation check: <result line of doc_check.py>
+1. The check set: <passed, failed, blocked or not run>
+   - Tree sha: <tree from the publisher stamp output>
+   - When: <when from the stamp>
+   - Client: <client from the stamp>
+   - Skipped count: <skipped from the stamp>
+   - Result lines: <copy every resultLines entry from the stamp, including test count and check: passed>
 5. Scanner (one line for each scan)
    - Development history: <passed, failed, blocked or not run> - <result line with the level>
-   - Snapshot range: <passed, failed, blocked or not run> - <result line at level fail, or "empty range, no new commit">
+   - Snapshot range: <passed, failed, blocked or not run> - <pre-push result line naming the range and level fail>
 6. Clean Linux core trial: <passed, failed, blocked or not run> - <result line>
 7. Optional live services (one line for each, no total result)
    - <module, route or service>: <passed, failed, blocked or not run> - <result line>

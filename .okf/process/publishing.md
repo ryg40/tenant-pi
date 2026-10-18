@@ -1,10 +1,10 @@
 ---
 type: Process
 title: The publishing flow and the snapshot
-description: scripts/publish_portable.py runs the four offline checks, builds a snapshot commit of the reviewed publish set on the branch portable, tags it and pushes it to the selected remote.
+description: The publisher reuses a clean-tree check stamp or runs the full check set before it builds and pushes a portable snapshot.
 tags: [publishing, snapshot, release, portable]
 resource: ../../scripts/publish_portable.py
-generated: {by: claude-code/claude-opus-5-5, at: 2026-10-15T18:00:00Z}
+generated: {by: pi/astra, at: 2026-10-18T04:35:00Z}
 sources:
   - id: publishing
     resource: ../../docs/publishing.md
@@ -30,13 +30,17 @@ python3 scripts/publish_portable.py             # checks, snapshot, tag, push
 ## What it does, in order
 
 1. It refuses a dirty working tree. The snapshot comes from the committed `HEAD`.
-2. It runs the four offline checks: the unit tests, the examples, the sample overlay and the publish set. A failure stops before anything is written.
+2. It calls `check.py --stamp-status`. A matching stamp prints the tree, time, client, skipped count and result lines. Otherwise, it runs the full check set and requires `check: passed` with exit code 0. It also calls the publish check directly.
 3. It builds a Git tree from `HEAD` with only the files of `PUBLISH` and of the `PUBLISH_DIRS` rules, through a temporary index.
 4. It builds the snapshot commit, with the previous snapshot as its parent.
 5. It moves the branch `portable` and creates the tag `portable/<yyyymmdd>-<source sha>` in one Git transaction.
 6. It pushes the branch and the snapshot tag to the destination of `--remote` and `--remote-branch`.
 
 An unchanged tree creates no commit and no tag.
+A clean full check writes a local stamp in the common Git metadata directory, keyed by the source tree hash.
+The stamp must match the check-set version, Python version and client details.
+Build with `--no-push`, inspect, then run the publisher once to push after approval.
+Both runs reuse the matching stamp. A missing or stale stamp triggers a new full check set.
 
 ## The neutral identity
 
@@ -49,7 +53,6 @@ The snapshot commit and the tag carry the identity `tenant-pi portable <portable
 | `--no-push` | Inspect with `git show portable --stat` before publishing. |
 | `--new-root` | A parentless snapshot for a new, empty repository. Needs `--no-push`. |
 | `--force` | Replaces the remote branch with `--force-with-lease`. Not for routine runs. |
-| `--skip-checks` | Debugging only. Never publish with it. |
 
 Warning: `--force` can replace a remote history, but earlier remote tags can still expose its commits.
 

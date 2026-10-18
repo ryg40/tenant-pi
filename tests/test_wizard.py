@@ -17,6 +17,7 @@ import tempfile
 import termios
 import time
 import unittest
+from tests.support import slow
 from unittest.mock import patch
 
 from scripts import models_input, tenant_pi
@@ -102,6 +103,7 @@ class WizardTests(unittest.TestCase):
         self.assertIn("wiki", state.selected)
         self.assertEqual(data, state.review(str(self.private))["overlayAfter"])
 
+    @slow
     def test_eof_and_refusal_do_not_save(self):
         for data in ("", "no\n", "evidence\nq\n", "evidence\nc\n\nno\nno\nno\n"):
             result = self.cli(data=data)
@@ -307,6 +309,7 @@ class ModelsTests(unittest.TestCase):
     setUp = WizardTests.setUp
     cli = WizardTests.cli
 
+    @slow
     def test_models_public_commands_preserve_other_provider_and_regenerate(self):
         data = models_input.merge(None, "fixture-one", "http://127.0.0.1:8080/v1", "model-one")
         data = models_input.merge(data, "fixture-two", "https://example.invalid/v1", "model-two", "FIXTURE_KEY")

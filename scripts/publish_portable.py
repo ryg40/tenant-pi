@@ -11,6 +11,7 @@ Git identity and the signing key of the publishing host do not leave with a snap
 """
 import argparse
 import datetime
+import json
 import os
 import re
 import subprocess
@@ -22,14 +23,8 @@ if __name__ == "__main__":
     sys.dont_write_bytecode = True
     sys.path.insert(0, str(ROOT / "scripts"))
 
+from check import stamp_path  # noqa: E402
 from publish_check import check, publish_files, tracked_files  # noqa: E402
-
-# The unit tests include the documentation check (`tests/test_doc_check.py`), so it has no entry of its own.
-CHECKS = (
-    ("unit tests", [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-q"]),
-    ("examples", [sys.executable, "scripts/examples.py"]),
-    ("sample overlay", [sys.executable, "scripts/validate.py", "--overlay", "config/config.example.json"]),
-)
 
 DEFAULT_NAME = "tenant-pi portable"
 DEFAULT_EMAIL = "portable@tenant-pi.invalid"
@@ -163,6 +158,33 @@ def publish_tracked(root, ref):
     return tracked
 
 
+def check_set(root):
+    """Reuse a matching full-run stamp, or require a successful full check set."""
+    command = [sys.executable, "scripts/check.py"]
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
+    status = subprocess.run([*command, "--stamp-status"], cwd=root, env=env,
+                            text=True, capture_output=True)
+    if status.returncode == 0:
+        tree = git("rev-parse", "HEAD^{tree}", root=root)
+        try:
+            stamp = json.loads(stamp_path(root, tree).read_text(encoding="utf-8"))
+            lines = [f"tree: {tree}", f"when: {stamp['when']}",
+                     f"client: {json.dumps(stamp['client'], sort_keys=True)}",
+                     f"skipped: {stamp['skipped']}", "resultLines:", *stamp["resultLines"]]
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise SystemExit("matching stamp could not be read") from error
+        print("stamp: matches", flush=True)
+        print("\n".join(lines), flush=True)
+        return
+    print("stamp: missing or stale; running the full check set", flush=True)
+    result = subprocess.run(command, cwd=root, env=env, text=True, capture_output=True)
+    print(result.stdout, end="", flush=True)
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0 or result.stdout.splitlines()[-1:] != ["check: passed"]:
+        raise SystemExit("check set failed; no snapshot built")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--remote", default="github", help="git remote that receives the portable branch")
@@ -173,7 +195,6 @@ def main(argv=None):
                         help="replace the remote branch, including an existing snapshot chain; uses --force-with-lease")
     parser.add_argument("--new-root", action="store_true",
                         help="start a new history: the snapshot commit has no parent; needs --no-push")
-    parser.add_argument("--skip-checks", action="store_true", help="skip the offline checks (not for publication)")
     parser.add_argument("--identity-name", default=None,
                         help=f"name on the snapshot commit and the tag (default: {NAME_VARIABLE} or '{DEFAULT_NAME}')")
     parser.add_argument("--identity-email", default=None,
@@ -187,15 +208,9 @@ def main(argv=None):
         raise SystemExit("working tree not clean: commit or stash first; the snapshot comes from HEAD only")
     head = git("rev-parse", "HEAD")
     short = head[:7]
-    if not args.skip_checks:
-        for name, command in CHECKS:
-            result = subprocess.run(command, cwd=ROOT, text=True, capture_output=True,
-                                    env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-            if result.returncode != 0:
-                raise SystemExit(f"{name} failed:\n{result.stdout}{result.stderr}")
-            print(f"check ok: {name}")
-        names = check()
-        print(f"check ok: publish set ({len(names)} files)")
+    check_set(ROOT)
+    names = check()
+    print(f"check ok: publish set ({len(names)} files)")
     date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     message = (f"Portable snapshot of {short} ({date})\n\n"
                f"Exactly the reviewed publish set from scripts/publish_check.py at\n"

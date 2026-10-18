@@ -3,15 +3,17 @@
 Also the public reader rules: a negative control for each class, the two exception lists, and
 the check on the publish set of this repository.
 """
+import contextlib
+import io
 import hashlib
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 import unittest.mock
 from pathlib import Path
 
@@ -38,11 +40,7 @@ def repository_files(root):
     tracked = publish_check.tracked_files(root)
     if tracked is not None:
         return tracked
-    excluded = {".local", ".git", "__pycache__", "node_modules"}
-    return {path.relative_to(root).as_posix() for path in root.rglob("*")
-            if path.is_file() and not excluded.intersection(path.relative_to(root).parts)
-            and not any(path.relative_to(root).as_posix().startswith(name + "/")
-                        for name in publish_check.BUILD_DIRS)}
+    return publish_check.inventory_files(root)
 
 
 class RuleTests(unittest.TestCase):
@@ -279,6 +277,7 @@ class PublicReaderTests(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"SCAN_LOCAL_DENY": str(self.root / "absent")}):
             self.assertEqual([("host-value-1", DENY_VALUE)], publish_check.deny_rules(self.root))
 
+    @slow
     def test_publish_set_of_this_repository_has_no_finding(self):
         # The files under a `PUBLIC_PENDING` prefix are not checked yet; an empty tuple checks each file.
         names = [name for name in publish_check.publish_files(repository_files(ROOT))
@@ -289,8 +288,14 @@ class PublicReaderTests(unittest.TestCase):
 
 
     def test_public_reader_uses_inventory_without_git_metadata(self):
-        with unittest.mock.patch.object(publish_check, "tracked_files", return_value=None):
-            self.test_publish_set_of_this_repository_has_no_finding()
+        self.findings([f"See {WORD} 59."])
+        out = io.StringIO()
+        with unittest.mock.patch.object(publish_check, "tracked_files", return_value=None), \
+                unittest.mock.patch.object(publish_check, "PUBLISH", ("doc.md",)), \
+                contextlib.redirect_stdout(out):
+            self.assertEqual({"doc.md"}, repository_files(self.root))
+            self.assertEqual(1, publish_check.public_report(root=self.root))
+        self.assertIn("tracker-reference: doc.md:1", out.getvalue())
 
     def test_inventory_fallback_does_not_replace_an_empty_git_index(self):
         with unittest.mock.patch.object(publish_check, "tracked_files", return_value=set()):
@@ -298,55 +303,91 @@ class PublicReaderTests(unittest.TestCase):
 
 
 class CheckTests(unittest.TestCase):
-    """Run the check on a copy of this tree, so that the checkout stays unchanged."""
+    """Exercise rules on small files; one full-copy smoke covers the real entry point."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="tenant-pi-rules-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "copy"
-        tracked = publish_check.tracked_files(ROOT)
-        if tracked is None:
-            shutil.copytree(ROOT, self.root, ignore=shutil.ignore_patterns(".git", ".local", "__pycache__"))
-        else:
-            for name in tracked:
-                (self.root / name).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(ROOT / name, self.root / name)
+        self.explicit = ("README.md", "docs/guide.md", "config/manifest.json", "config/config.example.json", ".env.example")
+        self.rules = publish_check.PUBLISH_DIRS
+        self.pending = publish_check.PUBLIC_PENDING
+        for name in self.explicit:
+            self.add(name, (ROOT / name).read_text() if name.startswith("config/") or name == ".env.example" else "clean\n")
+        for name, line in publish_check.PATTERN_ALLOW:
+            self.assertIn(line, (ROOT / name).read_text().split("\n"))
+            self.add(name, line + "\n")
+        self.add("packages/openviking-pi/shared/config-schema.mjs", "export {};\n")
+        self.add(publish_check.DEV_ONLY_REL, "# private paths\n")
 
     def run_check(self, rules=None, pending=None, arguments=()):
-        path = self.root / "scripts/publish_check.py"
-        text = path.read_text(encoding="utf-8")
         if rules is not None:
-            # Add the test rules before the rules of the in-tree packages.
-            self.assertEqual(1, text.count("\nPUBLISH_DIRS = (\n"))
-            text = text.replace("\nPUBLISH_DIRS = (\n", f"\nPUBLISH_DIRS = {rules!r} + (\n")
+            self.rules = rules + publish_check.PUBLISH_DIRS
         if pending is not None:
-            # The one line that says which paths the public reader rules do not check yet.
-            text, count = re.subn(r"(?m)^PUBLIC_PENDING = .*$", f"PUBLIC_PENDING = {pending!r}", text)
-            self.assertEqual(1, count)
-        path.write_text(text, encoding="utf-8")
-        # The copy has no local deny list; a list of the caller must not reach it.
+            self.pending = pending
+        out, err = io.StringIO(), io.StringIO()
         env = {name: value for name, value in os.environ.items() if name != "SCAN_LOCAL_DENY"}
-        return subprocess.run([sys.executable, "-B", "scripts/publish_check.py", *arguments], cwd=self.root, text=True,
-                              capture_output=True, env=env)
+        with unittest.mock.patch.dict(os.environ, env, clear=True), \
+                unittest.mock.patch.object(publish_check, "PUBLISH_DIRS", self.rules), \
+                unittest.mock.patch.object(publish_check, "PUBLIC_PENDING", self.pending), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = 0
+            try:
+                if arguments in (("--public",), ("--public", "--hashes")):
+                    names = self.explicit + tuple(sorted(publish_check.rule_files(repository_files(self.root), self.rules)[0]))
+                    code = publish_check.public_report(hashes="--hashes" in arguments, root=self.root, files=names)
+                elif arguments:
+                    raise AssertionError("unsupported test arguments")
+                else:
+                    names = publish_check.check(root=self.root, files=self.explicit)
+                    print(f"publish set valid: {len(names)} files")
+            except Invalid as exc:
+                code = 1
+                print(str(exc), file=sys.stderr)
+        return subprocess.CompletedProcess(arguments, code, out.getvalue(), err.getvalue())
 
     def add(self, name, text="content\n"):
         (self.root / name).parent.mkdir(parents=True, exist_ok=True)
         (self.root / name).write_text(text)
 
+    @slow
     def test_copy_is_valid(self):
-        result = self.run_check()
+        root = Path(self.temp.name) / "full-copy"
+        tracked = publish_check.tracked_files(ROOT)
+        if tracked is None:
+            shutil.copytree(ROOT, root, ignore=shutil.ignore_patterns(".git", ".local", "__pycache__", "node_modules", "dist"))
+        else:
+            for name in tracked:
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / name, root / name)
+        env = {name: value for name, value in os.environ.items() if name != "SCAN_LOCAL_DENY"}
+        def run(*args):
+            return subprocess.run([sys.executable, "-B", "scripts/publish_check.py", *args], cwd=root,
+                                  text=True, capture_output=True, env=env)
+        result = run()
         self.assertEqual(0, result.returncode, result.stderr)
+        result = run("--public", "--hashes")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("public reader check valid:", result.stdout)
+        (root / "unreviewed.txt").write_text("unexpected\n")
+        result = run()
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("unreviewed_file", result.stderr)
+        result = run("--bogus")
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("usage: publish_check.py", result.stderr)
 
     def test_optional_relay_is_published_when_present_and_may_be_omitted(self):
         directory = "packages/tenantext/skills/herdr-relay"
         expected = {directory + "/" + name for name in
                     ("SKILL.md", "install.sh", "relay.example.json", "scripts/relay.py", "tests/test_relay.py")}
         self.assertTrue(expected <= set(publish_check.PUBLISH))
-        relay = self.root / directory
-        if relay.is_dir():
-            result = self.run_check()
-            self.assertEqual(0, result.returncode, result.stderr)
-            shutil.rmtree(relay)
+        self.explicit += tuple(sorted(expected))
+        for name in expected:
+            self.add(name, "# Relay\n")
+        result = self.run_check()
+        self.assertEqual(0, result.returncode, result.stderr)
+        (self.root / directory).rename(Path(self.temp.name) / "relay-omitted")
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
         # A partial directory is not an omitted component: missing explicit files still fail.
@@ -429,16 +470,16 @@ class CheckTests(unittest.TestCase):
         self.add("node_modules/.package-lock.json", "{}\n")
         result = self.run_check()
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(f"{len([name for name in publish_check.publish_files(repository_files(ROOT)) if (ROOT / name).is_file()])} files", result.stdout)
+        self.assertIn(f"{len(self.explicit) + len(publish_check.rule_files(repository_files(self.root))[0])} files", result.stdout)
 
     def test_rule_accepts_the_directory_and_counts_its_files(self):
         self.add("packages/demo/index.mjs")
         self.add("packages/demo/src/a.mjs")
-        tracked = repository_files(ROOT)
+        count = len(self.explicit) + len(publish_check.rule_files(repository_files(self.root))[0])
         self.add("packages/demo/notes/plan.md")
         result = self.run_check(RULES)
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertIn(f"{len([name for name in publish_check.publish_files(tracked) if (ROOT / name).is_file()]) + 2} files", result.stdout)
+        self.assertIn(f"{count + 2} files", result.stdout)
 
     def test_file_outside_the_rule_directory_is_rejected(self):
         self.add("packages/demo/index.mjs")
@@ -491,11 +532,6 @@ class CheckTests(unittest.TestCase):
         result = self.run_check(pending=("packages/tenantext/", "packages/promptr/"))
         self.assertNotEqual(0, result.returncode)
         self.assertEqual("publish_public_reader: packages/demo/index.mjs", result.stderr.strip())
-
-    def test_unknown_argument_is_a_usage_error(self):
-        result = self.run_check(arguments=("--bogus",))
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("usage: publish_check.py", result.stderr)
 
     def test_explicit_file_under_a_rule_is_a_duplicate(self):
         result = self.run_check((("docs", ()),))

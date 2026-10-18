@@ -25,16 +25,14 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    Check that the selected remotes name your development repository and publication destination.
    Check that `portable` names the previous snapshot.
 
-2. Run the four offline checks before starting the pin work.
+2. Inspect the previous tree's check stamp without rerunning its suite.
 
    ```sh
-   PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
+   python3 scripts/check.py --stamp-status
    ```
 
-   Check every exit code and retain each last output line; stop on a failure.
+   Exit 1 means missing or stale evidence; retain that status and continue in the pin worktree.
+   The release gate checks the final merged tree and runs the full check set once if its stamp is missing.
 
 3. List new files since the last snapshot for an independent public-reader review.
 
@@ -84,44 +82,6 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    Check every `entries` item and record its effect on generated profiles, the launcher, extensions, skills, and package APIs.
    `breaking: true` means an upstream `Breaking Changes` heading exists; false does not prove compatibility.
    Resolve any required migration before accepting the candidate.
-
-## Qualify before editing
-
-1. Run qualification outside the clone and outside the live agent directory.
-
-   ```sh
-   mkdir -p -m 700 /tmp/pi-qualification
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir /tmp/pi-qualification > /tmp/pi-qualify.json
-   python3 -m json.tool /tmp/pi-qualify.json
-   ```
-
-   Check `passed: true` and every ordered `steps` entry for `exitCode: 0`; read each failing step's `log` before continuing.
-   The work directory needs an existing parent and cannot be a symlink, the clone, the live agent directory, or their ancestors.
-   Qualification installs into a private run directory and edits only a candidate copy.
-   It checks runtime versions, repository checks, package tests, generation, and one core-only loopback print reply.
-   Before the repository checks, it rebuilds the architecture pages and the explainer of the candidate copy with the new pin: the steps `pages-architecture`, `pages-architecture-local` and `pages-explainer`.
-   A failure blocks the move unless the proposed pin change itself fixes it and a fresh qualification proves that fix.
-   The wizard plan fixture holds the current pin, so a new pin fails `test_tenant_pi_plan_is_unchanged` in the `unit-tests` step.
-   That is a failure that the pin change fixes: move the pins, regenerate the fixture ([step 4 of Move pins](#move-pins-and-measured-facts)), then qualify again from the pin worktree.
-   The qualifier copies the working-tree bytes, so the fresh qualification uses the moved pin and the new fixture.
-   Check that the log of the first run names no other failed test.
-
-2. Inspect the isolation fields separately from the test result.
-
-   ```sh
-   python3 - <<'PY'
-   import json
-   report = json.load(open('/tmp/pi-qualify.json'))
-   for key in ('passed', 'isolation', 'changedEntries', 'strictBaseline'):
-       print(key, report.get(key))
-   PY
-   ```
-
-   Check that the record preserves `isolation` rather than describing every passing qualification as unchanged.
-   `changed_unattributed` means live-directory metadata changed; other active Pi sessions can cause drift, but the report cannot identify its cause.
-   A passing qualification with this status does not prove content isolation.
-   Use `qualify --strict-baseline` only when live-profile writes are quiescent; then baseline drift fails qualification.
-   Process isolation is not an operating-system sandbox and proves neither interactive use nor optional live services.
 
 ## Move pins and measured facts
 
@@ -216,40 +176,51 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    The fixture must hold no host path; the kit root is always `/KIT_ROOT`.
    See [the pin move in the update checks](../pi-update.md#qualify) for the qualification run.
 
+## Qualify the moved pin once
+
+1. Run qualification outside the clone and outside the live agent directory.
+
+   ```sh
+   Q=$(mktemp -d /tmp/qpin.XXXXXX)
+   PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir "$Q/run" > /tmp/pi-qualify.json
+   python3 -m json.tool /tmp/pi-qualify.json
+   ```
+
+   Check `passed: true` and every ordered `steps` entry for `exitCode: 0`; read each failing step's `log` before continuing.
+   The work directory needs an existing parent and cannot be a symlink, the clone, the live agent directory, or their ancestors.
+   Qualification installs into a private run directory and edits only a candidate copy.
+   It checks runtime versions, repository checks, package tests, generation, and one core-only loopback print reply.
+   Before the repository checks, it rebuilds the architecture pages and the explainer of the candidate copy with the new pin: the steps `pages-architecture`, `pages-architecture-local` and `pages-explainer`.
+   A failure blocks the move; read its log and fix the cause before a new qualification attempt.
+   Move the pins and regenerate the wizard plan fixture before this run.
+   The qualifier copies those working-tree bytes and runs the full unit suite inside the candidate copy.
+   It also runs `PACKAGE_PY` and the package Node tests; do not repeat them in the worktree.
+
+2. Inspect the isolation fields separately from the test result.
+
+   ```sh
+   python3 - <<'PY'
+   import json
+   report = json.load(open('/tmp/pi-qualify.json'))
+   for key in ('passed', 'isolation', 'changedEntries', 'strictBaseline'):
+       print(key, report.get(key))
+   PY
+   ```
+
+   Check that the record preserves `isolation` rather than describing every passing qualification as unchanged.
+   `changed_unattributed` means live-directory metadata changed; other active Pi sessions can cause drift, but the report cannot identify its cause.
+   A passing qualification with this status does not prove content isolation.
+   Use `qualify --strict-baseline` only when live-profile writes are quiescent; then baseline drift fails qualification.
+   Process isolation is not an operating-system sandbox and proves neither interactive use nor optional live services.
+
 ## Check, commit, review, and merge
 
-1. Run the repository checks and the affected package checks in the pin worktree.
+1. Retain the qualification result instead of repeating its checks.
 
-   ```sh
-   PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py --public
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py
-   (cd packages/promptr && npm run build && npm test && npm run typecheck && npm run smoke)
-   (cd packages/tenantext && npm test && npm run typecheck)
-   git diff --check
-   ```
-
-   Check each exit code and save each last output line; install dependencies only when missing, and never run installed smoke for qualification.
-   If `npm ci` leaves optional Tenantext peers absent, link only the missing packages from the main checkout:
-
-   ```sh
-   MAIN_CHECKOUT='<absolute main checkout path>'
-   mkdir -p packages/tenantext/node_modules/@earendil-works
-   for package in pi-coding-agent pi-ai pi-tui pi-agent-core; do
-     source="$MAIN_CHECKOUT/packages/tenantext/node_modules/@earendil-works/$package"
-     target="packages/tenantext/node_modules/@earendil-works/$package"
-     test -d "$source"
-     if [ ! -e "$target" ] && [ ! -L "$target" ]; then
-       ln -s "$source" "$target"
-     fi
-   done
-   ```
-
-   Check the linked versions; these links enable worktree tests but do not replace the isolated candidate qualification.
-   Compare unexplained failures with the unchanged base and report them; do not silently waive a failed check.
+   The usual worker command is `python3 scripts/check.py --tier fast` during development.
+   For a pin move, qualification supplies the final worker evidence and includes the full unit suite.
+   Record every qualification step and its exit code in the commit body.
+   Compare unexplained failures with the unchanged base; name any accepted baseline failures explicitly.
 
 2. Review the diff, stage only the pin files, and create one commit with the evidence in its body.
 
@@ -276,7 +247,10 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
 
    Check that the reviewer accepts the pin commit and that any conflict resolution preserves each reviewed change.
    Merge approved feature work before final gates, then merge the pin and public-reader fixes before snapshot construction.
-   Repeat the checks on merged `main`; a branch pass does not prove the merge.
+   The reviewer reads the diff and commit result lines and runs no suite.
+   The coordinator uses the stamp check in the next section for merged `main`.
+   If that check set fails, run `git revert -m 1 <merge>` and open a fix round in a new worker pane.
+   Stop publication until the fix passes review and the merged tree passes the check set.
 
 ## Release gates and publication
 
@@ -311,18 +285,26 @@ The commands match the release evidence, with explicit failure handling instead 
    The initial `$TAG` uses the publisher's UTC date and seven-character source ID.
    Never recompute `$OLD_PORTABLE` after a build moves `portable`; preserve `release.env` for every rerun.
 
-2. Run gates 1 to 4 and the separate public-reader and documentation reports.
+2. Read the merged tree's stamp, or run the check set once on `main`.
 
    ```sh
-   PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q 2>&1 | tee "$LOGDIR/unit.log"
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py | tee "$LOGDIR/examples.log"
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json | tee "$LOGDIR/overlay.log"
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py | tee "$LOGDIR/publish.log"
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py --public | tee "$LOGDIR/public.log"
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py | tee "$LOGDIR/docs.log"
+   if PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --stamp-status | tee "$LOGDIR/stamp.log"; then
+     :
+   else
+     if ! PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py 2>&1 | tee "$LOGDIR/check.log"; then
+       git revert -m 1 <merge>
+       exit 1
+     fi
+     PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --stamp-status | tee "$LOGDIR/stamp.log"
+   fi
    ```
 
-   Check for `OK`, `examples valid`, structural validation, publish-set validation, zero public-reader findings, and a valid documentation report.
+   Replace `<merge>` with the reviewed merge commit before running the script.
+   Check for `check: passed` after a run and `stamp: matches` for the clean merged tree.
+   Paste the result lines and stamp line into the merge record.
+   A failed run reverts the merge; the coordinator starts a fix round in a new worker pane.
+   There are two full-suite checkpoints: qualification in the candidate copy and this run on `main`, or its matching stamp.
+   The publisher reuses that stamp; do not repeat the suite before the push.
 
 3. Run gate 5 on development history and record the fast-track gap explicitly.
 
@@ -333,6 +315,7 @@ The commands match the release evidence, with explicit failure handling instead 
    printf '%s\n' 'gate 8 Compose seat: config not run, build not run, table check not run' | tee "$LOGDIR/gate-8.log"
    ```
 
+   A pin move or a new component requires `scripts/scan.sh all`; this pin guide therefore runs it before the push.
    Check the scan exit code and its level; a development `level warn` result does not approve snapshot content.
    Record maintainer approval for the fast track, and record every gate 7 optional service separately as passed, failed, blocked, or not run.
    Replace the gate 7 placeholder in the script with one line for each optional module, route and service.
@@ -352,20 +335,19 @@ The commands match the release evidence, with explicit failure handling instead 
    If the UTC date changes before the build, correct only `TAG` in `release.env` to the printed tag before rerunning.
    For an unchanged snapshot, confirm its existing tag and save that `TAG` instead; keep `OLD_PORTABLE` unchanged.
 
-5. Scan the new snapshot commit range at failure level.
+5. Use the pre-push result as the snapshot-range record.
 
-   ```sh
-   scripts/scan.sh --level fail history "$OLD_PORTABLE..portable" 2>&1 | tee "$LOGDIR/scan-snapshot.log"
-   ```
-
-   Check for zero secret, host-value, and policy findings; this history scan includes snapshot commit messages.
-   An unchanged snapshot gives an empty range; do not claim it scanned a new commit.
+   The pre-push hook scans the pushed commit set once at `level fail`, including snapshot commit messages.
+   Copy its `pre-push: result pass; range <revisions>; level fail` line from the next step into the release notes.
+   Do not repeat the snapshot-range scan manually; a build without a push has no pre-push record.
+   An empty pushed commit set reports `range empty (no new commit)`; do not claim it scanned a new commit.
 
 6. Dry-run the public push, then push only the approved branch and snapshot tag to each remote.
 
    ```sh
    git push --dry-run "$PUBLICATION_REMOTE" refs/heads/portable:refs/heads/main refs/tags/$TAG:refs/tags/$TAG
-   git push "$PUBLICATION_REMOTE" refs/heads/portable:refs/heads/main refs/tags/$TAG:refs/tags/$TAG
+   git push "$PUBLICATION_REMOTE" refs/heads/portable:refs/heads/main refs/tags/$TAG:refs/tags/$TAG 2>&1 | tee "$LOGDIR/push-publication.log"
+   grep '^pre-push: result ' "$LOGDIR/push-publication.log" > "$LOGDIR/scan-snapshot.log"
    git push "$DEVELOPMENT_REMOTE" refs/heads/portable:refs/heads/portable refs/tags/$TAG:refs/tags/$TAG
    ```
 
@@ -468,11 +450,13 @@ The commands match the release evidence, with explicit failure handling instead 
 
 ## Pitfalls from the first run
 
-1. A worktree can lack Pi peer packages after `npm ci`; link missing peers from the main checkout's `node_modules/@earendil-works/` and confirm their versions.
+1. A worktree can lack Pi peer packages after `npm ci`; qualification links its copied packages to the candidate installation.
+   Tenantext's `npm test` is hermetic: the slopscore test helpers default their trace directories to fresh temporary directories.
+   Those helpers do not read the caller's agent traces.
 2. Tests can also fail at the unchanged baseline; record the comparison and block unexplained failures instead of blaming the pin.
    Footer tests must check complete paths up to the adapter's 256-character cap at a sufficient width.
    Test renderer truncation separately, because qualification work-directory lengths vary.
 3. Check the foundation table of the development repository, if your copy has one, for merge conflicts.
    Resolve by row key and retain both reviewed changes.
 4. A commit body must contain no machine path; the history scan reads commit messages, not only file content.
-5. A development `scan all` host-value count at `level warn` is not the snapshot result; require the separate snapshot history scan at `level fail`.
+5. A development `scan all` host-value count at `level warn` is not the snapshot result; require the pre-push record at `level fail`.

@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from pathlib import Path
 
 from scripts.candidate_compare import FILES, compare
@@ -839,6 +840,7 @@ class MemoryPublicationTests(unittest.TestCase):
             self.assertNotIn(CANARY, json.dumps(report))
             self.assertEqual("owner_edits", report["right"]["drift"]["status"])
 
+    @slow
     def test_cli_generate_and_compare_in_a_disposable_home_without_external_effects(self):
         overlay_file = self.base_dir / "overlay.json"
         overlay_file.write_text(json.dumps(self.data))
@@ -895,6 +897,7 @@ class MemoryPublicationTests(unittest.TestCase):
         self.assertEqual("removed", next(c["change"] for c in report["changes"] if c["file"] == HERMES_CONFIG and c["field"] == "/reviewEnabled"))
         self.assertEqual({"status": "none", "fields": [], "metadata": "unchanged"}, report["right"]["drift"])
 
+    @slow
     def test_cli_embedding_choices_stay_offline_and_preserve_existing_data(self):
         overlay_file = self.base_dir / "overlay.json"
         ambient = self.home / ".pi/agent"
@@ -1004,6 +1007,7 @@ class MemoryPublicationTests(unittest.TestCase):
         self.assertEqual(before, {p: p.read_bytes() for p in before})
         self.assertEqual(preserved, {p: p.read_bytes() for p in preserved})
 
+    @slow
     def test_cli_generates_an_openviking_profile_without_a_server_call_or_a_credential(self):
         for cid in ("hermes", "wiki"):
             self.data["selection"]["enable"].remove(cid)

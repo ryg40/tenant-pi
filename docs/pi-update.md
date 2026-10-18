@@ -53,7 +53,7 @@ Each step has `name`, `exitCode`, and an absolute `log` path. A skipped dependen
 2. Copy tracked kit files into the run's `kit` directory and move its pin to the requested version.
 3. Rebuild the architecture pages and the explainer of the candidate copy: the steps `pages-architecture`, `pages-architecture-local` and `pages-explainer`. The pages hold the core spec, and the unit tests compare each page with its build. A copy without the development-only `docs/architecture/local-values.json` has no local page: `pages-architecture-local` then records `not_applicable_without_local_values` with exit code 0.
 4. Install the requested version under the run's `prefix` directory with `npm install --ignore-scripts`.
-5. Run `check-runtime --pi` and the five repository checks from the candidate copy.
+5. Run `check-runtime --pi`, the full check set through `scripts/check.py`, then `PACKAGE_PY` from the candidate copy.
 6. Copy `packages/tenantext`, `packages/promptr`, and `packages/openviking-pi` into the run directory.
 7. Run `npm ci --ignore-scripts` in each copy.
 8. Link each copy's Pi dependencies to the candidate installation. The links cover `pi-coding-agent`, `pi-ai`, `pi-tui`, and `pi-agent-core`.
@@ -66,6 +66,16 @@ Each step has `name`, `exitCode`, and an absolute `log` path. A skipped dependen
 15. Compare the live directory with its baseline, also after a failed step.
 
 A failed step fails qualification. Independent later steps still run. Each package log includes its native test output.
+
+The `check-set` step runs unit shards and both publish checks without Git metadata; it skips the diff check and writes no stamp.
+The `PACKAGE_PY` step runs four package Python suites in order:
+
+- Tracker: `python3 -m unittest discover -s tracker/tests -t .` from `packages/tenantext`.
+- Herdr: `python3 -m unittest discover -s skills/herdr/tests` from `packages/tenantext`.
+- Herdr relay: `python3 -m unittest discover -s skills/herdr-relay/tests` from `packages/tenantext`.
+- Watch: `python3 scripts/test_watch.py` from `packages/promptr/skills/watch-herdr-agents`.
+
+All four run even when one fails. The log ends with `PACKAGE_PY: passed` or `PACKAGE_PY: FAILED`.
 
 OpenViking steps use the names `openviking-install`, `openviking-links`, `openviking-test-inventory`, `openviking-test`, and `openviking-load`.
 The inventory records every `tests/*.test.mjs` file. No test file is excluded.
@@ -92,7 +102,11 @@ A missing `git`, a Git timeout, or a nonzero Git exit fails the `candidate-copy`
 
 `check-runtime` compares against the candidate pin. Current-pin test fixtures read the manifest of the candidate copy. A failed check still fails qualification; the report keeps its log. It does not edit tests to force a pass. See [the runtime check](check-runtime.md).
 
-The wizard plan fixture `tests/fixtures/wizard_plan_tenant_pi.json` is the exception. It holds the plan text of the current pin, and the qualifier does not regenerate it. A new pin therefore fails `test_tenant_pi_plan_is_unchanged` in the `unit-tests` step. Move the pins in the pin worktree, regenerate the fixture from `tenant_pi_plan_text()` and review its diff. Then qualify again from that worktree. The steps are in [the pin move guide](guides/pin-move-release.md#move-pins-and-measured-facts), step 4.
+The wizard plan fixture `tests/fixtures/wizard_plan_tenant_pi.json` holds the current pin; the qualifier does not regenerate it.
+Move the pins and regenerate the fixture from `tenant_pi_plan_text()` before the first qualification.
+Review its diff, then qualify once from that worktree.
+An old fixture fails `test_tenant_pi_plan_is_unchanged` in `check-set`.
+The steps are in [the pin move guide](guides/pin-move-release.md#move-pins-and-measured-facts), step 4.
 
 The print tests select `local-test/sum-model` explicitly. Each server binds only to `127.0.0.1` on an unused port.
 They return fixed replies, not real model responses. Each launch has a 90-second timeout; request-body reads have a five-second timeout.

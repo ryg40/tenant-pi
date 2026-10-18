@@ -25,9 +25,7 @@ major, minor, patch_number = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9
 NEWER = f"{major}.{minor}.{int(patch_number) + 1}"
 
 WORKFLOWS = (".gitea/workflows/pi-update.yml", ".gitea/workflows/checks.yml", ".github/workflows/checks.yml")
-CHECKS = ("python3 -m unittest discover -s tests -q", "python3 scripts/examples.py",
-          "python3 scripts/validate.py --overlay config/config.example.json",
-          "python3 scripts/publish_check.py", "python3 scripts/doc_check.py")
+CHECKS = ("python3 scripts/check.py",)
 PYTHON_CHECK = ("python3 -c 'import sys; print(sys.version); "
                 'sys.exit(0 if sys.version_info[:2] == (3, 11) else '
                 '"Python 3.11 is required in the runner image")' + "'")

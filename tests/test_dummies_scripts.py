@@ -9,6 +9,8 @@ no scan of this file finds that form.
 """
 import ast
 import base64
+import contextlib
+import io
 import importlib.util
 import json
 import os
@@ -19,6 +21,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from tests.support import slow
 from pathlib import Path
 from unittest import mock
 
@@ -234,6 +237,11 @@ def load_module(path, name):
     return module
 
 
+class TextCapture(io.StringIO):
+    def reconfigure(self, **options):
+        pass
+
+
 class Sandbox(unittest.TestCase):
     """A temporary home directory, and a PATH with the two fake commands and with Git only."""
 
@@ -261,8 +269,24 @@ class Sandbox(unittest.TestCase):
         return base
 
     def run_script(self, script, *args, stdin=None, okknow=True, **extra):
-        return subprocess.run([sys.executable, str(script), *args], input=stdin, capture_output=True, encoding="utf-8",
-                              env=self.env(okknow, **extra), cwd=self.work)
+        # Keep real entry-point, exit-code and stdin coverage in these five tests.
+        smoke = {"test_wrong_arguments_exit_2", "test_no_file_means_off_and_status_writes_nothing",
+                 "test_without_okknow_each_command_stops_with_exit_4_and_writes_nothing",
+                 "test_a_failure_of_okknow_is_exit_3", "test_a_local_file_that_the_user_named_needs_no_okknow"}
+        if self._testMethodName in smoke:
+            return subprocess.run([sys.executable, str(script), *args], input=stdin, capture_output=True, encoding="utf-8",
+                                  env=self.env(okknow, **extra), cwd=self.work)
+        out, err = TextCapture(), TextCapture()
+        with mock.patch.dict(os.environ, self.env(okknow, **extra), clear=True), contextlib.chdir(self.work), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                mock.patch.object(sys, "stdin", io.TextIOWrapper(io.BytesIO((stdin or "").encode()), encoding="utf-8")), \
+                mock.patch.object(sys, "argv", [str(script), *args]):
+            module = load_module(script, "dummies_" + script.stem)
+            try:
+                code = module.main(list(args))
+            except SystemExit as stop:
+                code = stop.code
+        return subprocess.CompletedProcess([str(script), *args], code, out.getvalue(), err.getvalue())
 
     def calls(self):
         log = self.ok / "calls.log"
@@ -797,6 +821,7 @@ class PageTests(Sandbox):
                 self.assertEqual("", result.stdout)
         self.assertEqual([], [path for path in self.work.rglob("*.md")])
 
+    @slow
     def test_a_failure_of_okknow_is_exit_3(self):
         self.init()
         for args in (("heading",), ("init",), ("add", "--summary", "S"), ("recent",), ("check",)):
@@ -827,6 +852,7 @@ class PageTests(Sandbox):
         self.assertEqual([["read", "projects/demo/DUMMIES"]], self.calls()[before:])
         self.assertEqual(text, self.page_file().read_text(encoding="utf-8"))
 
+    @slow
     def test_zone_of_a_new_page(self):
         # No argument and no other page: the agent asks the user. Nothing is written.
         ask = self.page("init", "--project", "demo")
@@ -1243,6 +1269,7 @@ class PageTests(Sandbox):
         self.assertEqual(0, third.returncode, third.stderr)
         self.assertTrue(third.stdout.endswith("| older entries unchanged: 3\n"), third.stdout)
 
+    @slow
     def test_add_makes_the_page_when_it_is_absent(self):
         ask = self.add("First result")
         self.assertEqual(7, ask.returncode)
@@ -1306,6 +1333,7 @@ class PageTests(Sandbox):
 
     # --- recent and check ---
 
+    @slow
     def test_recent_prints_only_the_summary_input(self):
         self.assertEqual(6, self.page("recent", "--project", "demo").returncode)
         self.init()
@@ -1336,6 +1364,7 @@ class PageTests(Sandbox):
         self.assertEqual(["[more lines of this entry on the page: 23]", "", "[older entries on the page: 3]"], short[-3:])
         self.assertEqual([["read", "projects/demo/DUMMIES"]], self.calls()[-1:])
 
+    @slow
     def test_check_names_each_rule_that_a_page_breaks(self):
         self.assertEqual(6, self.page("check", "--project", "demo").returncode)
         self.page_file().parent.mkdir(parents=True)
@@ -1421,6 +1450,7 @@ class PageTests(Sandbox):
 
     # --- names, a local file, and the source of the scripts ---
 
+    @slow
     def test_page_name_of_the_project(self):
         self.init()
         before = len(self.calls())

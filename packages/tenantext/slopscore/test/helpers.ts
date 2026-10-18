@@ -6,6 +6,21 @@ import { fileURLToPath } from "node:url";
 
 /** Shared fixtures for the PR block and trailer tests: a temporary repo and fake harness traces. */
 
+// Node runs each test file in its own process, so these empty roots are file-local.
+const emptyTraceDir = mkdtempSync(join(tmpdir(), "slopscore-empty-traces-"));
+
+export function isolatedTraceEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+	return {
+		...env,
+		PI_CODING_AGENT_DIR: env.PI_CODING_AGENT_DIR || emptyTraceDir,
+		CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR || emptyTraceDir,
+	};
+}
+
+export function withEmptyTraceEnv<T>(fn: () => T): T {
+	return withTraceEnv(emptyTraceDir, emptyTraceDir, fn);
+}
+
 export const cli = fileURLToPath(new URL("../src/cli.ts", import.meta.url));
 export const gitEnv = {
 	...process.env,
@@ -59,7 +74,7 @@ export function runWithEnv(dir: string, env: NodeJS.ProcessEnv, ...args: string[
 	return spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", cli, "pr", ...args], {
 		cwd: dir,
 		encoding: "utf8",
-		env,
+		env: isolatedTraceEnv(env),
 	});
 }
 

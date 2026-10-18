@@ -13,6 +13,7 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+from tests.test_baseline import run_main
 from scripts import launcher, profile_write, tenant_pi
 from scripts.launcher import MAX_PATH, check_location, preflight, text, write
 from scripts.profile_write import WriteError
@@ -223,6 +224,12 @@ class CliTests(Fixture):
 
     def run_cli(self, action, *extra, env=None):
         args = ["--target", str(self.target)] if action == "generate" else []
+        in_process = {"test_refusals_before_any_write", "test_launcher_in_a_wiki_vault_is_refused", "test_linked_roots_and_linked_ancestor",
+                      "test_plan_without_launcher_is_unchanged_and_plan_refuses_bad_paths"}
+        if self._testMethodName in in_process:
+            return run_main([action, "--overlay", str(self.overlay), "--manifest", str(self.manifest),
+                             "--registry", str(self.registry), *args, *extra], self.base,
+                            self.env if env is None else env)
         return subprocess.run([sys.executable, str(CLI), action, "--overlay", str(self.overlay),
                                "--manifest", str(self.manifest), "--registry", str(self.registry), *args, *extra],
                               cwd=self.base, env=self.env if env is None else env,
@@ -385,6 +392,12 @@ class CliTests(Fixture):
         by_line = subprocess.run(["/bin/sh", "-c", line], env=run_env, cwd=self.base,
                                  capture_output=True, text=True, check=True)
         self.assertEqual("--no-approve|" + str(self.target) + "|" + chosen + "|set|kept|\n", by_line.stdout)
+
+    def test_location_cli_smoke(self):
+        for root, rule in ((ROOT, "under_kit"), (self.agent, "under_pi_agent"),
+                           (self.home / ".llm-wiki", "under_wiki_vault")):
+            with self.subTest(rule=rule):
+                self.refused(rule + ": launcher.path", "--launcher", str(root / "launch.sh"))
 
     def test_launcher_in_a_wiki_vault_is_refused(self):
         # The kit writes nothing below a personal wiki vault: the one of the home directory and the one of WIKI_HOME.

@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import chdir, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path
@@ -55,6 +55,19 @@ def row(name, kind="file", size=1, mtime=10, **below):
 
 def state(*rows, mtime=5):
     return {"mtimeNs": mtime, "entries": list(rows)}
+
+
+def run_main(argv, cwd, env):
+    """Run CLI parsing and location refusals without an interpreter startup."""
+    out, err = StringIO(), StringIO()
+    with chdir(cwd), patch.dict(os.environ, env, clear=True), \
+            redirect_stdout(out), redirect_stderr(err), \
+            patch("subprocess.Popen", side_effect=AssertionError("external operation")):
+        try:
+            code = tenant_pi.main(argv)
+        except SystemExit as stop:
+            code = stop.code
+    return subprocess.CompletedProcess(argv, code, out.getvalue(), err.getvalue())
 
 
 class PureTests(unittest.TestCase):
@@ -622,6 +635,16 @@ class CliTests(Fixture):
         with patch.object(tenant_pi, "MAX_INPUT", 64):
             self.refused("input_too_large: baseline.dir", self.record())
         self.assertFalse(os.path.lexists(self.out))
+
+    def test_location_cli_smoke(self):
+        env = {"HOME": str(self.home), "PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"}
+        for root, rule in ((ROOT, "under_kit"), (self.live, "under_pi_agent"),
+                           (self.home / ".llm-wiki", "under_wiki_vault")):
+            with self.subTest(rule=rule):
+                done = subprocess.run([sys.executable, str(ROOT / "scripts/tenant_pi.py"), "baseline",
+                                       "--dir", str(self.live), "--out", str(root / "baseline.json")],
+                                      env=env, cwd=self.base, capture_output=True, text=True)
+                self.refused(rule + ": baseline.out", (done.returncode, done.stdout, done.stderr))
 
     def test_the_real_cli_process(self):
         self.populate()

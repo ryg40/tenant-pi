@@ -15,7 +15,7 @@ python3 scripts/publish_portable.py --no-push  # build and tag locally, inspect 
 What it does, in order:
 
 1. Refuses a dirty working tree. The snapshot comes from the committed `HEAD`, never from unsaved edits.
-2. Runs the four offline checks: unit tests, examples, the sample overlay, and the publish set. The unit tests include the documentation check of `scripts/doc_check.py`. A failure stops before anything is written.
+2. Calls `python3 scripts/check.py --stamp-status`. A matching stamp prints its tree, time, client, skipped count and result lines. Otherwise, it runs the full `python3 scripts/check.py` check set. A failure stops before the snapshot build. It also calls the publish check directly to validate the snapshot file list.
 3. Builds a Git tree from `HEAD` that contains only the files in `PUBLISH` and in the `PUBLISH_DIRS` rules in `scripts/publish_check.py`, through a temporary index. The working tree is not touched.
 4. Builds the snapshot commit and annotated tag objects. The commit uses the previous snapshot as parent, unless `--new-root` is set.
 5. Updates the branch and creates `portable/<yyyymmdd>-<source sha>` in one Git transaction. A tag collision or changed branch value moves neither ref.
@@ -26,6 +26,60 @@ What it does, in order:
 `scripts/publish_check.py` accepts a private copy with reviewed exclusions and a portable copy without those files.
 A reader of the published copy can run the same checks.
 
+## Offline checks and local stamps
+
+Run the combined offline check from the repository root:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py
+python3 scripts/check.py --tier fast
+python3 scripts/check.py --stamp-status
+```
+
+The full tier runs one unittest process per test module, then the publish check, the public reader check and `git diff --check`.
+Without `.git`, it runs the unit and publish checks, prints `diff: skipped (not a Git work tree)`, and writes no stamp.
+The unit suite already includes the examples, sample overlay, documentation and generated-page checks.
+The worker pool defaults to `os.cpu_count()`, or one worker when that value is unavailable.
+Use `python3 scripts/check.py --jobs 4` to set a smaller pool.
+The combined unit result prints `Ran N tests` and `OK (skipped=K)`, or `FAILED`.
+Each other check prints one result line. The final line is `check: passed` or `check: FAILED`.
+A failed check gives exit code 1. Failure details go to standard error.
+Both offline CI workflows use this command.
+
+The fast tier skips tests marked with `slow` in `tests/support.py`.
+These markers identify tests measured at 0.3 seconds or more; they do not remove tests from the full tier.
+For a sequential fast run, use:
+
+```sh
+TENANT_PI_TIER=fast PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
+```
+
+`check.py` defaults to the full tier and sets the selected tier explicitly for its children.
+It sets `PYTHONDONTWRITEBYTECODE=1` for each child process.
+A fast run is feedback for development, not release qualification.
+
+A successful full run on a clean tree writes `.git/check-stamps/<tree sha>` as JSON.
+The tree must be clean before and after the checks, and its hash must stay unchanged.
+The hash comes from `git rev-parse HEAD^{tree}`.
+All worktrees of one clone share the stamp directory in the common Git metadata directory.
+The fields are `checkSetVersion`, `python`, `client`, `skipped`, `tests`, `resultLines` and `when`.
+The client records root status, Docker command availability and the Node version when available.
+Docker availability does not prove that a daemon is running.
+The stamp stays local and is never pushed.
+Dirty trees, failed runs and fast runs write no stamp.
+A fast run does not remove an existing full-run stamp.
+
+`python3 scripts/check.py --stamp-status` exits 0 for a matching stamp on a clean tree, or 1 otherwise.
+It also requires the current check-set version, Python version and client details to match.
+The stamp records offline evidence, not live-service qualification or approval to publish.
+The publisher reads a matching stamp and prints `tree`, `when`, `client`, `skipped` and `resultLines`.
+Otherwise, it runs the full check set and requires exit code 0 with the final line `check: passed`.
+The publish check remains a direct call because the snapshot build needs its file list.
+Run the full check set once per clean tree and client.
+Build with `--no-push`, inspect the snapshot, then run the publisher once to push after approval.
+Both publisher runs reuse the stamp while the tree, check-set version, Python version and client details still match.
+If a stamp is missing or stale, the publisher runs the full check set again.
+
 ## Options
 
 | Option | Use |
@@ -35,7 +89,6 @@ A reader of the published copy can run the same checks.
 | `--no-push` | Inspect with `git show portable --stat` before publishing. |
 | `--force` | Replace the remote branch, including an existing snapshot chain, with `--force-with-lease`. It does not remove remote tags. Not for routine runs. |
 | `--new-root` | Start a parentless snapshot. Needs `--no-push` and a branch named `portable`, `portable-*` or `portable/*` that no worktree checks out. |
-| `--skip-checks` | Debugging only. Never publish with it. |
 
 ## A new history
 

@@ -12,14 +12,16 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from unittest.mock import patch
 
-from scripts import tenant_pi
+from scripts import tenant_pi, private_init, launcher, baseline
 from scripts.profile_plan import PROVIDER_KEY_NAMES
 from scripts.profile_write import WriteError
 from scripts.check_runtime import parse_range
-from scripts.validate import SAMPLE_TARGET, load
+from scripts.validate import SAMPLE_TARGET, load, Invalid
 from tests.test_model_routes import NATIVE, GATEWAY, REGISTRY
+from tests.test_baseline import run_main
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
@@ -73,57 +75,96 @@ def inventory(root):
     return found
 
 
-class InventoryTests(unittest.TestCase):
-    def test_file_that_git_ignores_leaves_the_inventory_unchanged(self):
-        if ignored_paths(ROOT) is None:
-            self.skipTest("no Git checkout: the inventory takes every path")
-        before = inventory(ROOT)
-        local = ROOT / ".local"
-        created = not local.exists()
-        local.mkdir(exist_ok=True)
-        self.addCleanup(lambda: created and not any(local.iterdir()) and local.rmdir())
-        planted = Path(tempfile.mkdtemp(prefix="inventory-test-", dir=local))
-        self.addCleanup(shutil.rmtree, planted)
-        (planted / "log.txt").write_text("written by another session\n")
-        self.assertTrue((planted / "log.txt").is_file())
-        self.assertEqual(before, inventory(ROOT))
-        self.assertFalse(any(name == ".git" or name.startswith((".git/", ".local")) for name in before))
+# Capture before any CLI call, then compare once after all module tests.
+SOURCE_INVENTORY = inventory(ROOT)
 
-    def test_inventory_of_a_temporary_checkout_and_of_a_plain_directory(self):
-        with tempfile.TemporaryDirectory(prefix="tenant-pi-inventory-") as temp:
-            plain, checkout = Path(temp) / "plain", Path(temp) / "checkout"
-            for root in (plain, checkout):
-                (root / ".local/coordination").mkdir(parents=True)
-                (root / ".gitignore").write_text(".local/\n*.pyc\n")
-                (root / "kept.txt").write_text("a\n")
-            # Without Git metadata, the walk takes every path.
-            self.assertIsNone(ignored_paths(plain))
-            self.assertEqual({".gitignore", "kept.txt", ".local", ".local/coordination"}, set(inventory(plain)))
-            if subprocess.run(["git", "init", "-q", str(checkout)], capture_output=True).returncode != 0:
-                self.skipTest("git is not available")
-            before = inventory(checkout)
-            self.assertEqual({".gitignore", "kept.txt"}, set(before))
-            (checkout / ".local/coordination/log.txt").write_text("b\n")
-            (checkout / "module.pyc").write_text("c\n")
-            self.assertEqual(before, inventory(checkout))
-            # A file that Git does not ignore, an empty directory and a changed file are still seen.
-            (checkout / "new.txt").write_text("d\n")
-            (checkout / "empty").mkdir()
-            self.assertEqual({"new.txt", "empty"}, set(inventory(checkout)) - set(before))
-            (checkout / "kept.txt").write_text("changed\n")
-            self.assertNotEqual(before["kept.txt"], inventory(checkout)["kept.txt"])
 
-    def test_inventory_without_a_git_binary_is_the_full_walk(self):
+def tearDownModule():
+    if SOURCE_INVENTORY != inventory(ROOT):
+        raise AssertionError("CLI tests changed the source checkout")
+
+
+class LocationTests(unittest.TestCase):
+    def test_source_inventory_contract(self):
         with tempfile.TemporaryDirectory(prefix="tenant-pi-inventory-") as temp:
             root = Path(temp)
-            (root / ".local").mkdir()
-            (root / ".gitignore").write_text(".local/\n")
-            (root / ".local/log.txt").write_text("a\n")
+            (root / ".local/coordination").mkdir(parents=True)
+            (root / ".gitignore").write_text(".local/\n*.pyc\n")
+            (root / "kept.txt").write_text("a\n")
+            self.assertIsNone(ignored_paths(root))
+            self.assertEqual({".gitignore", "kept.txt", ".local", ".local/coordination"}, set(inventory(root)))
+            subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
+            before = inventory(root)
+            self.assertEqual({".gitignore", "kept.txt"}, set(before))
+            (root / ".local/coordination/log.txt").write_text("ignored\n")
+            (root / "module.pyc").write_text("ignored\n")
+            self.assertEqual(before, inventory(root))
+            (root / "new.txt").write_text("new\n")
+            (root / "empty").mkdir()
+            self.assertEqual({"new.txt", "empty"}, set(inventory(root)) - set(before))
+            (root / "kept.txt").write_text("changed\n")
+            self.assertNotEqual(before["kept.txt"], inventory(root)["kept.txt"])
             with patch.dict(os.environ, {"PATH": "/nonexistent"}):
-                self.assertIsNone(ignored_paths(ROOT))
-                self.assertEqual({".gitignore", ".local", ".local/log.txt"}, set(inventory(root)))
+                self.assertIsNone(ignored_paths(root))
+                self.assertIn(".local/coordination/log.txt", inventory(root))
+            with patch.dict(tearDownModule.__globals__, inventory=lambda root: {"changed": None}):
+                with self.assertRaisesRegex(AssertionError, "changed the source checkout"):
+                    tearDownModule()
+
+    def test_protected_roots_home_and_symlink_matrix(self):
+        with tempfile.TemporaryDirectory(prefix="tenant-pi-location-") as temp:
+            base = Path(temp).resolve()
+            home = base / "home"
+            (home / ".pi").mkdir(parents=True)
+            agent = base / "real-agent"
+            agent.mkdir()
+            (home / ".pi/agent").symlink_to(agent, target_is_directory=True)
+            linked_home = base / "linked-home"
+            linked_home.symlink_to(home, target_is_directory=True)
+            kit = base / "kit"
+            kit.mkdir()
+            wiki = base / "wiki"
+            chosen = base / "chosen"
+            for current_home in (home, linked_home):
+                for wiki_home in (None, "", "relative", str(wiki), str(wiki) + "//"):
+                    env = {"HOME": str(current_home), "PI_CODING_AGENT_DIR": str(base / "ignored")}
+                    if wiki_home is not None:
+                        env["WIKI_HOME"] = wiki_home
+                    data = {"memory": {"wiki": {"wikiHome": str(chosen)}}}
+                    with patch.dict(os.environ, env, clear=True):
+                        pairs = (("under_kit", str(kit)), ("under_pi_agent", str(current_home / ".pi/agent")),
+                                 *tenant_pi._wiki_vaults(tenant_pi._home("home"), data))
+                        roots = tenant_pi._roots(pairs)
+                        self.assertIn(("under_pi_agent", str(agent)), roots)
+                        expected_vaults = {str(current_home / ".llm-wiki"), str(chosen / ".llm-wiki")}
+                        if wiki_home and wiki_home.startswith("/"):
+                            expected_vaults.add(str(wiki / ".llm-wiki"))
+                        self.assertEqual(expected_vaults, {root for rule, root in pairs if rule == "under_wiki_vault"})
+                        for rule, root in roots:
+                            for suffix in ("", "/child", "/nested/child"):
+                                with self.subTest(home=str(current_home), wiki_home=wiki_home, rule=rule, suffix=suffix):
+                                    for check in (private_init.check_location, launcher.check_location, baseline.check_location):
+                                        with self.assertRaises(Invalid) as error:
+                                            check(root + suffix, roots)
+                                        self.assertTrue(str(error.exception).startswith(rule + ":"))
+                                    with self.assertRaises(Invalid) as error:
+                                        tenant_pi._outside(root + suffix, pairs, "target")
+                                    self.assertEqual(rule + ": target", str(error.exception))
+                            tenant_pi._outside(root + "-sibling", pairs, "target")
+                        # A target link is resolved by _outside, not by the text-only check_location.
+                        link = base / "target-link"
+                        if not link.is_symlink():
+                            link.symlink_to(agent, target_is_directory=True)
+                        with self.assertRaisesRegex(Invalid, "^under_pi_agent: target$"):
+                            tenant_pi._outside(str(link / "child"), pairs, "target")
+                        tenant_pi._outside(str(base / "ignored"), pairs, "target")
+            for value, error in ((None, "home_required"), ("relative", "absolute_path"), (str(home) + "/", "absolute_path")):
+                with patch.dict(os.environ, {} if value is None else {"HOME": value}, clear=True):
+                    with self.assertRaisesRegex(Invalid, "^" + error + ": home$"):
+                        tenant_pi._home("home")
 
 
+@slow
 class InstallUmaskTests(unittest.TestCase):
     def test_guide_parents_private_init_and_generation_under_both_umasks(self):
         for mask in (0o002, 0o022):
@@ -234,8 +275,7 @@ class CliTests(unittest.TestCase):
                               cwd=self.base, env=self.env if env is None else env,
                               text=True, capture_output=True, check=False)
 
-    def check_unchanged(self, before_source, before_fixture):
-        self.assertEqual(before_source, inventory(ROOT))
+    def check_unchanged(self, before_fixture):
         self.assertEqual(before_fixture, inventory(self.base))
         self.assertFalse((self.base / "called").exists())
 
@@ -243,7 +283,7 @@ class CliTests(unittest.TestCase):
         direct_env = dict(self.env)
         direct_env.pop("PYTHONPATH")
         direct_env.pop("PYTHONDONTWRITEBYTECODE")
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         help_result = subprocess.run([sys.executable, str(CLI), "--help"], cwd=self.base,
                                      env=direct_env, text=True, capture_output=True)
         self.assertEqual(0, help_result.returncode)
@@ -261,14 +301,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(["target_absence_unverified", "node_runtime_unverified", "core_runtime_unverified"],
                          [g["code"] for g in plan["readinessGaps"]])
         self.assertNotIn("complete", result.stdout)
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
 
     def test_generate_private_modes_deterministic_and_omitted_components(self):
         self.data["selection"] = {"enable": ["core", "model-routing", "codex-accounts"], "disable": []}
         self.data["roles"] = {"interactive": {"provider": "example", "model": "org/model:v2", "thinking": "xhigh"},
                               "worker": {"provider": "example", "model": "org/worker", "thinking": "minimal"}}
         self.save()
-        before_source = inventory(ROOT)
         old = os.umask(0)
         try:
             result = self.run_cli("generate", "--target", str(self.target))
@@ -296,7 +335,6 @@ class CliTests(unittest.TestCase):
                              (self.target / name).read_bytes())
         self.assertIn({"code": "credential_missing", "subject": "TENANTEXT_LITELLM_API_KEY"}, output["readinessGaps"])
         self.assertIn({"code": "role_activation_unavailable", "subject": "worker"}, output["readinessGaps"])
-        self.assertEqual(before_source, inventory(ROOT))
         self.assertEqual("OLD", (self.old / "settings.json").read_text())
         self.assertEqual("KEEP", self.sentinel.read_text())
         self.assertFalse((self.base / "called").exists())
@@ -337,6 +375,7 @@ class CliTests(unittest.TestCase):
             "python": {"installed": "3.14.7", "required": runtime["pythonRange"], "status": "match"}}))
         return path
 
+    @slow
     def test_runtime_report_changes_the_gaps_and_not_the_generated_files(self):
         core = load(self.manifest)["components"]["core"]["source"]["spec"]
         pin = load(self.manifest)["runtime"]["piVersion"]
@@ -344,7 +383,7 @@ class CliTests(unittest.TestCase):
         unverified = [{"code": "node_runtime_unverified", "subject": ">=24.0.0 <25"},
                       {"code": "core_runtime_unverified", "subject": core}]
         mismatch = {"code": "core_runtime_mismatch", "subject": core, "installed": OUTSIDE, "required": pin}
-        before_source, before_fixture = inventory(ROOT), None
+        before_fixture = None
         # Node matches, Pi is another version.
         report = self.runtime_report(pi="mismatch")
         before_fixture = inventory(self.base)
@@ -353,7 +392,7 @@ class CliTests(unittest.TestCase):
         preview = json.loads(plan.stdout)
         self.assertEqual(([absent, mismatch], False, False),
                          (preview["readinessGaps"], preview["runtimeReady"], preview["filesComplete"]))
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
         result = self.run_cli("generate", "--target", str(self.target), "--runtime-report", str(report))
         self.assertEqual(0, result.returncode, result.stderr)
         output = json.loads(result.stdout)
@@ -430,6 +469,7 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("untested_in_range", json.dumps(choices))
         self.assertFalse((self.base / "called").exists())
 
+    @slow
     def test_pi_install_line_is_marked_and_is_no_default_step_for_another_installed_pi(self):
         pin = load(self.manifest)["runtime"]["piVersion"]
         line = "npm install --global -- @earendil-works/pi-coding-agent@" + pin
@@ -460,6 +500,7 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("replaces_installed", (self.target / ".tenant-pi/choices.json").read_text())
         self.assertFalse((self.base / "called").exists())
 
+    @slow
     def test_bad_runtime_report_stops_before_any_write(self):
         good = json.loads(self.runtime_report().read_text())
         report = self.base / "report.json"
@@ -496,7 +537,7 @@ class CliTests(unittest.TestCase):
                     self.assertEqual("", result.stdout)
                     self.assertNotIn("CANARY_SECRET", result.stderr)
                     self.assertNotIn("Traceback", result.stderr)
-                    self.check_unchanged(inventory(ROOT), before)
+                    self.check_unchanged(before)
             for path, rule in ((link, "input_not_regular: runtime_report.file"),
                                (self.base / "absent.json", "input_missing: runtime_report.file"),
                                ("relative.json", "input_missing: runtime_report.file")):
@@ -513,6 +554,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(2, refused.returncode)
         self.assertIn("unrecognized arguments", refused.stderr)
 
+    @slow
     def test_route_registry_cli_end_to_end_and_blocked_login(self):
         registry = self.base / "registry.json"
         registry.write_text(json.dumps(REGISTRY))
@@ -575,6 +617,7 @@ class CliTests(unittest.TestCase):
         self.save()
         self.assertIn("gateway_disabled", self.run_cli("plan", "--registry", str(registry)).stderr)
 
+    @slow
     def test_registry_parser_boundaries_and_redaction(self):
         self.data["selection"] = {"enable": ["core", "model-routing"], "disable": []}
         self.data["modelRoutes"] = {"schemaVersion": 1, "cycle": [copy.deepcopy(NATIVE)], "gateway": None}
@@ -599,7 +642,7 @@ class CliTests(unittest.TestCase):
             self.assertIn(rule, result.stderr)
             self.assertNotIn("CANARY_SECRET", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
-            self.check_unchanged(inventory(ROOT), before)
+            self.check_unchanged(before)
         registry.write_text(json.dumps(REGISTRY))
         for path in (link, fifo):
             self.assertIn("input_not_regular", self.run_cli("plan", "--registry", str(path)).stderr)
@@ -612,6 +655,7 @@ class CliTests(unittest.TestCase):
         env.pop("PYTHONDONTWRITEBYTECODE", None)
         self.assertEqual(0, self.run_cli("plan", "--registry", str(registry), env=env).returncode)
 
+    @slow
     def test_bounded_parser_failures_do_not_change_files(self):
         for field in ("overlay", "manifest"):
             over = tenant_pi.MAX_DEPTH + 1
@@ -622,14 +666,14 @@ class CliTests(unittest.TestCase):
                 with self.subTest(field=field, payload=content[:1], size=len(content)):
                     source = self.overlay if field == "overlay" else self.manifest
                     source.write_text(content)
-                    before_source, before_fixture = inventory(ROOT), inventory(self.base)
+                    before_fixture = inventory(self.base)
                     result = self.run_cli("plan")
                     self.assertEqual(2, result.returncode)
                     self.assertEqual({"candidate_created": False, "error": rule + ": " + field + ".file"},
                                      json.loads(result.stderr))
                     self.assertEqual("", result.stdout)
                     self.assertNotIn("Traceback", result.stderr)
-                    self.check_unchanged(before_source, before_fixture)
+                    self.check_unchanged(before_fixture)
                     source.write_bytes((ROOT / ("config/config.example.json" if field == "overlay" else "config/manifest.json")).read_bytes())
                     if field == "overlay":
                         self.save()
@@ -649,6 +693,7 @@ class CliTests(unittest.TestCase):
         self.save()
         self.assertIn("unknown_fields", self.run_cli("generate", "--target", str(self.target)).stderr)
 
+    @slow
     def test_each_cause_of_an_unusable_input_has_its_own_rule(self):
         over = tenant_pi.MAX_DEPTH + 1
         # A missing comma before line 6, column 3: the shape of a fragment that was pasted into the file.
@@ -718,6 +763,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual((2, ""), (result.returncode, result.stdout))
         self.assertEqual({"candidate_created": False, "error": "input_unreadable: overlay.file"}, json.loads(result.stderr))
 
+    @slow
     def test_unsupported_inputs_blocked_modules_and_injection(self):
         cases = ((lambda d: d["inputs"].update(modelsFile="inputs/models.json"), "input_missing: models.file"),
                  (lambda d: d["selection"]["enable"].append("tracker-site"), "selection_conflict"),
@@ -763,6 +809,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(2, self.run_cli("plan", overlay=parent_link / "overlay.json").returncode)
         self.assertFalse(self.target.exists())
 
+    @slow
     def test_target_mismatch_existing_and_unsafe_ancestors(self):
         wrong = self.parent / "wrong"
         result = self.run_cli("generate", "--target", str(wrong))
@@ -802,6 +849,16 @@ class CliTests(unittest.TestCase):
         data["target"]["agentDir"] = str(target)
         self.overlay.write_text(json.dumps(data))
         extra = ("--target", str(target)) if action == "generate" else ()
+        in_process = {"test_target_inside_kit_refused_before_any_write",
+                      "test_target_in_live_agent_directory_refused_before_any_write",
+                      "test_target_in_a_wiki_vault_refused_before_any_write",
+                      "test_symlink_into_kit_refused_and_no_path_printed",
+                      "test_linked_live_agent_directory_and_linked_home_are_refused",
+                      "test_target_in_the_vault_of_the_overlay_wiki_home_refused_before_any_write",
+                      "test_target_rule_needs_home_and_reads_no_other_environment_value"}
+        if self._testMethodName in in_process:
+            return run_main([action, "--overlay", str(self.overlay), "--manifest", str(self.manifest), *extra],
+                            self.base, self.env if env is None else env)
         return subprocess.run([sys.executable, str(cli), action, "--overlay", str(self.overlay),
                                "--manifest", str(self.manifest), *extra],
                               cwd=self.base, env=self.env if env is None else env,
@@ -813,8 +870,17 @@ class CliTests(unittest.TestCase):
                          json.loads(result.stderr))
         self.assertEqual("", result.stdout)
 
+    @slow
+    def test_location_cli_smoke(self):
+        for action in ("validate", "plan", "generate"):
+            for root, rule in ((ROOT, "under_kit"), (self.old, "under_pi_agent"),
+                               (self.home / ".llm-wiki", "under_wiki_vault")):
+                with self.subTest(action=action, rule=rule):
+                    self.assert_refused(self.run_target(action, root / "inside-profile"),
+                                        rule + ": overlay.target.agentDir")
+
     def test_target_inside_kit_refused_before_any_write(self):
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         # `docs/inside-profile` has an existing parent: without the refusal, `generate` would write there.
         for target in (ROOT, ROOT / ".local/inside-profile", ROOT / "docs/inside/agent", ROOT / "docs/inside-profile"):
             for action in ("validate", "plan", "generate"):
@@ -828,20 +894,21 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("under_kit", result.stderr)
         del self.data["unknown"]
         self.save()
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
 
+    @slow
     def test_sample_target_is_refused_with_its_own_rule(self):
         example = ROOT / "config/config.example.json"
         self.assertEqual(SAMPLE_TARGET, load(example)["target"]["agentDir"])
         self.overlay.write_bytes(example.read_bytes())
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         for action, extra in (("validate", ()), ("plan", ()), ("generate", ("--target", SAMPLE_TARGET))):
             with self.subTest(action=action):
                 result = self.run_cli(action, *extra)
                 self.assertEqual((2, ""), (result.returncode, result.stdout))
                 self.assertEqual({"candidate_created": False, "error": "sample_target: overlay.target.agentDir"},
                                  json.loads(result.stderr))
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
         # The rule is the one sample path, not the fake user: another path of the same form passes.
         for action in ("validate", "plan"):
             self.assertEqual(0, self.run_target(action, SAMPLE_TARGET + "-2").returncode)
@@ -857,11 +924,12 @@ class CliTests(unittest.TestCase):
                                 cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
         self.assertEqual(0, direct.returncode, direct.stderr)
 
+    @slow
     def test_target_beside_kit_and_in_home_succeed(self):
         # A disposable copy of the kit: its sibling directory is writable and shares the kit's name prefix.
         kit = self.base / "kit"
         for part in ("scripts", "config", "packages"):
-            shutil.copytree(ROOT / part, kit / part, ignore=shutil.ignore_patterns("__pycache__"))
+            shutil.copytree(ROOT / part, kit / part, ignore=shutil.ignore_patterns("__pycache__", "node_modules", "dist", ".local"))
         cli = kit / "scripts/tenant_pi.py"
         for target in (self.base / "kit-sibling", self.base / "sibling/agent", self.home / "new-agent"):
             target.parent.mkdir(mode=0o700, exist_ok=True)
@@ -878,7 +946,6 @@ class CliTests(unittest.TestCase):
         self.assertFalse(sibling.exists())
 
     def test_symlink_into_kit_refused_and_no_path_printed(self):
-        before_source = inventory(ROOT)
         linked_kit = self.base / "linked-kit"
         linked_kit.symlink_to(ROOT, target_is_directory=True)
         linked_docs = self.base / "linked-docs"
@@ -900,7 +967,6 @@ class CliTests(unittest.TestCase):
                 result = self.run_target(action, linked_out / "agent")
                 self.assertEqual(0, result.returncode, result.stderr)
         self.assertFalse((self.parent / "agent").exists())
-        self.assertEqual(before_source, inventory(ROOT))
 
     def assert_refused(self, result, error):
         """The exact object: the diagnostic holds the rule and the field, and no path."""
@@ -910,7 +976,7 @@ class CliTests(unittest.TestCase):
     def test_target_in_live_agent_directory_refused_before_any_write(self):
         linked = self.base / "linked-agent"
         linked.symlink_to(self.old, target_is_directory=True)
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         # `inside` has an existing parent that the caller owns: without the refusal, `generate` would write there.
         for target in (self.old, self.old / "inside", self.old / "profiles/main", linked, linked / "inside"):
             for action in ("validate", "plan", "generate"):
@@ -924,7 +990,7 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("under_pi_agent", result.stderr)
         del self.data["unknown"]
         self.save()
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
 
     def test_target_in_a_wiki_vault_refused_before_any_write(self):
         # The kit writes nothing below a personal wiki vault: `<home>/.llm-wiki`, and `<WIKI_HOME>/.llm-wiki` when set.
@@ -999,6 +1065,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual([], os.listdir(real))
         self.assertEqual(["settings.json"], os.listdir(self.old))
 
+    @slow
     def test_target_beside_live_agent_directory_succeeds(self):
         pi = self.home / ".pi"
         pi.chmod(0o700)
@@ -1015,11 +1082,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(before, inventory(self.old))
         self.assertEqual("OLD", (self.old / "settings.json").read_text())
 
+    @slow
     def test_plan_warns_about_a_provider_key_variable_and_prints_no_value(self):
         # A controlled environment: no known provider key name of the real shell reaches the CLI.
         clean = {name: value for name, value in self.env.items() if name not in PROVIDER_KEY_NAMES}
         value = "synthetic-value-not-a-key"
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         result = self.run_cli("plan", env=clean)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertNotIn("providerKeyWarning", json.loads(result.stdout)["commands"])
@@ -1038,12 +1106,13 @@ class CliTests(unittest.TestCase):
         self.assertNotIn(value, result.stdout + result.stderr)
         self.assertNotIn("providerKeyWarning", self.run_cli("validate", env=dict(clean, OPENAI_API_KEY=value)).stdout)
         shutil.rmtree(self.target)
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
 
+    @slow
     def test_target_rule_needs_home_and_reads_no_other_environment_value(self):
         named = self.base / "env agent"
         named.mkdir(mode=0o700)
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         env = {name: value for name, value in self.env.items() if name != "HOME"}
         for home, error in ((None, "home_required: target.home"), ("relative", "absolute_path: target.home"),
                             (str(self.home) + "/", "absolute_path: target.home")):
@@ -1063,8 +1132,9 @@ class CliTests(unittest.TestCase):
             with self.subTest(named="env agent", action=action):
                 self.assertEqual(0, self.run_target(action, named / "inside", env=env).returncode)
         self.save()
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
 
+    @slow
     def test_quoted_path_and_json_escaping(self):
         self.data["selection"] = {"enable": ["core", "model-routing"], "disable": []}
         self.data["roles"]["interactive"] = {"provider": "test", "model": "org/model:v2", "thinking": "low"}
@@ -1245,6 +1315,7 @@ class CliTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), "compare", "--left", str(left), "--right", str(right)],
                               cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
 
+    @slow
     def test_embedding_compare_carry_regenerate_without_credential_reads(self):
         from tests.test_carry import apply_patches
 
@@ -1383,6 +1454,7 @@ class CliTests(unittest.TestCase):
                                               os.lstat(path).st_mtime_ns)
                 for path in (vault, *vault.rglob("*"))}
 
+    @slow
     def test_kit_actions_keep_an_existing_wiki_vault(self):
         # An established vault of the user: no kit action opens a file of it, writes below it or changes a time.
         manifest = self.base / "kit-manifest.json"
@@ -1477,6 +1549,7 @@ class CliTests(unittest.TestCase):
             self.assertIn("vault file opened", blocked.stderr)
         self.assertFalse((self.base / "called").exists())
 
+    @slow
     def test_compare_opens_only_declared_files_and_redacts(self):
         left, right = self.generate_pair()
         # Private runtime state beside the declared files must stay unread.
@@ -1495,7 +1568,7 @@ class CliTests(unittest.TestCase):
         hook.write_text(hook.read_text() + "import os\n_log = os.open(" + repr(str(log)) + ", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)\n"
                         "def _audit(event, args):\n    if event == 'open':\n        os.write(_log, (str(args[0]) + '\\n').encode('utf-8', 'replace'))\n"
                         "sys.addaudithook(_audit)\n")
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         result = self.run_compare(left, right)
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual("", result.stderr)
@@ -1516,12 +1589,12 @@ class CliTests(unittest.TestCase):
                          changes[(".tenant-pi/state.json", "/provenance/pins/codex-accounts")]["right"]["value"])
         self.assertEqual(json.dumps(report, sort_keys=True), json.dumps(json.loads(self.run_compare(left, right).stdout), sort_keys=True))
         log.unlink()
-        self.assertEqual(before_source, inventory(ROOT))
         self.assertEqual(before_fixture, inventory(self.base))
         self.assertEqual("KEEP", self.sentinel.read_text())
         self.assertEqual("OLD", (self.old / "settings.json").read_text())
         self.assertFalse((self.base / "called").exists())
 
+    @slow
     def test_compare_input_boundaries_and_settings_only_profile(self):
         left, right = self.generate_pair()
         for args, rule in ((("relative", str(right)), "absolute_path: compare.left"),
@@ -1569,6 +1642,7 @@ class CliTests(unittest.TestCase):
             self.data["selection"]["enable"].append(cid)
         self.save()
 
+    @slow
     def test_herdr_and_question_parts_report_separate_results(self):
         self.enable_coordination()
         gaps = json.loads(self.run_cli("plan").stdout)["readinessGaps"]
@@ -1581,7 +1655,7 @@ class CliTests(unittest.TestCase):
                    "unparsed": {"herdr": {"installed": None, "status": "unparsed"}}}
         for name, report in reports.items():
             (self.base / (name + ".json")).write_text(json.dumps(report))
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         for name in reports:
             with self.subTest(report=name):
                 result = self.run_cli("plan", "--herdr-report", str(self.base / (name + ".json")))
@@ -1614,7 +1688,7 @@ class CliTests(unittest.TestCase):
                 self.assertNotIn("CANARY", result.stderr)
                 self.assertFalse(self.target.exists())
                 bad.unlink()
-        self.check_unchanged(before_source, before_fixture)
+        self.check_unchanged(before_fixture)
         # The generated profile: the skill file is readable, and the extension is declared but not installed.
         result = self.run_cli("generate", "--target", str(self.target), "--herdr-report", str(self.base / "present.json"))
         self.assertEqual(0, result.returncode, result.stderr)
@@ -1635,6 +1709,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual("not_readable", json.loads(self.run_inventory(self.target).stdout)["coordination"]["herdrSkill"])
         self.assertFalse((self.base / "called").exists())
 
+    @slow
     def test_regenerated_candidate_keeps_herdr_and_questions_and_leaves_the_active_profile(self):
         self.enable_coordination()
         # Shared places of the user that a profile-scoped selection must not touch.
@@ -1643,7 +1718,6 @@ class CliTests(unittest.TestCase):
         guidance.write_text("KEEP-GUIDANCE")
         first = self.target
         self.assertEqual(0, self.run_cli("generate", "--target", str(first)).returncode)
-        before_source = inventory(ROOT)
         before_first = {name: (first / name).read_bytes() for name in ("settings.json", ".tenant-pi/choices.json",
                                                                        ".tenant-pi/state.json")}
         before_home = inventory(self.home)
@@ -1679,7 +1753,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual("KEEP-GUIDANCE", guidance.read_text())
         self.assertFalse((self.home / ".agents").exists())
         self.assertFalse((self.home / ".claude").exists())
-        self.assertEqual(before_source, inventory(ROOT))
         # The guarded writer refuses the existing candidate and the active profile.
         before_fixture = inventory(self.base)
         for target, rule in ((second, "target_exists"), (self.old, "under_pi_agent")):
@@ -1698,6 +1771,7 @@ class CliTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), "inventory", "--dir", str(directory)],
                               cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
 
+    @slow
     def test_inventory_lists_names_only_and_opens_no_private_file(self):
         _, candidate = self.generate_pair()
         live = self.parent / "live profile"
@@ -1724,7 +1798,7 @@ class CliTests(unittest.TestCase):
                         "def _audit(event, args):\n    if event in ('open', 'os.scandir', 'os.listdir', 'subprocess.Popen', 'os.exec', 'os.posix_spawn', 'os.system', 'os.fork'):\n"
                         "        os.write(_log, (event + ' ' + str(args[0]) + '\\n').encode('utf-8', 'replace'))\n"
                         "sys.addaudithook(_audit)\n")
-        before_source, before_fixture = inventory(ROOT), inventory(self.base)
+        before_fixture = inventory(self.base)
         entries = {"extensions": [{"kind": "symlink", "name": "linked.ts"}, {"kind": "file", "name": "plain.ts"}],
                    "skills": [{"kind": "dir", "name": "one"}], "prompts": [{"kind": "file", "name": "p.md"}]}
         for side, managed, count in ((live, False, 3), (candidate, True, 1)):
@@ -1770,11 +1844,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(6 * 3, len([item for item in listed if item.isdigit()]), listed)
         self.assertFalse([item for item in listed if item.startswith(str(self.parent))], listed)
         log.unlink()
-        self.assertEqual(before_source, inventory(ROOT))
         self.assertEqual(before_fixture, inventory(self.base))
         self.assertEqual("KEEP", self.sentinel.read_text())
         self.assertFalse((self.base / "called").exists())
 
+    @slow
     def test_inventory_input_boundaries(self):
         _, candidate = self.generate_pair()
         (self.parent / "linked").symlink_to(candidate, target_is_directory=True)

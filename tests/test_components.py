@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 
 from scripts import components, tenant_pi
 from scripts.components import LOCKED, RECOMMENDED, parse_select, prerequisites, report, selection, text
@@ -325,6 +326,7 @@ class ComponentsCliTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), "components", *args], cwd=self.base, env=self.env, text=True,
                               capture_output=True, check=False)
 
+    @slow
     def test_three_forms_are_deterministic_and_write_nothing(self):
         before = sorted(path.name for path in self.base.iterdir())
         for args in ((), ("--format", "text"), ("--overlay", str(EXAMPLE)), ("--overlay", str(EXAMPLE), "--format", "text"),
@@ -347,6 +349,7 @@ class ComponentsCliTests(unittest.TestCase):
                          (chosen["selection"]["enable"], chosen["added"]))
         self.assertEqual(dump(selection(KNOWN, list(RECOMMENDED))), self.run_cli("--select", ",".join(RECOMMENDED)).stdout.strip())
 
+    @slow
     def test_errors_use_the_error_form_of_the_kit(self):
         (self.base / "bad.json").write_text('{"selection": "' + CANARY)
         (self.base / "other.json").write_text(json.dumps({"selection": {"enable": ["core", "absent-id"]}}))

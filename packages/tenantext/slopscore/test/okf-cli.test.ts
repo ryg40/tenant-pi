@@ -9,7 +9,7 @@ import slopscore from "../src/index.ts";
 import { runOkf } from "../src/okf.ts";
 import { collectPrData, renderPrMarkdown } from "../src/pr.ts";
 import { loadConfig } from "../src/tiers.ts";
-import { branchRepo, cli, repo } from "./helpers.ts";
+import { branchRepo, cli, repo, withEmptyTraceEnv } from "./helpers.ts";
 
 /** The bundle line in the PR block over branch commits only, and `slopscore okf` in the CLI, Pi and Claude Code. */
 
@@ -30,7 +30,7 @@ function bundleBranch() {
 	return r;
 }
 
-test("the PR block carries the bundle line measured over the branch commits, and none without a bundle", () => {
+test("the PR block carries the bundle line measured over the branch commits, and none without a bundle", () => withEmptyTraceEnv(() => {
 	const r = bundleBranch();
 	const result = collectPrData(r.dir, { base: "main", json: false, help: false }, cfg);
 	assert.ok(result.ok);
@@ -51,7 +51,7 @@ test("the PR block carries the bundle line measured over the branch commits, and
 	const none = collectPrData(plain.dir, { base: "main", json: false, help: false }, cfg);
 	assert.ok(none.ok && none.data.bundle === undefined);
 	if (none.ok) assert.match(renderPrMarkdown(none.data), /^\*\*Bundle:\*\* none$/m);
-});
+}));
 
 test("slopscore okf prints the table and the failing concepts with exit 0, and one line with exit 1 outside a repo", () => {
 	const r = bundleBranch();

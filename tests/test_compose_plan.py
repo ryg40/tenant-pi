@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 
 from scripts.compose_plan import APPROVAL, FILES, compose_plan, public_key
 from scripts.model_routes import render
@@ -375,6 +376,7 @@ class CliTests(unittest.TestCase):
         seat_env = [line for line in report["seatEnv"] if line.startswith("SEAT_PROJECTS_DIR=")]
         self.assertEqual(["SEAT_PROJECTS_DIR=\"" + str(self.base) + "/it's \\\"my\\\" projects\""], seat_env)
 
+    @slow
     def test_write_creates_the_five_files_with_mode_600_and_refuses_a_second_run(self):
         result = self.run_cli("--write", "--enable", "herdr", "--thinking", "xhigh")
         self.assertEqual((0, ""), (result.returncode, result.stderr))
@@ -425,6 +427,7 @@ class CliTests(unittest.TestCase):
         self.refused("target_exists: compose-plan.overlay.json", "--write")
         self.assertEqual(before, {name: (self.private / name).read_bytes() for name in FILES})
 
+    @slow
     def test_write_refuses_when_one_file_exists_and_writes_none(self):
         for name in FILES:
             with self.subTest(name=name):
@@ -438,6 +441,7 @@ class CliTests(unittest.TestCase):
         self.refused("target_exists: compose-plan.seat.env", "--write")
         self.assertFalse((self.base / "absent").exists())
 
+    @slow
     def test_write_refuses_a_bad_private_directory(self):
         self.refused("private_dir_missing: compose-plan.private_dir", "--write", **{"--private-dir": str(self.base / "absent")})
         (self.base / "link").symlink_to(self.private)
@@ -455,6 +459,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual([], os.listdir(vault))
         self.assertEqual([], os.listdir(self.private))
 
+    @slow
     def test_public_key_file(self):
         self.refused("input_missing: compose-plan.public_key", **{"--public-key": str(self.base / "absent.pub")})
         self.key.write_text("")
@@ -468,6 +473,7 @@ class CliTests(unittest.TestCase):
         (self.base / "key link").symlink_to(self.key)
         self.refused("input_not_regular: compose-plan.public_key", **{"--public-key": str(self.base / "key link")})
 
+    @slow
     def test_refusals_of_the_cli(self):
         self.refused("integer: compose-plan.uid", **{"--uid": "501x"})
         self.refused("integer: compose-plan.gid", **{"--gid": "-1"})

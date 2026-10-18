@@ -27,24 +27,8 @@
           }
         },
         {
-          "name": "python3 -m unittest discover -s tests -q",
-          "run": "python3 -m unittest discover -s tests -q"
-        },
-        {
-          "name": "examples.py",
-          "run": "python3 scripts/examples.py"
-        },
-        {
-          "name": "validate.py --overlay config/config.example.json",
-          "run": "python3 scripts/validate.py --overlay config/config.example.json"
-        },
-        {
-          "name": "publish_check.py",
-          "run": "python3 scripts/publish_check.py"
-        },
-        {
-          "name": "doc_check.py",
-          "run": "python3 scripts/doc_check.py"
+          "name": "Offline checks",
+          "run": "python3 scripts/check.py"
         }
       ]
     }

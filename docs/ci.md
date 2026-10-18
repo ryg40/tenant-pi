@@ -8,8 +8,8 @@ Continuous integration (CI) runs checks after a change. These workflows check th
 
 | File | Trigger | Result |
 | --- | --- | --- |
-| `.gitea/workflows/checks.yml` | Each push and pull request | Runs the five offline commands below. |
-| `.github/workflows/checks.yml` | Each push and pull request | Runs the same commands without secrets or package installs. |
+| `.gitea/workflows/checks.yml` | Each push and pull request | Runs `python3 scripts/check.py`. |
+| `.github/workflows/checks.yml` | Each push and pull request | Runs `python3 scripts/check.py` without secrets or package installs. |
 | `.gitea/workflows/pi-update.yml` | Daily at `04:23` UTC, or a manual run | Detects a core update, qualifies it, reads its notes, and proposes a pull request. |
 
 All three files use JSON-form YAML. JSON is a subset of YAML 1.2. This lets the Python standard library check their syntax.
@@ -132,15 +132,13 @@ Not verified without a server run: artifact upload/download compatibility, the s
 
 ## Run by hand
 
-Run the offline commands from the repository root:
+Run the offline check from the repository root:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py
 ```
+
+For quick local feedback, use `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast`.
 
 Run each update stage without the request stage:
 

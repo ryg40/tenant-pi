@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from unittest.mock import patch
 
 from scripts import pi_update as update
@@ -122,11 +123,127 @@ class UpdateTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
-    def qualify(self, requested=PIN, **kwargs):
-        # Do not recursively launch this test suite from the qualification unit test.
+    def small_candidate(self, run, requested, env):
+        candidate = run / "kit"
+        candidate.mkdir()
+        contents = update.pin_contents((ROOT / "config/manifest.json").read_text(),
+                                       (ROOT / "scripts/validate.py").read_text(), requested)
+        contents["config/config.example.json"] = (ROOT / "config/config.example.json").read_text()
+        for name, text in contents.items():
+            path = candidate / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        for name in ("tenantext", "promptr", "openviking-pi"):
+            (candidate / "packages" / name).mkdir(parents=True)
+        tests = candidate / "packages/openviking-pi/tests"
+        tests.mkdir()
+        (tests / "fixture.test.mjs").write_text("// test inventory fixture\n")
+        if (ROOT / update.LOCAL_VALUES).is_file():
+            path = candidate / update.LOCAL_VALUES
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("{}\n")
+        return candidate
+
+    def recording_runner(self, command, *, cwd, env, log, timeout=600, stderr_log=None):
+        name = log.stem
+        self.recorded.append((name, list(command), Path(cwd), dict(env)))
+        log.write_text("")
+        if stderr_log:
+            stderr_log.write_text("")
+        failures = {"install": ("fail-install", 9), "openviking-install": ("fail-openviking-install", 8),
+                    "openviking-load": ("fail-openviking-load", 6)}
+        if name.endswith("-test") and (self.bin / "fail-test").exists():
+            return 7
+        marker, code = failures.get(name, ("absent-marker", 0))
+        if (self.bin / marker).exists():
+            return code
+        run = log.parent.parent
+        if name == "install":
+            for package in ("pi-coding-agent", "pi-ai", "pi-tui", "pi-agent-core"):
+                path = run / "prefix/node_modules/@earendil-works" / package
+                path.mkdir(parents=True)
+                (path / "package.json").write_text(json.dumps({"version": command[-1].split("@")[-1]}))
+            for relative in ("pi-coding-agent/dist/core/session-manager.js", "pi-ai/dist/utils/transcript.js"):
+                path = run / "prefix/node_modules/@earendil-works" / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+        elif name == "generate":
+            (run / "profile").mkdir()
+        elif name in ("print-mode", "print-length"):
+            models = json.loads((run / "profile/models.json").read_text())
+            from urllib.parse import urlsplit
+            url = urlsplit(models["providers"]["local-test"]["baseUrl"])
+            connection = http.client.HTTPConnection(url.hostname, url.port, timeout=5)
+            connection.request("POST", url.path + "/chat/completions", body=json.dumps({"model": "sum-model", "stream": True}))
+            response = connection.getresponse()
+            self.assertEqual(response.status, 200)
+            response.read()
+            connection.close()
+            log.write_text("43\n" if name == "print-mode" else "partial reply\n")
+            if name == "print-length":
+                stderr_log.write_text("Response was truncated: the model reached its output token limit.\n")
+                return 1
+        return 0
+
+    def qualify(self, requested=PIN, *, real=False, **kwargs):
+        # Real-copy smoke tests retain the executable/environment and pin contracts.
         offline = (("offline-fixture", ["-c", "print('offline fixture')"]),)
-        with patch.object(update, "OFFLINE", offline):
-            return update.qualify(requested, str(self.work), **kwargs)
+        endpoint = update.endpoint
+        with patch.object(update, "OFFLINE", offline), \
+                patch.object(update, "PACKAGE_PY", ((".", ["-c", "print('package fixture')"]),)), \
+                patch.object(update, "endpoint", side_effect=lambda **options: endpoint(poll_interval=0.005, **options)):
+            if real:
+                return update.qualify(requested, str(self.work), **kwargs)
+            self.recorded = []
+            with patch.object(update, "candidate_copy", side_effect=self.small_candidate):
+                return update.qualify(requested, str(self.work), runner=self.recording_runner, **kwargs)
+
+    def test_check_set_and_package_python_commands(self):
+        self.assertEqual(update.OFFLINE, (("check-set", ["scripts/check.py"]),))
+        self.assertEqual(update.PACKAGE_PY, (
+            ("packages/tenantext", ["-m", "unittest", "discover", "-s", "tracker/tests", "-t", "."]),
+            ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr/tests"]),
+            ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr-relay/tests"]),
+            ("packages/promptr/skills/watch-herdr-agents", ["scripts/test_watch.py"]),
+        ))
+        report = self.qualify()
+        names = [row["name"] for row in report["steps"]]
+        self.assertEqual(names[names.index("offline-fixture") + 1], "PACKAGE_PY")
+        self.assertLess(names.index("PACKAGE_PY"), names.index("tenantext-install"))
+        command = next(row for row in self.recorded if row[0] == "PACKAGE_PY")
+        self.assertEqual(command[2], Path(report["workdir"]) / "kit")
+        self.assertEqual(command[3]["PYTHONDONTWRITEBYTECODE"], "1")
+
+    def test_package_python_runs_all_suites_and_fails_on_any_failed_suite(self):
+        run, _ = update.workspace(str(self.work))
+        candidate = run / "kit"
+        candidate.mkdir()
+        suite = candidate / "suite"
+        suite.mkdir()
+        for failure in (False, True):
+            steps = update.Steps(run, update.environment(run))
+            commands = (("suite", ["-c", "import sys; sys.exit(" + str(int(failure)) + ")"]),
+                        ("suite", ["-c", "from pathlib import Path; print(Path.cwd().name)"]))
+            with patch.object(update, "PACKAGE_PY", commands):
+                update.package_python_checks(steps, candidate)
+            self.assertEqual(len(steps.rows), 1)
+            self.assertEqual(steps.rows[0]["exitCode"], int(failure))
+            log = Path(steps.rows[0]["log"]).read_text()
+            self.assertIn("\nsuite\nsuite: exit 0\n", log)
+            self.assertEqual(log.splitlines()[-1], "PACKAGE_PY: " + ("FAILED" if failure else "passed"))
+
+    def test_failed_package_python_fails_qualification_but_later_steps_run(self):
+        runner = self.recording_runner
+        def failed(command, **options):
+            code = runner(command, **options)
+            return 1 if options["log"].stem == "PACKAGE_PY" else code
+        with patch.object(self, "recording_runner", side_effect=failed):
+            report = self.qualify()
+        self.assertFalse(report["passed"])
+        codes = {row["name"]: row["exitCode"] for row in report["steps"]}
+        self.assertEqual(codes["PACKAGE_PY"], 1)
+        self.assertEqual(codes["tenantext-test"], 0)
+        self.assertEqual(codes["baseline-compare"], 0)
 
     def test_pin_contents_changes_only_the_manifest_pin_and_reviewed_anchor(self):
         manifest_text = ('{\n  "runtime": {\n    "piVersion": "1.0.3",\n    "piAcceptedRange": ">=1.0.3 <1.1"\n  },\n'
@@ -190,6 +307,7 @@ class UpdateTests(unittest.TestCase):
                          json.loads(Path(steps["candidate-copy"]["log"]).read_text()))
         self.assertNotIn("install", steps)
 
+    @slow
     def test_synthetic_pin_reaches_validation_plan_provenance_and_runtime(self):
         requested = "9.9.9"
         agent = self.base / "empty-agent"
@@ -262,9 +380,10 @@ class UpdateTests(unittest.TestCase):
         report = json.loads(out.getvalue())
         self.assertEqual((False, True), (report["core"]["different"], report["new"]))
 
+    @slow
     def test_qualify_environment_links_and_baseline(self):
         before = update._dir_state(str(self.live), "test")
-        report = self.qualify()
+        report = self.qualify(real=True)
         self.assertTrue(report["passed"], report)
         run = Path(report["workdir"])
         rows = [json.loads(line) for line in (run / "home/pi-env.jsonl").read_text().splitlines()]
@@ -302,12 +421,13 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(inventory, {"tests": sorted(test_files)})
         self.assertTrue(all(Path(name).is_relative_to(run / "packages/openviking-pi") for name in tests["args"][1:]))
 
-    def test_candidate_uses_new_pin_without_changing_checkout(self):
+    @slow
+    def test_candidate_pages_are_rebuilt_with_the_new_pin_before_the_unit_tests(self):
         requested = "99.0.0"
         npm = self.bin / "npm"
         npm.write_text(npm.read_text().replace(PIN, requested))
         before = {name: (ROOT / name).read_bytes() for name in ("config/manifest.json", "scripts/validate.py")}
-        report = self.qualify(requested)
+        report = self.qualify(requested, real=True)
         self.assertTrue(report["passed"], report)
         candidate = Path(report["workdir"]) / "kit"
         data = json.loads((candidate / "config/manifest.json").read_text())
@@ -321,12 +441,6 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(runtime["pi"]["required"], requested)
         self.assertEqual(runtime["pi"]["status"], "match")
 
-    def test_candidate_pages_are_rebuilt_with_the_new_pin_before_the_unit_tests(self):
-        requested = "99.0.0"
-        npm = self.bin / "npm"
-        npm.write_text(npm.read_text().replace(PIN, requested))
-        report = self.qualify(requested)
-        self.assertTrue(report["passed"], report)
         names = [row["name"] for row in report["steps"]]
         pages = [name for name, _ in update.PAGES]
         self.assertEqual(names[names.index("candidate-copy") + 1:names.index("candidate-copy") + 4], pages)
@@ -345,42 +459,34 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(0, result.returncode, result.stdout + result.stderr)
 
     def test_page_builds_see_the_candidate_pin_and_a_copy_without_local_values_skips_the_local_page(self):
-        # A fake candidate: the real copy with fake builders that record their arguments and the pin they read.
         requested = "99.0.0"
-        npm = self.bin / "npm"
-        npm.write_text(npm.read_text().replace(PIN, requested))
-        calls = self.base / "build-calls.jsonl"
-        fake = ("import json, pathlib, sys\n"
-                "pin = json.loads(pathlib.Path('config/manifest.json').read_text())['runtime']['piVersion']\n"
-                f"with open({str(calls)!r}, 'a') as out:\n"
-                "    out.write(json.dumps([pathlib.Path(sys.argv[0]).name, sys.argv[1:], pin]) + '\\n')\n")
-        real_copy = update.candidate_copy
-        def fake_candidate(run, version, env):
-            candidate = real_copy(run, version, env)
-            for name in ("architecture_build.py", "explainer_build.py"):
-                (candidate / "scripts" / name).write_text(fake)
+        small = self.small_candidate
+        def without_local(run, version, env):
+            candidate = small(run, version, env)
             local = candidate / update.LOCAL_VALUES
             if local.is_file():
                 local.rename(local.with_name("local-values.moved"))
             return candidate
-        offline = (("unit-tests", ["-c", f"open({str(calls)!r}, 'a').write('[\"unit-tests\"]\\n')"]),)
-        with patch.object(update, "candidate_copy", side_effect=fake_candidate), patch.object(update, "OFFLINE", offline):
-            report = update.qualify(requested, str(self.work))
+        with patch.object(self, "small_candidate", side_effect=without_local):
+            report = self.qualify(requested)
         self.assertTrue(report["passed"], report)
-        rows = [json.loads(line) for line in calls.read_text().splitlines()]
-        self.assertEqual(rows, [["architecture_build.py", [], requested], ["explainer_build.py", [], requested], ["unit-tests"]])
+        builders = [(name, command[2:], json.loads((cwd / "config/manifest.json").read_text())["runtime"]["piVersion"])
+                    for name, command, cwd, env in self.recorded if name.startswith("pages-")]
+        self.assertEqual(builders, [("pages-architecture", ["scripts/architecture_build.py"], requested),
+                                    ("pages-explainer", ["scripts/explainer_build.py"], requested)])
+        names = [row[0] for row in self.recorded]
+        self.assertLess(names.index("pages-explainer"), names.index("offline-fixture"))
         steps = {row["name"]: row for row in report["steps"]}
         self.assertEqual(steps["pages-architecture-local"]["exitCode"], 0)
         self.assertEqual(json.loads(Path(steps["pages-architecture-local"]["log"]).read_text()),
                          {"build": "not_applicable_without_local_values"})
 
     def test_a_failed_page_build_fails_qualification_and_the_later_steps_still_run(self):
-        real_copy = update.candidate_copy
-        def broken_candidate(run, version, env):
-            candidate = real_copy(run, version, env)
-            (candidate / "docs/architecture/model.json").write_text("not json")
-            return candidate
-        with patch.object(update, "candidate_copy", side_effect=broken_candidate):
+        runner = self.recording_runner
+        def failed(command, **options):
+            code = runner(command, **options)
+            return 2 if options["log"].stem == "pages-architecture" else code
+        with patch.object(self, "recording_runner", side_effect=failed):
             report = self.qualify()
         self.assertFalse(report["passed"])
         codes = {step["name"]: step["exitCode"] for step in report["steps"]}
@@ -408,7 +514,7 @@ class UpdateTests(unittest.TestCase):
 
     def test_endpoint_rejects_malformed_requests_without_traceback(self):
         errors = io.StringIO()
-        with contextlib.redirect_stderr(errors), update.endpoint() as (port, calls):
+        with contextlib.redirect_stderr(errors), update.endpoint(poll_interval=0.005) as (port, calls):
             for length, body in (("bad", b""), ("1", b"{"), ("2", b"[]"), ("1", b"\xff")):
                 connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
                 connection.request("POST", "/v1/chat/completions", body=body, headers={"Content-Length": length})
@@ -420,7 +526,7 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(errors.getvalue(), "")
 
     def test_length_endpoint_reports_the_output_limit_and_no_second_request(self):
-        with update.endpoint(finish_reason="length", text="partial reply") as (port, calls):
+        with update.endpoint(finish_reason="length", text="partial reply", poll_interval=0.005) as (port, calls):
             connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
             connection.request("POST", "/v1/chat/completions",
                                body=json.dumps({"model": "sum-model", "stream": True}))
@@ -482,9 +588,12 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(codes["baseline-compare"], 0)
 
     def test_false_success_on_truncation_fails_qualification(self):
-        npm = self.bin / "npm"
-        npm.write_text(npm.read_text().replace(PIN, "1.2.0").replace('sys.exit(1)', 'sys.exit(0)'))
-        report = self.qualify("1.2.0")
+        runner = self.recording_runner
+        def false_success(command, **options):
+            code = runner(command, **options)
+            return 0 if options["log"].stem == "print-length" else code
+        with patch.object(self, "recording_runner", side_effect=false_success):
+            report = self.qualify("1.2.0")
         self.assertFalse(report["passed"])
         codes = {step["name"]: step["exitCode"] for step in report["steps"]}
         self.assertEqual(codes["print-response"], 0)
@@ -500,7 +609,9 @@ class UpdateTests(unittest.TestCase):
         binary = run / "prefix/node_modules/.bin/pi"
         binary.write_text(transform(binary.read_text()))
         (run / "profile").mkdir()
-        update.print_check(steps, env, generated, requested)
+        endpoint = update.endpoint
+        with patch.object(update, "endpoint", side_effect=lambda **options: endpoint(poll_interval=0.005, **options)):
+            update.print_check(steps, env, generated, requested)
         return run, {row["name"]: row for row in steps.rows}
 
     def test_length_print_contract_preserves_stdout_stderr_and_one_request(self):
@@ -515,6 +626,7 @@ class UpdateTests(unittest.TestCase):
         result = json.loads((run / "logs/print-length-response.log").read_text())
         self.assertEqual(result, {"requests": 1, "exactPartialReply": True, "warningOnStderr": True})
 
+    @slow
     def test_length_print_contract_rejects_false_success_missing_output_warning_and_retry(self):
         mutations = (
             ('sys.exit(1)', 'sys.exit(0)'),

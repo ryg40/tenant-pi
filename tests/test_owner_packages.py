@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from pathlib import Path
 
 from scripts.candidate_compare import compare
@@ -247,6 +248,7 @@ class OwnerPackageCliTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), action, "--overlay", str(self.file), *extra],
                               cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
 
+    @slow
     def test_validate_plan_and_generate_accept_both_forms(self):
         self.data["ownerPackages"] = [self.plain, self.filtered]
         result = self.run_cli("validate")
@@ -289,6 +291,7 @@ class OwnerPackageCliTests(unittest.TestCase):
         self.assertEqual([], plan["ownerPackages"])
         self.assertNotIn("owner_package_unqualified", result.stdout)
 
+    @slow
     def test_each_rule_fails_with_a_static_diagnostic_and_no_target(self):
         cases = ((["relative/" + CANARY], "absolute_path: overlay.ownerPackages.item.source"),
                  ([self.plain, {"source": self.plain}], "duplicate_source: overlay.ownerPackages.item.source"),

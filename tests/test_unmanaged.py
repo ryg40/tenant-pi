@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from pathlib import Path
 
 from scripts.candidate_compare import compare
@@ -323,6 +324,7 @@ class UnmanagedCliTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), "compare", "--left", str(left), "--right", str(right)],
                               cwd=self.base, env=self.env, capture_output=True, check=False)
 
+    @slow
     def test_plan_echoes_generate_records_and_compare_accepts(self):
         items = [dict(NPM), {"key": "/llm-wiki/taskModel", "reason": "café ☃"}]
         self.data["unmanaged"] = items
@@ -365,6 +367,7 @@ class UnmanagedCliTests(unittest.TestCase):
         self.assertEqual((0, ""), (result.returncode, result.stderr))
         self.assertEqual([], json.loads(result.stdout)["unmanaged"])
 
+    @slow
     def test_each_rule_fails_with_a_static_diagnostic_and_no_target(self):
         cases = (({"/a": CANARY}, "array: overlay.unmanaged"),
                  ([{"key": "/a"}], "required_fields: overlay.unmanaged.item"),

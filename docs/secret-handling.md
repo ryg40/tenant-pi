@@ -55,6 +55,15 @@ The scan applies the allow list after the deny lists:
 - A path is relative, has no `..` segment, no quote, no backslash and no blank. A hash is 64 lowercase hex digits. Else the scan stops with exit 2.
 - Compute a hash on Linux: `sed -n '<line>p' <path> | tr -d '\n' | sha256sum`. On macOS: `sed -n '<line>p' <path> | tr -d '\n' | shasum -a 256`.
 
+### Development-only paths
+
+At level `warn`, the scan skips host-value findings in paths listed in the optional `scripts/dev-only-files.txt`.
+An entry names an exact repository-relative file or a directory prefix ending in `/`.
+The generated gitleaks `[[allowlists]]` entry uses `paths` and `targetRules` limited to the generated `host-value-*` rules.
+Secret rules and policy checks still cover those paths. Commit messages and file-name lists remain scanned.
+At level `fail`, this path allowlist does not exist. A portable snapshot already excludes these development-only paths.
+A missing or empty list adds no path exception.
+
 ### Private addresses
 
 `scripts/host-values.regex` finds addresses of the private ranges 10/8, 172.16/12 and 192.168/16 and of the shared range 100.64/10. It also finds IPv6 unique local addresses (prefix fc00 with length 7). Loopback and documentation addresses give no finding. This document writes the ranges in this short form, because the scan reports a range in address form.
@@ -101,9 +110,13 @@ What each mode reads:
 | Target text of a symlink | yes | yes | yes |
 | File names | tracked files | staged files | changed files of each commit |
 | Commit messages | no | no | yes |
-| Policy checks | tracked files | all files of the index | new files of each commit |
+| Policy checks | tracked files | new or changed staged blobs | new files of each commit |
 
 `all` is `tree` and `history HEAD`.
+
+`staged` classifies only added or changed blobs, including rename destinations and changed symlinks.
+Deleted files have no new blob. An empty staged diff starts no scanner container; engine availability is still checked.
+Unchanged files remain covered by `tree` and `history`, not by the staged policy check.
 
 ### Merge commits in history mode
 
@@ -145,7 +158,7 @@ The policy checks, the file names and the commit messages use `git diff-tree -m`
 
 ## Rules for changes
 
-1. Allowlist by content only: `regexes` or `stopwords` in `.gitleaks.toml`. Do not add `paths`. A path allowlist hides each future secret in that path.
+1. Allowlist secrets by content only: `regexes` or `stopwords` in `.gitleaks.toml`. Do not add `paths` for secret rules. A path allowlist hides each future secret in that path. The generated development-only path allowlist targets host-value rules only.
 2. Keep each allowlist entry narrow. Write the reason in a comment above it.
 3. `scripts/scan.sh` adds `targetRules` with all secret rules to each allowlist that has none, so that no allowlist hides a host value. An allowlist can set `targetRules` to fewer secret rules. A `targetRules` line that names a host-value rule stops the scan with exit 2.
 4. After each change of `.gitleaks.toml`, `scripts/host-values.deny`, `scripts/host-values.allow`, `scripts/host-values.regex` or `scripts/scan.sh`, run `sh tests/test_scan.sh`. The test uses a copy of the scan with a local deny list and an allow list of its own. After a change of `.local/host-values.deny`, run `scripts/scan.sh selftest`. The pre-commit hook runs `scripts/scan.sh selftest` when one of the tracked files is staged.
@@ -184,7 +197,7 @@ Each run uses `--rm`, `--network none`, read-only mounts and `--redact`. The ima
 | Variable | Use |
 | --- | --- |
 | `GITLEAKS_IMAGE` | Another image reference, for example a mirror. Pin it by digest. |
-| `SCAN_ENGINE` | `auto` (default: the container, else a `gitleaks` binary of version v8.28.0), `docker` or `binary`. |
+| `SCAN_ENGINE` | `auto` (default: the container, else a `gitleaks` binary of version v8.28.0), `docker` or `binary`. Both `8.28.0` and `v8.28.0` version output are accepted. |
 | `SCAN_NAME_PREFIX` | Name prefix of the scanner containers. Default `tenantpi-scan-`. |
 | `SCAN_LOCAL_DENY` | Path of the local deny list. |
 | `SCAN_REF` | The refs that give the default level. |
@@ -205,7 +218,7 @@ Warning: `core.hooksPath` is shared configuration. One run of `scripts/install-h
 | --- | --- |
 | `pre-commit` | `scripts/scan.sh staged`. The level follows the current branch. |
 | `pre-merge-commit` | The same as `pre-commit`. `git merge` runs this hook, not `pre-commit`, when it records a merge commit without a conflict. |
-| `pre-push` | `scripts/scan.sh history` for the commits of each pushed ref. The level follows the local ref and the remote ref. `scripts/publish_portable.py` pushes the local branch `portable` to the remote branch `main`, so that push has the level `fail`. A new ref, also a new `portable` branch or `portable/*` tag, is scanned in the commits that the remote does not have: see [the range of a push](#the-range-of-a-push). |
+| `pre-push` | One `scripts/scan.sh history` for the union of the pushed commit sets. The strictest local or remote ref sets the level for the whole push. `scripts/publish_portable.py` pushes the local branch `portable` to the remote branch `main`, so that push has the level `fail`. A new ref, also a new `portable` branch or `portable/*` tag, is scanned in the commits that the remote does not have: see [the range of a push](#the-range-of-a-push). |
 
 ### The range of a push
 
@@ -217,10 +230,18 @@ The pre-push hook scans the commits that the push sends. The table gives the ran
 | The remote ref is new, or its commit is not in the local repository | The commits of the local ref that no remote-tracking ref of the pushed remote contains (`refs/remotes/<remote>/*`). |
 | The pushed remote has no remote-tracking ref, or the push names a URL and not a remote | All of the history of the local ref. |
 
+The hook resolves each ref's range separately, then scans their union once with `--no-walk=unsorted` and explicit commit ids.
+It does not combine exclusions across refs, because one ref's exclusion could hide a commit sent by another ref.
+A branch and tag that share commits therefore scan those commits once.
+If any local or remote ref requires `fail`, the whole union uses `fail`.
+The hook prints one `pre-push: result <pass|fail>; range <revisions>; level <level>` line for the release record.
+An empty union prints `range empty (no new commit)` and starts no scan.
+
 The rule is the same for each ref. The level `fail` of a portable ref does not change the range. A new `portable/*` tag is scanned only in the commits that the remote does not have. Reason: each snapshot has each earlier snapshot as an ancestor. A scan of all of the history would refuse each new snapshot tag for one finding in an old snapshot commit. A new branch `portable` follows the same rule as the tag, for the same reason: the remote already holds the old commits, and a second scan cannot remove them.
 
 Limits of the range:
 
+- Follow-up: the union is one argument; a 128 KiB argument limit permits about 3,100 commits, and the result line lists every commit.
 - Git gives the hook no list of the remote commits. The hook reads the remote-tracking refs, so the range is only as current as the last `git fetch <remote>` or `git push` to that remote.
 - A remote-tracking ref that is older than the remote makes the range larger. The hook can then refuse a push for a commit that the remote already has. Run `git fetch <remote>` and push again.
 - A remote-tracking ref can name a commit that the remote lost, for example after a forced push from another clone. The hook does not scan that commit. Run `git fetch --prune <remote>` before the push when the remote history can have changed.
@@ -244,7 +265,9 @@ A hook fails closed: if Docker or the scanner image is not available, the commit
 
 After a change of `scripts/git-hooks/dispatch`, or after the repository moves to another path, run `scripts/install-hooks.sh` again. `--check` reports both cases. If the path in `core.hooksPath` does not exist, Git runs no hook and prints nothing.
 
-Warning: `git commit --no-verify` and `git push --no-verify` skip the hooks. Run `scripts/scan.sh all` before a publication.
+Warning: `git commit --no-verify` and `git push --no-verify` skip the hooks.
+Follow gate 5 of the [release checklist](guides/release-checklist.md). A pin move or new component requires `scripts/scan.sh all`.
+Otherwise run `scripts/scan.sh history <last portable tag>..HEAD`. Record the pre-push result for the snapshot range.
 
 ## Test
 

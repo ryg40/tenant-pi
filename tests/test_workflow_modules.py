@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from pathlib import Path
 
 from scripts.candidate_compare import FILES, compare
@@ -435,6 +436,7 @@ class WorkflowPublicationTests(unittest.TestCase):
             self.assertNotIn(CANARY, json.dumps(report))
             self.assertEqual("owner_edits", report["right"]["drift"]["status"])
 
+    @slow
     def test_cli_reads_only_the_declared_slot_and_ignores_ambient_mcp_scopes(self):
         local = self.base_dir / "local"
         (local / "inputs").mkdir(parents=True, mode=0o700)

@@ -65,6 +65,7 @@ REGEX_REL=scripts/host-values.regex
 ALLOW_REL=scripts/host-values.allow
 # Accepted lines: a path and the sha256 of the exact line text (maintainer decision).
 ALLOW_LINES_REL=scripts/host-values.allow-lines
+DEV_ONLY_REL=scripts/dev-only-files.txt
 
 script_root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 base_config=$script_root/.gitleaks.toml
@@ -151,7 +152,7 @@ select_engine() {
     esac
     command -v gitleaks >/dev/null 2>&1 || die "no docker and no gitleaks binary"
     v=$(gitleaks version 2>/dev/null || true)
-    [ "$v" = "$GITLEAKS_VERSION" ] || die "gitleaks binary is ${v:-unknown}, need $GITLEAKS_VERSION"
+    [ "${v#v}" = "${GITLEAKS_VERSION#v}" ] || die "gitleaks binary is ${v:-unknown}, need $GITLEAKS_VERSION"
     engine=binary
 }
 
@@ -282,6 +283,32 @@ build_config() {
     done <"$regex_file"
     # The deny lists and the regex list together must give at least one rule.
     [ -s "$work/patterns" ] || die "no host-value rule in $DENY_REL, $LOCAL_DENY_REL and $REGEX_REL"
+    # Development-only paths suppress host rules only, never secret rules.
+    : >"$work/dev-only"
+    if [ "$level" = warn ] && [ -f "$script_root/$DEV_ONLY_REL" ]; then
+        sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^#/d' -e '/^$/d' \
+            "$script_root/$DEV_ONLY_REL" >"$work/dev-only"
+    fi
+    if [ -s "$work/dev-only" ]; then
+        printf '\n[[allowlists]]\ndescription = "Development-only host values"\n' >>"$work/config.toml"
+        awk -F '\t' 'BEGIN { printf "targetRules = [" }
+            { printf "%s\"%s\"", sep, $1; sep = ", " }
+            END { print "]" }' "$work/patterns" >>"$work/config.toml"
+        printf 'paths = [\n' >>"$work/config.toml"
+        while IFS= read -r p || [ -n "$p" ]; do
+            case $p in ''|'#'*) continue ;; esac
+            case $p in
+                /*|.|./*|*/./*|*/.|..|../*|*/../*|*/..|*//*|*[\'\"\\]*|*[[:space:]]*|*'#'*)
+                    die "$DEV_ONLY_REL: invalid relative path" ;;
+            esac
+            re=$(printf '%s\n' "$p" | sed 's/[].*^$+?(){}|[]/\\&/g')
+            case $p in */) ;; *) re="$re\$" ;; esac
+            # dir mode uses absolute helper paths; git mode uses relative paths.
+            printf "  '''^(%s/tree/(worktree|index)/)?%s''',\n" \
+                "$(printf '%s' "$work" | sed 's/[].*^$+?(){}|[]/\\&/g')" "$re" >>"$work/config.toml"
+        done <"$work/dev-only"
+        printf ']\n' >>"$work/config.toml"
+    fi
     # One line for each finding: rule, file, line, commit (tab separated).
     printf '%s\n' '{{- range . }}{{ .RuleID }}	{{ .File }}	{{ .StartLine }}	{{ .Commit }}{{ "\n" }}{{- end }}' \
         >"$work/report.tmpl"
@@ -465,13 +492,15 @@ scan_tree() {
 
 scan_staged() {
     require_repo
+    # An empty index diff needs neither content nor name scanner containers.
+    git diff --cached --raw --no-abbrev --no-renames >"$work/staged-diff" || die "cannot read staged diff"
+    [ -s "$work/staged-diff" ] || return 0
     gl repo git --pre-commit --staged "$git_dir" >>"$work/findings" || die "gitleaks failed"
-    # Each tracked file, not only the staged ones: the index is what the commit holds.
-    git ls-files -s -z | tr '\0' '\n' | while IFS='	' read -r meta path; do
-        # shellcheck disable=SC2086 # <mode> <blob> <stage>
-        set -- $meta
-        [ "$1" = 160000 ] || printf '%s\t%s\t\n' "$2" "$path"
-    done >"$work/blobs"
+    # Only new staged blobs need classification. Disable rename detection so
+    # a rename to a forbidden extension also checks the destination path.
+    git -c core.quotePath=false diff --cached --raw --no-abbrev --no-renames |
+        awk -F '\t' -v OFS='\t' '{ split($1, a, " ") }
+            a[5] != "D" && a[2] != "160000" { print a[4], $2, "" }' >"$work/blobs"
     classify_blobs "$work/blobs"
     rm -rf "$work/staged"
     mkdir -p "$work/staged/meta"
@@ -664,6 +693,7 @@ selftest() {
 
 # --- main -----------------------------------------------------------------------
 
+[ -n "$level" ] || level=$(default_level)
 select_engine
 build_config
 : >"$work/findings"
@@ -672,8 +702,6 @@ if [ "$mode" = selftest ]; then
     selftest
     exit $?
 fi
-
-[ -n "$level" ] || level=$(default_level)
 
 case $mode in
     tree) scan_tree ;;

@@ -1,4 +1,7 @@
 """Portable snapshot builder tests in a disposable Git repository."""
+import contextlib
+import io
+import json
 import os
 import subprocess
 import sys
@@ -107,11 +110,13 @@ class SnapshotTests(RepositoryCase):
         with mock.patch.object(publish_portable, "ROOT", self.root), \
                 mock.patch.object(publish_portable, "git", side_effect=local_git), \
                 mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
+                mock.patch.object(publish_portable, "check_set"), \
+                mock.patch.object(publish_portable, "check", return_value=("keep.txt",)), \
                 contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(0, publish_portable.main(["--new-root", "--no-push", "--skip-checks"]))
+            self.assertEqual(0, publish_portable.main(["--new-root", "--no-push"]))
             before = git(self.root, "show-ref")
             with self.assertRaises(SystemExit):
-                publish_portable.main(["--new-root", "--no-push", "--skip-checks"])
+                publish_portable.main(["--new-root", "--no-push"])
             self.assertEqual(before, git(self.root, "show-ref"))
 
     def test_both_modes_refuse_non_snapshot_and_checked_out_branches(self):
@@ -189,6 +194,94 @@ class SnapshotTests(RepositoryCase):
         self.assertEqual("", subprocess.run(["git", "rev-parse", "--verify", "--quiet", "portable"], cwd=self.root,
                                             text=True, capture_output=True).stdout.strip())
         self.assertEqual("keep\n", (self.root / "keep.txt").read_text())
+
+
+class CheckSetTests(RepositoryCase):
+    """Exercise the publisher with a subprocess fixture and real snapshot refs."""
+
+    def setUp(self):
+        super().setUp()
+        (self.root / "scripts").mkdir()
+        (self.root / "scripts/check.py").write_text(
+            "import json, os, sys\n"
+            "from pathlib import Path\n"
+            "mode = Path('.git/check-mode').read_text()\n"
+            "with Path('.git/check-calls').open('a') as log:\n"
+            "    log.write(json.dumps([sys.argv[1:], os.environ.get('PYTHONDONTWRITEBYTECODE')]) + '\\n')\n"
+            "if sys.argv[1:] == ['--stamp-status']:\n"
+            "    raise SystemExit(0 if mode == 'stamp' else 1)\n"
+            "print('check: passed' if mode in ('pass', 'bad-exit') else 'check: FAILED')\n"
+            "raise SystemExit(1 if mode in ('fail', 'bad-exit') else 0)\n")
+        git(self.root, "add", "scripts/check.py")
+        git(self.root, "commit", "-qm", "check fixture")
+
+    def calls(self):
+        path = self.root / ".git/check-calls"
+        return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def invoke(self, mode):
+        import publish_portable
+        (self.root / ".git/check-mode").write_text(mode)
+        real_git = publish_portable.git
+
+        def local_git(*args, **kwargs):
+            kwargs.setdefault("root", self.root)
+            return real_git(*args, **kwargs)
+
+        output = io.StringIO()
+        with mock.patch.object(publish_portable, "ROOT", self.root), \
+                mock.patch.object(publish_portable, "git", side_effect=local_git), \
+                mock.patch.object(publish_portable, "check", return_value=("keep.txt",)) as direct_check, \
+                mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
+                contextlib.redirect_stdout(output):
+            self.assertEqual(0, publish_portable.main(["--no-push"]))
+            direct_check.assert_called_once_with()
+        return output.getvalue()
+
+    def test_matching_stamp_prints_record_and_skips_full_run(self):
+        tree = git(self.root, "rev-parse", "HEAD^{tree}")
+        directory = self.root / ".git/check-stamps"
+        directory.mkdir()
+        stamp = {"when": "2030-01-01T00:00:00Z", "client": {"root": False},
+                 "skipped": 1, "resultLines": ["Ran 4 tests in 0.001s", "OK (skipped=1)", "check: passed"]}
+        (directory / tree).write_text(json.dumps(stamp))
+        output = self.invoke("stamp")
+        for line in (f"tree: {tree}", f"when: {stamp['when']}", 'client: {"root": false}',
+                     "skipped: 1", "resultLines:", *stamp["resultLines"]):
+            self.assertIn(line, output)
+        self.assertEqual(self.calls(), [[["--stamp-status"], "1"]])
+        self.assertEqual({"keep.txt": "100644"}, self.files("portable"))
+        self.assertIn("no change:", self.invoke("stamp"))
+        self.assertEqual(self.calls(), [[["--stamp-status"], "1"]] * 2)
+
+    def test_no_stamp_runs_full_check_before_build(self):
+        output = self.invoke("pass")
+        self.assertEqual(self.calls(), [[["--stamp-status"], "1"], [[], "1"]])
+        self.assertIn("check: passed", output)
+        self.assertLess(output.index("check: passed"), output.index("portable commit"))
+        self.assertEqual({"keep.txt": "100644"}, self.files("portable"))
+
+    def test_failed_check_stops_build_even_with_false_success_exit_or_line(self):
+        for mode in ("fail", "bad-exit", "bad-line"):
+            with self.subTest(mode=mode):
+                before = git(self.root, "show-ref")
+                with self.assertRaisesRegex(SystemExit, "check set failed; no snapshot built"):
+                    self.invoke(mode)
+                self.assertEqual(before, git(self.root, "show-ref"))
+
+    def test_dirty_tree_refuses_before_stamp_check(self):
+        (self.root / "keep.txt").write_text("dirty\n")
+        before = git(self.root, "show-ref")
+        with self.assertRaisesRegex(SystemExit, "working tree not clean"):
+            self.invoke("stamp")
+        self.assertEqual(self.calls(), [])
+        self.assertEqual(before, git(self.root, "show-ref"))
+
+    def test_unreadable_matching_stamp_stops_build(self):
+        before = git(self.root, "show-ref")
+        with self.assertRaisesRegex(SystemExit, "matching stamp could not be read"):
+            self.invoke("stamp")
+        self.assertEqual(before, git(self.root, "show-ref"))
 
 
 class IdentityTests(RepositoryCase):

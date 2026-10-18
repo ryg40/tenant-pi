@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from tests.support import slow
 from unittest.mock import patch
 
 from scripts import tenant_pi
@@ -244,6 +245,7 @@ class CheckTests(unittest.TestCase):
             for path in made:
                 shutil.rmtree(path, ignore_errors=True)
 
+    @slow
     def test_real_timeout_is_unparsed_and_removes_the_directory(self):
         sleep = shutil.which("sleep")
         if not sleep:
@@ -434,6 +436,7 @@ class CliTests(unittest.TestCase):
             self.assertFalse([path for path in opened if path.endswith(private)], private)
         self.assertNotIn(CANARY, result.stdout)
 
+    @slow
     def test_accepted_pi_exits_zero_and_outside_versions_exit_one(self):
         for installed, status, code in ((IN_RANGE, "untested_in_range", 0),
                                          (IN_RANGE + "-rc.1", "untested_in_range", 0),
@@ -538,6 +541,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(1, len(made))
         self.assertEqual(str(self.tmp), os.path.dirname(made[0]))
 
+    @slow
     def test_bad_input_is_a_static_diagnostic_and_starts_no_process(self):
         self.tools()
         for extra, error in ((("--pi", "bin/pi"), "absolute_path: check-runtime.pi"),

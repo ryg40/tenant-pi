@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { readOkf, renderOkf } from "../src/okf.ts";
+import { isolatedTraceEnv } from "./helpers.ts";
 
 const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t" };
 
@@ -212,7 +213,7 @@ test("the CLI --repo path awards zero bundle points on a one-shot repository", (
 	r.commit("everything at once", { ".okf/index.md": index(), ".okf/a.md": concept(), ".okf/log.md": "## 2026-01-01\n* one\n", "src/a.ts": "1" }, "2026-01-01T12:00:00Z");
 	r.commit("same session", { "src/a.ts": "2" }, "2026-01-01T13:00:00Z");
 	const root = join(import.meta.dirname, "../..");
-	const cli = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "slopscore/src/cli.ts", "--repo", r.dir, "--days", "0", "--json"], { cwd: root, encoding: "utf8" });
+	const cli = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "slopscore/src/cli.ts", "--repo", r.dir, "--days", "0", "--json"], { cwd: root, encoding: "utf8", env: isolatedTraceEnv() });
 	assert.equal(cli.status, 0, cli.stderr);
 	const out = JSON.parse(cli.stdout);
 	assert.equal(out.provenance.oneShot, true);
@@ -270,7 +271,7 @@ test("renderer has the required columns and verified concept count", () => {
 	assert.equal(rendered.split("\n")[2], "| Root | Version | Concepts | Conformant | Log current | Kept current | Stale | Verified | Points |");
 	assert.equal(rendered.split("\n")[4], "| .okf | 0.2 | 2 | yes | no | 100% (1/1) | 0 | 1 | 8.0 / 10 |");
 	const root = join(import.meta.dirname, "../..");
-	const cli = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "slopscore/src/cli.ts", "--repo", r.dir, "--days", "0"], { cwd: root, encoding: "utf8" });
+	const cli = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "slopscore/src/cli.ts", "--repo", r.dir, "--days", "0"], { cwd: root, encoding: "utf8", env: isolatedTraceEnv() });
 	assert.equal(cli.status, 0, cli.stderr);
 	assert.ok(cli.stdout.indexOf("### Planning artifacts") < cli.stdout.indexOf("### Context bundle"));
 	assert.ok(cli.stdout.indexOf("### Context bundle") < cli.stdout.indexOf("### Iterations after first ship"));
@@ -278,7 +279,7 @@ test("renderer has the required columns and verified concept count", () => {
 
 test("invalid repository CLI failure is one line with exit code 1", () => {
 	const root = join(import.meta.dirname, "../..");
-	const cli = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "slopscore/src/cli.ts", "--repo", "/no/such/repository", "--days", "0"], { cwd: root, encoding: "utf8" });
+	const cli = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", "slopscore/src/cli.ts", "--repo", "/no/such/repository", "--days", "0"], { cwd: root, encoding: "utf8", env: isolatedTraceEnv() });
 	assert.equal(cli.status, 1);
 	assert.equal(cli.stderr.trim().split("\n").length, 1);
 	assert.match(cli.stderr, /^slopscore: cannot read repository:/);

@@ -25,8 +25,14 @@ if [ ! -f "$scan" ]; then
     exit 0
 fi
 
-status=0
-# Git writes one line for each ref: <local ref> <local sha> <remote ref> <remote sha>
+work=$(mktemp -d "${TMPDIR:-/tmp}/scan-push.XXXXXX")
+trap 'rm -rf "$work"' EXIT
+trap 'exit 130' INT TERM
+: >"$work/commits"
+level=warn
+# Git writes one line for each ref: <local ref> <local sha> <remote ref> <remote sha>.
+# Resolve each range separately before taking the union: combining exclusions
+# across refs can hide commits that another ref sends.
 while read -r local_ref local_sha remote_ref remote_sha; do
     case $local_sha in *[!0]*) ;; *) continue ;; esac # a delete sends no commit
     if case $remote_sha in *[!0]*) false ;; *) true ;; esac ||
@@ -50,9 +56,29 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     else
         range="$remote_sha..$local_sha"
     fi
-    echo "pre-push: scan $local_ref -> $remote_ref" >&2
-    SCAN_REF="$local_ref $remote_ref" sh "$scan" history "$range" </dev/null || status=1
+    for ref in "$local_ref" "$remote_ref"; do
+        case $ref in refs/heads/portable|refs/tags/portable/*) level=fail ;; esac
+    done
+    set -f
+    # shellcheck disable=SC2086 # range contains Git revisions, never a URL.
+    git rev-list $range >>"$work/commits" || {
+        echo "pre-push: cannot resolve pushed range; push refused" >&2
+        exit 1
+    }
+    set +f
 done
 
+# --no-walk keeps the exact union, including disjoint ranges and merge commits.
+# Do not use shared negative revisions: they can subtract another ref's commits.
+sort -u "$work/commits" >"$work/unique"
+if [ ! -s "$work/unique" ]; then
+    echo "pre-push: result pass; range empty (no new commit); level $level" >&2
+    exit 0
+fi
+range="--no-walk=unsorted $(paste -sd ' ' "$work/unique")"
+status=0
+sh "$scan" --level "$level" history "$range" </dev/null || status=1
+if [ "$status" -eq 0 ]; then result=pass; else result=fail; fi
+echo "pre-push: result $result; range $range; level $level" >&2
 [ "$status" -eq 0 ] || echo "pre-push: push refused (docs/secret-handling.md)" >&2
 exit "$status"

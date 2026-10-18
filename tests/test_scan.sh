@@ -142,6 +142,47 @@ g -C "$work/host" tag portable/1
 expect_status "host value, default level with a tag portable/* at HEAD is fail" 1 in_repo "$work/host" sh "$scan" tree
 expect_status "host value, SCAN_REF=refs/heads/x sets warn" 0 in_repo "$work/host" env SCAN_REF=refs/heads/x sh "$scan" tree
 
+echo "# development-only host rules"
+new_repo "$work/dev"
+mkdir -p "$work/dev/private" "$work/dev/private-other" "$work/dev/nested/private"
+printf 'private/\nexact[1].txt\n' >"$tool/scripts/dev-only-files.txt"
+for f in private/a.txt private-other/a.txt nested/private/a.txt 'exact[1].txt' exact1.txt; do
+    printf 'host = %s name = %s\n' "$host_ip" "$host_name" >"$work/dev/$f"
+done
+g -C "$work/dev" add .
+for m in tree staged; do
+    expect_status "dev-only $m: warn succeeds" 0 in_repo "$work/dev" sh "$scan" --level warn "$m"
+    expect_no_out "dev-only $m: directory host value skipped" "host value  private/a.txt:"
+    expect_no_out "dev-only $m: exact path skipped" "host value  exact[1].txt:"
+    expect_out "dev-only $m: sibling stays" "host value  private-other/a.txt:"
+    expect_out "dev-only $m: nested path stays" "host value  nested/private/a.txt:"
+    expect_out "dev-only $m: regex characters are literal" "host value  exact1.txt:"
+    expect_status "dev-only $m: fail is unchanged" 1 in_repo "$work/dev" sh "$scan" --level fail "$m"
+    expect_out "dev-only $m: fail reports excluded path" "host value  private/a.txt:"
+done
+g -C "$work/dev" commit -q -m development
+expect_status "dev-only history: warn succeeds" 0 in_repo "$work/dev" sh "$scan" --level warn history
+expect_no_out "dev-only history: directory skipped" "host value  private/a.txt:"
+expect_out "dev-only history: sibling stays" "host value  private-other/a.txt:"
+printf 'key = "%s"\n' "$token" >>"$work/dev/private/a.txt"
+g -C "$work/dev" add private/a.txt
+for m in tree staged; do
+    expect_status "dev-only $m: secret still fails at warn" 1 in_repo "$work/dev" sh "$scan" --level warn "$m"
+    expect_out "dev-only $m: secret rule stays" "private/a.txt:2  rule github-pat"
+done
+g -C "$work/dev" commit -q -m secret
+expect_status "dev-only history: secret still fails at warn" 1 in_repo "$work/dev" sh "$scan" --level warn history
+expect_out "dev-only history: secret rule stays" "private/a.txt:2  rule github-pat"
+# Empty list and absent list both keep every host rule enabled.
+printf '# no entries\n' >"$tool/scripts/dev-only-files.txt"
+expect_status "empty dev-only list: host values still fail" 1 in_repo "$work/host" sh "$scan" --level fail tree
+rm "$tool/scripts/dev-only-files.txt"
+
+echo "# empty staged timing"
+start=$(python3 -c 'import time; print(time.monotonic())')
+expect_status "empty staged: clean" 0 in_repo "$work/clean" sh "$scan" staged
+python3 -c 'import sys, time; elapsed = time.monotonic() - float(sys.argv[1]); print("empty staged: %.3f s" % elapsed)' "$start"
+
 echo "# deny list files"
 new_repo "$work/deny"
 mkdir -p "$work/deny/scripts" "$work/deny/other"
@@ -619,8 +660,9 @@ expect_status "pre-push: the push of the tag does not move the remote branch" 0 
 snapshot 4
 expect_status "pre-push: the branch ref and a new tag ref in one push, clean new commit: accepted" 0 \
     g -C "$c" push -q pub refs/heads/portable:refs/heads/main refs/tags/portable/s4:refs/tags/portable/s4
-expect_out "pre-push: one push scans the branch ref" "pre-push: scan refs/heads/portable -> refs/heads/main"
-expect_out "pre-push: one push scans the tag ref" "pre-push: scan refs/tags/portable/s4 -> refs/tags/portable/s4"
+expect_out "pre-push: one result names the range" "pre-push: result pass; range --no-walk=unsorted"
+expect_out "pre-push: result names the snapshot commit" "$(g -C "$c" rev-parse portable)"
+expect_status "pre-push: branch and tag scan once" 0 test "$(grep -c '^scan: .* secret finding(s)' "$work/out")" -eq 1
 expect_status "pre-push: the remote branch is at the new snapshot" 0 test "$(g -C "$work/pub.git" rev-parse main)" = "$(g -C "$c" rev-parse portable)"
 expect_status "pre-push: the remote has the tag of the new snapshot" 0 g -C "$work/pub.git" rev-parse -q --verify refs/tags/portable/s4
 # A new tag on a commit that the remote has: the range holds no commit.
@@ -666,6 +708,26 @@ expect_no_out "pre-push: a URL with a blank gives no Git error" "ambiguous argum
 expect_status "pre-push: a development branch to a URL with a blank is accepted" 0 \
     g -C "$c" push -q "$work/blank pub.git" clean:refs/heads/clean
 expect_status "pre-push: the fresh remote has no ref" 0 test -z "$(g -C "$work/fresh.git" for-each-ref)"
+
+echo "# shared commits in a clone of the source worktree"
+g clone -q --shared --bare "$repo_root" "$work/source-remote.git"
+g clone -q --shared "$work/source-remote.git" "$work/source-clone"
+s=$work/source-clone
+cp "$repo_root/scripts/scan.sh" "$s/scripts/scan.sh"
+cp "$repo_root/scripts/git-hooks/pre-push" "$s/scripts/git-hooks/pre-push"
+# Use Git's default hook directory, without changing core.hooksPath.
+cp "$s/scripts/git-hooks/pre-push" "$s/.git/hooks/pre-push"
+chmod +x "$s/.git/hooks/pre-push"
+g -C "$s" remote add scratch "$work/source-remote.git"
+g -C "$s" fetch -q scratch
+source_parent=$(g -C "$s" rev-parse HEAD)
+source_commit=$(printf 'Shared range control\n' | g -C "$s" commit-tree "HEAD^{tree}" -p "$source_parent")
+g -C "$s" update-ref refs/heads/scan-shared "$source_commit"
+g -C "$s" tag -a -m 'Shared range control' scan-shared "$source_commit"
+expect_status "source clone: push shared branch and tag to scratch" 0 \
+    g -C "$s" push -q scratch refs/heads/scan-shared:refs/heads/scan-shared refs/tags/scan-shared:refs/tags/scan-shared
+expect_out "source clone: result records commit" "pre-push: result pass; range --no-walk=unsorted $source_commit"
+expect_status "source clone: exactly one scan" 0 test "$(grep -c '^scan: .* secret finding(s)' "$work/out")" -eq 1
 
 echo "# hooks fail closed, pre-merge-commit, a branch without the scan"
 g -C "$c" checkout -q -f clean

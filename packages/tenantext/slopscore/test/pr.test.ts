@@ -8,7 +8,7 @@ import { collectPi } from "../src/pi-trace.ts";
 import { collectPrData, parsePrArgs, renderPrMarkdown, type PrData } from "../src/pr.ts";
 import { DEFAULT_PRICES, DEFAULT_TIERS, THINKING_FACTORS, isDefaultConfig, loadConfig } from "../src/tiers.ts";
 
-import { branchRepo, repo, run, setRemoteRef, withTraceEnv, writePiTrace } from "./helpers.ts";
+import { branchRepo, isolatedTraceEnv, repo, run, runWithEnv, setRemoteRef, withEmptyTraceEnv, withTraceEnv, writePiTrace } from "./helpers.ts";
 
 const cfg = loadConfig("/nonexistent/tiers.json");
 test("CLI reports only two branch commits with actual tickets and clear model provenance", () => {
@@ -25,9 +25,22 @@ test("CLI reports only two branch commits with actual tickets and clear model pr
 	assert.match(result.stdout, /^\*\*Bundle:\*\* none$/m);
 	assert.ok(!result.stdout.includes("main history"));
 	assert.ok(result.stdout.includes("No local traces for this branch."));
+
+	const defaults = isolatedTraceEnv({});
+	assert.ok(defaults.PI_CODING_AGENT_DIR);
+	assert.ok(defaults.CLAUDE_CONFIG_DIR);
+	assert.deepEqual(isolatedTraceEnv({ PI_CODING_AGENT_DIR: undefined, CLAUDE_CONFIG_DIR: "" }), defaults);
+	const piDir = mkdtempSync(join(tmpdir(), "slopscore-explicit-pi-"));
+	const claudeDir = mkdtempSync(join(tmpdir(), "slopscore-explicit-claude-"));
+	assert.equal(isolatedTraceEnv({ PI_CODING_AGENT_DIR: piDir }).PI_CODING_AGENT_DIR, piDir);
+	assert.equal(isolatedTraceEnv({ CLAUDE_CONFIG_DIR: claudeDir }).CLAUDE_CONFIG_DIR, claudeDir);
+	writePiTrace(piDir, "explicit", r.dir, [{ time: "2026-09-02T12:00:00Z", cost: 1 }]);
+	const explicit = runWithEnv(r.dir, { ...process.env, PI_CODING_AGENT_DIR: piDir, CLAUDE_CONFIG_DIR: undefined }, "--json");
+	assert.equal(explicit.status, 0, explicit.stderr);
+	assert.equal(JSON.parse(explicit.stdout).trace.sessions, 1);
 });
 
-test("base resolution follows the required order and --base overrides it", () => {
+test("base resolution follows the required order and --base overrides it", () => withEmptyTraceEnv(() => {
 	const r = branchRepo();
 	for (const name of ["upstream/HEAD", "origin/HEAD", "origin/main"]) setRemoteRef(r, name, r.base);
 	let data = collectPrData(r.dir, { json: false, help: false }, cfg);
@@ -44,7 +57,7 @@ test("base resolution follows the required order and --base overrides it", () =>
 	r.git("branch", "alternate", r.base);
 	data = collectPrData(r.dir, { base: "alternate", json: false, help: false }, cfg);
 	assert.equal(data.ok && data.data.scope.base, "alternate");
-});
+}));
 
 test("invalid or absent bases and an empty branch return one sanitized line", () => {
 	const missing = branchRepo();

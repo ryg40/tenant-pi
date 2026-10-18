@@ -7,10 +7,12 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from pathlib import Path
 from unittest.mock import patch
 
 from scripts import private_init
+from tests.test_baseline import run_main
 from scripts.private_init import INPUTS, MAX_PATH, TEMPLATES, check_target, init, report, with_target
 from scripts.profile_write import WriteError
 from scripts.validate import SAMPLE_TARGET, Invalid
@@ -347,6 +349,11 @@ class CliTests(Fixture):
                     "PYTHONDONTWRITEBYTECODE": "1", "EDITOR": "CANARY_EDITOR"}
 
     def run_cli(self, directory, *extra, env=None):
+        in_process = {"test_refusals", "test_target_refusals_create_nothing", "test_wiki_home_vault_is_refused_for_the_directory_and_the_target",
+                      "test_linked_pi_agent_and_linked_ancestor", "test_home"}
+        if self._testMethodName in in_process:
+            return run_main(["init-private", "--dir", str(directory), *extra], self.base,
+                            self.env if env is None else env)
         return subprocess.run([sys.executable, str(CLI), "init-private", "--dir", str(directory), *extra],
                               cwd=self.base, env=self.env if env is None else env,
                               text=True, capture_output=True, check=False)
@@ -396,6 +403,7 @@ class CliTests(Fixture):
         self.refused(self.dir, "target_exists: init-private.dir")
         self.check_tree()
 
+    @slow
     def test_target_option_gives_a_core_only_profile_without_an_edit(self):
         target = self.parent / "profiles" / "it's main"
         target.parent.mkdir(mode=0o700)
@@ -476,6 +484,12 @@ class CliTests(Fixture):
         self.assertEqual([], list((self.parent / "exists").iterdir()))
         self.assertFalse((self.base / "absent").exists())
 
+    def test_location_cli_smoke(self):
+        for root, rule in ((ROOT, "under_kit"), (self.agent, "under_pi_agent"),
+                           (self.home / ".llm-wiki", "under_wiki_vault")):
+            with self.subTest(rule=rule):
+                self.refused(root / "private", rule + ": init-private.dir")
+
     def test_refusals(self):
         (self.parent / "exists").mkdir()
         kit = ROOT / ".local" / "tenant-pi-test-private-absent"
@@ -521,6 +535,7 @@ class CliTests(Fixture):
         (self.base / "to agent").symlink_to(self.agent, target_is_directory=True)
         self.refused(self.base / "to agent" / "private", "unsafe_path: init-private.dir.parents")
 
+    @slow
     def test_named_overlay_targets(self):
         overlay = self.base / "overlay.json"
         target = self.parent / "profile"
@@ -553,6 +568,7 @@ class CliTests(Fixture):
         self.refused(self.dir, "absolute_path: init-private.home", env=dict(env, HOME=str(self.home) + "/"))
         self.assertFalse(os.path.lexists(self.dir))
 
+    @slow
     def test_overlay_loader_rules(self):
         overlay = self.base / "overlay.json"
         target = json.dumps(str(self.parent / "profile"))

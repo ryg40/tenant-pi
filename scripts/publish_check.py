@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 from validate import ROOT, OPTIONAL_TREE_COMPONENTS, TREE_COMPONENTS, Invalid, load, manifest, overlay, fail, tree_items
 from examples import render
 
@@ -16,6 +18,7 @@ PUBLISH = (
     ".gitea/workflows/checks.yml",
     ".github/workflows/checks.yml",
     "scripts/ci_update.py",
+    "scripts/check.py", "tests/test_check.py", "tests/support.py", "tests/__init__.py",
     "tests/test_ci_workflows.py",
     "docs/ci.md",
     ".gitignore", ".env.example", "README.md", "LICENSE", "packages/promptr/LICENSE",
@@ -55,7 +58,7 @@ PUBLISH = (
     "scripts/scan.sh", ".gitleaks.toml", "scripts/host-values.deny", "scripts/host-values.allow",
     "scripts/host-values.regex", "scripts/host-values.allow-lines", "scripts/install-hooks.sh", "scripts/git-hooks/dispatch",
     "scripts/git-hooks/pre-commit", "scripts/git-hooks/pre-merge-commit",
-    "scripts/git-hooks/pre-push", "tests/test_scan.sh", "tests/test_publish_rules.py",
+    "scripts/git-hooks/pre-push", "tests/test_scan.sh", "tests/test_scan_scope.py", "tests/test_publish_rules.py",
     "docs/secret-handling.md", "docs/packages.md", "docs/resources.md",
     "docs/profile-lifecycle.md",
     "scripts/profile_inventory.py", "tests/test_profile_inventory.py", "docs/profile-inventory.md",
@@ -370,44 +373,54 @@ def explicit_files(root=ROOT, files=PUBLISH):
     return tuple(name for name in files if not name.startswith(absent))
 
 
-def check():
-    # Installed dependencies (`node_modules`) are skipped at any depth, like `__pycache__`.
-    # A build output directory of BUILD_DIRS is skipped too: a profile with that package needs it in the clone.
-    actual = {p.relative_to(ROOT).as_posix() for p in ROOT.rglob("*")
-              if p.is_file() and not {".local", ".git", "__pycache__", "node_modules"} & set(p.relative_to(ROOT).parts)}
-    actual = {name for name in actual if not any(name.startswith(item + "/") for item in BUILD_DIRS)}
-    tracked = tracked_files()
+def inventory_files(root):
+    """Prune installed dependencies and build output before walking their contents."""
+    found = set()
+    for directory, dirs, files in os.walk(root):
+        relative = Path(directory).relative_to(root)
+        dirs[:] = [name for name in dirs if name not in {".local", ".git", "__pycache__", "node_modules"}
+                   and (relative / name).as_posix() not in BUILD_DIRS]
+        found.update((relative / name).as_posix() for name in files if (Path(directory) / name).is_file()
+                     and name not in {".git", ".local", "__pycache__", "node_modules"})
+    return found
+
+
+def check(root=None, files=None):
+    root = Path(ROOT if root is None else root).resolve()
+    files = PUBLISH if files is None else tuple(files)
+    actual = inventory_files(root)
+    tracked = tracked_files(root)
     node_modules_guard(tracked or ())
     build_output_guard(tracked or ())
     # Without Git metadata (an unpacked portable snapshot), every file counts as tracked.
     published, excluded = rule_files(actual if tracked is None else tracked)
-    entries = private_excludes()
-    if excluded_files(PUBLISH, entries):
+    entries = private_excludes(root)
+    if excluded_files(files, entries):
         fail("private_excludes_explicit", DEV_ONLY_REL)
     validate_private_excludes(entries, actual if tracked is None else tracked)
     private = excluded_files(actual if tracked is None else tracked, (*entries, DEV_ONLY_REL))
     published -= private
-    explicit = explicit_files(ROOT)
-    files = [ROOT / name for name in explicit + tuple(sorted(published))]
+    explicit = explicit_files(root, files)
+    files = [root / name for name in explicit + tuple(sorted(published))]
     if len(set(files)) != len(files):
         fail("publish_duplicates", "publish set")
     for file in files:
-        if file.is_symlink() or not file.is_file() or not file.resolve().is_relative_to(ROOT):
-            fail("publish_path", file.relative_to(ROOT).as_posix())
+        if file.is_symlink() or not file.is_file() or not file.resolve().is_relative_to(root):
+            fail("publish_path", file.relative_to(root).as_posix())
         # A file of a directory rule can be binary; an explicit file is text.
-        content = file.read_bytes().decode("utf-8", "replace" if file.relative_to(ROOT).as_posix() in published else "strict")
-        allowed = {line for path, line in PATTERN_ALLOW if path == file.relative_to(ROOT).as_posix()}
+        content = file.read_bytes().decode("utf-8", "replace" if file.relative_to(root).as_posix() in published else "strict")
+        allowed = {line for path, line in PATTERN_ALLOW if path == file.relative_to(root).as_posix()}
         if file.name == ".env.example":
-            names = {name for component in manifest(load(ROOT / "config/manifest.json")).values() for name in component["env"]}
+            names = {name for component in manifest(load(root / "config/manifest.json")).values() for name in component["env"]}
             for line in content.splitlines():
                 if line and not line.startswith("#") and ("=" not in line or line.split("=", 1)[0] not in names or line.split("=", 1)[1]):
-                    fail("env_example_value", file.relative_to(ROOT).as_posix())
+                    fail("env_example_value", file.relative_to(root).as_posix())
         elif any(pattern.search("\n".join("" if line in allowed else line for line in content.split("\n")))
                  for pattern in PATTERNS):
-            fail("publish_secret_pattern", file.relative_to(ROOT).as_posix())
+            fail("publish_secret_pattern", file.relative_to(root).as_posix())
     # The public reader rules. `--public` prints each finding.
-    checked = [name for name in (file.relative_to(ROOT).as_posix() for file in files) if not name.startswith(PUBLIC_PENDING)]
-    for name, _, _ in public_findings(checked):
+    checked = [name for name in (file.relative_to(root).as_posix() for file in files) if not name.startswith(PUBLIC_PENDING)]
+    for name, _, _ in public_findings(checked, root):
         fail("publish_public_reader", name)
     # A candidate release must account for every non-private tracked file.
     # Without Git metadata, compare against a reviewed explicit repository inventory.
@@ -418,36 +431,38 @@ def check():
         # reviewed file that the checkout does not hold (with the prefix `missing: `).
         fail("unreviewed_file", "\n".join(["repository inventory", *sorted(actual - reviewed),
                                            *(f"missing: {name}" for name in sorted(reviewed - actual))]))
-    data = load(ROOT / "config/manifest.json")
+    data = load(root / "config/manifest.json")
     components = manifest(data)
-    overlay(load(ROOT / "config/config.example.json"), components)
-    for path, expected in render(data).items():
+    overlay(load(root / "config/config.example.json"), components)
+    for source, expected in render(data).items():
+        path = root / source.relative_to(ROOT)
         if path.read_text(encoding="utf-8") != expected:
-            fail("example_mismatch", path.relative_to(ROOT).as_posix())
-    return [file.relative_to(ROOT).as_posix() for file in files]
+            fail("example_mismatch", path.relative_to(root).as_posix())
+    return [file.relative_to(root).as_posix() for file in files]
 
 
-def public_report(hashes=False):
+def public_report(hashes=False, root=None, files=None):
     """Print each public reader finding of the whole publish set; return the exit code.
 
     A line is `<rule id>: <path>:<line>`. It holds no text of the file and no deny-list
     pattern. With `hashes`, a line is `<path><TAB><sha256>`, the form of an accepted line.
     """
-    tracked = tracked_files()
+    root = Path(ROOT if root is None else root).resolve()
+    tracked = tracked_files(root)
     if tracked is None:
-        tracked = {p.relative_to(ROOT).as_posix() for p in ROOT.rglob("*") if p.is_file()}
-    names = [name for name in publish_files(tracked) if (ROOT / name).is_file()]
-    findings = public_findings(names)
+        tracked = inventory_files(root)
+    names = [name for name in (publish_files(tracked, root=root) if files is None else files) if (root / name).is_file()]
+    findings = public_findings(names, root)
     if hashes:
         lines = {}
         for name in sorted({name for name, _, _ in findings}):
-            lines[name] = (ROOT / name).read_bytes().decode("utf-8", "replace").split("\n")
+            lines[name] = (root / name).read_bytes().decode("utf-8", "replace").split("\n")
         for name, number in sorted({(name, number) for name, number, _ in findings}):
             print(f"{name}\t{hashlib.sha256(lines[name][number - 1].encode('utf-8', 'surrogatepass')).hexdigest()}")
     else:
         for name, number, rule in findings:
             print(f"{rule}: {name}:{number}")
-    local = "with" if local_deny_file() is not None else "without"
+    local = "with" if local_deny_file(root) is not None else "without"
     if findings:
         print(f"public reader check failed: {len(findings)} findings in {len({name for name, _, _ in findings})} of "
               f"{len(names)} files, {local} a local deny list", file=sys.stderr if hashes else sys.stdout)

@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from tests.support import slow
 from pathlib import Path
 
 from scripts.candidate_compare import compare
@@ -913,6 +914,7 @@ class CarryCliTests(unittest.TestCase):
         plan = prepare(load(ROOT / "config/manifest.json"), patched, registry=copy.deepcopy(REGISTRY))
         self.assertEqual(file_bytes(self.right_files), rendered(plan))
 
+    @slow
     def test_refusals_are_static_and_print_nothing(self):
         self.make_report()
         cases = ((("--right", "relative"), "absolute_path: carry.right"),

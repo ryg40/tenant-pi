@@ -22,10 +22,9 @@ Post the record with the comment operation of `docs/agents/issue-tracker.md` (se
 
 - **Before:** <screenshot/output/failing test run>
   **After:** <screenshot/output/passing test run>
-- **unittest:** <last output line>
-- **examples:** <last output line>
-- **overlay:** <last output line>
-- **publish set:** <last output line>
+- **Worker fast tier:** <result lines from the commit body>
+- **Check set on main:** <last result lines, including the test count and check: passed or check: FAILED>
+- **Stamp:** <stamp-status result line>
 - **scan:** <result line>
 
 **Not proved:**
@@ -180,14 +179,21 @@ Screenshots are S-tier - when the environment is set up for it and the change is
 
 Execution-based evidence is A-tier. Test results, console output. Show the exact test that now fails and passes, using pseudocode.
 
-The section is also the acceptance comment form of the ticket workflow. Run the four offline checks from the root of the repository and give the last output line of each:
+The section is also the acceptance comment form of the ticket workflow.
+The worker runs `python3 scripts/check.py --tier fast` and commits the result lines in the message.
+The task file names accepted baseline failures explicitly; an unexplained failure blocks the commit.
+The reviewer reads the diff and those result lines and runs no suite.
+The coordinator merges with `--no-ff` and runs the check set once on `main`:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py
 ```
+
+Paste its last lines, including the test count and final result, into the merge record.
+Read `python3 scripts/check.py --stamp-status` and paste its stamp line too.
+A matching stamp replaces another full run on that unchanged tree and client.
+If the check set fails, the coordinator runs `git revert -m 1 <merge>`.
+Then open a fix round in a new worker pane; do not push the failed merge.
 
 Give the result line of the scan of the commits of the branch (`docs/secret-handling.md`):
 

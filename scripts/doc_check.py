@@ -29,7 +29,7 @@ DEV_ONLY_TARGETS = ()
 # Flags of other programs that the guides and README.md name in a standalone code span.
 EXTERNAL_FLAGS = frozenset({
     "--no-approve", "--extensions", "--version", "--prefix", "--ignore-scripts", "--global",
-    "--no-verify", "--skip-checks", "--no-push", "--force", "--model", "--remote", "--remote-branch",
+    "--no-verify", "--no-push", "--force", "--model", "--remote", "--remote-branch",
     "--verify-tag",
 })
 # Environment names that the launch line or the kit text uses beside the manifest names.

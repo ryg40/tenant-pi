@@ -30,12 +30,12 @@ VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?
 PRINT_OUTPUT_LIMIT = 16
 PI_KEYS = ("PATH", "HOME", "TMPDIR", "LANG", "PI_CODING_AGENT_DIR",
            "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY")
-OFFLINE = (
-    ("unit-tests", ["-m", "unittest", "discover", "-s", "tests", "-q"]),
-    ("examples", ["scripts/examples.py"]),
-    ("validate", ["scripts/validate.py", "--overlay", "config/config.example.json"]),
-    ("publish-check", ["scripts/publish_check.py"]),
-    ("doc-check", ["scripts/doc_check.py"]),
+OFFLINE = (("check-set", ["scripts/check.py"]),)
+PACKAGE_PY = (
+    ("packages/tenantext", ["-m", "unittest", "discover", "-s", "tracker/tests", "-t", "."]),
+    ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr/tests"]),
+    ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr-relay/tests"]),
+    ("packages/promptr/skills/watch-herdr-agents", ["scripts/test_watch.py"]),
 )
 # The architecture pages hold the core spec of the manifest, and the unit tests compare each page with
 # its build. The qualifier rebuilds the pages of the candidate copy after the pin edit, before those tests.
@@ -365,7 +365,7 @@ def isolation_result(before, after):
 
 
 @contextmanager
-def endpoint(*, finish_reason="stop", text="43"):
+def endpoint(*, finish_reason="stop", text="43", poll_interval=0.5):
     """A fixed chat-completion response; no body, key or prompt is logged."""
     calls = []
 
@@ -401,7 +401,7 @@ def endpoint(*, finish_reason="stop", text="43"):
             self.wfile.write(b"data: [DONE]\n\n")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": poll_interval}, daemon=True)
     thread.start()
     try:
         yield server.server_port, calls
@@ -460,6 +460,22 @@ def rebuild_pages(steps, candidate):
             steps.command(name, [sys.executable, "-B", *args], cwd=candidate)
 
 
+def package_python_checks(steps, candidate):
+    """Run all package Python suites and keep their output in one qualification step."""
+    code = (
+        "import json, subprocess, sys\n"
+        "passed = True\n"
+        "for directory, args in json.loads(sys.argv[1]):\n"
+        "    print(directory + ': ' + ' '.join(args), flush=True)\n"
+        "    result = subprocess.run([sys.executable, '-B', *args], cwd=directory)\n"
+        "    print('suite: exit ' + str(result.returncode), flush=True)\n"
+        "    passed = passed and result.returncode == 0\n"
+        "print('PACKAGE_PY: ' + ('passed' if passed else 'FAILED'), flush=True)\n"
+        "sys.exit(0 if passed else 1)\n"
+    )
+    steps.command("PACKAGE_PY", [sys.executable, "-B", "-c", code, json.dumps(PACKAGE_PY)], cwd=candidate)
+
+
 def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
     version(requested)
     run, live = workspace(workdir)
@@ -481,6 +497,7 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
             steps.skip("check-runtime")
         for name, args in OFFLINE:
             steps.command(name, [sys.executable, "-B", *args], cwd=candidate)
+        package_python_checks(steps, candidate)
         for name in ("tenantext", "promptr", "openviking"):
             directory = "openviking-pi" if name == "openviking" else name
             package = run / "packages" / directory

@@ -14,7 +14,13 @@ The issue tracker is Gitea. `docs/agents/issue-tracker.md` is the contract for e
 
 ### 1. Gather context
 
+Read `docs/agents/planning-levels.md` for the level, horizon, evidence and safety floor.
+Read the confirmed level from the spec or map and apply its evidence requirements to the tickets.
+For a legacy map, use the contract's existing-behavior rule.
+
 Work from whatever is already in the conversation context. If the user passes a reference (a spec issue (its number or named link), an issue number or URL) as an argument, fetch it and read its full body and comments.
+
+When reading a parent's children, drop each issue whose title starts with `Spec:` from the ticket list.
 
 Before the breakdown, read the knowledge sources in this order:
 
@@ -31,7 +37,8 @@ Look for opportunities to prefactor the code to make the implementation easier. 
 
 ### 3. Draft vertical slices
 
-Break the work into **tracer bullet** tickets.
+Break only the next usable deliverable into **tracer bullet** tickets.
+`to-spec` records later slices under Further Notes; keep publication limited to the current deliverable's children.
 
 <vertical-slice-rules>
 
@@ -64,7 +71,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Publish the tickets to Gitea
 
-Publish the approved tickets as Gitea issues. Use the tracker's native blocking relationship: Gitea dependencies in pass 2. `docs/agents/issue-tracker.md` is the contract: use its sections "Generic operations", "Labels", "Wayfinding operations" and "Publication safety" for each operation. Never use a local file as the ticket. If the user requests snapshot exports, write them outside the repository, in a directory that the user names. Snapshots are optional exports, not the tracker.
+Publish only the approved tickets of the next usable deliverable as Gitea issues. Use the tracker's native blocking relationship: Gitea dependencies in pass 2. `docs/agents/issue-tracker.md` is the contract: use its sections "Generic operations", "Labels", "Wayfinding operations" and "Publication safety" for each operation. Never use a local file as the ticket. If the user requests snapshot exports, write them outside the repository, in a directory that the user names. Snapshots are optional exports, not the tracker.
 
 Each ticket carries the parent label `wayfinder:parent:<map>`, where `<map>` is the number of the parent issue: the spec, or the map when the tickets come from a map. If the label does not exist, create it first (section "Labels"). When there is no parent issue, ask the user which spec or map is the parent before you publish. Each ticket carries the `ready-for-agent` triage label unless instructed otherwise; the tickets are agent-grabbable by construction. Do not apply a size label. Do not apply `wayfinder:task` to a new ticket.
 
@@ -73,11 +80,11 @@ Publish in two passes (section "Native dependencies"):
 1. Pass 1: create one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the issue template below. "Parent" holds a named link. For Gitea, omit "Blocked by" from the body; pass 2 records the blockers as native dependencies.
 2. Pass 2: wire each blocking edge as a native Gitea dependency. Then read the blockers of each ticket back and compare each list with the approved graph. Report each difference to the user. Do not continue with a graph that differs.
 
-When the parent is a spec issue that carries `ready-for-agent`, remove `ready-for-agent` from the spec issue after the read-back matches the approved graph (operation "Remove a label" of section "Generic operations"). On a spec, the label means "ready for to-tickets". A spec with `ready-for-agent` and `wayfinder:parent:<map>` is in the frontier of the map, and a spec is not work for a worker.
-
 After the read-back, report the **frontier** to the user: the tickets with no open blocker. Publication does not start a worker. The coordinator claims a ticket and starts a worker pane only on the user's word. The frontier rule is the section "Frontier" of `docs/agents/issue-tracker.md`.
 
-Do NOT close a parent issue. Do NOT modify a parent issue, except for the removal of `ready-for-agent` from the spec.
+When the parent is a spec issue that carries `ready-for-agent`, remove that label from the spec after the read-back matches the approved graph (operation "Remove a label" of section "Generic operations"). On a spec, the label means "ready for `to-tickets`".
+
+Keep the parent issue unchanged in every other way, including its body, its other labels and its state.
 
 <issue-template>
 

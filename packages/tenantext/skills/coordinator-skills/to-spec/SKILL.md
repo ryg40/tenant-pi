@@ -1,10 +1,11 @@
 ---
 name: to-spec
-description: "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed."
+description: "Synthesize the current conversation into a spec at the confirmed planning level and publish it to the project issue tracker."
 disable-model-invocation: true
 ---
 
-This skill takes the current conversation context and codebase understanding and produces a spec. Do NOT interview the user; just synthesize what you already know.
+Synthesize the current conversation and codebase understanding into a spec at the confirmed level.
+Read `docs/agents/planning-levels.md` for the level, horizon, evidence and safety floor.
 
 The issue tracker is Gitea. `docs/agents/issue-tracker.md` is the contract for each tracker operation and for the label vocabulary (section "Labels"). Read it before you publish. If the checkout has no issue tracker, stop and report it.
 
@@ -19,13 +20,15 @@ Read the knowledge sources in this order:
 
 ## Process
 
-1. Explore the repo to understand the current state of the codebase, if you haven't already. Read `GLOSSARY.md` first. Use the project's domain glossary vocabulary throughout the spec, and respect any ADRs in the area you're touching. Read the knowledge sources of the section "Before you write" in this step.
+1. Read the confirmed level from the map first. For a new effort, recommend a level and ask the owner to confirm it before detailed planning. For a legacy map, use the contract's existing-behavior rule.
 
-2. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
+2. Explore the repo to understand the current state of the codebase, if you haven't already. Read `GLOSSARY.md` first. Use the project's domain glossary vocabulary throughout the spec, and respect any ADRs in the area you're touching. Read the knowledge sources of the section "Before you write" in this step.
+
+3. Sketch out the seams at which you're going to test the feature. Existing seams should be preferred to new ones. Use the highest seam possible. If new seams are needed, propose them at the highest point you can. The fewer seams across the codebase, the better - the ideal number is one.
 
 Check with the user that these seams match their expectations. Use the question tool: `AskUserQuestion` in Claude Code, `ask_user_question` in Pi. Ask at most three questions per round, with the recommended option first. With no question tool, ask in plain text with no emoji. The forms are in the section "How to ask, by harness" of `grilling`. Load the grilling skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi.
 
-3. Write the spec using the template below, then publish it as one Gitea issue with the create operation of `docs/agents/issue-tracker.md` (section "Generic operations"; follow its section "Publication safety"). Apply the `ready-for-agent` triage label - no need for additional triage. On a spec, `ready-for-agent` means that the spec is ready for `to-tickets`, not for a worker. `to-tickets` removes the label from the spec after it publishes the tickets, so the spec does not stay in a worker frontier. When a map exists for this work, also apply the parent label `wayfinder:parent:<map>`, where `<map>` is the number of the map, and refer to the map with a named link. Do not write the spec to a local file.
+4. Write the spec with the level-scaled template below. Record later slices under Further Notes. Start the title with `Spec:`. Publish it as one Gitea issue through `docs/agents/issue-tracker.md`, sections "Generic operations", "Labels" and "Publication safety". Apply `ready-for-agent` to mark the spec ready for `to-tickets`. `to-tickets` removes that label from the spec after it publishes the tickets. The tracker frontier excludes `Spec:` titles. When a map exists, apply `wayfinder:parent:<map>` and refer to the map with a named link. Keep the spec on the tracker.
 
 The spec can enter the public docs. Then its body follows the public-text rule: no owner or account name, no private domain or URL, no machine path (`~/...` is acceptable), no dated host observation and no private issue number.
 
@@ -41,7 +44,15 @@ The solution to the problem, from the user's perspective.
 
 ## User Stories
 
-A LONG, numbered list of user stories. Each user story should be in the format of:
+Scale the numbered story list to the level and name its evidence:
+
+| Level | Stories and evidence |
+| --- | --- |
+| `quick and dirty` | A short list for the experiment, with the check or hands-on trial that answers its question. |
+| `brownfield` | Focused stories for the usable change, with integration and rollback evidence. |
+| `enterprise` | An extensive list covering all aspects of the feature, with evidence for its behavior and operational guarantees. |
+
+Use this form for each story:
 
 1. As an <actor>, I want a <feature>, so that <benefit>
 
@@ -49,11 +60,13 @@ A LONG, numbered list of user stories. Each user story should be in the format o
 1. As a mobile bank customer, I want to see balance on my accounts, so that I can make better informed decisions about my spending
 </user-story-example>
 
-This list of user stories should be extremely extensive and cover all aspects of the feature.
+Keep the active stories within the next usable deliverable.
 
 ## Implementation Decisions
 
-A list of implementation decisions that were made. This can include:
+For quick and dirty, keep decisions short and mark them reversible.
+For brownfield, focus on the change and include integration and rollback notes.
+For enterprise, give the full list of decisions, including the applicable items below:
 
 - The modules that will be built/modified
 - The interfaces of those modules that will be modified
@@ -69,7 +82,9 @@ Exception: if a prototype produced a snippet that encodes a decision more precis
 
 ## Testing Decisions
 
-A list of testing decisions that were made. Include:
+For quick and dirty, write one testing line naming the evidence that answers the experiment's question.
+For brownfield, name focused checks and the integration and rollback evidence.
+For enterprise, give the full testing decisions below and the evidence for the promised operational guarantees:
 
 - A description of what makes a good test (only test external behavior, not implementation details)
 - Which modules will be tested
@@ -81,6 +96,7 @@ A description of the things that are out of scope for this spec.
 
 ## Further Notes
 
-Any further notes about the feature.
+Record the confirmed level and any further notes about the feature.
+Keep later slices here as roadmap lines for a later usable deliverable.
 
 </spec-template>

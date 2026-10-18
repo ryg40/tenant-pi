@@ -1,5 +1,5 @@
 {
-  "comment": "Example of a machine file. Copy it to ~/.config/herdr-skill/resources.json and change it. An entry with the same id replaces the entry of the catalog. \"remove\": true takes an entry out. Both entries below are optional examples; the catalog does not ship them. For Claude Code, spawn.py gives each entry of the kind mcp that has a url location to the new session as an MCP server and allows its tools. The server name is the mcp_server value, or the id of the entry. An optional headers_helper command supplies dynamic HTTP headers without storing credentials in this file. The launch object is optional; it sets the files that spawn.py gives to a harness.",
+  "comment": "Example of a machine file. Copy it to ~/.config/herdr-skill/resources.json and change it. An entry with the same id replaces the entry of the catalog. The optional roles list names the roles from roles.json that see the entry in their prompts. Without roles, the entry is available to every role. An empty list shows it to no role. \"remove\": true takes an entry out. Both entries below are optional examples; the catalog does not ship them. For Claude Code, spawn.py gives each entry of the kind mcp that has a url location to the new session as an MCP server and allows its tools. The server name is the mcp_server value, or the id of the entry. An optional headers_helper command supplies dynamic HTTP headers without storing credentials in this file. The launch object is optional; it sets the files that spawn.py gives to a harness.",
   "resources": {
     "donsetch": {
       "group": "web",
@@ -7,7 +7,7 @@
       "kind": "mcp",
       "title": "DonSeTch MCP (web_search, web_fetch, web_crawl, web_screenshot)",
       "use_when": "First choice for web search and for pages that load without a real browser.",
-      "load": "Tools mcp__donsetch__web_search, mcp__donsetch__web_fetch, mcp__donsetch__web_crawl, mcp__donsetch__web_screenshot in Claude Code; donsetch_web_search etc. in Pi. If DonSeTch fails, say so in the result and stop; do not use another search provider.",
+      "load": "Tools mcp__donsetch__web_search, mcp__donsetch__web_fetch, mcp__donsetch__web_crawl, mcp__donsetch__web_screenshot in Claude Code; donsetch_web_search etc. in Pi. If DonSeTch fails, give its exact error in the result and use the next entry.",
       "locations": [
         {
           "url": "http://127.0.0.1:8766/mcp"

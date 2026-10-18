@@ -20,7 +20,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (agent_info, assistant_texts, clip, ensure_layout, error_code, herdr,  # noqa: E402
-                     line_count, require_herdr_env, screen_tail, session_file)
+                     line_count, read_record, require_herdr_env, screen_tail, session_file)
 
 
 def parse(argv):
@@ -77,6 +77,15 @@ def clip_line(text, max_chars=200):
 def report(info, elapsed, note):
     print(f"pane={info['pane_id']} agent={info.get('agent')} status={info.get('agent_status')} "
           f"cwd={info.get('cwd')} elapsed={int(elapsed)}s {note}".rstrip())
+
+
+def print_reply(pane_id, reply, max_chars):
+    print("--- reply ---")
+    print(clip(reply, max_chars, head=max_chars // 4))
+    record = read_record(pane_id) or {}
+    if record.get("session") == "subagent" and not any(
+            line.startswith("Marker: SUBAGENT_COMPLETE") for line in reply.splitlines()):
+        print("note: no result block; the pane may not be done. Read the screen.")
 
 
 def main():
@@ -176,15 +185,13 @@ def main():
         if fallback is None:
             print("API ERROR: the reply is an API error and the transcript holds no other reply. "
                   "Read the commit of the agent, or send the prompt again in a new pane.")
-            print("--- reply ---")
-            print(clip(reply, opts["max_chars"]))
+            print_reply(now["pane_id"], reply, opts["max_chars"])
             sys.exit(6)
         print(f"note: reply was an API error ({clip_line(reply)}); "
               "text below is the last assistant message of the transcript"
               + ("; from before this prompt" if fallback[1] else ""))
         reply = fallback[0]
-    print("--- reply ---")
-    print(clip(reply, opts["max_chars"]))
+    print_reply(now["pane_id"], reply, opts["max_chars"])
 
 
 if __name__ == "__main__":

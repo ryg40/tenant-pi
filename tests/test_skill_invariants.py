@@ -260,6 +260,17 @@ PLANTED_README = (("tracker_cli", "Run `gh pr create`."), ("skill_user_only", "U
 
 
 class SkillInvariantTests(unittest.TestCase):
+    def test_planning_skills_point_to_the_contract_document(self):
+        contract = "docs/agents/planning-levels.md"
+        self.assertTrue((ROOT / contract).is_file())
+        names = ["wayfinder", "to-spec", "to-tickets"]
+        if (COMPONENT / "wayfinder-review").is_dir():
+            names.append("wayfinder-review")
+        for name in names:
+            with self.subTest(skill=name):
+                text = (COMPONENT / name / "SKILL.md").read_text(encoding="utf-8")
+                self.assertIn(contract, text)
+
     def test_shipped_skills_and_tracker_document_have_no_finding(self):
         directories = shipped_skill_dirs()
         self.assertIn(COMPONENT / "grilling", directories)

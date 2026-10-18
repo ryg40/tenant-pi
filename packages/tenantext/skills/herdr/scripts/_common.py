@@ -111,10 +111,13 @@ def screen_tail(target, lines=60):
     return raw
 
 
-def clip(text, max_chars):
+def clip(text, max_chars, head=0):
     if len(text) <= max_chars:
         return text
-    return f"[... first {len(text) - max_chars} characters omitted ...]\n" + text[-max_chars:]
+    if head == 0:
+        return f"[... first {len(text) - max_chars} characters omitted ...]\n" + text[len(text) - max_chars:]
+    tail = max_chars - head
+    return text[:head] + f"\n[... {len(text) - max_chars} characters omitted ...]\n" + text[len(text) - tail:]
 
 
 # ---------------------------------------------------------------------------
@@ -316,9 +319,18 @@ def machine_file_data(machine_file=None):
 
 def load_catalog(machine_file=None):
     """Return the resources of the catalog, with the machine file on top."""
-    with open(os.path.join(SKILL_DIR, "resources.json"), encoding="utf-8") as f:
+    path = os.path.join(SKILL_DIR, "resources.json")
+    with open(path, encoding="utf-8") as f:
         resources = dict(json.load(f).get("resources", {}))
     extra = machine_file_data(machine_file).get("resources") or {}
+    for source, entries in ((path, resources),
+                            (MACHINE_CATALOG if machine_file is None else machine_file, extra)):
+        for rid, entry in entries.items():
+            if "roles" in entry and (not isinstance(entry["roles"], list) or any(
+                    not isinstance(role, str) or role not in ROLES for role in entry["roles"])):
+                print(f"error: {source}: resources.{rid}.roles must be a list of known role names: "
+                      + ", ".join(ROLES), file=sys.stderr)
+                sys.exit(2)
     for rid, entry in extra.items():
         if entry.get("remove"):
             resources.pop(rid, None)
@@ -383,10 +395,11 @@ def resolve_resource(entry):
     return None, False
 
 
-def catalog_lines(resources, group):
-    """Return (lines for the prompt, titles that are not on the machine)."""
+def catalog_lines(resources, group, role=None):
+    """Return (lines for the role prompt, titles that are not on the machine)."""
     lines, absent = [], []
-    chosen = sorted((e.get("order", 100), rid, e) for rid, e in resources.items() if e.get("group") == group)
+    chosen = sorted((e.get("order", 100), rid, e) for rid, e in resources.items()
+                    if e.get("group") == group and (role is None or "roles" not in e or role in e["roles"]))
     for _, rid, e in chosen:
         where, found = resolve_resource(e)
         if found is False:

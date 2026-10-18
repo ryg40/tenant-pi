@@ -171,6 +171,7 @@ Blocking relations are native Gitea dependencies. Do not replace them with prose
 | Operation | Method and path | Body |
 | --- | --- | --- |
 | Add a blocker | `POST /repos/{owner}/{repo}/issues/{index}/dependencies` | `IssueMeta`: `owner`, `repo`, `index` |
+| Remove a blocker | `DELETE /repos/{owner}/{repo}/issues/{index}/dependencies` | `IssueMeta`: `owner`, `repo`, `index` |
 | Read the blockers | `GET /repos/{owner}/{repo}/issues/{index}/dependencies` | none |
 
 The issue in the URL depends on the issue in the body. GET returns each issue that blocks the issue in the URL.
@@ -207,6 +208,8 @@ Compute it from the tracker on each use:
 5. Keep the child when each blocker has the `state` value `closed`.
 
 An empty frontier is valid only after step 1 passes. A checklist in an issue body is not a source for the frontier.
+
+Before you close a retired blocker, list its open dependents. A kept dependent is a dependent that the owner keeps open. Hold each kept dependent with `needs-approval` before you close the blocker. The close otherwise puts the dependent into the tracker frontier when it meets the other conditions.
 
 ### Claim
 

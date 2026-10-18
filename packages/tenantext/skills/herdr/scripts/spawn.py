@@ -18,7 +18,8 @@ Inputs
   --strict       apply hard tool limits: read roles cannot edit files, and a role with web
                  access gets only the MCP servers of the catalog (see SPAWN.md). Without it,
                  the role prompt gives an order of preference with fallbacks and removes no tool
-  --unattended   claude write roles only: allow all shell commands and edits in advance
+  --unattended   claude write roles only: allow edits in advance.
+                 The auto mode decides each shell command.
   --dry-run      print the resolved values and the command; create nothing
 
 Placement and names are fixed; see LAYOUT.md. The name is <project>-<role>-<n>.
@@ -169,13 +170,12 @@ def resolve_pi_model(asked):
     fail(f"the model '{asked}' is ambiguous. Give one of: {', '.join(hits)}")
 
 
-def render_methods(text, resources):
-    """Replace {methods:<group>} in a role prompt with the entries of the catalog."""
+def render_methods(text, resources, role=None):
+    """Replace {methods:<group>} with the catalog entries for this role."""
     absent_all = []
     for group in re.findall(r"\{methods:([a-z]+)\}", text):
-        lines, absent = catalog_lines(resources, group)
+        lines, absent = catalog_lines(resources, group, role)
         absent_all += absent
-        lines.append(f"{len(lines) + 1}. **Report.** When no entry works, give what you tried and what is still unknown.")
         text = text.replace("{methods:" + group + "}", "\n".join(lines))
     if absent_all:
         text = text.replace("{absent}", "Not found on this machine when you started: " + ", ".join(absent_all)
@@ -187,7 +187,7 @@ def render_methods(text, resources):
 
 def system_prompt(r, cfg=None):
     text = open(os.path.join(SKILL, "roles", r["role"] + ".md"), encoding="utf-8").read().strip()
-    text = render_methods(text, load_catalog())
+    text = render_methods(text, load_catalog(), r["role"])
     if r.get("strict"):
         text += ("\n\n## Strict launch\n\nThis session has hard tool limits. "
                  "Tools that the limits remove are not available. Report a blocker if the task needs one.")
@@ -207,6 +207,7 @@ def native_args(r, cfg, unattended, name, write=True):
     With strict: read roles lose the edit tools, and a role with web access gets only
     the MCP servers of the catalog. The catalog ships no MCP server; the machine file adds one.
     """
+    resources = load_catalog()
     paths = load_launch(cfg)
     sub = r["session"] == "subagent"
     strict = r.get("strict")
@@ -238,8 +239,8 @@ def native_args(r, cfg, unattended, name, write=True):
         if strict and r["access"] == "read":
             a += ["--disallowedTools", "Edit Write NotebookEdit" + (" WebSearch WebFetch" if r["web"] else "")]
         if sub and r["access"] == "write" and unattended:
-            allowed.append("Bash Read Write Edit Grep Glob")
-        servers = mcp_servers(load_catalog()) if r["web"] else {}
+            allowed.append("Read Write Edit Grep Glob")
+        servers = mcp_servers(resources) if r["web"] else {}
         if servers or (strict and r["web"]):
             # The MCP servers and their tool names come from the catalog. With no mcp entry, strict gives no server.
             mcp_file = os.path.join(STATE_DIR, "mcp", f"{name}.json")

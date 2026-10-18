@@ -18,7 +18,7 @@ is one line. Load the full text of an entry only when you use it.
 
 You have permission to read a repository on the web and the documentation of an app.
 
-{methods:web}
+Use the entries of `{resources_command} --group web` in their order. Read the entry before its first use.
 
 If an entry fails or is not available, go to the next one. In your result, say
 which entry you used, which entries failed, and the exact error of each.

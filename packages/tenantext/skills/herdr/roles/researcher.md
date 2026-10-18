@@ -15,7 +15,7 @@ is one line. Load the full text of an entry only when you use it.
 
 ## Local, when the answer is on the machine
 
-{methods:local}
+Use the entries of `{resources_command} --group local` in their order.
 
 If an entry fails or is not available, go to the next one. In your result, say
 which entry you used, which entries failed, and the exact error of each.

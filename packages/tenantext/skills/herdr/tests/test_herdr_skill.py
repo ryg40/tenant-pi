@@ -342,7 +342,7 @@ class Launch(IsolatedConfig):
         self.assertNotRegex(text, r"\{[a-z_:]+\}")
         self.assertIn("The task has priority", text)
         self.assertIn("go to the next one", text)
-        self.assertIn("**Report.**", text)
+        self.assertNotIn("**Report.**", text)
         self.assertIn("resources.py", text)
         for banned in ("DonSeTch MCP only", "do not change to another search tool", "Do not change to another"):
             self.assertNotIn(banned, text)
@@ -355,8 +355,7 @@ class Launch(IsolatedConfig):
             args = spawn.native_args(r, CFG, False, f"t-{role}-1", write=False)
             prompts[role] = spawn.system_prompt(r, CFG)
             self.assertIn("context gatherer", prompts[role])
-            self.assertIn("Web tools of your harness", prompts[role])
-            self.assertIn("`rg`", prompts[role])
+            self.assertIn("Web tools of your harness" if role == "researcher" else "`rg`", prompts[role])
             self.assertNotRegex(prompts[role], r"\{[a-z_:]+\}")
         self.assertLess(prompts["researcher"].index("## Web,"), prompts["researcher"].index("## Local,"))
         self.assertLess(prompts["scout"].index("## Local,"), prompts["scout"].index("## Web,"))
@@ -526,6 +525,443 @@ class ApiErrorFallback(unittest.TestCase):
         self.assertNotIn("note:", out)
         self.assertIn("API ERROR:", out)
         self.assertTrue(out.endswith("--- reply ---\n" + API_ERROR + "\n"), out)
+
+
+class Roles258(unittest.TestCase):
+    NOTE = "note: no result block; the pane may not be done. Read the screen."
+    MARKER = "Marker: SUBAGENT_COMPLETE"
+
+    def run_reply(self, reply, record=None, api_error=False):
+        path = os.path.join(tempfile.mkdtemp(prefix="herdr-roles258-"), "session.jsonl")
+        entries = [entry("user", "earlier task"), entry("user", "do the task"), entry("assistant", reply)]
+        if api_error:
+            entries.append(entry("assistant", API_ERROR))
+        with open(path, "w", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+        with mock.patch.object(ask, "read_record", return_value=record) as read_record:
+            result = run_ask(path)
+        read_record.assert_called_once_with("p-2")
+        return result
+
+    def test_clip_short_text_is_unchanged(self):
+        for text in ("", "A short reply.\nNext line."):
+            for kwargs in ({}, {"head": 0}, {"head": 2000}):
+                with self.subTest(text=text, kwargs=kwargs):
+                    self.assertEqual(_common.clip(text, 8000, **kwargs), text)
+
+    def test_clip_at_the_limit_is_unchanged(self):
+        text = "x" * 8000
+        for kwargs in ({}, {"head": 0}, {"head": 2000}):
+            with self.subTest(kwargs=kwargs):
+                self.assertEqual(_common.clip(text, 8000, **kwargs), text)
+
+    def test_clip_long_text_defaults_to_tail_only(self):
+        text = "h" * 2000 + "m" * 37 + "t" * 8000
+        for kwargs in ({}, {"head": 0}):
+            with self.subTest(kwargs=kwargs):
+                self.assertEqual(_common.clip(text, 8000, **kwargs),
+                                 "[... first 2037 characters omitted ...]\n" + "t" * 8000)
+
+    def test_clip_long_text_keeps_the_requested_head_and_tail(self):
+        text = "h" * 2000 + "m" * 37 + "t" * 6000
+        self.assertEqual(_common.clip(text, 8000, head=2000), "h" * 2000
+                         + "\n[... 37 characters omitted ...]\n" + "t" * 6000)
+
+    def test_clip_uses_the_requested_head_and_tail_sizes(self):
+        text = "abcdefghijklmnopqrstuvwxyz"
+        for limit, head, tail in ((0, "", ""), (1, "", "z"), (3, "", "xyz"),
+                                  (7, "a", "uvwxyz"), (20, "abcde", "lmnopqrstuvwxyz"),
+                                  (7, "abc", "wxyz"), (7, "abcdefg", "")):
+            with self.subTest(limit=limit, head=head):
+                notice = (f"\n[... {len(text) - limit} characters omitted ...]\n" if head else
+                          f"[... first {len(text) - limit} characters omitted ...]\n")
+                self.assertEqual(_common.clip(text, limit, head=len(head)), head + notice + tail)
+
+    def test_ask_reply_keeps_the_head_including_api_error_fallback(self):
+        reply = "h" * 2000 + "m" * 37 + "t" * 6000
+        expected = "h" * 2000 + "\n[... 37 characters omitted ...]\n" + "t" * 6000 + "\n"
+        for api_error in (False, True):
+            with self.subTest(api_error=api_error):
+                code, out = self.run_reply(reply, api_error=api_error)
+                self.assertEqual(code, 0)
+                self.assertEqual(out.split("--- reply ---\n")[1], expected)
+                self.assertEqual("note: reply was an API error" in out, api_error)
+
+    def test_ask_screen_tails_keep_only_the_tail(self):
+        for status, limit, code in (("blocked", 3000, 4), ("idle", 4000, 0)):
+            with self.subTest(status=status):
+                screen = "h" * 2000 + "m" * 37 + "t" * limit
+                info = {"pane_id": "p-2", "agent": "claude", "agent_status": status, "cwd": "/tmp"}
+                out = io.StringIO()
+                with mock.patch.multiple(ask, require_herdr_env=lambda: None, ensure_layout=lambda quiet: None,
+                                         agent_info=lambda target: info, session_file=lambda info: None,
+                                         herdr=lambda *args, **kw: (0, {}, "")), \
+                        mock.patch.object(ask, "screen_tail", return_value=screen), \
+                        mock.patch.object(ask.time, "sleep", lambda s: None), \
+                        mock.patch.object(sys, "argv", ["ask.py", "proj-worker-1", "--text", "do the task"]), \
+                        mock.patch.dict(os.environ, {"HERDR_PANE_ID": "p-1"}), \
+                        contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as exc:
+                    ask.main()
+                self.assertEqual(exc.exception.code, code)
+                self.assertEqual(out.getvalue().split("--- screen tail ---\n")[1],
+                                 "[... first 2037 characters omitted ...]\n" + "t" * limit + "\n")
+
+    def test_last_reply_keeps_the_head_only_for_transcript_text(self):
+        spec = importlib.util.spec_from_file_location("last_reply", os.path.join(SKILL, "scripts", "last-reply.py"))
+        last_reply = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(last_reply)
+        info = {"pane_id": "p-2", "agent": "claude", "agent_status": "idle", "cwd": "/tmp"}
+        for limit, args in ((8000, []), (20, ["--max-chars", "20"])):
+            text = "h" * (limit // 4) + "m" * 37 + "t" * limit
+            for transcript in (True, False):
+                with self.subTest(limit=limit, transcript=transcript):
+                    out = io.StringIO()
+                    with mock.patch.multiple(last_reply, require_herdr_env=lambda: None,
+                                             agent_info=lambda target: info, session_file=lambda info: "session.jsonl",
+                                             assistant_texts=lambda path: [text] if transcript else [],
+                                             screen_tail=lambda target, lines: text), \
+                            mock.patch.object(sys, "argv", ["last-reply.py", "proj-worker-1", *args]), \
+                            contextlib.redirect_stdout(out):
+                        last_reply.main()
+                    omitted = len(text) - limit
+                    if transcript:
+                        expected = ("h" * (limit // 4) + f"\n[... {omitted} characters omitted ...]\n"
+                                    + "t" * (limit - limit // 4) + "\n")
+                        self.assertEqual(out.getvalue().split("--- last reply ---\n")[1], expected)
+                    else:
+                        expected = f"[... first {omitted} characters omitted ...]\n" + "t" * limit + "\n"
+                        self.assertEqual(out.getvalue().split("--- screen tail ---\n")[1], expected)
+
+    def test_ask_defaults_to_8000_characters(self):
+        _, parsed = ask.parse(["proj-worker-1", "--text", "do the task"])
+        self.assertEqual(parsed["max_chars"], 8000)
+        _, parsed = ask.parse(["proj-worker-1", "--text", "do the task", "--max-chars", "20"])
+        self.assertEqual(parsed["max_chars"], 20)
+
+    def test_task_reply_without_marker_gets_the_note_after_the_reply(self):
+        code, out = self.run_reply("The checks pass.", {"session": "subagent"})
+        self.assertEqual(code, 0)
+        self.assertTrue(out.endswith("--- reply ---\nThe checks pass.\n" + self.NOTE + "\n"), out)
+        self.assertEqual(out.count(self.NOTE), 1)
+
+    def test_task_reply_with_the_contract_marker_gets_no_note(self):
+        with open(os.path.join(SKILL, "roles", "contract.md"), encoding="utf-8") as f:
+            self.assertIn(self.MARKER, f.read().splitlines())
+        reply = "FINAL_COMPRESSED_CONTEXT\nRole: worker\nStatus: complete\n" + self.MARKER
+        code, out = self.run_reply(reply, {"session": "subagent"})
+        self.assertEqual(code, 0)
+        self.assertNotIn(self.NOTE, out)
+        self.assertTrue(out.endswith(reply + "\n"), out)
+
+    def test_marker_must_start_a_line(self):
+        for reply in ("Quoted: " + self.MARKER, "Still working.\n " + self.MARKER):
+            with self.subTest(reply=reply):
+                code, out = self.run_reply(reply, {"session": "subagent"})
+                self.assertEqual(code, 0)
+                self.assertTrue(out.endswith(self.NOTE + "\n"), out)
+        code, out = self.run_reply("Done.\n" + self.MARKER + " extra text", {"session": "subagent"})
+        self.assertEqual(code, 0)
+        self.assertNotIn(self.NOTE, out)
+
+    def test_marker_is_checked_before_clipping(self):
+        reply = "h" * 3000 + "\n" + self.MARKER + "\n" + "t" * 7000
+        code, out = self.run_reply(reply, {"session": "subagent"})
+        self.assertEqual(code, 0)
+        self.assertIn("characters omitted", out)
+        self.assertNotIn(self.MARKER, out)
+        self.assertNotIn(self.NOTE, out)
+
+    def test_primary_interactive_and_unrecorded_panes_get_no_note(self):
+        interactive = spawn.resolve(opts(harness="claude", role="worker", model="test-model", interactive=True), CFG)
+        for record in ({"session": "primary"}, interactive, None, {}):
+            with self.subTest(record=record):
+                code, out = self.run_reply("The checks pass.", record)
+                self.assertEqual(code, 0)
+                self.assertNotIn(self.NOTE, out)
+
+    def test_api_error_fallback_checks_the_selected_reply(self):
+        for reply, missing in (("The checks pass.", True), (self.MARKER, False)):
+            with self.subTest(reply=reply):
+                code, out = self.run_reply(reply, {"session": "subagent"}, api_error=True)
+                self.assertEqual(code, 0)
+                self.assertIn("note: reply was an API error", out)
+                self.assertEqual(self.NOTE in out, missing)
+
+    def test_api_error_without_fallback_keeps_its_exit_code(self):
+        code, out = self.run_reply(API_ERROR, {"session": "subagent"})
+        self.assertEqual(code, 6)
+        self.assertTrue(out.endswith(API_ERROR + "\n" + self.NOTE + "\n"), out)
+
+
+class Roles256(IsolatedConfig):
+    def prompt(self, role):
+        resolved = spawn.resolve(opts(harness="claude", role=role), CFG)
+        return spawn.system_prompt(resolved, CFG)
+
+    def practice(self, role):
+        text = self.prompt(role).split("## Usual practice\n\n", 1)[1].split("\n\n", 1)[0]
+        return text.splitlines()
+
+    def test_scratch_rule_is_a_numbered_practice_for_both_roles(self):
+        rule = "Put scratch files in a new directory from `mktemp -d`, and leave them there."
+        for role in ("worker", "reviewer"):
+            with self.subTest(role=role):
+                lines = self.practice(role)
+                self.assertIn(rule, [line.split(". ", 1)[1] for line in lines])
+                self.assertEqual([line.split(". ", 1)[0] for line in lines],
+                                 [str(i) for i in range(1, len(lines) + 1)])
+
+    def test_worker_keeps_task_priority_without_the_dangling_sentence(self):
+        text = " ".join(self.prompt("worker").split())
+        self.assertIn("If the task names a tool, a method or a check, use that.", text)
+        self.assertNotIn("The lists below are the usual order of preference. They are not limits.", text)
+
+    def test_reviewer_method_two_reads_the_commit_before_a_targeted_check(self):
+        text = self.prompt("reviewer")
+        methods = text.split("## Methods, in order of preference\n\n", 1)[1].split("\n\n", 1)[0]
+        self.assertEqual(methods.splitlines()[1],
+                         "2. Read the check lines in the commit body. "
+                         "Run one test or one script only to confirm a suspected defect.")
+        self.assertNotIn("Run the checks that exist and do not change state: tests, type check, lint.", text)
+
+    def test_reviewer_verdict_follows_the_acceptance_scope_item(self):
+        lines = self.practice("reviewer")
+        self.assertEqual(lines[0],
+                         "1. A changed line that no acceptance criterion of the task names is a finding. "
+                         "Report it even when the diff otherwise looks correct.")
+        self.assertEqual(lines[1],
+                         "2. Check each acceptance criterion of the task. Start the findings with a verdict: "
+                         "pass, pass with findings, or fix first.")
+
+    def test_rendered_prompt_sizes_stay_within_the_corrected_limits(self):
+        self.assertLessEqual(abs(len(self.prompt("worker")) - 2341), 150)
+        self.assertLessEqual(len(self.prompt("reviewer")), 2650)
+
+
+class Roles255(IsolatedConfig):
+    def test_gatherers_render_only_the_first_choice_list(self):
+        resources = _common.load_catalog()
+        command = f"python3 {spawn.HERE}/resources.py"
+        fallback = ("If an entry fails or is not available, go to the next one. In your result, say\n"
+                    "which entry you used, which entries failed, and the exact error of each.\n"
+                    "Stop and report only when no entry works, or when the task forbids the\n"
+                    "entries that are left.")
+        for harness in ("pi", "claude"):
+            for role, first, second in (("researcher", "web", "local"), ("scout", "local", "web")):
+                with self.subTest(harness=harness, role=role):
+                    r = spawn.resolve(opts(harness=harness, role=role), CFG)
+                    text = spawn.system_prompt(r, CFG)
+                    first_lines, _ = _common.catalog_lines(resources, first)
+                    second_lines, _ = _common.catalog_lines(resources, second)
+                    self.assertIn("\n".join(first_lines), text)
+                    for line in second_lines:
+                        self.assertNotIn(line, text)
+                    pointer = f"Use the entries of `{command} --group {second}` in their order."
+                    if role == "scout":
+                        pointer += " Read the entry before its first use."
+                    self.assertIn(pointer, text)
+                    self.assertEqual(text.count(fallback), 1)
+                    self.assertNotIn("**Report.**", text)
+                    self.assertNotRegex(text, r"\{[a-z_:]+\}")
+
+    def test_scout_pointer_keeps_the_machine_web_mcp_configuration(self):
+        example = os.path.join(SKILL, "resources.local.example.json")
+        with mock.patch.object(_common, "MACHINE_CATALOG", example):
+            for strict in (False, True):
+                with self.subTest(strict=strict):
+                    r = spawn.resolve(opts(harness="claude", role="scout", strict=strict), CFG)
+                    args = spawn.native_args(r, CFG, False, "roles255-scout-1", write=True)
+                    with open(args[args.index("--mcp-config") + 1], encoding="utf-8") as f:
+                        config = json.load(f)
+                    helper = os.path.expanduser("~/.agents/skills/herdr/scripts/mcp-bearer-helper.sh DONSETCH_HTTP_TOKEN")
+                    self.assertEqual(config, {"mcpServers": {"donsetch": {
+                        "type": "http", "url": "http://127.0.0.1:8766/mcp", "headersHelper": helper}}})
+                    self.assertIn("mcp__donsetch", args[args.index("--allowedTools") + 1].split())
+                    self.assertEqual("--strict-mcp-config" in args, strict)
+                    with open(args[args.index("--append-system-prompt-file") + 1], encoding="utf-8") as f:
+                        text = f.read()
+                    self.assertIn("resources.py --group web` in their order. Read the entry before its first use.", text)
+                    self.assertNotIn("**DonSeTch MCP", text)
+
+    def test_scout_focus_routes_diff_judgements_to_a_reviewer(self):
+        with open(os.path.join(SKILL, "SPAWN.md"), encoding="utf-8") as f:
+            row = next(line for line in f if line.startswith("| `scout` |"))
+        self.assertTrue(row.split("|")[2].strip().endswith(
+            "Finds and quotes facts; a judgement of a diff goes to a reviewer"))
+
+
+class Roles257(IsolatedConfig):
+    def test_unattended_worker_allows_edits_without_a_blanket_shell_rule(self):
+        for strict in (False, True):
+            with self.subTest(strict=strict):
+                r = spawn.resolve(opts(harness="claude", role="worker", strict=strict), CFG)
+                args = spawn.native_args(r, CFG, True, "t-worker-1", write=False)
+                allowed = args[args.index("--allowedTools") + 1]
+                self.assertEqual(allowed, spawn.CLAUDE_HERDR_TOOLS + " Read Write Edit Grep Glob")
+                self.assertNotIn("Bash", allowed.split())
+                self.assertNotIn("Bash(*)", allowed.split())
+                self.assertEqual(args[args.index("--permission-mode") + 1], "auto")
+
+    def test_read_roles_keep_the_read_only_shell_rules(self):
+        read_tools = ("Read Grep Glob Bash(rg:*) Bash(ls:*) Bash(cat:*) Bash(git log:*) "
+                      "Bash(git diff:*) Bash(git show:*) Bash(git status:*) Bash(git grep:*)")
+        self.assertEqual(spawn.CLAUDE_READ_TOOLS, read_tools)
+        for role in ("researcher", "scout", "reviewer"):
+            with self.subTest(role=role):
+                r = spawn.resolve(opts(harness="claude", role=role), CFG)
+                args = spawn.native_args(r, CFG, False, f"t-{role}-1", write=False)
+                self.assertIn(read_tools, args[args.index("--allowedTools") + 1])
+
+
+class Roles254(IsolatedConfig):
+    def setUp(self):
+        super().setUp()
+        self.resolved = {harness: spawn.resolve(opts(harness=harness, role="coordinator"), CFG)
+                         for harness in ("pi", "claude")}
+        self.prompts = {harness: spawn.system_prompt(r, CFG) for harness, r in self.resolved.items()}
+
+    def test_pi_spawn_rule_points_to_the_skill(self):
+        expected = "4. In Pi, start each task session with `herdr_spawn` (herdr skill, section B)."
+        for harness, text in self.prompts.items():
+            with self.subTest(harness=harness):
+                self.assertIn(expected, text.splitlines())
+                for removed in ("herdr_watch_start", "blocking `ask.py`", "not to use the watch"):
+                    self.assertNotIn(removed, text)
+
+    def test_claude_lookup_routing(self):
+        expected = ("7. In Claude Code, a read-only lookup that needs no other model and no visible pane "
+                    "goes to the Agent tool (Explore or web-fetch). A ticket, a review or work for another "
+                    "model goes to a Herdr pane.")
+        for harness, text in self.prompts.items():
+            with self.subTest(harness=harness):
+                self.assertIn(expected, text.splitlines())
+
+    def test_result_format_ban_is_absent(self):
+        for harness, text in self.prompts.items():
+            with self.subTest(harness=harness):
+                for removed in ("You are not a task session.", "task session result format",
+                                "task-session result format", "Answer the user in the normal way."):
+                    self.assertNotIn(removed, text)
+
+    def test_numbering_and_models_item_stay_unchanged(self):
+        expected = ("10. The model and thinking level come from the request or from the local defaults file "
+                    "`~/.config/herdr-skill/models.json`.")
+        for harness, text in self.prompts.items():
+            with self.subTest(harness=harness):
+                numbers = [int(line.partition(". ")[0]) for line in text.splitlines()
+                           if line.partition(". ")[0].isdigit()]
+                self.assertEqual(numbers, list(range(1, 11)))
+                self.assertIn(expected, text.splitlines())
+
+    def test_rendered_coordinator_prompt_size(self):
+        for harness, r in self.resolved.items():
+            with self.subTest(harness=harness):
+                args = spawn.native_args(r, CFG, False, f"t-coordinator-254-{harness}")
+                with open(args[-1], encoding="utf-8") as f:
+                    text = f.read()
+                self.assertEqual(text, self.prompts[harness] + "\n")
+                self.assertLessEqual(len(text), 1560)
+
+
+class Roles253(IsolatedConfig):
+    def write_catalog(self, roles):
+        path = os.path.join(os.path.dirname(self.models_path), "resources.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"resources": {"example": {"group": "web", "roles": roles}}}, f)
+        return path
+
+    def test_donsetch_example_reports_the_error_and_uses_the_next_entry(self):
+        with open(os.path.join(SKILL, "resources.local.example.json"), encoding="utf-8") as f:
+            example = json.load(f)
+        text = example["resources"]["donsetch"]["load"]
+        self.assertTrue(text.endswith(
+            "If DonSeTch fails, give its exact error in the result and use the next entry."))
+        self.assertNotIn("stop", text)
+        self.assertNotIn("do not use another search provider", text)
+        self.assertIn("roles", example["comment"])
+
+    def test_role_prompts_include_unscoped_and_matching_entries_only(self):
+        resources = {
+            "all-roles": {"group": "web", "order": 1, "title": "All roles"},
+            "researcher-only": {"group": "web", "order": 2, "title": "Researcher only", "roles": ["researcher"]},
+            "scout-only": {"group": "web", "order": 3, "title": "Scout only", "roles": ["scout"]}}
+        for role in CFG["roles"]:
+            with self.subTest(role=role):
+                lines, absent = _common.catalog_lines(resources, "web", role)
+                expected = ["all-roles"] + ([f"{role}-only"] if role in ("researcher", "scout") else [])
+                self.assertEqual(len(lines), len(expected))
+                self.assertEqual(absent, [])
+                for number, (line, rid) in enumerate(zip(lines, expected), 1):
+                    self.assertTrue(line.startswith(f"{number}. "))
+                    self.assertIn(f"`{rid}`", line)
+                if role not in ("researcher", "scout"):
+                    continue
+                group = "web" if role == "researcher" else "local"
+                prompt_resources = {rid: dict(resource, group=group) for rid, resource in resources.items()}
+                with mock.patch.object(spawn, "load_catalog", return_value=prompt_resources):
+                    text = spawn.system_prompt(spawn.resolve(opts(harness="claude", role=role), CFG), CFG)
+                for rid in resources:
+                    if rid in expected:
+                        self.assertIn(f"`{rid}`", text)
+                    else:
+                        self.assertNotIn(f"`{rid}`", text)
+                self.assertNotIn("**Report.**", text)
+
+    def test_excluded_entries_are_not_probed_or_reported_as_absent(self):
+        resources = {
+            "omitted": {"group": "web", "roles": ["scout"]},
+            "empty": {"group": "web", "roles": []},
+            "other-group": {"group": "local"}}
+        with mock.patch.object(_common, "resolve_resource") as resolve:
+            self.assertEqual(_common.catalog_lines(resources, "web", "researcher"), ([], []))
+        resolve.assert_not_called()
+
+    def test_known_roles_and_empty_list_are_valid(self):
+        for roles in ([], list(CFG["roles"]), ["scout", "scout"], *([role] for role in CFG["roles"])):
+            with self.subTest(roles=roles):
+                path = self.write_catalog(roles)
+                self.assertEqual(_common.load_catalog(path)["example"]["roles"], roles)
+
+    def test_invalid_roles_stop_launch_with_path_and_reason(self):
+        bad = (None, "scout", {}, 1, True, ["unknown"], ["scout", "unknown"],
+               [None], [1], [True], [{}], [["scout"]], [""])
+        me = {"workspace": "proj", "workspace_id": "w1", "tab_id": "t1", "pane_id": "p1"}
+        for roles in bad:
+            path = self.write_catalog(roles)
+            for harness in ("pi", "claude"):
+                for dry_run in (False, True):
+                    with self.subTest(roles=roles, harness=harness, dry_run=dry_run):
+                        argv = ["spawn.py", "--harness", harness, "--role", "worker"]
+                        if dry_run:
+                            argv.append("--dry-run")
+                        out, err = io.StringIO(), io.StringIO()
+                        with mock.patch.object(_common, "MACHINE_CATALOG", path), \
+                                mock.patch.multiple(spawn, require_herdr_env=lambda: None,
+                                                    ensure_layout=lambda quiet: me,
+                                                    ensure_layout_readonly=lambda: me, live_agents=lambda: []), \
+                                mock.patch.object(spawn, "place") as place, \
+                                mock.patch.object(spawn, "herdr") as herdr, \
+                                mock.patch.object(sys, "argv", argv), \
+                                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err), \
+                                self.assertRaises(SystemExit) as exc:
+                            spawn.main()
+                        self.assertEqual(exc.exception.code, 2)
+                        self.assertIn(path + ": resources.example.roles must be a list of known role names:",
+                                      err.getvalue())
+                        self.assertEqual(out.getvalue(), "")
+                        place.assert_not_called()
+                        herdr.assert_not_called()
+
+    def test_invalid_shipped_roles_report_the_shipped_path(self):
+        path = self.write_catalog(["unknown"])
+        err = io.StringIO()
+        with mock.patch.object(_common, "SKILL_DIR", os.path.dirname(path)), \
+                contextlib.redirect_stderr(err), self.assertRaises(SystemExit) as exc:
+            _common.load_catalog()
+        self.assertEqual(exc.exception.code, 2)
+        self.assertIn(path + ": resources.example.roles must be a list of known role names:", err.getvalue())
 
 
 if __name__ == "__main__":

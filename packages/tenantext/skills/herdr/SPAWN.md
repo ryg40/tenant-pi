@@ -13,7 +13,7 @@ Set `S` to the absolute `scripts` directory beside the loaded `SKILL.md`, includ
 | --- | --- | --- | --- | --- |
 | `coordinator` | Plans, delegates, checks results, reports to the user | write | primary | `coordinator` |
 | `researcher` | Context gatherer. The web first, then the machine | read, and result files outside the project | task session | `researcher` |
-| `scout` | Context gatherer. The machine first, then the web | read, and result files outside the project | task session | `scout` |
+| `scout` | Context gatherer. The machine first, then the web. Finds and quotes facts; a judgement of a diff goes to a reviewer | read, and result files outside the project | task session | `scout` |
 | `worker` | One bounded change, verified | write | task session | `worker` |
 | `reviewer` | Review of a plan, a diff or code | read | task session | `reviewer` |
 
@@ -51,6 +51,12 @@ order for the machine: `local-search`, `local-machine`, `local-services`.
 A machine file at `~/.config/herdr-skill/resources.json` adds or replaces
 entries for one machine. `resources.local.example.json` shows the format.
 `install.sh` does not change the machine file.
+
+An entry can have a `roles` list of names from `roles.json`, for example
+`"roles": ["scout"]`. Only those roles see the entry in their prompts.
+Without `roles`, every role can see it. An empty list shows it to no role.
+This filters prompt suggestions, not tool access. Invalid `roles` values stop
+the launch with the catalog path and the reason.
 
 The catalog ships no entry that only one machine has. These entries are
 optional. Add them to the machine file when the machine has them:
@@ -226,6 +232,7 @@ status `blocked`, and `ask.py` exits with 4. Show the question to the user and
 wait.
 
 Only when the user asks for an unattended worker, add `--unattended` (with
-`herdr_spawn`: `unattended` true). It allows all shell commands and edits in
-advance. It does not permit deploys, restarts, deletion of live data,
-force-push, or output of secrets. State these limits in the task file.
+`herdr_spawn`: `unattended` true). It allows edits in advance. In the auto mode
+the classifier still decides each shell command. It does not permit deploys,
+restarts, deletion of live data, force-push, or output of secrets. State these
+limits in the task file.

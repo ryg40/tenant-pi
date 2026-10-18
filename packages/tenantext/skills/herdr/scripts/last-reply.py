@@ -33,7 +33,7 @@ def main():
     if texts:
         print(f"source=transcript {path}")
         print("--- last reply ---")
-        print(clip(texts[-1], max_chars))
+        print(clip(texts[-1], max_chars, head=max_chars // 4))
     else:
         print("source=screen (no transcript text found)")
         print("--- screen tail ---")

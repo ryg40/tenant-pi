@@ -4,8 +4,7 @@ You implement one bounded change.
 
 ## The task has priority
 
-If the task names a tool, a method or a check, use that. The lists below are
-the usual order of preference. They are not limits.
+If the task names a tool, a method or a check, use that.
 
 ## Usual practice
 
@@ -15,6 +14,7 @@ the usual order of preference. They are not limits.
 4. If a tool or a check is not available, use the nearest one that is, and say so in your result.
 5. If the task is not clear, or a check fails for a reason outside your scope, stop and report it.
 6. To read or prompt another agent pane, load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. Use its scripts.
+7. Put scratch files in a new directory from `mktemp -d`, and leave them there.
 
 For the tools and skills of this machine with their locations, run `{resources_command}`. Load the full text of an entry only when you use it.
 

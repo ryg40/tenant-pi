@@ -22,8 +22,8 @@ FILES = (".dockerignore", "deploy/compose/Dockerfile", "deploy/compose/sshd_conf
          "deploy/compose/entrypoint.sh", "deploy/compose/README.md", "tests/test_compose_seat.py",
          "deploy/compose/compose.yaml", "deploy/compose/compose.projects.yaml",
          "deploy/compose/seat.env.example", "deploy/compose/compose.env.example", "deploy/compose/profile.sh")
-HERDR = {"x86_64": "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7",
-         "aarch64": "4de7aa3e25678812e92960de64f7c2aaa1bca1f0f80a3c5e559837e231e1f5c0"}
+HERDR = {"x86_64": "14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d",
+         "aarch64": "17d7536f2da50859523680ef279dffcac8e4a235f4e46fe8da6c2ec44141897c"}
 
 
 def content(text):
@@ -49,7 +49,7 @@ class DockerfileTests(unittest.TestCase):
 
     def test_herdr_has_one_digest_for_each_architecture(self):
         step = next(step for step in self.steps if "herdr-linux-" in step)
-        self.assertIn("https://github.com/herdrdev/herdr/releases/download/v0.9.3/", step)
+        self.assertIn("https://github.com/herdrdev/herdr/releases/download/v0.9.5/", step)
         for arch, debian in (("x86_64", "amd64"), ("aarch64", "arm64")):
             with self.subTest(arch=arch):
                 found = re.search(rf"{debian}\) asset=herdr-linux-{arch}; sum=([0-9a-f]+) ;;", step)
@@ -82,14 +82,11 @@ class DockerfileTests(unittest.TestCase):
         self.assertIn("ARG TARGETARCH", self.steps)
 
     def test_checks_run_before_the_seat_build_record(self):
-        checks = ("python3 -m unittest discover -s tests -q", "python3 scripts/examples.py",
-                  "python3 scripts/validate.py --overlay config/config.example.json", "python3 scripts/publish_check.py")
-        step = next(step for step in self.steps if checks[0] in step)
-        for check in checks:
-            self.assertIn(f'runuser -u "$SEAT_USER" -- env PYTHONDONTWRITEBYTECODE=1 {check}', step)
+        check = 'RUN runuser -u "$SEAT_USER" -- env PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast'
+        self.assertIn(check, self.steps)
         record = next(step for step in self.steps if ".seat-build" in step)
         self.assertIn("printf 'kit_commit=%s\\npi_version=%s\\n' \"$KIT_COMMIT\" \"$pin\" > /opt/tenant-pi/.seat-build", record)
-        self.assertLess(self.steps.index(step), self.steps.index(record))
+        self.assertLess(self.steps.index(check), self.steps.index(record))
         self.assertIn("ARG KIT_COMMIT=unknown", self.steps)
 
     def test_image_holds_no_host_key(self):
@@ -119,7 +116,7 @@ class DockerfileTests(unittest.TestCase):
         self.assertIn("line='[ -r /etc/profile.d/tenant-pi-seat.sh ] && . /etc/profile.d/tenant-pi-seat.sh'", step)
         self.assertIn('> "$home/.bashrc"', step)
         self.assertIn('>> "$home/.profile"', step)
-        # The image holds no Herdr defaults file: Herdr 0.9.3 has no key for a default agent command.
+        # The image holds no Herdr defaults file: Herdr 0.9.5 has no key for a default agent command.
         self.assertNotIn("herdr-config", self.text)
         for word in ("/etc/environment", "SetEnv", "AcceptEnv"):
             self.assertNotIn(word, self.text)

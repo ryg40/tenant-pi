@@ -213,7 +213,7 @@ class PrerequisiteTests(unittest.TestCase):
                         self.assertIn(code[4:], gaps)
         peer = "node scripts/patch_extension_peers.mjs"
         self.assertEqual({"mcp": ["pi install npm:pi-mcp-adapter"],
-                          "questions": ["pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8", peer],
+                          "questions": ["pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9", peer],
                           "hermes": ["pi install npm:pi-hermes-memory", peer],
                           "wiki": ["pi install npm:@zosmaai/pi-llm-wiki", peer],
                           "openviking": ["npm --prefix packages/openviking-pi ci --ignore-scripts"]},

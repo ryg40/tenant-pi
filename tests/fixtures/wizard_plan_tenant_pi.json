@@ -774,7 +774,7 @@
               "gaps": [
                 {
                   "code": "install_step_required",
-                  "fact": "packages/openviking-pi/package.json lists @modelcontextprotocol/client at 2.2.0 and node_modules is not in the tree, so npm ci --ignore-scripts must run in packages/openviking-pi before the first start."
+                  "fact": "packages/openviking-pi/package.json lists @modelcontextprotocol/client at 2.3.1 and node_modules is not in the tree, so npm ci --ignore-scripts must run in packages/openviking-pi before the first start."
                 },
                 {
                   "code": "server_required",
@@ -1113,11 +1113,11 @@
                 },
                 {
                   "code": "package_source_unreviewed",
-                  "fact": "The registry metadata of version 2.13.8 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
+                  "fact": "The registry metadata of version 2.13.9 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
                 },
                 {
                   "code": "peer_package_unverified",
-                  "fact": "Version 2.13.8 lists typebox under peerDependencies with the range * and names the optional peer package @juicesharp/rpiv-i18n; no install of version 2.13.8 with the kit pin was observed."
+                  "fact": "Version 2.13.9 lists typebox under peerDependencies with the range * and names the optional peer package @juicesharp/rpiv-i18n; no install of version 2.13.9 with the kit pin was observed."
                 },
                 {
                   "code": "question_ui_unverified",
@@ -1148,7 +1148,7 @@
               },
               "source": {
                 "kind": "npm",
-                "spec": "@juicesharp/rpiv-ask-user-question@2.13.8"
+                "spec": "@juicesharp/rpiv-ask-user-question@2.13.9"
               },
               "status": "unverified"
             },
@@ -1599,7 +1599,7 @@
   "dependenciesAdded": [
     "context-meter"
   ],
-  "digest": "afa37159543af80726e8e57b389c83cc45f8dce1a59ff00bc5e7f469cc303265",
+  "digest": "7b04bc3cbff67eea79f1147645450bc24a53b588ac2f4a0a4830884e790f1140",
   "downloads": [],
   "evidence": {
     "components": {

@@ -6,7 +6,7 @@ import stat
 from dataclasses import dataclass
 
 from scripts.profile_write import MAX_PATH, WriteError, DIR_FLAGS, check_location, create_new_file, open_new_parent
-from scripts.validate import SAMPLE_TARGET, absolute, fail
+from scripts.validate import SAMPLE_TARGET, absolute, fail, link_hint
 
 FIELD = "init-private.dir"
 TARGET = "init-private.target"
@@ -67,8 +67,8 @@ def init(directory, contents, forbidden=()):
         raise _renamed(exc, False) from None
     except FileNotFoundError:
         raise WriteError("parent_missing", FIELD + ".parent") from None
-    except OSError:
-        raise WriteError("unsafe_path", FIELD + ".parents") from None
+    except OSError as exc:
+        raise WriteError("unsafe_path", FIELD + ".parents", hint=link_hint(directory, exc)) from None
     created = False
     complete = False
     dir_fd = inputs_fd = None

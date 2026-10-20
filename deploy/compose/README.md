@@ -148,17 +148,17 @@ ssh -p 2222 pi@127.0.0.1
 - The working directory of a new session is `/projects` when the projects directory is there, else the home directory.
 - A command login (`ssh -p 2222 pi@127.0.0.1 <command>`) starts no tmux. It gets the `PATH` and the key variable.
 - Start Pi with `pi-profile`. To use Herdr, run `herdr` in the tmux session, then run `pi-profile` in a Herdr pane.
-- The image holds no Herdr defaults file, and the entrypoint writes no `~/.config/herdr/config.toml`. Not verified: whether Herdr 0.9.3 has a configuration key for a default agent command.
+- The image holds no Herdr defaults file, and the entrypoint writes no `~/.config/herdr/config.toml`. Not verified: whether Herdr 0.9.5 has a configuration key for a default agent command.
 - `scp` and `sftp` do not work: `sshd_config` has no `Subsystem sftp` line. Copy a file through the projects directory, or with `ssh -p 2222 pi@127.0.0.1 'cat > <file>' < <file>`.
 
 ## What the image holds
 
 - The base image `node:24-trixie-slim`, pinned by tag and digest.
 - The Debian packages `python3`, `python3-venv`, `git`, `curl`, `ca-certificates`, `openssh-server`, `tmux` and `less`.
-- Herdr 0.9.3 as `/usr/local/bin/herdr`. The build selects the asset by architecture (`x86_64` or `aarch64`) and checks its SHA-256.
+- Herdr 0.9.5 as `/usr/local/bin/herdr`. The build selects the asset by architecture (`x86_64` or `aarch64`) and checks its SHA-256.
 - The reviewed source of the Herdr application is the open-source project `herdrdev/herdr` on GitHub, with the license Apache-2.0. See [INSTALL.md, Stage 4a](../../INSTALL.md#stage-4a-herdr-and-the-question-tool).
 - The seat account, with a `*` password field, without a sudo group and without a docker group. The build removes the base image account that holds `SEAT_UID`. When a group holds `SEAT_GID`, the account uses that group.
-- The kit at `/opt/tenant-pi`, owned by the seat account. The build runs the four offline checks there. A failure stops the build.
+- The kit at `/opt/tenant-pi`, owned by the seat account. The build runs `scripts/check.py --tier fast` there. A failure stops the build.
 - The Pi version of `runtime.piVersion` in `config/manifest.json`, installed by the seat account with `npm install --global --prefix /opt/pi-npm`.
 - The dependencies of `packages/tenantext` (`npm ci --ignore-scripts`).
 - `/opt/tenant-pi/.seat-build`, the seat build record, with the two lines `kit_commit=<value>` and `pi_version=<pin>`.

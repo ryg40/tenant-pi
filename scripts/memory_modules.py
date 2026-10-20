@@ -35,7 +35,7 @@ BUILTIN = re.compile(r"builtin:[a-z][a-z0-9.-]*\Z")
 # Providers whose child Pi process needs an explicit extension source under `--no-extensions`.
 GATEWAY_PROVIDERS = frozenset(("litellm-codex", "openai-codex-2"))
 LLAMA_PROVIDER = "llama.cpp"
-# Hermes `config.ts` (reviewed at 0.9.9; the kit declares no version) background paths. Off means no model call originates from Hermes.
+# Hermes `config.ts` (reviewed at 0.9.10; the kit declares no version) background paths. Off means no model call originates from Hermes.
 HERMES_OFF = {"reviewEnabled": False, "correctionDetection": False, "flushOnCompact": False,
               "flushOnShutdown": False, "memoryOverflowStrategy": "reject", "autoConsolidate": False}
 # The vendored OpenViking extension (`packages/openviking-pi`) reads no file of the profile. Its

@@ -399,6 +399,7 @@ The commands match the release evidence, with explicit failure handling instead 
    Write `$LOGDIR/release-notes.md` first, with the content and the template of the [release checklist](release-checklist.md#release-notes).
    Check the notes against the [public reader rules](../publishing.md#public-reader-rules) before you create the entry. The publish check does not read the notes.
    Run `gh release create` only after the maintainer of the release approves the notes.
+   Wait also for the CI run of the snapshot on GitHub: both matrix jobs must pass ([publish step 6](release-checklist.md#publish-steps)).
    The block uses the GitHub CLI. Replace `<owner>/<repo>` with the name of your publication repository.
    `--verify-tag` stops the command when the remote repository does not have the tag.
    Check that the view prints the saved tag, `isDraft` as `false`, and the URL of the entry.

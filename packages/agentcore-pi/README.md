@@ -25,6 +25,7 @@ The generated profile loads `packages/agentcore-pi/index.ts` as a local-file pac
 ## Configuration
 
 The private overlay supplies `memory.agentcore.configFile`: the absolute path of the person config file.
+With [one memory for each stage](../../docs/memory-modules.md#one-memory-for-each-stage), it is the file of one stage.
 Both `consent.memoryCapture` and `consent.remoteMemoryWrites` must be true.
 The launch line passes the path in the process-local `AGENTCORE_MEMORY_CONFIG_FILE`.
 It removes an inherited `AGENTCORE_MEMORY_CONFIG`, which the core would read before the file.
@@ -34,7 +35,7 @@ The kit never opens the file. The registry script of the owner renders it. It ho
 | --- | --- |
 | `AGENTCORE_MEMORY_CONFIG_FILE` | The person config file. The launch line sets it. |
 | `AGENTCORE_MEMORY_DISABLE=1` | The kill switch. The extension registers no hook and no tool. |
-| `AGENTCORE_PROJECT` | Overrides the project of the working directory. A value outside the memberships gives recall without a project. |
+| `AGENTCORE_PROJECT` | Overrides the project of the working directory. A value outside the memberships gives recall without a project. A config without `remotes` and `directories` finds a project only through it: see [one memory for each stage](../../docs/memory-modules.md#one-memory-for-each-stage). |
 
 Without a config, or with the kill switch, the extension registers nothing and prints one static line.
 An invalid config also registers nothing and prints one static line without the value.

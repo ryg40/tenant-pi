@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import block_process, slow
+from tests.support import block_process, slow, without_hint
 from contextlib import chdir, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
 from io import StringIO
@@ -436,8 +436,8 @@ class CliTests(Fixture):
     def refused(self, rule, result, *, created=False):
         code, out, err = result
         self.assertEqual((2, ""), (code, out or ""))
-        self.assertEqual({"candidate_created": created, "error": rule}, json.loads(err))
-        self.assertNotIn(str(self.base), err)
+        self.assertEqual({"candidate_created": created, "error": rule}, without_hint(err))
+        self.assertNotIn(str(self.base), json.dumps(without_hint(err)))
 
     def test_record_then_unchanged_and_the_directory_is_not_touched(self):
         self.populate()

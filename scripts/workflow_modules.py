@@ -2,7 +2,7 @@
 
 No file, environment, subprocess, or network access. Every diagnostic is a static
 `rule: field` string; definition values never enter it. The facts below name the
-reviewed sources: `pi-mcp-adapter` 3.2.0, the version reviewed, declared without a version (`config.ts`, `types.ts`, `init.ts`, `utils.ts`),
+reviewed sources: `pi-mcp-adapter` 5.4.0, the version reviewed, declared without a version (`config.ts`, `types.ts`, `init.ts`, `utils.ts`),
 Pi 0.99.1 (`dist/extensions/mcp/config.js`, `dist/core/package-manager.js`), and the in-tree
 Promptr package `packages/promptr`.
 """
@@ -15,7 +15,8 @@ from scripts.validate import ENV, REF, REVIEWED_SOURCES, absolute, fail, fields,
 
 MCP_CONFIG = "mcp-adapter.json"  # `<agent dir>/mcp-adapter.json`, the adapter's own file.
 # `PI_MCP_CONFIG_MODE=exclusive` (adapter `config.ts` isExclusiveConfigMode): only the agent-dir
-# file loads; shared, project, ancestor, host-discovered, package, and plugin sources are skipped.
+# file loads; shared, Pi `mcp.json`, project, ancestor, host-discovered, package, and plugin sources are skipped.
+# Servers that another extension registers with `pi.registerMcpServer()` still connect (`index.ts`).
 MCP_MODE_NAME = "PI_MCP_CONFIG_MODE"
 MCP_MODE_VALUE = "exclusive"
 # Pi 0.99.1 `package-manager.js`: a `-builtin:<name>` entry in the user `extensions` setting
@@ -25,8 +26,8 @@ SERVER_NAME = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 HEADER_NAME = re.compile(r"[A-Za-z0-9-]{1,64}\Z")
 TOOL_NAME = re.compile(r"[A-Za-z0-9_.-]{1,128}\Z")
 URL_FORM = re.compile(r"(https?)://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~/-]*)?\Z")
-# Adapter `types.ts`: `lifecycle` is the only connection switch; `init.ts` connects only
-# `eager` and `keep-alive` servers at session start.
+# Adapter `types.ts`: `lifecycle` is the only connection switch in a server entry. `init.ts` connects
+# `eager` and `keep-alive` servers at each session start, and once each other server without cached tools.
 LIFECYCLES = ("lazy", "lazy-keep-alive", "keep-alive", "eager")
 STARTUP_LIFECYCLES = ("keep-alive", "eager")
 TOOL_PREFIXES = ("server", "none", "short", "mcp")
@@ -192,7 +193,7 @@ def render_mcp(definitions, components):
     source = components["mcp"]["source"]
     servers, records, gaps = {}, {}, []
     gaps.append({"code": "package_runtime_unverified", "subject": "mcp"})
-    # package.json peerDependencies: `@earendil-works/pi-ai` ^0.84.1 || ... || ^0.87.0 (optional) at the reviewed 3.2.0; compatibility with the kit pin is unverified.
+    # package.json peerDependencies: `@earendil-works/pi-ai` ^0.84.1 || ... || ^1.0.0 (optional) at the reviewed 5.4.0; no Pi start with the adapter ran on the kit pin.
     gaps.append({"code": "peer_range_unverified", "subject": "mcp"})
     # `/mcp-auth` and bearer stores use the OS keyring (`@napi-rs/keyring`), which HOME shares.
     gaps.append({"code": "credential_store_shared", "subject": "mcp"})

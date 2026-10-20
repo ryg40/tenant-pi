@@ -8,5 +8,5 @@
   "exports": {".": "./src/index.mjs"},
   "types": "./src/types.ts",
   "scripts": {"test": "node --test tests/"},
-  "dependencies": {"@aws-sdk/client-bedrock-agentcore": "3.1152.0"}
+  "dependencies": {"@aws-sdk/client-bedrock-agentcore": "3.1154.0"}
 }

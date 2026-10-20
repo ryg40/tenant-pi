@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import BLOCK_PROCESS_HOOK, slow
+from tests.support import BLOCK_PROCESS_HOOK, slow, without_hint
 from unittest.mock import patch
 
 from scripts import tenant_pi
@@ -751,10 +751,13 @@ class CliTests(unittest.TestCase):
                 with self.subTest(cause=cause, action=action):
                     result = self.run_cli(action, overlay=path)
                     self.assertEqual((2, ""), (result.returncode, result.stdout))
-                    self.assertEqual({"candidate_created": False, **expected}, json.loads(result.stderr))
+                    # Only a link in the path adds a `hint`; a file in the place of a directory does not.
+                    self.assertEqual(cause == "linked directory", "hint" in json.loads(result.stderr))
+                    self.assertEqual({"candidate_created": False, **expected}, without_hint(result.stderr))
                     # A diagnostic names a rule, a field and at most a place: no path, no value, no parser text.
-                    for text in ("CANARY_SECRET", str(self.base), "Traceback", "Expecting"):
+                    for text in ("CANARY_SECRET", "Traceback", "Expecting"):
                         self.assertNotIn(text, result.stderr)
+                    self.assertNotIn(str(self.base), json.dumps(without_hint(result.stderr)))
             self.assertEqual(before, inventory(self.base))
         # The exact line that the documents show.
         self.overlay.write_bytes(broken)
@@ -1389,7 +1392,7 @@ class CliTests(unittest.TestCase):
                 result = subprocess.run([sys.executable, str(CLI), "compare", "--left", args[0], "--right", args[1]],
                                         cwd=self.base, env=self.env, text=True, capture_output=True, check=False)
                 self.assertEqual(2, result.returncode)
-                self.assertEqual({"candidate_created": False, "error": rule}, json.loads(result.stderr))
+                self.assertEqual({"candidate_created": False, "error": rule}, without_hint(result.stderr))
                 self.assertEqual("", result.stdout)
         plain = self.parent / "plain profile"
         plain.mkdir(mode=0o700)
@@ -1511,7 +1514,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         expected = [{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": ["skills/herdr"],
                      "prompts": [], "themes": []},
-                    {"source": "npm:@juicesharp/rpiv-ask-user-question@2.13.8", "extensions": ["index.ts"], "skills": [],
+                    {"source": "npm:@juicesharp/rpiv-ask-user-question@2.13.9", "extensions": ["index.ts"], "skills": [],
                      "prompts": [], "themes": []}]
         for candidate in (first, second):
             with self.subTest(candidate=candidate.name):
@@ -1642,7 +1645,7 @@ class CliTests(unittest.TestCase):
             with self.subTest(rule=rule):
                 result = self.run_inventory(directory)
                 self.assertEqual(2, result.returncode)
-                self.assertEqual({"candidate_created": False, "error": rule}, json.loads(result.stderr))
+                self.assertEqual({"candidate_created": False, "error": rule}, without_hint(result.stderr))
                 self.assertEqual("", result.stdout)
         result = self.run_inventory(candidate)
         self.assertEqual(0, result.returncode, result.stderr)

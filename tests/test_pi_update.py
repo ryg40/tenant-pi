@@ -374,7 +374,7 @@ class UpdateTests(unittest.TestCase):
             def latest(name):
                 calls.append(name)
                 # The question extension has its own pin; without a new version the registry names that pin.
-                return "2.13.8" if name == QUESTIONS and code == 0 else newest
+                return "2.13.9" if name == QUESTIONS and code == 0 else newest
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(update.main(["detect"], latest=latest), code)
@@ -384,7 +384,7 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(report["new"], code == 10)
             self.assertEqual(len(report["modules"]), 4)
             pinned = [row for row in report["modules"] if row["pinned"] is not None]
-            self.assertEqual([("questions", QUESTIONS, "2.13.8", code == 10)],
+            self.assertEqual([("questions", QUESTIONS, "2.13.9", code == 10)],
                              [(row["component"], row["package"], row["pinned"], row["different"]) for row in pinned])
             self.assertTrue(all(row["different"] is None for row in report["modules"] if row["pinned"] is None))
         # A new version of the pinned module alone sets `new`; the core row stays equal.
@@ -707,10 +707,17 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(self.work.exists())
         self.assertFalse((self.bin / "calls.jsonl").exists())
 
-    def test_symlink_workdir_is_refused(self):
-        self.work.symlink_to(self.home, target_is_directory=True)
-        with self.assertRaisesRegex(update.Invalid, "unsafe_path"):
-            update.workspace(str(self.work))
+    def test_symlink_workdir_is_refused_and_named(self):
+        real = self.base / "real-work"
+        real.mkdir()
+        self.work.symlink_to(real, target_is_directory=True)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(2, update.main(["qualify", "--version", PIN, "--workdir", str(self.work)]))
+        self.assertEqual({"error": "unsafe_path: pi-update.workdir",
+                          "hint": f"{self.work} is a link to {real}; give the resolved path {real}"},
+                         json.loads(out.getvalue()))
+        self.assertEqual([], os.listdir(real))
 
     def test_git_failures_have_a_step_log_and_one_json_result(self):
         source = self.base / "source"

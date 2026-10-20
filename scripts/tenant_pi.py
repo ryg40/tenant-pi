@@ -2,15 +2,22 @@
 """Offline, new-profile-only tenant-pi CLI (Python 3.11+)."""
 import sys
 
+# The macOS system `python3` is 3.9: stop with one plain line before an import that needs 3.11.
+if sys.version_info < (3, 11):
+    sys.exit("tenant_pi.py needs Python 3.11 or later; this python3 is %d.%d." % tuple(sys.version_info[:2]))
+
 # Direct script invocation imports project modules; never leave bytecode in the kit.
 sys.dont_write_bytecode = True
 
 import argparse
 from collections import ChainMap
+import copy
 import errno
 import json
 import os
 from pathlib import Path
+import re
+import shlex
 import stat
 import subprocess
 
@@ -18,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.candidate_compare import FILES, compare
 from scripts import baseline
+from scripts import kit_update
 # Portable copies omit these development-only modules.
 HAS_CARRY = (ROOT / "scripts/carry.py").is_file()
 HAS_LIST = (ROOT / "scripts/candidate_list.py").is_file()
@@ -35,10 +43,13 @@ from scripts.model_routes import render
 from scripts.private_init import TARGET, TEMPLATES, check_target, init, report as init_report, with_target
 from scripts.profile_plan import (PROVIDER_KEY_NAMES, herdr_report, prepare, provider_key_warning, readiness,
                                    runtime_report, setup_commands)
-from scripts.profile_write import UNKNOWN, WriteError, check_location, commit, inside, preflight, utc_now, write
+from scripts.profile_inputs import PROFILE_INPUTS
+from scripts.profile_write import (STATE, UNKNOWN, WriteError, _validated_bytes, check_location, commit, inside,
+                                   output_digests, preflight, utc_now, write)
 from scripts.remote_plan import remote_plan
 from scripts import wiki_vault
-from scripts.validate import OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, manifest, overlay, parse, place, fail
+from scripts.validate import (OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, hint_field, link_hint, manifest,
+                             overlay, parse, path_segment, place, fail)
 
 MAX_INPUT = 1024 * 1024
 # Nesting bound of one JSON input. The parser limit differs between Python versions, so the kit sets its own.
@@ -46,6 +57,14 @@ MAX_DEPTH = 64
 # Entry bound of one listed resource directory.
 MAX_ENTRIES = 4096
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+# Bounds of the `update` action: the release notes of one tag and one launcher file.
+MAX_NOTES = 16 * 1024
+MAX_LAUNCHER = 64 * 1024
+# The launcher files of a private directory, as `launch-*.sh` finds them in `POST_INSTALL.md`. `_launchers` also
+# skips a name that fails the path segment rule, so a control character never reaches `nextCommands`.
+LAUNCHER_NAME = re.compile(r"launch-.*\.sh\Z", re.DOTALL)
+DEFAULT_MANIFEST = str(ROOT / "config/manifest.json")
+DEFAULT_LOCAL_DIR = str(ROOT / ".local")
 
 
 def _depth_bounded(value, field):
@@ -115,7 +134,9 @@ def _load_input(path, field, *, optional=False, raw=False, limit=None):
         fail("input_missing", field)
     except OSError as exc:
         # A directory of the path that is a link gives ENOTDIR; a final name that became a link gives ELOOP.
-        fail("input_path_unsafe" if exc.errno in (errno.ENOTDIR, errno.ELOOP) else "input_unreadable", field)
+        if exc.errno in (errno.ENOTDIR, errno.ELOOP):
+            fail("input_path_unsafe", field, hint=link_hint(path, exc))
+        fail("input_unreadable", field)
     finally:
         if fd is not None:
             os.close(fd)
@@ -279,8 +300,8 @@ def _parent_entries(parent):
                 entries.append((entry.name, _kind(entry)))
     except FileNotFoundError:
         fail("parent_missing", "list.parent")
-    except OSError:
-        fail("read_or_json", "list.parent")
+    except OSError as exc:
+        fail("read_or_json", "list.parent", hint=link_hint(parent, exc))
     finally:
         if fd is not None:
             try:
@@ -319,11 +340,11 @@ def _dir_state(directory, field):
         fd = _open_dir(directory)
     except FileNotFoundError:
         return None
-    except NotADirectoryError:
+    except NotADirectoryError as exc:
         # The directory or a directory above it is a symbolic link or is not a directory.
-        fail("not_directory", field)
-    except OSError:
-        fail("unreadable", field)
+        fail("not_directory", field, hint=link_hint(directory, exc))
+    except OSError as exc:
+        fail("unreadable", field, hint=link_hint(directory, exc))
     try:
         return baseline.scan(fd)
     except OSError:
@@ -510,9 +531,9 @@ def _compose_write(plan, key_data):
         fd = _open_dir(private)
     except FileNotFoundError:
         fail("private_dir_missing", "compose-plan.private_dir")
-    except OSError:
+    except OSError as exc:
         # The directory or a directory above it is a symbolic link or is not a directory.
-        fail("private_dir_unsafe", "compose-plan.private_dir")
+        fail("private_dir_unsafe", "compose-plan.private_dir", hint=link_hint(private, exc))
     try:
         # Every refusal comes before the first write.
         for name in seat.FILES:
@@ -560,9 +581,9 @@ def _results_candidate(directory, launchers):
         present = True
     except FileNotFoundError:
         present = False
-    except OSError:
+    except OSError as exc:
         # The directory or a directory above it is a symbolic link or is not a directory.
-        fail("not_directory", field)
+        fail("not_directory", field, hint=link_hint(directory, exc))
     state = settings = None
     error = False
     if present:
@@ -640,6 +661,358 @@ def _components(args):
     return json.dumps(output, sort_keys=True, ensure_ascii=True, separators=(",", ":")) + "\n"
 
 
+def _plan_inputs(args):
+    """The manifest, the overlay and the keyword inputs of `prepare` for one action, from explicit files.
+
+    Never consults os.environ for a credential value.
+    """
+    manifest_data = _load_input(args.manifest, "manifest.file")
+    overlay_data = _load_input(args.overlay, "overlay.file")
+    registry_data = _load_input(args.registry, "registry.file") if args.registry else None
+    mcp_data = None
+    if (slot := _mcp_slot(overlay_data)) is not None:
+        absolute(args.local_dir, "local_dir")
+        mcp_data = _load_input(args.local_dir + "/" + slot, "mcp.file")
+    models_data = None
+    inputs = overlay_data.get("inputs") if type(overlay_data) is dict else None
+    if type(inputs) is dict and inputs.get("modelsFile") == "inputs/models.json":
+        absolute(args.local_dir, "local_dir")
+        models_data = _load_input(args.local_dir + "/inputs/models.json", "models.file")
+    return manifest_data, overlay_data, {"registry": registry_data, "required_roles": args.require_role,
+                                         "mcp_definitions": mcp_data, "models_definitions": models_data}
+
+
+def _git(root, *args):
+    """The standard output of one read-only Git call in `root`, or None when Git is absent or fails.
+
+    `GIT_OPTIONAL_LOCKS=0` keeps `git status` from writing a refreshed index, and no file system monitor starts.
+    """
+    env = ChainMap({"GIT_CEILING_DIRECTORIES": os.path.dirname(root), "GIT_OPTIONAL_LOCKS": "0"}, os.environ)
+    try:
+        result = subprocess.run(["git", "-c", "core.fsmonitor=false", *args], cwd=root, env=env, timeout=20,
+                                check=False, stdin=subprocess.DEVNULL, capture_output=True,
+                                encoding="utf-8", errors="replace")
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def _clone_state(root):
+    """The commit, the release tag, the clean state and the release notes of the clone, from read-only Git calls.
+
+    Ignored files, for example `node_modules/` and `.local/`, do not count. Without Git, `tag` and `clean` are None.
+    """
+    root = str(root)
+    tag = (_git(root, "describe", "--exact-match", "--tags", "--match", kit_update.RELEASE_TAG + "*", "HEAD")
+           or "").strip() or None
+    status = _git(root, "status", "--porcelain", "--untracked-files=all")
+    clean = None if status is None else status == ""
+    state = {"path": root, "commit": _kit_commit(root), "tag": tag, "clean": clean,
+             "tests": kit_update.tests_line(tag, clean)}
+    if tag is not None:
+        # The annotated tag message of the release; a later release adds an "Update from" block to it.
+        state["releaseNotes"] = (_git(root, "for-each-ref", "--format=%(contents)", "refs/tags/" + tag)
+                                 or "")[:MAX_NOTES].strip()
+    return state
+
+
+def _canonical(value):
+    return json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":"))
+
+
+def _inputs_unchanged(root, kit_commit):
+    """True when no profile input of the kit changed from the recorded commit to `HEAD` and in the working tree.
+
+    A commit that is `unknown`, not 40 hex characters or not in the clone counts as a change. Both Git calls read
+    only: `diff` of two commits and `diff-index` of `HEAD` against the working tree write no index.
+    """
+    if commit(kit_commit) in (None, UNKNOWN):
+        return False
+    return (_git(root, "diff", "--quiet", kit_commit, "HEAD", "--", *PROFILE_INPUTS) is not None
+            and _git(root, "diff-index", "--quiet", "HEAD", "--", *PROFILE_INPUTS) is not None)
+
+
+def _candidate_changes(current, rendered, choices, root):
+    """The current candidate against the new plan: `(changes, drift, reason)`, names and words only.
+
+    With `outputDigests` in its state record, a kit change is a path where the SHA-256 of the plan bytes and the
+    record differ, or a path that only one of them names. Drift is a recorded file whose bytes in the candidate
+    differ from the record; it never asks for a new candidate. Without the record, the candidate is the same
+    profile only when its `choices.json` equals the plan and no profile input changed since its `kitCommit`;
+    drift is then None, not computed. `.tenant-pi/` is never compared by bytes. Reads go through the bounded
+    loader only. A failed read or a record of another shape gives `not_comparable`, never the same profile.
+    """
+    try:
+        os.close(_open_dir(current))
+    except FileNotFoundError:
+        return [{"path": ".", "change": "missing"}], None, kit_update.NOT_COMPARABLE
+    except OSError:
+        return [{"path": ".", "change": "unreadable"}], None, kit_update.NOT_COMPARABLE
+    try:
+        state = _load_input(current + "/" + STATE, "update.current.state", optional=True)
+    except Invalid:
+        state = False
+    provenance = state.get("provenance") if type(state) is dict else None
+    if type(provenance) is not dict or state.get("status") != "complete":
+        change = ("missing" if state is None else "unreadable" if state is False else
+                  "incomplete" if type(state) is dict and state.get("status") == "incomplete" else "invalid")
+        return [{"path": STATE, "change": change}], None, kit_update.NOT_COMPARABLE
+    if "outputDigests" not in provenance:
+        try:
+            recorded = _load_input(current + "/.tenant-pi/choices.json", "update.current.choices", optional=True)
+        except Invalid:
+            return [{"path": ".tenant-pi/choices.json", "change": "unreadable"}], None, kit_update.NOT_COMPARABLE
+        if recorded is None:
+            return [{"path": ".tenant-pi/choices.json", "change": "missing"}], None, kit_update.NOT_COMPARABLE
+        same = _canonical(recorded) == _canonical(choices) and _inputs_unchanged(root, provenance.get("kitCommit"))
+        return [], None, None if same else kit_update.NO_DIGESTS
+    recorded = kit_update.recorded_digests(provenance["outputDigests"], [name for name in FILES if name != STATE])
+    if recorded is None:
+        return [{"path": STATE, "change": "invalid"}], None, kit_update.NOT_COMPARABLE
+    changes = kit_update.kit_changes(output_digests(rendered), recorded)
+    reasons = {kit_update.KIT_CHANGED} if changes else set()
+    drift = []
+    for name in sorted(recorded):
+        if name.startswith(kit_update.METADATA):
+            continue
+        try:
+            data = _load_input(current + "/" + name, "update.current." + name, optional=True, raw=True)
+        except Invalid:
+            changes.append({"path": name, "change": "unreadable"})
+            reasons.add(kit_update.NOT_COMPARABLE)
+            continue
+        if data is None:
+            drift.append({"path": name, "change": "missing"})
+        elif output_digests({name: data})[name] != recorded[name]:
+            drift.append({"path": name, "change": "differs"})
+    return sorted(changes, key=lambda item: item["path"]), drift, kit_update.first_reason(reasons)
+
+
+def _launchers(private_dir, current):
+    """The `launch-*.sh` files of the private directory that name the current candidate."""
+    try:
+        entries = _listing(private_dir, "update.private_dir")
+    except Invalid:
+        return []
+    # The launch line holds `PI_CODING_AGENT_DIR=<target> pi`; the space keeps `<target>-2` out.
+    needle = ("PI_CODING_AGENT_DIR=" + shlex.quote(current) + " ").encode()
+    found = []
+    for name, kind in sorted(entries):
+        if kind != "file" or not LAUNCHER_NAME.fullmatch(name) or not path_segment(name, quotes=True):
+            continue
+        try:
+            data = _load_input(private_dir + "/" + name, "update.launcher", raw=True, limit=MAX_LAUNCHER)
+        except Invalid:
+            continue
+        if needle in data:
+            found.append(private_dir + "/" + name)
+    return found
+
+
+def _launcher_check(path, private_dir, current, plan):
+    """The launcher of the current candidate against the text that `generate` would write.
+
+    Without `path`, exactly one launcher of the private directory must name the candidate; else it is not checked.
+    """
+    found = None
+    if path is None:
+        named = _launchers(private_dir, current)
+        found = len(named)
+        if found != 1:
+            return {"path": None, "status": "not_checked", "found": found}
+        path = named[0]
+    try:
+        expected = launcher.text(plan["commands"]["launch"])
+        data = _load_input(path, "update.launcher", optional=True, raw=True, limit=MAX_LAUNCHER)
+    except Invalid:
+        return {"path": path, "status": "unreadable", "found": found}
+    return {"path": path, "status": "missing" if data is None else "same" if data == expected else "differs",
+            "found": found}
+
+
+def _file_times(directory, field):
+    """The modification times in nanoseconds of the regular files below one directory, by relative path.
+
+    None when the directory is absent. Each directory opens without following a link; a link is not entered.
+    """
+    try:
+        fd = _open_dir(directory)
+    except FileNotFoundError:
+        return None
+    except OSError:
+        fail("unreadable", field)
+    times, pending, count = {}, [("", fd)], 0
+    try:
+        while pending:
+            prefix, parent = pending.pop()
+            try:
+                with os.scandir(parent) as found:
+                    for entry in found:
+                        count += 1
+                        if count > MAX_ENTRIES:
+                            fail("input_too_large", field)
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append((prefix + entry.name + "/", os.open(entry.name, DIR_FLAGS, dir_fd=parent)))
+                        elif entry.is_file(follow_symlinks=False):
+                            times[prefix + entry.name] = entry.stat(follow_symlinks=False).st_mtime_ns
+            finally:
+                os.close(parent)
+    except OSError:
+        fail("unreadable", field)
+    finally:
+        for _, parent in pending:
+            os.close(parent)
+    return times
+
+
+def _input_times(directory, names, field):
+    """The modification times in nanoseconds of the named regular files of one directory; an absent file is left out."""
+    times = {}
+    for name in names:
+        try:
+            info = os.lstat(directory + "/" + name)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            fail("unreadable", field)
+        if stat.S_ISREG(info.st_mode):
+            times[name] = info.st_mtime_ns
+    return times
+
+
+def _package_check(root, rel):
+    """The `npm ci` state and, for a package with a build, the build state of one in-tree package, with its lines."""
+    directory = str(root) + "/" + rel
+    try:
+        lock = _load_input(directory + "/package-lock.json", "update.package.lock", optional=True)
+        install = ("no_lock_file", None) if lock is None else kit_update.install_status(
+            lock, _load_input(directory + "/node_modules/.package-lock.json", "update.package.installed", optional=True))
+    except Invalid:
+        install = ("needed", "unreadable")
+    build = None
+    if rel in kit_update.BUILDS:
+        sources, source_suffix, outputs, output_suffix, inputs = kit_update.BUILDS[rel]
+        try:
+            build = kit_update.build_status(_file_times(directory + "/" + sources, "update.package.sources") or {},
+                                            _file_times(directory + "/" + outputs, "update.package.outputs"),
+                                            _input_times(directory, inputs, "update.package.inputs"),
+                                            source_suffix, output_suffix)
+        except Invalid:
+            build = ("needed", "unreadable")
+    lines = ([kit_update.install_line(directory)] if install[0] == "needed" else []) + (
+        [kit_update.build_line(directory)] if build is not None and build[0] == "needed" else [])
+    return {"path": directory, "install": {"status": install[0], "reason": install[1]},
+            "build": None if build is None else {"status": build[0], "reason": build[1]}, "lines": lines}
+
+
+def _with_target(overlay_data, target):
+    """A copy of one valid overlay with another `target.agentDir`."""
+    data = copy.deepcopy(overlay_data)
+    data["target"]["agentDir"] = target
+    return data
+
+
+def _update(args, clock):
+    """The read-only report of a kit update: clone state, runtime, plan, comparison, packages, verdict.
+
+    Writes nothing. The only processes are read-only Git calls and the three `--version` calls of `check-runtime`.
+    The plan renders in memory for the candidate in use and is compared with the output digests of its
+    generation; `.tenant-pi/` stays out of the comparison.
+    """
+    tools = {key: getattr(args, key) for key, _, _ in TOOLS if getattr(args, key) is not None}
+    for key, path in tools.items():
+        absolute(path, "update." + key)
+    if args.launcher is not None:
+        absolute(args.launcher, "update.launcher")
+    manifest_data, overlay_data, inputs = _plan_inputs(args)
+    plan = prepare(manifest_data, overlay_data, **inputs)
+    target = plan["targetAgentDir"]
+    current = target if args.current is None else args.current
+    absolute(current, "update.current")
+    # The location rules of `plan`, for the target of the overlay and for the candidate that this action reads.
+    for path, field in ((target, "overlay.target.agentDir"), (current, "update.current")):
+        _outside_kit(path, field)
+        if path == SAMPLE_TARGET:
+            fail("sample_target", field)
+        _outside_pi_agent(path, field)
+        _outside_wiki_vault(path, field, overlay_data)
+    if current != target:
+        plan = prepare(manifest_data, _with_target(overlay_data, current), **inputs)
+    rendered = _validated_bytes(plan, current)
+    home = _home("update.home")
+    overlay_path = os.path.abspath(args.overlay)
+    private_dir = os.path.dirname(overlay_path)
+
+    clone = _clone_state(ROOT)
+    report = check(manifest_data["runtime"], tools)
+    runtime_ok = matches(report)
+    choices = plan["files"][".tenant-pi/choices.json"]["content"]
+    changes, drift, reason = _candidate_changes(current, rendered, choices, clone["path"])
+    launcher_state = _launcher_check(args.launcher, private_dir, current, plan)
+    if launcher_state["status"] in ("missing", "unreadable", "differs"):
+        changes.append({"path": launcher_state["path"], "change": launcher_state["status"]})
+        reason = kit_update.first_reason({reason, kit_update.KIT_CHANGED if launcher_state["status"] == "differs"
+                                          else kit_update.NOT_COMPARABLE})
+    enabled = choices["overlay"]["selection"]["enable"]
+    checked = [_package_check(ROOT, rel) for rel in kit_update.tree_packages(choices["manifest"]["components"], enabled)]
+    package_lines = [line for item in checked for line in item["lines"]]
+    verdict = kit_update.RUNTIME if not runtime_ok else kit_update.NEW if reason is not None else kit_update.SAME
+    # The drift sentence promises that the files stay as they are: only a `same_profile` verdict keeps them.
+    note = (kit_update.NO_DIGESTS_NOTE if reason == kit_update.NO_DIGESTS else
+            kit_update.DRIFT_NOTE if drift and verdict == kit_update.SAME else None)
+
+    kit = str(ROOT / "scripts/tenant_pi.py")
+    manifest_option = [] if args.manifest == DEFAULT_MANIFEST else ["--manifest", os.path.abspath(args.manifest)]
+    plan_options = ["--overlay", overlay_path, *manifest_option,
+                    *(["--registry", os.path.abspath(args.registry)] if args.registry else []),
+                    *(item for role in args.require_role for item in ("--require-role", role)),
+                    *([] if args.local_dir == DEFAULT_LOCAL_DIR else ["--local-dir", os.path.abspath(args.local_dir)])]
+    tool_options = [item for key, path in tools.items() for item in ("--" + key, path)]
+    lines = ([] if clone["tests"] == kit_update.NO_TESTS else
+             ["python3 " + shlex.quote(str(ROOT / "scripts/check.py")) + " --tier fast"])
+    new = None
+    pi_install = setup_commands(plan, report)["piInstall"]
+    if verdict == kit_update.RUNTIME:
+        lines += kit_update.runtime_lines(kit=kit, report=report, pi_install=pi_install, update_options=[
+            *plan_options, *(["--current", current] if args.current is not None else []),
+            *(["--launcher", args.launcher] if args.launcher is not None else []), *tool_options])
+    elif verdict == kit_update.NEW:
+        # An overlay that names an absent new target already holds the edit; else a name beside the candidate.
+        edited = target != current and not os.path.lexists(target)
+        new = target if edited else kit_update.new_target(
+            current, clock().strftime("%Y%m%d"), lambda path: any(os.path.lexists(name) for name in (
+                path, private_dir + "/launch-" + os.path.basename(path) + ".sh",
+                private_dir + "/live-baseline-" + os.path.basename(path) + ".json")))
+        if new is None:
+            fail("no_free_name", "update.new_target")
+        lines += kit_update.new_candidate_lines(
+            kit=kit, overlay=overlay_path, private_dir=private_dir, current=current, target=new, edited=edited,
+            plan_options=plan_options, runtime_options=[*tool_options, *manifest_option],
+            setup=setup_commands(prepare(manifest_data, _with_target(overlay_data, new), **inputs), report)["setup"],
+            package_lines=package_lines, home=home,
+            vault=wiki_vault.path(_overlay_wiki_home(overlay_data) or home) if "wiki" in enabled else None,
+            note=note)
+    else:
+        lines += kit_update.same_profile_lines(launcher_path=launcher_state["path"], package_lines=package_lines,
+                                               drift=drift)
+    output = {
+        "summary": kit_update.summary(verdict, current=current, tests=clone["tests"], package_lines=package_lines,
+                                      changes=changes, reason=reason, drift=drift, target=new, report=report),
+        "clone": clone,
+        "runtime": {"status": "match" if runtime_ok else "action_needed", "tools": report, "piInstall": pi_install},
+        "plan": {"valid": True, "overlay": overlay_path, "privateDir": private_dir, "targetAgentDir": target,
+                 "files": [name for name in sorted(rendered) if not name.startswith(kit_update.METADATA)]},
+        "comparison": {"current": current, "notCompared": kit_update.METADATA, "reason": reason, "changes": changes,
+                       "drift": drift, "note": note, "launcher": launcher_state},
+        "packages": {"checked": checked, "lines": package_lines},
+        "verdict": verdict,
+        "newTarget": new,
+        "nextCommands": lines,
+    }
+    done = verdict == kit_update.SAME and not package_lines and clone["tests"] == kit_update.NO_TESTS
+    return output, 0 if done else 1
+
+
 def main(argv=None, *, clock=utc_now):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
@@ -671,6 +1044,21 @@ def main(argv=None, *, clock=utc_now):
         rt.add_argument("--" + key, help=f"absolute path of the {command} executable (default: {command} on PATH)")
     rt.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
                     help="reviewed kit manifest (override remains strictly validated)")
+    upd = subs.add_parser("update", help="read-only check after a pull of the kit: clone state, runtime, the plan against "
+                          "the candidate in use, and package lines; prints a verdict and the next commands")
+    upd.add_argument("--overlay", required=True,
+                     help="explicit local JSON choices file; its target.agentDir names the candidate in use")
+    upd.add_argument("--current", help="absolute path of the candidate in use (default: target.agentDir of the overlay)")
+    upd.add_argument("--launcher", help="absolute path of the launcher of the candidate in use (default: the one "
+                     "launch-*.sh file in the directory of the overlay that names it)")
+    upd.add_argument("--manifest", default=DEFAULT_MANIFEST, help="reviewed kit manifest (override remains strictly validated)")
+    upd.add_argument("--registry", help="explicit offline capability JSON map; not Pi models.json")
+    upd.add_argument("--require-role", action="append", default=[],
+                     help="require an explicit reviewed role; repeat for more roles")
+    upd.add_argument("--local-dir", default=DEFAULT_LOCAL_DIR,
+                     help="absolute directory that holds the fixed overlay.inputs slots (default: the kit's .local)")
+    for key, command, _ in TOOLS:
+        upd.add_argument("--" + key, help=f"absolute path of the {command} executable (default: {command} on PATH)")
     hrd = subs.add_parser("check-herdr", help="report the herdr command of the host: present with its version, or missing")
     hrd.add_argument("--" + HERDR, help=f"absolute path of the {HERDR} executable (default: {HERDR} on PATH)")
     subs.add_parser("check-wiki-vault", help="report the personal LLM Wiki vault of this account: present, absent, "
@@ -790,10 +1178,15 @@ def main(argv=None, *, clock=utc_now):
                 absolute(path, "check-runtime." + key)
             manifest_data = _load_input(args.manifest, "manifest.file")
             manifest(manifest_data)
-            # With `check-herdr`, the only action that starts a process: three fixed `--version` commands, no shell.
+            # Three fixed `--version` commands, no shell; `update` makes the same calls.
             report = check(manifest_data["runtime"], paths)
             print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0 if matches(report) else 1
+        if args.action == "update":
+            # Read only. The summary comes first, so the keys keep their order.
+            output, code = _update(args, clock)
+            print(json.dumps(output, ensure_ascii=True, separators=(",", ":")))
+            return code
         if args.action == "check-herdr":
             if args.herdr is not None:
                 absolute(args.herdr, "check-herdr." + HERDR)
@@ -831,26 +1224,14 @@ def main(argv=None, *, clock=utc_now):
             else:
                 print(json.dumps(written, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
-        manifest_data = _load_input(args.manifest, "manifest.file")
-        overlay_data = _load_input(args.overlay, "overlay.file")
         # Never consult os.environ for a credential value. `plan` tests the names of `PROVIDER_KEY_NAMES`
         # for presence only, for its warning.
-        registry_data = _load_input(args.registry, "registry.file") if args.registry else None
-        mcp_data = None
-        if (slot := _mcp_slot(overlay_data)) is not None:
-            absolute(args.local_dir, "local_dir")
-            mcp_data = _load_input(args.local_dir + "/" + slot, "mcp.file")
-        models_data = None
-        inputs = overlay_data.get("inputs") if type(overlay_data) is dict else None
-        if type(inputs) is dict and inputs.get("modelsFile") == "inputs/models.json":
-            absolute(args.local_dir, "local_dir")
-            models_data = _load_input(args.local_dir + "/inputs/models.json", "models.file")
+        manifest_data, overlay_data, inputs = _plan_inputs(args)
         # Neither action runs a runtime probe. `generate` runs only one read-only Git call for the kit commit.
         report = getattr(args, "runtime_report", None)
         if report is not None:
             report = _load_input(report, "runtime_report.file")
-        plan = prepare(manifest_data, overlay_data, registry=registry_data, required_roles=args.require_role,
-                       mcp_definitions=mcp_data, models_definitions=models_data)
+        plan = prepare(manifest_data, overlay_data, **inputs)
         if report is not None:
             runtime_report(report, manifest_data["runtime"])
         herdr = getattr(args, "herdr_report", None)
@@ -896,10 +1277,12 @@ def main(argv=None, *, clock=utc_now):
                     output["launcher"] = launcher.failure(launcher_path, exc)
                     code = 1
     except Invalid as exc:
-        print(json.dumps({"error": str(exc), "candidate_created": False, **place(exc)}, sort_keys=True), file=sys.stderr)
+        print(json.dumps({"error": str(exc), "candidate_created": False, **place(exc), **hint_field(exc)},
+                         sort_keys=True), file=sys.stderr)
         return 2
     except WriteError as exc:
-        print(json.dumps({"error": str(exc), "candidate_created": exc.candidate_created}, sort_keys=True), file=sys.stderr)
+        print(json.dumps({"error": str(exc), "candidate_created": exc.candidate_created, **hint_field(exc)},
+                         sort_keys=True), file=sys.stderr)
         return 2
     print(json.dumps(output, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
     return code

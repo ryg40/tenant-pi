@@ -50,7 +50,9 @@ EMBEDDING_POLICIES = {"provider": "embedding_provider", "baseUrl": "marker", "mo
 EMBEDDING_AUTH_POLICIES = {"envVar": "marker", "mode": "embedding_auth"}
 MISSING = object()
 # Provenance fields that differ between any two generations: listed under `markers`, never under `changes`.
-MARKERS = frozenset((".tenant-pi/state.json", "/provenance/" + key) for key in ("generatedAt", "kitCommit"))
+# `outputDigests` covers `choices.json`, which records the target of its candidate.
+MARKER_FIELDS = ("generatedAt", "kitCommit", "outputDigests")
+MARKERS = frozenset((".tenant-pi/state.json", "/provenance/" + key) for key in MARKER_FIELDS)
 
 MAX_NAME = 255
 STATE_FIELDS = ("kitSchemaVersion", "piVersion", "filesComplete", "generatedAt", "kitCommit")
@@ -456,10 +458,10 @@ def _state(side, data):
         side.put(file, "/provenance/enabled", record.get("enabled", MISSING), "ids")
         side.id_map(file, "/provenance/pins", record.get("pins", MISSING), "pin")
         side.put(file, "/provenance/outputs", record.get("outputs", MISSING), "outputs")
-        for key in ("generatedAt", "kitCommit"):
+        for key in MARKER_FIELDS:
             side.put(file, "/provenance/" + key, record.get(key, MISSING), "marker")
         side.known(file, "/provenance", record, ("kitSchemaVersion", "piVersion", "nodeRange", "enabled", "pins", "outputs",
-                                                 "generatedAt", "kitCommit"))
+                                                 *MARKER_FIELDS))
     side.known(file, "", state, ("schemaVersion", "status", "provenance"))
 
 

@@ -163,7 +163,7 @@ So read `changed` in this way:
 
 ## Refusals
 
-Each refusal is a static `rule: field` text. It contains no path and no value. Each refusal of this table fires before any write. The refusals of the `--out` path and of `HOME` fire before the directory is listed.
+Each refusal is a static `rule: field` text. The `error` text contains no path and no value. The optional `hint` names a link and a path; see [the input file errors](generator.md#input-file-errors). Each refusal of this table fires before any write. The refusals of the `--out` path and of `HOME` fire before the directory is listed.
 
 See the [refusal rules](private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
 

@@ -183,7 +183,7 @@ Never give `compose.env` to the env file option. That option reads `seat.env` on
    docker compose --env-file "<private dir>/seat.env" -f deploy/compose/compose.yaml build
    ```
 
-   The build runs the four offline checks of the kit and installs the pinned Pi. A failed check stops the build.
+   The build runs the fast tier of the kit checks, `scripts/check.py --tier fast`, and installs the pinned Pi. A failed check stops the build.
 
 3. Start the seat.
 
@@ -262,7 +262,7 @@ Warning: `SEAT_BIND=0.0.0.0` in `seat.env` opens the seat to the network. The de
 
 5. Optional: use Herdr.
 
-   Run `herdr` in the tmux session. Then run `pi-profile` in a Herdr pane. The image holds Herdr 0.9.3 and no Herdr defaults file.
+   Run `herdr` in the tmux session. Then run `pi-profile` in a Herdr pane. The image holds Herdr 0.9.5 and no Herdr defaults file.
 
 ### When the terminal type is unknown
 
@@ -348,7 +348,7 @@ Warning: `up -d` alone keeps the old image. The image tag is `KIT_COMMIT`, so an
    docker compose --env-file "<private dir>/seat.env" -f deploy/compose/compose.yaml build
    ```
 
-   The build runs the four offline checks of the new checkout.
+   The build runs the fast tier of the kit checks on the new checkout.
 
 3. Recreate the container.
 

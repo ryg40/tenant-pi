@@ -107,7 +107,7 @@ After an apply, wait five minutes and run the dry run again. It must list no rec
 
 ## Dependencies and tests
 
-The package pins `@aws-sdk/client-iam`, `@aws-sdk/client-sts` and `@aws-sdk/client-bedrock-agentcore` to `3.1152.0` with a lock file. Node `>=24.0.0 <25`.
+The package pins `@aws-sdk/client-iam`, `@aws-sdk/client-sts` and `@aws-sdk/client-bedrock-agentcore` to `3.1154.0` with a lock file. Node `>=24.0.0 <25`.
 
 ```sh
 npm --prefix packages/agentcore-memory-admin ci --ignore-scripts

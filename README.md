@@ -18,12 +18,12 @@ The flow covers inventory, requirements, the clone, Pi, packages, the overlay, g
 | [Install](INSTALL.md) | The install stages with exact commands. Start here. |
 | [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Betterleaks binary adaptations; macOS stays not qualified. |
 | [Compose seat](docs/guides/compose-seat.md) | A Pi profile in a container that you reach over SSH, with Docker Compose or Podman; not qualified. |
-| [Explainer](EXPLAINER.md) | The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
+| [Explainer](EXPLAINER.md) | For a human reader, not for an update. The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
 | [Architecture](docs/architecture.md) | The installed environment: terminal, selected Pi profile, runtime modules, state and optional services. Open the self-contained `docs/architecture.html` from disk. Five views include model-route alternatives, memory data flows and a searchable module catalog. The guide explains navigation and rebuilding. |
 | [Shared memory tutorials](EXPLAINER.html) | Eight beginner tutorials of the optional shared AgentCore memory: key handoff, recall, propose, review and offboarding in rendered terminal, Pi and Claude Code frames, with four example people. Open the self-contained file from disk. |
 | [Providers](docs/guides/providers.md) | Codex login, and llama-swap and vLLM as direct providers in `models.json` of the profile. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
-| [After the install](POST_INSTALL.md) | The commands for each update and change after a base install. You do not read the install text again. |
+| [After the install](POST_INSTALL.md) | The commands for each update and change after a base install. An update is `git pull --ff-only` and one read-only command, `python3 scripts/tenant_pi.py update`. You do not read the install text again. |
 | [Pi update checks](docs/pi-update.md) | Detect npm releases, qualify an isolated candidate, and read breaking changes. |
 | [Continuous integration](docs/publishing.md#continuous-integration) | GitHub offline checks of the published snapshot. |
 | [Privacy](docs/guides/privacy.md) | What the kit separates, what it never does, what the scanner checks. |
@@ -48,6 +48,7 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 | `wizard` | Scans the confirmed target, opens a terminal checklist and saves only an explicitly approved private handoff. | [wizard guide](docs/guides/wizard.md) |
 | `components` | Prints the checklist of all components: as data, as a numbered list, or as a selection. Read-only. | [the CLI contract](docs/generator.md#components-the-checklist-of-the-components) |
 | `check-runtime` | Compares the installed Pi, Node and Python with the pins. | [the runtime version check](docs/check-runtime.md) |
+| `update` | After a pull: compares the plan with the candidate in use and prints a verdict with the next lines. Read-only. | [the update action](docs/update.md) |
 | `check-herdr` | Reports the `herdr` command of the host: present with its version, or missing. Installs nothing. | [Herdr and the question tool](docs/herdr-setup.md) |
 | `check-wiki-vault` | Reports the personal LLM Wiki vault of the account: present, absent, or a second vault through `WIKI_HOME`. Opens no file and writes nothing. | [an existing vault](docs/memory-modules.md#the-vault-check) |
 | `remote-plan` | Prints the SSH command lines of the remote stages as data. Runs none of them. | [Herdr and the question tool](docs/herdr-setup.md#the-remote-plan) |

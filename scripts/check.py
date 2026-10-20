@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 """Run the offline checks and record clean full runs in local Git metadata."""
+import sys
+
+if sys.version_info < (3, 11):
+    # Before any other import: an older Python fails inside the checks with a syntax error.
+    print("check: Python 3.11 or later is required, found %d.%d" % sys.version_info[:2], file=sys.stderr)
+    sys.exit(1)
+
 import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -11,7 +18,7 @@ import platform
 import re
 import shutil
 import subprocess
-import sys
+import tempfile
 import time
 
 CHECK_SET_VERSION = 1
@@ -145,7 +152,9 @@ def unit_summary(result):
 
 
 def checks(root, tier, jobs, shard_timeout=900):
-    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", TENANT_PI_TIER=tier)
+    # macOS links /tmp and /var into /private. The kit refuses a linked parent, so the tests get the resolved form.
+    env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1", TENANT_PI_TIER=tier,
+               TMPDIR=os.path.realpath(tempfile.gettempdir()))
     in_git = (root / ".git").exists()
     before = clean_tree(root) if in_git else None
     started = time.monotonic()

@@ -140,7 +140,7 @@ class ContractTests(unittest.TestCase):
         for cid in ("mcp", "hermes", "wiki"):
             self.assertIsNone(npm_parts(data["components"][cid]["source"]["spec"])[1])
         # The question extension keeps the exact version whose registry metadata was read.
-        self.assertEqual(("@juicesharp/rpiv-ask-user-question", "2.13.8"),
+        self.assertEqual(("@juicesharp/rpiv-ask-user-question", "2.13.9"),
                          npm_parts(data["components"]["questions"]["source"]["spec"]))
         self.assertEqual(("@zosmaai/pi-llm-wiki", None), npm_parts("@zosmaai/pi-llm-wiki"))
         self.assertEqual(("@zosmaai/pi-llm-wiki", "0.12.4"), npm_parts("@zosmaai/pi-llm-wiki@0.12.4"))
@@ -541,7 +541,7 @@ class ContractTests(unittest.TestCase):
 
     def test_question_extension_is_a_selectable_pinned_npm_component(self):
         component = self.components["questions"]
-        self.assertEqual({"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.13.8"}, component["source"])
+        self.assertEqual({"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.13.9"}, component["source"])
         self.assertEqual(("unverified", None, ["core"], "MIT"),
                          (component["status"], component["reason"], component["requires"], component["license"]))
         self.assertEqual({"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}, component["resources"])
@@ -555,7 +555,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("questions", self.base["selection"]["enable"])
         # The reviewed anchor holds the version: an altered manifest cannot move or drop the pin.
         for spec in ("@juicesharp/rpiv-ask-user-question", "@juicesharp/rpiv-ask-user-question@2.12.0",
-                     "rpiv-ask-user-question@2.13.8"):
+                     "rpiv-ask-user-question@2.13.9"):
             data = load(ROOT / "config/manifest.json")
             data["components"]["questions"]["source"]["spec"] = spec
             with self.assertRaisesRegex(Invalid, "^reviewed_source:"):

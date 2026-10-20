@@ -43,7 +43,7 @@ Facts for a selection:
 - An `unverified` component can be enabled. The plan lists each of its gaps as a readiness gap with the component ID as the subject.
 - `openviking` is a memory module: it also needs `consent.memoryCapture`, `consent.remoteMemoryWrites` and a `memory.openviking` block. Its local-file package declaration names `packages/openviking-pi/index.ts` and comes after the other in-tree packages. See [the memory modules](memory-modules.md).
 - `herdr` holds the skill only. The Herdr application is a host tool: the kit does not install it, and the `check-herdr` action reports the `herdr` command. See [Herdr and the question tool](herdr-setup.md).
-- `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.13.8` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
+- `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.13.9` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
 - A `blocked` component cannot be enabled. The validator fails with `blocked_component`.
 - A generated profile declares each package one time in `settings.packages`. The `source` is the absolute package directory path, except OpenViking and AgentCore, whose sources are their `index.ts` files. For a directory source, each enabled component adds its own `extensions` or `skills` filter entry. An empty directory filter loads nothing of that kind.
 - The profile depends on the location of the kit. If you move the kit, generate a new profile.
@@ -177,7 +177,7 @@ See [the memory guide](memory-modules.md#agentcore-memory), [the security docume
 | Source | Own code at `packages/agentcore-pi/index.ts`, loaded after OpenViking as a local-file source. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependency | None of its own. It imports the core `packages/agentcore-memory-core` by a relative path; the lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1152.0`. |
+| Dependency | None of its own. It imports the core `packages/agentcore-memory-core` by a relative path; the lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1154.0`. |
 | Configuration | The person config file. The launch line names it in process-local `AGENTCORE_MEMORY_CONFIG_FILE` and removes an inherited `AGENTCORE_MEMORY_CONFIG`. No credential is rendered. |
 | Credentials | The AWS profile that the person config names, else the default AWS SDK credential chain. |
 | Publish rule | `("packages/agentcore-pi", ("node_modules/",))`. |
@@ -210,7 +210,7 @@ The design and its security review are in [the shared memory security document](
 | Source | `packages/agentcore-memory-core`, own code. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependency | `@aws-sdk/client-bedrock-agentcore` `3.1152.0`, with a lock file. The Pi extension and the Claude Code plugin get the SDK through the core. |
+| Dependency | `@aws-sdk/client-bedrock-agentcore` `3.1154.0`, with a lock file. The Pi extension and the Claude Code plugin get the SDK through the core. |
 | AWS actions | `RetrieveMemoryRecords`, `ListMemoryRecords`, `BatchCreateMemoryRecords` and `BatchUpdateMemoryRecords`. No delete action. |
 | Tests | `npm --prefix packages/agentcore-memory-core ci --ignore-scripts`, then `node --test packages/agentcore-memory-core/tests/`. No AWS credential, no network. |
 | Publish rule | `("packages/agentcore-memory-core", ("node_modules/",))`. |
@@ -260,7 +260,7 @@ The design and its security review are in [the shared memory security document](
 | Source | `packages/agentcore-memory-admin`, own code. The script is `bin/registry.mjs`. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependency | `@aws-sdk/client-iam`, `@aws-sdk/client-sts` and `@aws-sdk/client-bedrock-agentcore`, each `3.1152.0`, pinned with a lock file. |
+| Dependency | `@aws-sdk/client-iam`, `@aws-sdk/client-sts` and `@aws-sdk/client-bedrock-agentcore`, each `3.1154.0`, pinned with a lock file. |
 | Core | Imported by the relative path `../../agentcore-memory-core/src/index.mjs`: the id rule, the namespace builder, the registry validation, the three scope functions and the person config. The script adds field names to a refusal and two registry rules (a duplicate PIN, a project without a maintainer). |
 | Registry | The tracked `registry.example.json` holds the four example people only. The private registry stays outside every repository. |
 | Credentials | The admin profile with `--apply --profile <admin>`; a dry run without `--profile` makes no AWS call. |
@@ -287,7 +287,7 @@ A vendored copy of the OpenViking memory extension for Pi. It sends session turn
 | Upstream base | `b20f192e` (`b20f192e61393e10fc9945306edf69fc25a58abe`), the merge base with upstream. The fork commit is not a commit of the public `volcengine/OpenViking` repository. |
 | License | Apache-2.0 covers upstream `examples/`; its `examples/LICENSE` is vendored as `packages/openviking-pi/LICENSE`. The OpenViking repository root uses AGPL-3.0. |
 | Node | `>=24.0.0` (`engines` in `packages/openviking-pi/package.json`); the kit range is narrower |
-| Dependency | `@modelcontextprotocol/client` `2.2.0`, from the committed `package-lock.json` |
+| Dependency | `@modelcontextprotocol/client` `2.3.1`, from the committed `package-lock.json` |
 | `shared/` | Committed source: the output of `examples/memory-plugin-shared/sync.mjs` at the same commit. It is not build output, and no rule of `scripts/publish_check.py` treats it as build output. |
 | Publish rule | `("packages/openviking-pi", ("node_modules/", "LICENSE"))`; `packages/openviking-pi/LICENSE` is explicit in `PUBLISH`. |
 | Kit module | `openviking`; fields, consent, outputs and the refresh steps are in [the memory modules](memory-modules.md#openviking-what-the-vendored-source-does) |
@@ -317,7 +317,7 @@ Its five behaviour changes are:
 - Additive mode persists the capture watermark across resume. Session creation and reads use `auto_create` and fail closed on errors.
 - The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
 
-The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.2.0`.
+The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.3.1`.
 
 The [package banner](../packages/openviking-pi/README.md) separates these fork changes from kit changes, the vendored licence, and generated shared files.
 The kit also guards user-only recall for Pi 1.2.0 and carries lifecycle tests, updated handshake fixtures, and a local recall-test helper.

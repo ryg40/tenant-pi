@@ -23,7 +23,7 @@ from urllib.request import ProxyHandler, build_opener
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.tenant_pi import _dir_state, _load_input
-from scripts.validate import Invalid, absolute, fail, in_range, manifest, npm_parts, parse_range
+from scripts.validate import Invalid, absolute, fail, hint_field, in_range, link_hint, manifest, npm_parts, parse_range
 
 PACKAGE = "@earendil-works/pi-coding-agent"
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
@@ -86,7 +86,7 @@ def workspace(value):
     live = Path(home) / ".pi/agent"
     for parent in (path, *path.parents):
         if parent.is_symlink():
-            fail("unsafe_path", "pi-update.workdir")
+            fail("unsafe_path", "pi-update.workdir", hint=link_hint(value))
     for protected in (ROOT, live.resolve()):
         if path.is_relative_to(protected) or protected.is_relative_to(path):
             fail("protected_path", "pi-update.workdir")
@@ -599,7 +599,7 @@ def main(argv=None, *, latest=registry_latest):
             report = notes(args.start, args.end, args.workdir)
             code = 0 if report["passed"] else 1
     except Invalid as exc:
-        report, code = {"error": str(exc)}, 2
+        report, code = {"error": str(exc), **hint_field(exc)}, 2
     except (OSError, ValueError):
         report, code = {"error": "operation_failed: pi-update"}, 2
     print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))

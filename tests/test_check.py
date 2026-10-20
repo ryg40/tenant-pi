@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -119,6 +120,29 @@ class CheckTests(unittest.TestCase):
                                     "diff: passed", "check: FAILED"])
         self.assertIn("unittest tests.test_sleep: FAILED (timed out after 0.5s)", err)
         self.assertEqual(self.stamps(), [])
+
+    def test_shards_get_the_resolved_temporary_directory(self):
+        # macOS links /tmp and /var into /private, and the kit refuses a linked parent.
+        layout = tempfile.TemporaryDirectory()
+        self.addCleanup(layout.cleanup)
+        base = Path(layout.name).resolve()
+        (base / "private/tmp").mkdir(parents=True)
+        (base / "tmp").symlink_to("private/tmp", target_is_directory=True)
+        (self.root / "tests/test_tmp.py").write_text(
+            "import tempfile, unittest\nclass Tmp(unittest.TestCase):\n"
+            f"    def test_resolved(self): self.assertEqual({str(base / 'private/tmp')!r}, tempfile.gettempdir())\n")
+        self.commit()
+        with patch.object(check.tempfile, "tempdir", str(base / "tmp")):
+            code, lines, err = self.invoke()
+        self.assertEqual(code, 0, err)
+        self.assertEqual(lines[-1], "check: passed")
+
+    def test_an_older_python_stops_with_one_line(self):
+        code = ("import runpy, sys; sys.version_info = (3, 9, 6, 'final', 0); "
+                "runpy.run_path(sys.argv[1], run_name='__main__')")
+        result = subprocess.run((sys.executable, "-c", code, check.__file__), capture_output=True, text=True)
+        self.assertEqual((1, "", "check: Python 3.11 or later is required, found 3.9\n"),
+                         (result.returncode, result.stdout, result.stderr))
 
     def test_discovery_includes_modules_without_underscore(self):
         (self.root / "tests/testextra.py").write_text(

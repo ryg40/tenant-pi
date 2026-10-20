@@ -309,7 +309,7 @@ class WorkflowPlanTests(unittest.TestCase):
         npm = [source for source in sources if source.startswith("npm:")]
         # The order of `packages`: the memory modules, the MCP adapter, the question extension.
         self.assertEqual(["npm:pi-hermes-memory", "npm:@zosmaai/pi-llm-wiki", "npm:pi-mcp-adapter",
-                          "npm:@juicesharp/rpiv-ask-user-question@2.13.8"], npm)
+                          "npm:@juicesharp/rpiv-ask-user-question@2.13.9"], npm)
         self.assertEqual([owner, "/home/example/git/owner-tools"], sources[-2:])
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
         setup = plan["commands"]["setup"]

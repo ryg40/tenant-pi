@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import slow, without_hint
 
 from scripts.compose_plan import APPROVAL, FILES, compose_plan, public_key
 from scripts.model_routes import render
@@ -343,7 +343,7 @@ class CliTests(unittest.TestCase):
     def refused(self, expected, *extra, **changes):
         result = self.run_cli(*extra, **changes)
         self.assertEqual((2, ""), (result.returncode, result.stdout))
-        self.assertEqual({"candidate_created": False, "error": expected}, json.loads(result.stderr))
+        self.assertEqual({"candidate_created": False, "error": expected}, without_hint(result.stderr))
         self.assertNotIn(CANARY, result.stderr)
 
     def test_prints_the_plan_and_writes_and_runs_nothing(self):

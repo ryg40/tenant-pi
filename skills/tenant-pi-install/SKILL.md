@@ -1,6 +1,6 @@
 ---
 name: tenant-pi-install
-description: Guide an agent through installing a separate Pi profile with the tenant-pi kit. Use when a user asks to set up, install, migrate, or rebuild a Pi profile, add an optional module, or add Codex, llama-swap or vLLM. Ask questions and follow INSTALL.md; use POST_INSTALL.md after a base install.
+description: Guide an agent through installing a separate Pi profile with the tenant-pi kit. Use when a user asks to set up, install, migrate, or rebuild a Pi profile, update the kit to a new release, add an optional module, or add Codex, llama-swap or vLLM. Ask questions and follow INSTALL.md; use POST_INSTALL.md after a base install.
 ---
 
 # Install a Pi profile with the tenant-pi kit
@@ -29,5 +29,7 @@ Use your question tool, or plain text during bootstrap. Offer two to four concre
 - "Does a Pi run in your live profile now?" Follow [first launch and checks](../../INSTALL.md#stage-9-first-launch-and-checks).
 
 At completion or an earlier stop, follow [the results file](../../INSTALL.md#the-results-file). Record checks that did not run as "not run". End with the full path of the results file, or the next step when the clone does not exist.
+
+For a new kit release, run `python3 scripts/tenant_pi.py update` and follow its verdict: see [Get a new version of the kit](../../POST_INSTALL.md#get-a-new-version-of-the-kit).
 
 For later changes, follow [updates](../../INSTALL.md#stage-10-updates) and [POST_INSTALL.md](../../POST_INSTALL.md). The kit changes no profile in place.

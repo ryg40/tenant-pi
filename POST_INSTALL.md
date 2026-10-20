@@ -16,6 +16,27 @@ Write each path as an absolute path with the home directory written out, for exa
 
 The rules of the install stay in force. Write no secret into a file. Never write into `~/.pi/agent`. An agent asks before each command that changes the machine.
 
+## Get a new version of the kit
+
+Pull the clone, then run the read-only check of the kit. It writes no file and takes seconds. Give each other option of the first plan again, for example `--registry`.
+
+```sh
+cd '<clone>' && git pull --ff-only
+python3 scripts/tenant_pi.py update --overlay '<overlay>' --local-dir '<private dir>'
+```
+
+Follow the verdict. `nextCommands` of the output holds each line with the real paths of this machine.
+
+| Verdict | What to do |
+| --- | --- |
+| `same_profile` | Keep the candidate in use. Run the lines of `packages.lines`, if any, then start Pi again. |
+| `new_candidate` | Run the lines of `nextCommands`: they are [the loop](#the-one-rule-each-change-is-a-new-candidate) with a new target. `comparison.changes` names the files that differ. |
+| `runtime_action_needed` | Run the Pi line or the `PATH` line of `nextCommands`, then run `update` again. |
+
+A candidate of an earlier release has no output digests, so `update` can ask one time for a new candidate, with the reason `no_output_digests`.
+
+A clean clone at a release tag needs no test run. The GitHub workflow `.github/workflows/checks.yml` runs `python3 scripts/check.py` on Linux and macOS for each snapshot that is pushed to GitHub. The maintainer creates the release entry of a tag only after both runs pass ([continuous integration](docs/publishing.md#continuous-integration)). A clone with local changes runs `python3 scripts/check.py --tier fast`; `update` then prints that line first. A profile loads the in-tree packages from the clone by path, so a candidate loads new package code at its next start. Not verified: the effect of a pull on a running Pi session. Details: [the update action](docs/update.md).
+
 ## Confirm the base install
 
 1. Read `<private dir>/INSTALLER_KIT_RESULTS.md`. It must name one candidate or more with the state `complete`, each with its launcher.
@@ -38,7 +59,7 @@ If a step gives another result, stop. The base install is not complete: `INSTALL
 
 ## The one rule: each change is a new candidate
 
-The kit changes no profile in place. A change is an edit of the overlay, then a new candidate directory with a new launcher. The old candidate stays as it is and is the fallback. Each task below names only what differs from this loop.
+The kit changes no profile in place. A change is an edit of the overlay, then a new candidate directory with a new launcher. The old candidate stays as it is and is the fallback. A new kit version that does not change the profile needs no new candidate: see [Get a new version of the kit](#get-a-new-version-of-the-kit). Each task below names only what differs from this loop.
 
 1. Edit `<overlay>`. Make the change of the task, and set `target.agentDir` to `<new target>`, a directory that does not exist.
 2. Validate the overlay, then make the plan:
@@ -81,7 +102,7 @@ The selection comes from the overlay. A new candidate keeps each enabled compone
 | `changes` | Declared fields that differ. A private field shows as a marker, without a value. |
 | `unsupported` | Fields that the comparison does not interpret, for example a key that Pi wrote. |
 | `accepted` | Differences that the `unmanaged` list of the overlay accepts, with the reason. |
-| `markers` | `generatedAt` and `kitCommit`. They differ between any two generations. |
+| `markers` | `generatedAt`, `kitCommit` and `outputDigests`. They differ between any two generations. |
 | `left.drift`, `right.drift` | `status: "owner_edits"` lists the `settings.json` keys that changed after generation. |
 
 Two candidates of the same overlay and kit differ only in `/overlay/target/agentDir` and in the markers. The live profile can be a side too: it compares as `settings_only`. See [candidate comparison](docs/candidate-compare.md).
@@ -286,21 +307,6 @@ Warning: a removal of the wrong directory deletes `auth.json`, the sessions and 
 
 2. Delete the directory and its launcher file yourself, when you use neither of them.
 
-## Get a new version of the kit
-
-Details: [candidate comparison](docs/candidate-compare.md#update-model).
-
-```sh
-cd '<clone>' && git pull
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
-python3 scripts/tenant_pi.py check-runtime > '<private dir>/runtime.json'
-```
-
-- The last test line starts with `OK`; a skipped-test count is expected and depends on the client. The publish check prints `publish set valid`. With another result, stop and keep the old candidate.
-- Not verified: the effect of a pull on a running Pi session. The pull changes no file of a profile. A profile loads the in-tree packages from the clone by path, so an existing candidate loads the new package code at its next start.
-- Then do the loop with one overlay edit: a new `target.agentDir`. When `changes` of the `compare` report holds only `/overlay/target/agentDir`, the new kit version gives the same profile, and you can keep the old candidate in use.
-
 ## Move to a new Pi version
 
 `config/manifest.json` holds the tested version, `runtime.piVersion` (the pin), and the accepted range, `runtime.piAcceptedRange`. One `pi` command serves each profile of the user. Details: [Pi update checks](docs/pi-update.md).
@@ -308,7 +314,7 @@ python3 scripts/tenant_pi.py check-runtime > '<private dir>/runtime.json'
 - Read the `pi` entry of `check-runtime` after each change of Pi or Node, and make the runtime report again.
 - `match`: the installed Pi is the pin. `untested_in_range`: the installed Pi is in the accepted range, and the kit tests did not run on it. Keep it, and record the gap `core_runtime_untested_in_range`.
 - `mismatch`: the installed Pi is outside the range. The global install line of the plan replaces Pi for each profile. Run it only after your own decision.
-- The pin moves only with a new kit version. Then get that version and do the loop.
+- The pin moves only with a new kit version. Then follow [Get a new version of the kit](#get-a-new-version-of-the-kit).
 
 ## Add a provider or a model route
 

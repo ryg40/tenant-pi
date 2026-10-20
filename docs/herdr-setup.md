@@ -117,7 +117,7 @@ These checks are not run by the kit and are not qualified. Record each as passed
 | The temporary Herdr session | With the approval of the owner, start a named test session, read its state, stop it and delete it. Send no prompt to an agent, so that no model request starts. Remove only the session that the check created. | Not run |
 | The remote install | Run the lines of `remote-plan` on a disposable Linux host that the owner approves. | Not run |
 
-Facts for the temporary session, from `herdr --help` at version 0.9.3: `herdr --session <name>` uses or creates a named persistent session; `herdr session list` lists the sessions; `herdr session stop <name>` stops one; `herdr session delete <name>` deletes a stopped session. Not verified: the exact command sequence of a session check on a machine without a terminal. A missing terminal is a blocker for this check, not a pass. Do not stop or delete a session that the check did not create, and do not run `herdr server stop`.
+Facts for the temporary session, from `herdr --help` at version 0.9.5: `herdr --session <name>` uses or creates a named persistent session; `herdr session list` lists the sessions; `herdr session stop <name>` stops one; `herdr session delete <name>` deletes a stopped session. Not verified: the exact command sequence of a session check on a machine without a terminal. A missing terminal is a blocker for this check, not a pass. Do not stop or delete a session that the check did not create, and do not run `herdr server stop`.
 
 ## The remote plan
 
@@ -172,19 +172,19 @@ Limits:
 | Field | Value |
 | --- | --- |
 | Component ID | `questions` |
-| Source | npm `@juicesharp/rpiv-ask-user-question@2.13.8` |
+| Source | npm `@juicesharp/rpiv-ask-user-question@2.13.9` |
 | License | MIT |
 | Requires | `core` |
 | Resource filter | `extensions`: `index.ts` |
 | Status | `unverified` |
 | Default | Disabled in `config/config.example.json` |
 
-The registry metadata of version 2.13.8 was read: the name, the license, the one extension entry `./index.ts`, and the dependency lists. The source files of that version were not reviewed.
+The registry metadata of version 2.13.9 was read: the name, the license, the one extension entry `./index.ts`, and the dependency lists. The source files of that version were not reviewed.
 
 With `questions` in `selection.enable`, the plan does this:
 
-- It adds one entry to `packages` of `settings.json`: the source `npm:@juicesharp/rpiv-ask-user-question@2.13.8` with the filter `extensions: ["index.ts"]`. The entry comes after the in-tree packages, the memory packages and the MCP package, and before owner packages.
-- It adds two setup lines: `pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8` with the target directory, then `node <kit>/scripts/patch_extension_peers.mjs` with the target directory and the absolute path of the script. The first line installs the package under `<target>/npm/`. `pi update --extensions` does not install it, because the source has an exact version. The second line corrects host-provided peers in the installed manifest. The registry manifest of version 2.13.8 lists `typebox` under `peerDependencies` with the range `*`, so the line makes no change for this version; see [host peer overrides](host-peer-overrides.md).
+- It adds one entry to `packages` of `settings.json`: the source `npm:@juicesharp/rpiv-ask-user-question@2.13.9` with the filter `extensions: ["index.ts"]`. The entry comes after the in-tree packages, the memory packages and the MCP package, and before owner packages.
+- It adds two setup lines: `pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9` with the target directory, then `node <kit>/scripts/patch_extension_peers.mjs` with the target directory and the absolute path of the script. The first line installs the package under `<target>/npm/`. `pi update --extensions` does not install it, because the source has an exact version. The second line corrects host-provided peers in the installed manifest. The registry manifest of version 2.13.9 lists `typebox` under `peerDependencies` with the range `*`, so the line makes no change for this version; see [host peer overrides](host-peer-overrides.md).
 - It writes no other file. The extension reads its guidance file below the configuration directory of the user. The kit does not write or check that file.
 
 The plan lists these gaps with the subject `questions`:
@@ -193,9 +193,9 @@ The plan lists these gaps with the subject `questions`:
 | --- | --- |
 | `package_runtime_unverified` | No session loaded the package from a generated profile. |
 | `pi_line_unqualified` | No test in this repository loads the component with the kit pin. |
-| `package_source_unreviewed` | Only the registry metadata of version 2.13.8 was read. |
-| `peer_package_unverified` | The package names the peer package `@juicesharp/rpiv-i18n`. No install of version 2.13.8 with the kit pin was observed. |
-| `question_ui_unverified` | The tool needs an interactive Pi session. A loaded extension does not prove that the question dialog works. |
+| `package_source_unreviewed` | Only the registry metadata of version 2.13.9 was read. |
+| `peer_package_unverified` | The package names the peer package `@juicesharp/rpiv-i18n`. No install of version 2.13.9 with the kit pin was observed. |
+| `question_ui_unverified` | The tool needs an interactive Pi session. A loaded extension does not prove that the question dialog works. From version 2.13.9, the extension accepts the inbound event `rpiv:ask-user:answer`, so another extension in the same Pi process can answer an open question dialog. |
 | `shared_config_outside_profile` | The guidance file of the extension is outside the profile. Every profile of the user shares it. |
 | `kit_test_missing` | No test in this repository loads the component in a generated profile. |
 

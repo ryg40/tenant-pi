@@ -1,11 +1,16 @@
 """Offline workflow contracts. JSON-form YAML needs no third-party parser."""
 import json
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ".github/workflows/checks.yml"
 CHECKS = ("python3 scripts/check.py",)
+
+
+def version(text):
+    return tuple(int(part) for part in text.split("."))
 
 
 class Workflows(unittest.TestCase):
@@ -45,21 +50,31 @@ class Workflows(unittest.TestCase):
         self.assertEqual(workflow["on"], {"push": {}, "pull_request": {}})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertEqual(set(workflow["jobs"]), {"offline"})
-        self.assertEqual(workflow["jobs"]["offline"]["runs-on"], "ubuntu-latest")
         text = json.dumps(workflow)
         self.assertNotIn("secrets.", text)
         self.assertNotIn("TOKEN", text)
         self.assertNotIn("npm", text)
+        # Expressions read only the fixed matrix, never event data such as a branch name.
+        for expression in re.findall(r"\$\{\{(.*?)\}\}", text):
+            self.assertRegex(expression, r"^\s*matrix\.[a-z]+\s*$")
         steps = workflow["jobs"]["offline"]["steps"]
         self.assertEqual([s["run"] for s in steps if "run" in s], list(CHECKS))
-        self.assertFalse(steps[0]["with"]["persist-credentials"])
+        self.assertIs(steps[0]["with"]["persist-credentials"], False)
 
-    def test_python_setup_matches_runner_platform(self):
-        steps = self.load()["jobs"]["offline"]["steps"]
-        self.assertEqual(steps[1], {
-            "uses": "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065",
-            "with": {"python-version": "3.11"},
-        })
+    def test_matrix_runs_linux_floor_and_macos(self):
+        job = self.load()["jobs"]["offline"]
+        manifest = json.loads((ROOT / "config/manifest.json").read_text())
+        floor = manifest["runtime"]["pythonRange"].removeprefix(">=")
+        self.assertIs(job["strategy"]["fail-fast"], False)
+        entries = {entry["os"]: entry["python"] for entry in job["strategy"]["matrix"]["include"]}
+        self.assertEqual(entries.get("ubuntu-latest"), floor)
+        macos = [name for name in entries if name.startswith("macos-")]
+        self.assertEqual(len(macos), 1)
+        self.assertGreaterEqual(version(entries[macos[0]]), version(floor))
+        self.assertEqual(job["runs-on"], "${{ matrix.os }}")
+        setup = [step for step in job["steps"]
+                 if step.get("uses", "").startswith("actions/setup-python@")]
+        self.assertEqual([step["with"] for step in setup], [{"python-version": "${{ matrix.python }}"}])
 
 
 if __name__ == "__main__":

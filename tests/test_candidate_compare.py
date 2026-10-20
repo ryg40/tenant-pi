@@ -458,18 +458,20 @@ class CompareTests(unittest.TestCase):
 
     def test_generation_time_and_kit_commit_are_markers_not_changes(self):
         stamped = copy.deepcopy(self.old)
-        stamped[".tenant-pi/state.json"]["provenance"].update(generatedAt="2026-10-01T00:00:00Z", kitCommit="a" * 40)
+        stamped[".tenant-pi/state.json"]["provenance"].update(generatedAt="2026-10-01T00:00:00Z", kitCommit="a" * 40,
+                                                              outputDigests={"settings.json": "a" * 64})
         later = copy.deepcopy(stamped)
-        later[".tenant-pi/state.json"]["provenance"].update(generatedAt="2026-10-02T00:00:00Z", kitCommit="unknown")
+        later[".tenant-pi/state.json"]["provenance"].update(generatedAt="2026-10-02T00:00:00Z", kitCommit="unknown",
+                                                            outputDigests={"settings.json": "b" * 64})
         state = ".tenant-pi/state.json"
-        # An older record without the two fields still compares: both fields are added markers.
+        # An older record without the three fields still compares: each field is an added marker.
         for left, right, expected in ((self.old, stamped, "added"), (stamped, self.old, "removed"), (stamped, later, "changed")):
             with self.subTest(expected=expected):
                 report = compare(left, right)
-                self.assertEqual([{"file": state, "field": "/provenance/generatedAt", "change": expected},
-                                  {"file": state, "field": "/provenance/kitCommit", "change": expected}], report["markers"])
+                self.assertEqual([{"file": state, "field": "/provenance/" + key, "change": expected}
+                                  for key in ("generatedAt", "kitCommit", "outputDigests")], report["markers"])
                 self.assertEqual([], [c for c in report["changes"] if c["file"] == state])
-                self.assertEqual((0, 0, 0, 2), tuple(report["summary"][k] for k in ("added", "removed", "changed", "markers")))
+                self.assertEqual((0, 0, 0, 3), tuple(report["summary"][k] for k in ("added", "removed", "changed", "markers")))
                 self.assertEqual([], report["unsupported"])
                 self.assertNotIn("2026-10", json.dumps(report))
                 self.assertNotIn("a" * 40, json.dumps(report))

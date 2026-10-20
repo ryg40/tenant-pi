@@ -331,6 +331,7 @@ class CheckSetTests(RepositoryCase):
         notes = self.notes.read_text()
         self.assertIn("## Changes since <first snapshot>", notes)
         self.assertIn("Gates 6-8: unchanged from <no full tag recorded>", notes)
+        self.assertIn("## Update\n\n- First release: no update data.\n", notes)
 
     def test_notes_inside_checkout_are_refused_before_checks_or_ref_changes(self):
         linked = Path(self.temp.name) / "linked-repo"
@@ -462,6 +463,60 @@ class ReleaseClassTests(RepositoryCase):
         notes = self.notes.read_text()
         self.assertIn("# Portable release: patch", notes)
         self.assertIn(f"Gates 6-8: unchanged from {legacy}", notes)
+
+    def test_update_block_without_relevant_changes(self):
+        self.invoke("stamp")
+        notes = self.notes.read_text()
+        for line in ("- No new candidate expected.", "- Pi pin: unchanged (1.2.3)", "- No package line needed.",
+                     "- Files that can change a generated profile: none"):
+            self.assertIn(f"\n{line}\n", notes)
+
+    def test_update_block_names_a_changed_lock_file_and_pin(self):
+        (self.root / "packages/demo").mkdir(parents=True)
+        (self.root / "packages/demo/package-lock.json").write_text("{}\n")
+        (self.root / "config/manifest.json").write_text(json.dumps({
+            "runtime": {"piVersion": "1.3.0", "piAcceptedRange": ">=1.2.3 <1.3"}}))
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "pin and lock")
+        self.make_stamp()
+        self.invoke("stamp")
+        notes = self.notes.read_text()
+        for line in ("- A new candidate may be needed: the Pi pin moved and "
+                     "a file that can change a generated profile changed.",
+                     "- Pi pin: 1.2.3 -> 1.3.0; install the new Pi first.",
+                     "- npm ci --ignore-scripts needed in: packages/demo",
+                     "- Files that can change a generated profile: config/manifest.json"):
+            self.assertIn(f"\n{line}\n", notes)
+        self.assertNotIn("No package line needed", notes)
+
+    def test_update_block_skips_a_deleted_lock_file_and_names_a_removed_input(self):
+        import publish_portable
+        (self.root / "packages/demo").mkdir(parents=True)
+        (self.root / "packages/demo/package-lock.json").write_text("{}\n")
+        (self.root / "scripts/launcher.py").write_text("\n")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "lock and input")
+        old = git(self.root, "rev-parse", "HEAD")
+        (self.root / "packages/demo/package-lock.json").unlink()
+        (self.root / "scripts/launcher.py").unlink()
+        (self.root / "config/config.example.json").write_text("{}\n")
+        git(self.root, "add", "-A")
+        git(self.root, "commit", "-qm", "no lock, no input, a sample overlay")
+        lines = publish_portable.update_block(self.root, ("portable/old", "patch", old), "HEAD")
+        self.assertIn("- No package line needed.", lines)
+        self.assertIn("- Files that can change a generated profile: removed: scripts/launcher.py", lines)
+
+    def test_update_block_is_first_in_notes_and_in_the_tag_message(self):
+        self.invoke("stamp")
+        notes = self.notes.read_text()
+        heading = f"Update from {self.patch_tag}"
+        self.assertEqual([f"## {heading}", "## Gates"], re.findall(r"^## .*", notes, re.MULTILINE)[:2])
+        tag = snapshot_tags(self.root, "portable")[0]
+        message = git(self.root, "for-each-ref", "--format=%(contents)", f"refs/tags/{tag}")
+        self.assertEqual(message, git(self.root, "log", "-1", "--format=%B", "portable"))
+        self.assertIn(f"\nclass: patch\n\n{heading}\n- No new candidate expected.\n", message)
+        # The block keeps the source and class lines that the next run reads.
+        self.assertIn((tag, "patch", git(self.root, "rev-parse", "HEAD")[:7]), release_tags(self.root))
 
     def test_default_notes_are_outside_repository(self):
         output = self.invoke("stamp", default_notes=True)

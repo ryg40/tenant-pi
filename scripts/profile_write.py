@@ -1,4 +1,5 @@
 """Linux-first, new-target-only publication of an in-memory profile plan."""
+import hashlib
 import json
 import os
 import re
@@ -9,7 +10,7 @@ from datetime import datetime, timezone
 from scripts.memory_modules import HERMES_CONFIG
 from scripts.profile_plan import OUTPUTS, source_pin
 from scripts.workflow_modules import MCP_CONFIG
-from scripts.validate import Invalid, absolute, fail, relative
+from scripts.validate import Invalid, absolute, fail, link_hint, relative
 
 UNKNOWN = "unknown"
 COMMIT = re.compile(r"[0-9a-f]{40}\Z")
@@ -36,13 +37,17 @@ class WriteResult:
 
 
 class WriteError(ValueError):
-    """Static rule/field diagnostic; candidate_created records partial output."""
+    """Static rule/field diagnostic; candidate_created records partial output.
 
-    def __init__(self, rule, field, *, candidate_created=False):
+    `hint` is the text of `link_hint` when a link in the path caused the refusal; else None.
+    """
+
+    def __init__(self, rule, field, *, candidate_created=False, hint=None):
         super().__init__(f"{rule}: {field}")
         self.rule = rule
         self.field = field
         self.candidate_created = candidate_created
+        self.hint = hint
 
 
 def _shape(obj, keys, field):
@@ -103,7 +108,6 @@ def _validated_bytes(plan, target):
                      *(("modelsDefinitions",) if "models.json" in plan["files"] else ())),
            "plan.files.choices.content")
     # A digest detects accidental edits to the declared registry, not fabricated evidence.
-    import hashlib
     digest = hashlib.sha256(json.dumps(choices["registry"], sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
     if choices["registryDigest"] != digest:
         fail("registry_digest", "plan.files.choices.content.registryDigest")
@@ -204,8 +208,8 @@ def _parent(path, field):
         raise WriteError(exc.rule, field + exc.field[len("target"):]) from None
     except FileNotFoundError:
         raise WriteError("parent_missing", field + ".parent") from None
-    except OSError:
-        raise WriteError("unsafe_path", field + ".parents") from None
+    except OSError as exc:
+        raise WriteError("unsafe_path", field + ".parents", hint=link_hint(path, exc)) from None
 
 
 def _present(parent_fd, leaf):
@@ -278,6 +282,11 @@ def create_new_file(path, data, mode, field):
     return FileResult(path, True, tuple(warnings))
 
 
+def output_digests(data):
+    """The lowercase hex SHA-256 of the exact bytes of each output, by relative path: `outputDigests` of the state."""
+    return {name: hashlib.sha256(content).hexdigest() for name, content in data.items()}
+
+
 def _provenance(choices, names):
     """Minimal non-secret generation record: kit schema, pins, selection, declared outputs.
 
@@ -332,13 +341,15 @@ def write(plan, target_agent_dir, *, clock=utc_now, kit_commit=UNKNOWN):
         raise WriteError("invalid_plan", "plan") from None
     if commit(kit_commit) is None:
         raise WriteError("kit_commit", "state.kitCommit")
-    provenance = {**provenance, "generatedAt": _generated_at(clock), "kitCommit": kit_commit}
+    # The digests of the written bytes let `update` tell a kit change from a later edit by Pi or the user.
+    provenance = {**provenance, "outputDigests": output_digests(data), "generatedAt": _generated_at(clock),
+                  "kitCommit": kit_commit}
     try:
         parent_fd, leaf = _ancestors(target_agent_dir)
     except WriteError:
         raise
-    except OSError:
-        raise WriteError("unsafe_path", "target.parents") from None
+    except OSError as exc:
+        raise WriteError("unsafe_path", "target.parents", hint=link_hint(target_agent_dir, exc)) from None
     created = False
     published = False
     target_fd = meta_fd = None

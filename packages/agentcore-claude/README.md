@@ -109,7 +109,7 @@ Warning: a session that skips permission prompts loses this gate. That is the ca
 The server uses `@modelcontextprotocol/server` `2.3.1`, the server half of the v2 split of the TypeScript SDK (Apache-2.0). Reasons:
 
 - It has two dependencies: `@modelcontextprotocol/core` `2.3.1` and `zod`. The v1 package `@modelcontextprotocol/sdk` `1.32.1` brings Express, Hono, CORS, JOSE and an OAuth stack that a stdio server does not use.
-- The vendored OpenViking package of this kit uses the client half of the same v2 split (`@modelcontextprotocol/client` `2.2.0`).
+- The vendored OpenViking package of this kit uses the client half of the same v2 split (`@modelcontextprotocol/client` `2.3.1`).
 
 The server imports `zod` for the input schemas, so `zod` `4.6.7` is a direct dependency. Both versions are exact pins with a lock file.
 

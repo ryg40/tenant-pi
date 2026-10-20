@@ -1,5 +1,6 @@
 """Synthetic guarded-writer contract and mutation-boundary checks."""
 import copy
+import hashlib
 import json
 import os
 import stat
@@ -72,10 +73,13 @@ class WriterTests(unittest.TestCase):
                                          allow_nan=False, separators=(",", ":")) + "\n").encode("ascii"),
                              (self.target / name).read_bytes())
         state = json.loads((self.target / STATE).read_text())
+        # `outputDigests` holds the SHA-256 of the bytes on disk of each output except the state record.
         self.assertEqual({"schemaVersion": 1, "status": "complete", "provenance": {
             "kitSchemaVersion": 1, "piVersion": PIN, "nodeRange": ">=24.0.0 <25", "enabled": ["core"],
             "pins": {"core": "npm:@earendil-works/pi-coding-agent@" + PIN},
             "outputs": ["settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json"],
+            "outputDigests": {name: hashlib.sha256((self.target / name).read_bytes()).hexdigest()
+                              for name in ("settings.json", ".tenant-pi/choices.json")},
             "generatedAt": "2026-09-30T12:34:56Z", "kitCommit": COMMIT}}, state)
         # The record carries no private overlay value: no target path, endpoint, role, or credential name.
         self.assertNotIn(str(self.target), (self.target / STATE).read_text())

@@ -27,6 +27,8 @@ if __name__ == "__main__":
 
 from check import stamp_path  # noqa: E402
 from publish_check import check, publish_files, tracked_files  # noqa: E402
+# The files that can change the bytes of a generated profile; `update` reads the same list.
+from profile_inputs import PROFILE_INPUTS  # noqa: E402
 
 DEFAULT_NAME = "tenant-pi portable"
 DEFAULT_EMAIL = "portable@tenant-pi.invalid"
@@ -182,6 +184,54 @@ def release_tags(root):
     return records
 
 
+PACKAGE_LOCKS = ":(glob)packages/*/package-lock.json"
+PROMPTR_BUILD = ("packages/promptr/src", "packages/promptr/package.json", "packages/promptr/tsconfig.json")
+RANGES = (("piAcceptedRange", "Accepted range"), ("nodeRange", "Node range"), ("pythonRange", "Python range"))
+UPDATE_COMMAND = "python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>"
+
+
+def update_block(root, previous, source):
+    """Lines for a client that moves from the `previous` release record (or None) to `source`.
+
+    The first line is the heading without a Markdown mark. The other lines hold facts of the two
+    source commits and fixed sentences only, never a merge subject. Only `update` on the client knows
+    the overlay, so the candidate line says "may".
+    """
+    if previous is None:
+        return ["Update", "- First release: no update data."]
+    old_source = previous[2]
+
+    def changed(*paths, only=None):
+        """Changed paths; `only` is a `--diff-filter` value, for example `d` for all but the deleted files."""
+        choice = [f"--diff-filter={only}"] if only else []
+        return git("diff", "--no-color", "--name-only", *choice, old_source, source, "--", *paths,
+                   root=root).splitlines()
+
+    old, new = (json.loads(git("show", f"{ref}:config/manifest.json", root=root))["runtime"]
+                for ref in (old_source, source))
+    inputs = changed(*PROFILE_INPUTS, only="d")
+    inputs += [f"removed: {path}" for path in changed(*PROFILE_INPUTS, only="D")]
+    pin_moved = old["piVersion"] != new["piVersion"]
+    reasons = [reason for flag, reason in ((pin_moved, "the Pi pin moved"),
+                                           (inputs, "a file that can change a generated profile changed")) if flag]
+    lines = [f"Update from {previous[0]}",
+             f"- A new candidate may be needed: {' and '.join(reasons)}." if reasons
+             else "- No new candidate expected.",
+             f"- Pi pin: {old['piVersion']} -> {new['piVersion']}; install the new Pi first." if pin_moved
+             else f"- Pi pin: unchanged ({new['piVersion']})"]
+    lines += [f"- {label} (runtime.{key}): {old.get(key, 'none')} -> {new.get(key, 'none')}"
+              for key, label in RANGES if old.get(key) != new.get(key)]
+    # A deleted lock file, also one of a removed package, needs no `npm ci`.
+    packages = [path.rpartition("/")[0] for path in changed(PACKAGE_LOCKS, only="d")]
+    package_lines = [f"- npm ci --ignore-scripts needed in: {', '.join(packages)}"] if packages else []
+    if changed(*PROMPTR_BUILD):
+        package_lines.append("- npm run build needed in: packages/promptr")
+    lines += package_lines or ["- No package line needed."]
+    return lines + [f"- Files that can change a generated profile: {', '.join(inputs) or 'none'}",
+                    f"- Run: `{UPDATE_COMMAND}`",
+                    "- A clean clone at this tag needs no test run."]
+
+
 def release_notes(root, tag, source, commit, release_class, tags, record, scan):
     """Render the known evidence and leave all other checks for the maintainer."""
     runtime = json.loads(git("show", f"{source}:config/manifest.json", root=root))["runtime"]
@@ -196,6 +246,9 @@ def release_notes(root, tag, source, commit, release_class, tags, record, scan):
     if release_class == "full":
         lines += [f"- Accepted range (runtime.piAcceptedRange): {runtime['piAcceptedRange']}",
                   "- Qualification: <full qualification, or fast track: gate 6 not run, approved by the maintainer>"]
+    # A client reads the first lines; the update block comes before the gates of the maintainer.
+    heading, *facts = update_block(root, previous, source)
+    lines += ["", f"## {heading}", "", *facts]
     lines += ["", "## Gates", "", "1. The check set (stamp record)",
               *[f"   - {line}" for line in record], "5. Scanner",
               *[f"   - Snapshot range: {line}" for line in scan]]
@@ -303,7 +356,9 @@ def main(argv=None):
     names = check()
     print(f"check ok: publish set ({len(names)} files)")
     date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    message = (f"Portable snapshot of {short} ({date})\n\nclass: {args.release_class}\n\n"
+    # The commit and the tag carry the update block: a client reads it with `git log -1` or through `update`.
+    block = "\n".join(update_block(ROOT, tags_before[0] if tags_before else None, head))
+    message = (f"Portable snapshot of {short} ({date})\n\nclass: {args.release_class}\n\n{block}\n\n"
                f"Exactly the reviewed publish set from scripts/publish_check.py at\n"
                f"source commit {head}. Only reviewed files are included.\n")
     previous = git("rev-parse", "--verify", "--quiet", f"refs/heads/{args.branch}^{{commit}}", check_call=False)

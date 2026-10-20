@@ -70,8 +70,8 @@ class UnitTests(unittest.TestCase):
     def test_cli_tree_is_the_real_parser(self):
         top, actions = cli_tree()
         self.assertIn("--help", top)
-        expected = {"wizard", "compare", "inventory", "check-runtime", "check-herdr", "check-wiki-vault", "remote-plan", "compose-plan", "components",
-                    "init-private", "baseline", "check-baseline", "results", "validate", "plan", "generate"}
+        expected = {"wizard", "compare", "inventory", "check-runtime", "update", "check-herdr", "check-wiki-vault", "remote-plan", "compose-plan",
+                    "components", "init-private", "baseline", "check-baseline", "results", "validate", "plan", "generate"}
         if doc_check.tenant_pi.HAS_CARRY:
             expected.add("carry")
         if doc_check.tenant_pi.HAS_LIST:
@@ -259,8 +259,9 @@ class PostInstallTests(unittest.TestCase):
     """`POST_INSTALL.md`: the guide for the time after a base install."""
 
     NAME = "POST_INSTALL.md"
-    # One section for each task of the guide, after the check of the base install and the loop.
+    # One section for each task of the guide: the update of the kit first, then the check of the base install and the loop.
     SECTIONS = (
+        "Get a new version of the kit",
         "Confirm the base install",
         "The one rule: each change is a new candidate",
         "Add or remove a component",
@@ -272,13 +273,12 @@ class PostInstallTests(unittest.TestCase):
         "Take over a choice that you made inside Pi",
         "Record the baseline of a new candidate",
         "Remove a candidate that is not used",
-        "Get a new version of the kit",
         "Move to a new Pi version",
         "Add a provider or a model route",
         "Update a Compose seat",
         "Write the results file again",
     )
-    ACTIONS = {"inventory", "check-runtime", "validate", "plan", "generate", "compare",
+    ACTIONS = {"update", "inventory", "check-runtime", "validate", "plan", "generate", "compare",
                "components", "check-wiki-vault", "baseline", "check-baseline", "results"}
 
     @classmethod
@@ -341,9 +341,10 @@ class PostInstallTests(unittest.TestCase):
             stage = stage[:stage.index("\n## ", 1)]
             self.assertIn(link, stage, name)
             self.assertIn("the kit changes no profile in place", stage, name)
-            # The commands of an update are in the one file; the stage holds no second copy.
+            # The commands of an update are in the one file; the stage holds no second copy. It names only the
+            # one read-only `update` command that starts that section.
             self.assertNotIn("```", stage, name)
-            self.assertNotIn("tenant_pi.py", stage, name)
+            self.assertEqual(["update"], [match.group(1).split()[0] for match in doc_check.CLI.finditer(stage)], name)
             self.assertIn("This stage is one message to the user, and it runs no command.", stage, name)
 
     def test_the_document_lists_name_the_file(self):

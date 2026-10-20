@@ -22,7 +22,7 @@ from scripts.candidate_compare import child
 from scripts.components import names as resource_names
 from scripts.memory_modules import MEMORY
 from scripts.profile_write import MAX_PATH, WriteError, create_new_file, open_new_parent
-from scripts.validate import NPM, ROLE_NAMES, absolute, fail, fields, npm_name
+from scripts.validate import NPM, ROLE_NAMES, absolute, fail, fields, link_hint, npm_name
 
 NAME = "INSTALLER_KIT_RESULTS.md"
 # The name of the new text while it replaces an existing file.
@@ -496,8 +496,8 @@ def write(out_dir, data, replace=False):
                          FIELD + exc.field[len("target"):]) from None
     except FileNotFoundError:
         raise WriteError("out_dir_missing", FIELD) from None
-    except OSError:
-        raise WriteError("unsafe_path", FIELD + ".parents") from None
+    except OSError as exc:
+        raise WriteError("unsafe_path", FIELD + ".parents", hint=link_hint(out_dir, exc)) from None
     created = temporary = replaced = False
     failure = None
     warnings = []

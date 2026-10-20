@@ -5,8 +5,11 @@ Run directly, this checks structure only: it follows symlinks and sets no input 
 Use `scripts/tenant_pi.py validate` for the bounded, no-follow input loader.
 """
 import argparse
+import errno
 import json
+import os
 import re
+import stat
 import sys
 import unicodedata
 from pathlib import Path
@@ -106,7 +109,7 @@ REVIEWED_SOURCES = {
     "hermes": {"kind": "npm", "spec": "pi-hermes-memory"},
     "wiki": {"kind": "npm", "spec": "@zosmaai/pi-llm-wiki"},
     # The question extension keeps an exact version: its registry metadata was read at this version.
-    "questions": {"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.13.8"},
+    "questions": {"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.13.9"},
 }
 # File/key claims are only for native Pi settings documented at this version.
 REVIEWED_CLAIMS = {
@@ -146,6 +149,8 @@ OWNER_FILTERS = ("extensions", "skills", "prompts")
 # The whole pointer grammar of `overlay.unmanaged`: no wildcard, no escape, no empty segment.
 POINTER = re.compile(r"/[A-Za-z0-9_.:@-]+(?:/[A-Za-z0-9_.:@-]+)*\Z")
 REASON_MAX = 200
+# Character bound of each name in the `hint` of a refusal.
+HINT_MAX = 200
 # Item bound of `overlay.unmanaged`: `plan`, `generate` and `compare` echo the whole list.
 UNMANAGED_MAX = 200
 # Resource kinds of `overlay.ownerResources`, in render order, and the bounds of one list.
@@ -157,23 +162,63 @@ SAMPLE_TARGET = "/home/EXAMPLE_USER/new-agent"
 
 
 class Invalid(ValueError):
-    """Rule and field path only: input values never enter diagnostics.
+    """Rule and field path only: input values never enter the message.
 
     `line` and `column` are the place of a JSON syntax error, counted from 1; else both are None.
+    `hint` is the text of `link_hint` when a link in the path caused the refusal; else None.
     """
 
-    def __init__(self, message, line=None, column=None):
+    def __init__(self, message, line=None, column=None, hint=None):
         super().__init__(message)
-        self.line, self.column = line, column
+        self.line, self.column, self.hint = line, column, hint
 
 
-def fail(rule, field, line=None, column=None):
-    raise Invalid(f"{rule}: {field}", line, column)
+def fail(rule, field, line=None, column=None, *, hint=None):
+    raise Invalid(f"{rule}: {field}", line, column, hint)
 
 
 def place(exc):
     """The `line` and `column` of a JSON syntax error as a mapping, else an empty one; never input text."""
     return {} if exc.line is None else {"line": exc.line, "column": exc.column}
+
+
+def hint_text(value):
+    """`value` for a hint: each control or non-printable character becomes `?`, at most HINT_MAX characters."""
+    value = "".join(c if c.isprintable() else "?" for c in value)
+    return value if len(value) <= HINT_MAX else value[:HINT_MAX - 3] + "..."
+
+
+def link_hint(path, error=None):
+    """Name the first linked directory of `path`, its link target and the resolved path; else None.
+
+    A no-follow walk refuses every linked directory, also `/tmp`, `/var` and `/etc` on macOS.
+    Call this after the refusal: it reads link names only, never file content. With `error`,
+    only the ENOTDIR and ELOOP of a no-follow open can come from a link. An agent reads the
+    hint, so each name passes `hint_text`. A dangling link or a link loop has no resolved path.
+    """
+    if error is not None and getattr(error, "errno", None) not in (errno.ENOTDIR, errno.ELOOP):
+        return None
+    path = os.fspath(path)
+    current = "/" if path.startswith("/") else ""
+    try:
+        for part in path.split("/"):
+            if not part:
+                continue
+            current = os.path.join(current, part) if current else part
+            if stat.S_ISLNK(os.lstat(current).st_mode):
+                hint = f"{hint_text(current)} is a link to {hint_text(os.readlink(current))}"
+                # The realpath of a loop still holds the link; the one of a dangling link does not exist.
+                if not os.path.exists(os.path.realpath(current)):
+                    return hint
+                return f"{hint}; give the resolved path {hint_text(os.path.realpath(path))}"
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def hint_field(exc):
+    """The `hint` of a refusal as a mapping for a JSON diagnostic, else an empty one."""
+    return {"hint": exc.hint} if getattr(exc, "hint", None) else {}
 
 
 def parse_range(value, field, *, bounded=False):

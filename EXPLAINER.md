@@ -168,7 +168,7 @@ These commands make a core-only profile on Linux. Each command is one step below
 ```sh
 git clone <kit repository URL> "$HOME/tenant-pi"
 cd "$HOME/tenant-pi"
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 
 mkdir -p -m 700 "$HOME/.config" "$HOME/.pi" "$HOME/.pi/profiles"
@@ -278,7 +278,7 @@ You get the kit and prove that the clone is the reviewed kit. The two checks are
 ```sh
 git clone <kit repository URL> "$HOME/tenant-pi"
 cd "$HOME/tenant-pi"
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 ```
 
@@ -313,7 +313,7 @@ Warning: do not move or delete the clone after step 9. A profile with an in-tree
 | Command | Script | What it does |
 | --- | --- | --- |
 | `git clone` | Git | Copies the repository into `~/tenant-pi`. |
-| `python3 -m unittest discover -s tests -q` | each `tests/test_*.py` | Runs the unit tests of the kit. `tests/test_doc_check.py` also runs the documentation check of `scripts/doc_check.py`. |
+| `python3 scripts/check.py --tier fast` | `scripts/check.py`, each `tests/test_*.py` | Runs the unit tests of the kit in parallel, without the tests marked slow, and the publish checks. `tests/test_doc_check.py` also runs the documentation check of `scripts/doc_check.py`. |
 | `python3 scripts/publish_check.py` | `check()` in `scripts/publish_check.py` | Proves that each file of the clone is in a reviewed list. |
 
 `check()` does these things, in this order:
@@ -962,10 +962,10 @@ The three fixed keys are the claims of the `core` component in the manifest. `pa
 The whole `state.json`:
 
 ```json
-{"provenance":{"enabled":["core"],"generatedAt":"2030-01-01T12:00:00Z","kitCommit":"<commit>","kitSchemaVersion":1,"nodeRange":">=24.0.0 <25","outputs":["settings.json",".tenant-pi/choices.json",".tenant-pi/state.json"],"piVersion":"<pin>","pins":{"core":"npm:@earendil-works/pi-coding-agent@<pin>"}},"schemaVersion":1,"status":"complete"}
+{"provenance":{"enabled":["core"],"generatedAt":"2030-01-01T12:00:00Z","kitCommit":"<commit>","kitSchemaVersion":1,"nodeRange":">=24.0.0 <25","outputDigests":{".tenant-pi/choices.json":"<sha256>","settings.json":"<sha256>"},"outputs":["settings.json",".tenant-pi/choices.json",".tenant-pi/state.json"],"piVersion":"<pin>","pins":{"core":"npm:@earendil-works/pi-coding-agent@<pin>"}},"schemaVersion":1,"status":"complete"}
 ```
 
-`<commit>` is the 40-character commit of the clone, or `unknown` when the clone has no Git files.
+`<commit>` is the 40-character commit of the clone, or `unknown` when the clone has no Git files. Each `<sha256>` is the SHA-256 of the bytes that `generate` wrote into that file.
 
 The keys of `choices.json`:
 
@@ -1879,7 +1879,7 @@ Check these facts for each portable release. A text check does not prove a live 
 After an edit, run the seven kit checks from the clone root:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py

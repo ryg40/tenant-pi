@@ -3,8 +3,8 @@
 #   docker build -f deploy/compose/Dockerfile -t tenant-pi-seat .
 # The file names no target architecture. Build on the machine that runs the seat.
 
-# Digest of the tag on 2026-10-07. It is the digest of the image index, for amd64 and arm64.
-FROM node:24-trixie-slim@sha256:173f125896c3b47ddf056734c7ea789d04595a6a08769a8f78e0df642781fb66
+# Digest of the tag on 2026-10-20 (Node 24.22.0). It is the digest of the image index, for amd64 and arm64.
+FROM node:24-trixie-slim@sha256:7f486cabe892bff8fef04c0f7da8dba84a560be3e4e2740b7a86afc57ebec315
 
 ARG SEAT_USER=pi
 ARG SEAT_UID=1000
@@ -16,16 +16,16 @@ RUN apt-get update \
       python3 python3-venv git curl ca-certificates openssh-server tmux less \
  && rm -rf /var/lib/apt/lists/*
 
-# Herdr 0.9.3. Each SHA-256 is the digest that the GitHub release API gives for the asset.
+# Herdr 0.9.5. Each SHA-256 is the digest that the GitHub release API gives for the asset.
 # The project publishes no separate checksum file.
 RUN arch="${TARGETARCH:-$(dpkg --print-architecture)}" \
  && case "$arch" in \
-      amd64) asset=herdr-linux-x86_64; sum=18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7 ;; \
-      arm64) asset=herdr-linux-aarch64; sum=4de7aa3e25678812e92960de64f7c2aaa1bca1f0f80a3c5e559837e231e1f5c0 ;; \
+      amd64) asset=herdr-linux-x86_64; sum=14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d ;; \
+      arm64) asset=herdr-linux-aarch64; sum=17d7536f2da50859523680ef279dffcac8e4a235f4e46fe8da6c2ec44141897c ;; \
       *) echo "seat build: no Herdr asset for the architecture $arch" >&2; exit 1 ;; \
     esac \
  && curl -fsSLo /usr/local/bin/herdr \
-      "https://github.com/herdrdev/herdr/releases/download/v0.9.3/${asset}" \
+      "https://github.com/herdrdev/herdr/releases/download/v0.9.5/${asset}" \
  && echo "${sum}  /usr/local/bin/herdr" | sha256sum -c - \
  && chmod 755 /usr/local/bin/herdr
 
@@ -61,11 +61,9 @@ RUN line='[ -r /etc/profile.d/tenant-pi-seat.sh ] && . /etc/profile.d/tenant-pi-
 COPY --chown=${SEAT_UID}:${SEAT_GID} . /opt/tenant-pi
 WORKDIR /opt/tenant-pi
 
-# The four offline checks of the kit. A failure stops the build.
-RUN runuser -u "$SEAT_USER" -- env PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q \
- && runuser -u "$SEAT_USER" -- env PYTHONDONTWRITEBYTECODE=1 python3 scripts/examples.py \
- && runuser -u "$SEAT_USER" -- env PYTHONDONTWRITEBYTECODE=1 python3 scripts/validate.py --overlay config/config.example.json \
- && runuser -u "$SEAT_USER" -- env PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
+# The fast tier of the offline checks: the unit suite without the release tests, and the publish checks.
+# The context has no .git, so check.py skips its diff check and writes no stamp. A failure stops the build.
+RUN runuser -u "$SEAT_USER" -- env PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast
 
 # The pinned Pi, with the Node of the image: the prefix form of INSTALL.md Stage 3.
 # The pin is runtime.piVersion of config/manifest.json. The build never runs "npm config set prefix".

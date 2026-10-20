@@ -13,6 +13,8 @@ python3 scripts/tenant_pi.py compare --left '/owned/parent/candidate a' --right 
 
 Every candidate needs its own absent target. `generate` refuses an existing directory, so the previous candidate and the active profile cannot change. The overlay `target.agentDir` must equal the new `--target` value; edit only that field between regenerations when the choices are unchanged.
 
+The [`update` action](update.md) compares first, in memory and without a write: the SHA-256 of the bytes that `generate` would write against the `outputDigests` that the generation of the candidate in use recorded. `generate` and `compare` follow only for a `new_candidate` verdict.
+
 ## What `compare` reads
 
 Each side is an absolute path that the user names explicitly. The command opens only these paths, through the same bounded no-follow loader as the other actions (regular files, 1 MiB maximum, 64 nesting levels maximum, no symlink in any path component, unique JSON keys):
@@ -38,7 +40,7 @@ The output is one deterministic JSON object. Two runs on unchanged inputs produc
 - `unchanged`: the declared fields that are equal on both sides. Only names, never values.
 - `unsupported`: fields the comparison does not interpret. `unsupported_field` names an unknown key, `unsupported_shape` marks a known key with an unexpected type, `missing_section` marks a known section that is absent, `unsupported_field_name` replaces a key name that contains characters outside `A-Za-z0-9_.:@-` with `<redacted>`.
 - `accepted`: the `settings.json` differences that the overlay key `unmanaged` of either side lists. An entry keeps its `change`, or its `side` and `status`, and adds the recorded `reason`. It never carries a value. An accepted difference is not in `changes` or `unsupported`. The pointer is compared as an exact string with the `field` path of `settings.json`: `/<key>`, `/packages/<index>/source`, `/packages/<index>/resources`, `/llm-wiki/<key>`. See `docs/accepted-drift.md`.
-- `markers`: the two provenance fields `/provenance/generatedAt` and `/provenance/kitCommit` of `state.json` when they differ, with `change` of `added`, `removed`, or `changed` and never a value. They differ between any two generations, so they are never in `changes`. Equal values are in `unchanged`.
+- `markers`: the three provenance fields `/provenance/generatedAt`, `/provenance/kitCommit` and `/provenance/outputDigests` of `state.json` when they differ, with `change` of `added`, `removed`, or `changed` and never a value. They differ between any two generations, so they are never in `changes`. The digest of `choices.json` covers the target path, so `outputDigests` differs too. Equal values are in `unchanged`.
 - `summary`: counts of each change class, plus `accepted` and `markers`. The other counts exclude the accepted and the marker entries.
 - `manualSwitch`: the fixed statement that switching is a manual launch choice.
 
@@ -118,13 +120,14 @@ A candidate is derived from the overlay, not from the previous candidate. A user
 
 ## Provenance record
 
-The guarded writer stores a minimal non-secret record inside the writer-owned `.tenant-pi/state.json`: `kitSchemaVersion`, `piVersion`, `nodeRange`, the sorted `enabled` component list, the `pins` of those components, the declared `outputs`, `generatedAt` and `kitCommit`. It contains no target path, endpoint, role, credential name, or registry data.
+The guarded writer stores a minimal non-secret record inside the writer-owned `.tenant-pi/state.json`: `kitSchemaVersion`, `piVersion`, `nodeRange`, the sorted `enabled` component list, the `pins` of those components, the declared `outputs`, `outputDigests`, `generatedAt` and `kitCommit`. It contains no target path, endpoint, role, credential name, or registry data.
 
 - `generatedAt` is the UTC time of the generation as `YYYY-MM-DDTHH:MM:SSZ`.
 - `kitCommit` is the commit of the kit clone as 40 hex characters, or `unknown`. `generate` reads it with one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git.
-- `compare` lists both fields under `markers`, never under `changes`, and never shows their values. Two candidates of the same overlay and kit differ only in `/overlay/target/agentDir` and in these markers.
+- `outputDigests` is described in [Provenance fields that `generate` writes](#provenance-fields-that-generate-writes).
+- `compare` lists `generatedAt`, `kitCommit` and `outputDigests` under `markers`, never under `changes`, and never shows their values. Two candidates of the same overlay and kit differ only in `/overlay/target/agentDir` and in these markers.
 
-The record documents what produced the files. It is not authority to overwrite any installed file, and no hash or record in the kit claims ongoing ownership of a field.
+The record documents what produced the files. It is not authority to overwrite any installed file. The digests describe the bytes at generation time; no hash or record in the kit claims ongoing ownership of a field.
 
 ## Schema versions and migration
 
@@ -184,6 +187,14 @@ The schema of `state.json` is `1`. The two fields are optional keys of `provenan
 - Every `compare` report includes the list `markers` and the count `summary.markers`. A consumer that reads `changes`, `unsupported` and the other counts needs no change.
 - Consumers must accept the `markers` list to read differences in `generatedAt` and `kitCommit`.
 
+### Migration note: `outputDigests`
+
+The schema of `state.json` is `1`. `outputDigests` is an optional key of `provenance`.
+
+- A `state.json` without the field still compares. Against a side with the field, it is an `added` or `removed` entry under `markers`.
+- The other actions that read `state.json` ignore the field.
+- `update` needs the field for its exact verdict. A candidate without it gets one `new_candidate` verdict with the reason `no_output_digests`, unless its `choices.json` equals the new plan and no profile input changed since its `kitCommit`. The candidate stays as it is. The next candidate records the field.
+
 ## Overlay compatibility corrections
 
 Local overlay choices persist across kit updates when the schema still accepts them. An incompatible value blocks `validate`, `plan`, and `generate` with a static rule; nothing is generated. Common corrections:
@@ -226,16 +237,17 @@ A candidate with `modelsDefinitions` in its kit choices also declares `models.js
 
 ## Provenance fields that `generate` writes
 
-`generate` adds two fields to the provenance record of `.tenant-pi/state.json`:
+`generate` adds three fields to the provenance record of `.tenant-pi/state.json`:
 
 - `generatedAt`: the UTC time of the generation, in the form `YYYY-MM-DDTHH:MM:SSZ`. The writer calls its clock once, so the `incomplete` and the `complete` state carry the same value. The clock is one injectable parameter of `write()` and `main()`; its default is `datetime.now(timezone.utc)`. A clock that fails or that returns a time without a zone stops the generation with `clock: state.generatedAt` before the first write.
 - `kitCommit`: the commit of the kit clone, or `unknown`.
+- `outputDigests`: an object from the relative path of each file that `generate` writes, except `.tenant-pi/state.json`, to the lowercase hex SHA-256 of the exact bytes written. [`update`](update.md) uses it to tell a kit change from a later edit by Pi or the user.
 
 `generate` makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. The call uses an argument list, no shell, a 5 second timeout, and `check=False`. Git inherits the environment, except `GIT_CEILING_DIRECTORIES`, which stops repository discovery at the kit root. A successful call must return 40 lowercase hex characters. A failed call, timeout, missing repository, or invalid output records `unknown`.
 
 `tests/test_cli.py` covers generation from a fixture repository and a copy without `.git`. It also covers a failing Git stub, absent Git, timeout, invalid output, and the exact call options. Git resolves its own references; the kit has no Git metadata parser.
 
-`compare` lists both fields under `markers`, never under `changes`; see `docs/candidate-compare.md`.
+`compare` lists the three fields under `markers`, never under `changes`; see `docs/candidate-compare.md`.
 
 ### Limits of the provenance record
 
@@ -244,4 +256,4 @@ A candidate with `modelsDefinitions` in its kit choices also declares `models.js
 
 ### Provenance test coverage
 
-`tests/test_profile_write.py` and `tests/test_cli.py` cover the two new fields in `state.json`.
+`tests/test_profile_write.py` and `tests/test_cli.py` cover the new fields in `state.json`. `tests/test_profile_write.py` checks `outputDigests` against the bytes on disk.

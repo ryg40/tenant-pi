@@ -43,7 +43,7 @@ An id (`projectId` or `actorId`) matches `[a-z0-9][a-z0-9-]{0,63}`. The characte
 
 | Identity | IAM user | Holds | Used by |
 | --- | --- | --- | --- |
-| Person | `pi-memory-person-<actorId>`, one inline policy | Read of own scope, propose, and for a maintainer the review moves | The agents of the person in Pi and Claude Code, and the review CLI |
+| Person | `pi-memory-person-<actorId>`, one inline policy; that name is the form of the admin tool of this kit, and [a deployment that makes one memory for each stage](memory-modules.md#one-memory-for-each-stage) names and owns its own users | Read of own scope, propose, and for a maintainer the review moves | The agents of the person in Pi and Claude Code, and the review CLI |
 | Submit identity | One fixed user named in the private registry | Write of `/shared/` and `/actor/*` | The owner, with the reviewed submit script only |
 | Worker identity | One fixed user named in the private registry | Read of `/shared/*` and `/project/*/shared/*` | Agent workers of the owner, read-only checks |
 | Admin login | The account administrator session of the owner | IAM changes and every delete: the purge of rejected records, offboarding, the migration | The coordinator, after a dry run and the owner's word |
@@ -146,7 +146,7 @@ Each interaction has the same parts: an example, the IAM rule, the namespace rul
 
 Example: Alice adds Dana to `example-project`. Alice edits the private registry on the owner host: one person entry (`dana`, name, e-mail, PIN, status `active`) and one member entry in the project. She runs the registry script. The dry run prints the IAM user name `pi-memory-person-dana`, the inline policy and the person configuration file. Nothing is created. The coordinator runs the apply step with the admin login after the dry run and Alice's word.
 
-IAM rule: the apply step creates one user `pi-memory-person-<actorId>` without a login profile, so without console access (`S28`). It puts one inline policy named `agentcore-memory`, sets the tags `purpose=agentcore-memory` and `actorId=<actorId>`, and creates one access key (`S16`, `S28`). The policy follows the rules R1 to R8, and for a maintainer R3a.
+IAM rule: the apply step creates one user `pi-memory-person-<actorId>` without a login profile, so without console access (`S28`). It puts one inline policy named `agentcore-memory`, sets the tags `purpose=agentcore-memory` and `actorId=<actorId>`, and creates one access key (`S16`, `S28`). The policy follows the rules R1 to R8, and for a maintainer R3a. The name `pi-memory-person-<actorId>` is the form of the admin tool of this kit; a deployment that makes one memory for each stage names and owns its own users.
 
 Namespace rule: the policy names `/shared/*`, `/actor/dana/*`, `/project/example-project/shared/*` and `/project/example-project/proposals/dana/*`. Nothing else.
 

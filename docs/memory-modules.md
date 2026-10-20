@@ -4,7 +4,7 @@ Status: offline implementation, not a qualified runtime. `scripts/memory_modules
 
 Four modules can be enabled: `hermes`, `wiki`, `openviking`, and `agentcore`.
 The npm packages are `pi-hermes-memory` and `@zosmaai/pi-llm-wiki`.
-The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.9` and `@zosmaai/pi-llm-wiki@0.12.4`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. Both remote modules need `consent.remoteMemoryWrites`. The default example enables none of them and emits no memory extension. The fresh wizard leaves memory modules unchecked. Loaded selections remain unchanged; storage and recall require explicit consent. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
+The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.10` and `@zosmaai/pi-llm-wiki@0.12.4`, and compared with `@zosmaai/pi-llm-wiki@0.12.5`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. Both remote modules need `consent.remoteMemoryWrites`. The default example enables none of them and emits no memory extension. The fresh wizard leaves memory modules unchecked. Loaded selections remain unchanged; storage and recall require explicit consent. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
 
 ## Activation truth table
 
@@ -69,11 +69,13 @@ Not verified: the Pi 0.99.1 behaviour described below with the kit pin in `confi
 
 ## Hermes: what the pinned source does
 
-Source: `pi-hermes-memory@0.9.9`, `src/config.ts`, `src/paths.ts`, `src/index.ts`, `src/handlers/pi-child-process.ts`.
+Source: `pi-hermes-memory@0.9.10`, `src/config.ts`, `src/paths.ts`, `src/index.ts`, `src/handlers/pi-child-process.ts`, `src/tools/memory-search-tool.ts`.
+
+Against 0.9.9, `config.ts` of 0.9.10 adds four keys with defaults: `consolidationChunking` (off), `consolidationChunkChars`, `usageHitTrackingEnabled` (on: it records a recall count for each entry in the SQLite store) and `consolidationUsageSignals`. The keys that the kit writes did not change. `src/index.ts` and the store files changed too. At start, the markdown sync reads only the global files and the current project. On Pi 0.86 and later, the memory context goes into `appendSystemPrompt`. The store adds two columns for the recall counts.
 
 | Behaviour | Source fact | Kit handling |
 | --- | --- | --- |
-| Config file | `loadConfig()` reads `<agent dir>/hermes-memory-config.json`; unknown keys are ignored, absent keys take defaults. The defaults enable review every 10 turns or 15 tool calls, correction detection, flush on compaction and shutdown, and auto-consolidation. | The kit writes the whole file as a fourth profile output, mode `0600`. Every background switch is set explicitly in both states, so a package default cannot re-enable a path. |
+| Config file | `loadConfig()` reads `<agent dir>/hermes-memory-config.json`; unknown keys are ignored, absent keys take defaults. The defaults enable review every 10 turns or 15 tool calls, correction detection, flush on compaction and shutdown, and auto-consolidation. | The kit writes the whole file as a fourth profile output, mode `0600`. Every background switch is set explicitly in both states, so a package default cannot re-enable a path. The kit does not write `usageHitTrackingEnabled`, so it stays on. It counts recalls only in the `memory_search` tool that the model calls, and it makes no model call. |
 | Local capture | `message_end` schedules live session indexing into `<agent dir>/pi-hermes-memory/sessions.db`; `session_shutdown` indexes the finished session; `session_start` schedules a backfill of every file under `<agent dir>/sessions`, and `/memory-index-sessions` reads `PI_CODING_AGENT_SESSION_DIR` when set. No config switch disables this. Memory tools write `MEMORY.md`, `USER.md`, and `projects-memory/<project>/` under the agent directory. | Enabling Hermes at all is local capture. It requires `consent.memoryCapture`. A fresh candidate has no sessions to backfill; the `session_backfill_scope_unverified` gap reminds the user to launch without an ambient `PI_CODING_AGENT_SESSION_DIR`, since the kit cannot see the launch environment. The launch line removes the variable (`env -u`, see [the launcher file](launcher.md)); a manual `pi` command does not. |
 | Storage scope | `AGENT_ROOT` is `PI_CODING_AGENT_DIR` or `~/.pi/agent`. Memory, skills, the SQLite store, and project memory all live under it. Legacy migration only moves `<agent dir>/memory`, which a fresh candidate does not have. | Stores are candidate-scoped. `projectsMemoryDir` must stay a single segment under the agent directory. |
 | Direct review | `reviewTransport: "direct"` uses `ctx.modelRegistry` and the parent's auth. `llmModelOverride` selects the model by exact `provider/id`; unresolved overrides fall back to the active session model. | The kit sets `llmModelOverride` and `llmThinkingOverride` from `roles.memory`. |
@@ -361,7 +363,7 @@ Its five behaviour changes are:
 - Additive mode persists the capture watermark across resume. Session creation and reads use `auto_create` and fail closed on errors.
 - The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
 
-The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.2.0`.
+The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.3.1`.
 
 Licence: Apache-2.0 covers upstream `examples/`; the kit carries its `examples/LICENSE` as `packages/openviking-pi/LICENSE`. The OpenViking repository root uses AGPL-3.0. The kit copies nothing from outside `examples/`.
 
@@ -374,7 +376,7 @@ Licence: Apache-2.0 covers upstream `examples/`; the kit carries its `examples/L
 | Credentials | The endpoint, the key and the identity come from `OPENVIKING_*` variables, then `~/.openviking/ovcli.conf`, then `~/.openviking/ov.conf`. `OPENVIKING_CLI_CONFIG_FILE` and `OPENVIKING_CONFIG_FILE` move the two files. | The kit writes none of them, reads none of them, and has no overlay field for an endpoint, a key or a user. `endpoints.openviking` and `env.openviking` fail validation. The user sets up the credentials outside the kit before the first start. |
 | Local state | The pending queue (`~/.openviking/pending/`), the recall ledger (`~/.openviking/pi-recall-ledger/`), the workspace registry and the logs are under `~/.openviking/`. | Not under the agent directory. Each profile of one user shares this state: the `shared_home_state` gap. |
 | Tools | The extension registers the MCP tools of the server as `openviking_*` tools after a handshake. A failed handshake does not stop the start. | Do not point the `mcp` module at the same server: the tools would appear twice. |
-| Dependency | `package.json` lists `@modelcontextprotocol/client` at `2.2.0`, with a committed lock file. `node_modules/` is not in the tree. | The `install_step_required` gap and the setup line `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only: the kit does not run it. |
+| Dependency | `package.json` lists `@modelcontextprotocol/client` at `2.3.1`, with a committed lock file. `node_modules/` is not in the tree. | The `install_step_required` gap and the setup line `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only: the kit does not run it. |
 | Server | The extension needs an OpenViking server with `viking://~` home alias support. | The `server_required` gap. The kit starts no server and makes no request. |
 
 A setting from an older version of the extension can exist as a `config.json` beside an installed copy. This version does not read that file. To keep a choice from it, set the overlay field when the module has one, or move the value to the `plugin.pi` section of `~/.openviking/ovcli.conf`.
@@ -472,7 +474,7 @@ The overlay carries no key. The SDK uses the AWS profile that the person config 
 The package declaration names `packages/agentcore-pi/index.ts` after OpenViking.
 The extension imports the shared core `packages/agentcore-memory-core` by a relative path. Keep the kit directory in place.
 The display-only setup line runs `npm --prefix <kit>/packages/agentcore-memory-core ci --ignore-scripts`.
-The lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1152.0`. The extension package has no dependency of its own.
+The lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1154.0`. The extension package has no dependency of its own.
 The readiness gaps are `install_step_required`, `aws_resource_required`, and `package_runtime_unverified`.
 No peer override, generated config file, or local memory store is added.
 
@@ -494,6 +496,20 @@ A refusal returns a static code, for example `project_none`, `not_member`, `text
 A maintainer of the project reviews the proposal with the review CLI of the core. Only a maintainer moves it into the shared namespace.
 The extension has no capture path: it sends no answer, tool output or turn text.
 `session_shutdown` closes the core.
+
+### One memory for each stage
+
+A deployment that makes one memory for each stage, for example `dev` and `prod`, writes one config file for each person and stage.
+Each file names its own memory and its own AWS profile.
+Set `memory.agentcore.configFile` to the file of one stage.
+A second stage is a second candidate: set `configFile` to the file of that stage and generate a new target. See [the change loop](../POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate).
+Store the key under the profile name of the config file, in the shared credentials file.
+The deployment names and owns the IAM users, so the registry script does not provision them.
+
+Such a config can list each project by `projectId` and `role` only, without `remotes` and `directories`.
+Then the working directory gives no project. Recall skips the shared records of the project, and a proposal without `projectId` returns `project_none`.
+Set `AGENTCORE_PROJECT` in the shell that starts Pi. The launch line passes it through.
+Or add `remotes` or `directories` to the projects of the private config file.
 
 ### Owner steps
 

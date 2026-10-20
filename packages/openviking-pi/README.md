@@ -397,7 +397,8 @@ The fork changes five behaviours:
   fails closed when the server cannot create or read it (`sync.ts`, `index.ts`).
 - The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
 
-The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.2.0`.
+The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.3.1`.
+That client follows a redirect of the `/mcp` endpoint only within the same origin, so the configured address must be the final one. The REST calls use the redirect rules of `fetch`.
 
 The kit copy of this extension is updated through the kit, not by a copy into
 `~/.pi/agent/extensions/`; see `docs/memory-modules.md` of the kit.

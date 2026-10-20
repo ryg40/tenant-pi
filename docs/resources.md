@@ -211,7 +211,7 @@ The package tests compare the rows with the result of `loadMcpConfig()` of the l
 Not modeled:
 
 - The other checks of Pi on an entry. Examples are a server name with a character that is not permitted, and two names that differ only in `-` and `_`. A bad `exposure` value and a bad `url` are two more. Pi ignores such an entry. The component shows it as a row. For a full project server, the component tests only that the entry has `command` or `url`, and that an entry with `url` has no `auth`.
-- An installed extension that registers `/mcp`, such as `pi-mcp-adapter`. It replaces the built-in MCP support while `builtin:mcp` can still show as on. Not verified: how a `pi-mcp-adapter` version later than the reviewed 3.2.0 reads an override entry.
+- An installed extension that registers `/mcp`, such as `pi-mcp-adapter`. It replaces the built-in MCP support while `builtin:mcp` can still show as on. From 5.0.0 the adapter reads `.pi/mcp.json` outside its exclusive mode, but it skips an entry without `command` or `url`, so an override entry has no effect there (source reading of 5.4.0, `config.ts`).
 - In the menu, a row keeps its text until the write. After a change of a user row in memory, the override row of the same server can show the old state.
 
 A generated profile with the `mcp` module has `-builtin:mcp` and no `mcp.json`, so the native override has no effect there. A generated profile without the `mcp` module keeps the built-in MCP extension. There the override applies when `<agent dir>/mcp.json` exists. A `+builtin:mcp` entry in the settings of a trusted project turns the native path on again, unless an installed extension registers `/mcp` (not verified at runtime).

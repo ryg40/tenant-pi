@@ -17,7 +17,7 @@ What it does, in order:
 1. Refuses a dirty working tree. The snapshot comes from the committed `HEAD`, never from unsaved edits.
 2. Checks public page currency, then calls `python3 scripts/check.py --stamp-status`. For a matching stamp, the publisher prints its tree, time, client, skipped count and result lines. Otherwise, it runs the full `python3 scripts/check.py` check set. A failure stops before the snapshot build. It then calls the publish check directly to validate the snapshot file list.
 3. Builds a Git tree from `HEAD` that contains only the files in `PUBLISH` and in the `PUBLISH_DIRS` rules in `scripts/publish_check.py`, through a temporary index. The working tree is not touched.
-4. Builds the snapshot commit and annotated tag objects. The commit uses the previous snapshot as parent, unless `--new-root` is set.
+4. Builds the snapshot commit and annotated tag objects. The commit uses the previous snapshot as parent, unless `--new-root` is set. Their message carries the update block of the release notes, so that a client reads it with `git log -1` or through the `update` action of `scripts/tenant_pi.py`.
 5. Updates the branch and creates `portable/<yyyymmdd>-<source sha>` in one Git transaction. A tag collision or changed branch value moves neither ref.
 6. Pushes the snapshot branch to the destination named by `--remote` and `--remote-branch`, with the snapshot tags named explicitly. A refused push stops the command.
    An unchanged tree creates no commit or tag unless `--new-root` is set. The next push still includes existing tags of that snapshot.
@@ -56,7 +56,7 @@ These markers identify tests measured at 0.3 seconds or more; they do not remove
 For a sequential fast run, use:
 
 ```sh
-TENANT_PI_TIER=fast PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast --jobs 1
 ```
 
 `check.py` defaults to the full tier and sets the selected tier explicitly for its children.
@@ -240,6 +240,7 @@ The components with the source kind `tree` in `config/manifest.json` point at `p
 
 Continuous integration (CI) runs checks after a change.
 The GitHub workflow checks the published snapshot after a push. It never publishes a snapshot or proposes a Pi update.
+The maintainer creates the release entry of a tag only after both jobs of the run on its snapshot pass. A failed job stops the release entry ([publish steps](guides/release-checklist.md#publish-steps)).
 The full `check.py` stamp on development `main` records the check of that tree.
 The development remote runs no CI; the stamp of `check.py` on `main` is the check of `main`. A GitHub run does not replace the stamp on development `main`.
 
@@ -248,17 +249,19 @@ The development remote runs no CI; the stamp of `check.py` on `main` is the chec
 `.github/workflows/checks.yml` runs `python3 scripts/check.py` on each push and pull request.
 It has no branch filter: each branch that holds the file can start a run.
 The command runs the full offline unit suite, the publish check, the public reader check and `git diff --check`.
-It installs no package and makes no model request. The job uploads no artifact.
+It installs no package and makes no model request. The jobs upload no artifact.
 
-The job uses `ubuntu-latest` and sets Python 3.11 through `setup-python`.
+The job `offline` uses a matrix, so GitHub runs it as two jobs with the same steps. `setup-python` sets the Python version of each job.
+The `ubuntu-latest` job uses Python 3.11, the lowest version that the kit supports. The `macos-15` job (Apple silicon) uses Python 3.12, the version of the [macOS guide](guides/macos.md).
+One failed job does not cancel the other job.
 The workflow uses JSON-form YAML, a subset of YAML 1.2 that the Python standard library can parse.
 All action references use full commit hashes. Permissions are limited to `contents: read`.
 Checkout does not keep its token in Git configuration. The workflow references no repository secrets.
 
 | Action | Pinned commit hash | Tag |
 | --- | --- | --- |
-| `checkout` | `11bd71901bbe5b1630ceea73d27597364c9af683` | `v4.2.2` |
-| `setup-python` | `a26af69be951a213d495a4c3e4e4022e16d87065` | `v5.6.0` |
+| `checkout` | `3d3c42e5aac5ba805825da76410c181273ba90b1` | `v7.0.1` |
+| `setup-python` | `5fda3b95a4ea91299a34e894583c3862153e4b97` | `v7.0.0` |
 
 Not verified offline: the hash-to-tag mapping or execution on a GitHub runner.
 
@@ -267,8 +270,8 @@ Publish a new snapshot after approval to include a workflow fix; do not move an 
 
 ### GitHub runs and cost
 
-The workflow runs one job on a GitHub-hosted runner for each push and pull request.
-In a private repository, the job uses the account's Actions minutes. Included minutes and charges depend on the account plan.
+The workflow runs two jobs on GitHub-hosted runners for each push and pull request: one on Linux and one on macOS.
+In a private repository, the jobs use the account's Actions minutes. Included minutes and charges depend on the account plan and the runner type.
 Check the account's Actions usage before enabling the workflow.
 
 A branch update with an open pull request can start both a push run and a pull request run.
@@ -285,7 +288,7 @@ Alternatively, remove `.github/workflows/checks.yml` from each branch where you 
 ### Evidence and limits
 
 `tests/test_ci_workflows.py` parses the workflow as JSON-form YAML and rejects duplicate keys.
-It checks the command path, action pins, triggers, permissions, credential handling and Python setup.
+It checks the command path, action pins, triggers, permissions, credential handling, the two platforms and Python setup.
 It requires the workflow to call `check.py`.
 These offline tests do not prove that a GitHub runner executes the workflow or qualify a real Pi version.
 

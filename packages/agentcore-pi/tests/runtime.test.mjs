@@ -269,5 +269,5 @@ test("the package has no AWS dependency of its own and imports the core by its r
   assert.match(source, /from "\.\.\/agentcore-memory-core\/src\/index\.mjs"/);
   const core = JSON.parse(readFileSync(new URL("../../agentcore-memory-core/package.json", import.meta.url)));
   assert.equal(core.exports["."], "./src/index.mjs");
-  assert.equal(core.dependencies["@aws-sdk/client-bedrock-agentcore"], "3.1152.0");
+  assert.equal(core.dependencies["@aws-sdk/client-bedrock-agentcore"], "3.1154.0");
 });

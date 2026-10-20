@@ -18,9 +18,12 @@ An offline check that passes is recorded as passed, not as platform qualificatio
 
 macOS uses zsh as its login shell; put all PATH and variable lines in `~/.zshrc`; reload with `exec zsh`.
 
+An update needs no macOS adaptation: run [Get a new version of the kit](../../POST_INSTALL.md#get-a-new-version-of-the-kit) in zsh.
+
 Read [inventory](../../INSTALL.md#stage-0-inventory), including the live-profile and environment checks.
 The examples keep the kit at `~/tenant-pi` and the private directory at `~/.config/tenant-pi`.
 Use `"$HOME/..."` in commands. In JSON, use the expanded absolute path, not `~` or `$HOME`.
+A kit path under `/tmp` or `$TMPDIR` must be the resolved `/private/...` form; the tests handle this on their own.
 
 The kit Node range is `>=24.0.0 <25`. Python must be 3.11 or later; this adaptation selects `python@3.12`.
 Use a native terminal and the [Apple silicon Homebrew prefix](https://docs.brew.sh/Installation), `/opt/homebrew`.
@@ -110,12 +113,12 @@ The export changes this zsh only. Review adding the export line to `~/.zshrc` yo
 Alternatively, use a per-user nvm installation instead of Homebrew Node. For a home that has no nvm:
 
 ```sh
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | PROFILE=/dev/null bash
 . "$HOME/.nvm/nvm.sh"
 nvm install 24 && nvm use 24
 ```
 
-The first line installs nvm `v0.40.3` into `~/.nvm`. Before you run it, read the release page <https://github.com/nvm-sh/nvm/releases/tag/v0.40.3> and the script at the URL of the first line. The kit gives no checksum for the script.
+The first line installs nvm `v0.40.8` into `~/.nvm`. Before you run it, read the release page <https://github.com/nvm-sh/nvm/releases/tag/v0.40.8> and the script at the URL of the first line. The kit gives no checksum for the script.
 When `nvm` is already a command in your zsh, run the third line only.
 
 The kit never edits a shell startup file. Make one of two choices:
@@ -183,7 +186,7 @@ Only for `mcp`, `hermes`, `wiki` or `questions`. Run only the `pi install` lines
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9
 ```
 
 Only for `hermes`, `wiki` or `questions`, also, after the `pi install` lines:

@@ -12,11 +12,22 @@ A refused action prints one JSON object on standard error and exits with code 2:
 
 - The `error` text has the form `rule: field`. It never holds a path, a value or a secret.
 - A JSON syntax error (`invalid_json`) adds two keys, `line` and `column`. Both are integers, counted from 1. No other diagnostic has them.
+- A refusal for a link in the path adds one key, `hint`. See [A link in the path](#a-link-in-the-path).
 - `candidate_created` is `true` only when a directory exists after the failure. Inspect that directory. The kit has no rollback and deletes nothing.
 - `check-runtime` exits with 0 when Node and Python match, and Pi is `match` or `untested_in_range`. A failed requirement gives exit code 1. Its report is on standard output.
 - `generate --launcher` exits with 1 when the profile is complete and the launcher file is not. The report is on standard output, with the rule under `launcher.error`.
 
 The tables list diagnostic rules. A row marked "documented" has no runtime observation.
+
+### A link in the path
+
+A diagnostic with a `hint` key means that a directory of the path is a symbolic link. The kit refuses every linked directory of a path that it reads or writes. On macOS, `/tmp`, `/var` and `/etc` are such links, and `$TMPDIR` is under `/var`:
+
+```json
+{"candidate_created": false, "error": "unsafe_path: init-private.dir.parents", "hint": "/tmp is a link to private/tmp; give the resolved path /private/tmp/tenant-pi"}
+```
+
+Give the resolved path of the hint, or a path under the home directory. Do not make a link to get past the refusal. The row "Resolved path" in [Local differences](../../INSTALL.md#local-differences) has a command that prints the resolved form of a path.
 
 ## Wiki embedding diagnostics
 
@@ -187,7 +198,7 @@ Warning: Extension package ".../package.json": Host-provided extension packages 
 peerDependencies with a "*" range, not dependencies: typebox.
 ```
 
-An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 listed `typebox` under `dependencies`; the registry manifest of 2.13.8, the kit pin, lists it under `peerDependencies` with the range `*`. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
+An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 listed `typebox` under `dependencies`; the registry manifest of 2.13.9, the kit pin, lists it under `peerDependencies` with the range `*`. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
@@ -219,7 +230,7 @@ unreviewed_file: repository inventory
 One path line follows the finding line for each such file. The sample shows the first.
 
 1. Remove the cache directory: `rm -rf .pytest_cache`. Check the path before you run it.
-2. Run the tests with `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q`.
+2. Run the tests with `python3 scripts/check.py --tier fast`.
 
 The same failure comes from any untracked file in the clone, for example `dist/` of `packages/promptr`.
 

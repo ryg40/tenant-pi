@@ -83,6 +83,7 @@ The three command lines are display text; the action starts no process. Each pat
 
 These rules protect the kit, the live profile and personal wiki vaults before any write.
 A refusal has exit code 2 and a static `rule: field` diagnostic, without a path or a value.
+A refusal for a link in the path also has a `hint` key with the link and the resolved path; see `docs/generator.md`, "Input file errors".
 
 | Rule | Protected roots and scope | Symbolic links and environment variants |
 | --- | --- | --- |
@@ -108,7 +109,7 @@ Each command has a slow CLI smoke test for one rule.
 
 ## Refusals
 
-Each refusal is a static `rule: field` text. It contains no path and no value. The loader rules of an `--overlay` file and of a template name one cause each; see `docs/generator.md`, "Input file errors".
+Each refusal is a static `rule: field` text. The `error` text contains no path and no value. The optional `hint` names a link and a path; see "Refusal rules". The loader rules of an `--overlay` file and of a template name one cause each; see `docs/generator.md`, "Input file errors".
 
 | Diagnostic | Cause | Filesystem change |
 | --- | --- | --- |

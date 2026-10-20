@@ -1,9 +1,20 @@
 """Shared test tiers. The default suite includes every release test."""
 import inspect
+import json
 import os
 import unittest
 
 slow = unittest.skipIf(os.environ.get("TENANT_PI_TIER") == "fast", "release tier")
+
+
+def without_hint(stderr):
+    """The JSON diagnostic of `stderr` without `hint`, the one key that names a link in the path.
+
+    `tests/test_refusal_rules.py` checks the text of the hint.
+    """
+    data = json.loads(stderr)
+    data.pop("hint", None)
+    return data
 
 
 def block_process(args, *positional, **kwargs):

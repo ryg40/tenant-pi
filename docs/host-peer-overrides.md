@@ -1,7 +1,7 @@
 # Host-provided peer overrides for Pi extension packages
 
 Status: reviewed script and offline test. The kit does not install it, run it, or configure a service.
-The observations below use Pi 0.99.1, unless the text names another version. Observed with Pi 1.1.0: the warning for `typebox` in `@juicesharp/rpiv-ask-user-question` 2.11.0, and its removal by the script. The kit pins version 2.13.8 of that package; see below. Not verified: the other runtime behaviour below with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
+The observations below use Pi 0.99.1, unless the text names another version. Observed with Pi 1.1.0: the warning for `typebox` in `@juicesharp/rpiv-ask-user-question` 2.11.0, and its removal by the script. The kit pins version 2.13.9 of that package; see below. Not verified: the other runtime behaviour below with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
 ## Why it is needed
 
@@ -20,7 +20,7 @@ An installed copy can bypass the extension loader and create a duplicate runtime
 | `@juicesharp/rpiv-ask-user-question` | 2.11.0 | `typebox` |
 | `@zosmaai/pi-llm-wiki` | 0.12.4 | `@earendil-works/pi-tui`, `typebox` |
 
-Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, and the script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 lists `typebox` under `dependencies`, and the script corrects it. The registry manifest of 2.13.8, the kit pin, lists `typebox` under `peerDependencies` with the range `*` (upstream changelog 2.12.0). Run on a copy of that manifest, the script prints nothing and leaves the file byte-equal. Not verified: a Pi start with an installed 2.13.8 and no peer warning. The script keeps all three packages in its list: a later version of a package can list a host module under `dependencies` again.
+Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, and the script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 lists `typebox` under `dependencies`, and the script corrects it. The registry manifest of 2.13.9, the kit pin, lists `typebox` under `peerDependencies` with the range `*` (upstream changelog 2.12.0). Run on a copy of that manifest, the script prints nothing and leaves the file byte-equal. Not verified: a Pi start with an installed 2.13.9 and no peer warning. The script keeps all three packages in its list: a later version of a package can list a host module under `dependencies` again.
 
 `pi-hermes-memory` and `@zosmaai/pi-llm-wiki` are the sources of the optional `hermes` and `wiki` modules of this kit. `@juicesharp/rpiv-ask-user-question` is the source of the optional `questions` component. The script skips a package that is not installed.
 

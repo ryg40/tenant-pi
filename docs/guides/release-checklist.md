@@ -84,7 +84,7 @@ Tests read the current pin from the manifest. Guides point to `runtime.piVersion
 Historical observations and package-specific dependency pins stay fixed; review them before qualifying a new release.
 Run the offline gates on the candidate copy before accepting the move.
 
-The `questions` component has its own pin: the exact version 2.13.8 of `@juicesharp/rpiv-ask-user-question`. It is not a version range.
+The `questions` component has its own pin: the exact version 2.13.9 of `@juicesharp/rpiv-ask-user-question`. It is not a version range.
 The source of that version was not reviewed.
 `scripts/pi_update.py detect` exits 10 while the registry has a newer version.
 This continues until the maintainer of the release reviews the newer version and moves the pin.
@@ -127,7 +127,7 @@ Do not write "all modules work" when only the core trial ran. Do not describe a 
 - Set `KIT_COMMIT` first: `export KIT_COMMIT="$(git rev-parse --short HEAD)"`. Run `docker compose config` from the kit root, with a `seat.env` and a `compose.env` in a private directory. It is the short offline check. Use the options of [the build and start commands](compose-seat.md#step-2-build-and-start).
 - Keep the key line of that `compose.env` empty: `docker compose config` prints each value of the file.
 - `docker compose build` needs Docker and the network. A release without it records `build: not run`.
-- The build runs the four offline checks inside the image. A build that passes is not a trial of a container. The evidence of a container is in the trial records.
+- The build runs the fast tier of the kit checks inside the image. A build that passes is not a trial of a container. The evidence of a container is in the trial records.
 - Read each row of the qualification table. A row is `not qualified` unless an accepted trial record covers each item of the checklist of the guide.
 
 ## Platforms that are not qualified
@@ -177,8 +177,9 @@ These steps come from [publishing](../publishing.md).
 
    The command pushes two refs by name: the branch `portable` to the destination named by `--remote` and `--remote-branch`, and the tag `portable/<yyyymmdd>-<source sha>` of this snapshot. It pushes no other tag and no other branch. When the snapshot did not change, for example after a build with `--no-push`, it pushes the snapshot tag that already points at the snapshot commit. The commit and the tag carry the neutral identity `tenant-pi portable`.
 
-6. Review [the release notes](#release-notes) from the publisher after the last gate. Fill the placeholders and publish the entry on the tag. The publisher does not create the release entry. Keep the tested snapshot unchanged.
-7. Update the documentation site of the kit, if you maintain one: set the new tag in its version file, run its capture script, and update the pages that changed. (The maintainers' site is tenant-docs; its `README.md` section `New release of a project` has the steps.)
+6. Wait for the CI run of the snapshot on GitHub: the workflow "Offline checks" ([continuous integration](../publishing.md#continuous-integration)). Both matrix jobs, Linux and macOS, must pass before you create the release entry. A failed job stops the release entry.
+7. Review [the release notes](#release-notes) from the publisher after the last gate. Fill the placeholders and publish the entry on the tag. The publisher does not create the release entry. Keep the tested snapshot unchanged.
+8. Update the documentation site of the kit, if you maintain one: set the new tag in its version file, run its capture script, and update the pages that changed. (The maintainers' site is tenant-docs; its `README.md` section `New release of a project` has the steps.)
 
 Warning: `--force` can replace an existing remote snapshot chain, but it does not remove earlier tags.
 
@@ -202,6 +203,7 @@ Full notes also hold:
 - The tag, the source commit and the snapshot commit.
 - The Pi pin (`runtime.piVersion`) and the accepted range (`runtime.piAcceptedRange`).
 - The qualification: full qualification, or a fast track with gate 6 not run.
+- The update block for clients, before the gates.
 - The check-set stamp from the `publish_portable.py` output: tree hash, time, result lines, client and skipped count.
 - Gates 1, 5 and 6 with one word: passed, failed, blocked or not run. Include each gate's record.
 - The stamp's public reader result. The unit result includes the documentation check.
@@ -225,6 +227,10 @@ Take the stamp fields for both templates from the `publish_portable.py` output.
 `check.py --stamp-status` prints only the stamp status line, not those fields.
 
 Replace each placeholder in angle brackets. Do not replace an unrun gate with a passed result.
+In both templates, the update block for clients comes right after the header lines, before the gates.
+The publisher writes the whole block from the two source commits.
+The placeholders `<overlay>` and `<private dir>` of its `Run:` line stay for the client.
+Without a previous tag, the block is `## Update` with the line `- First release: no update data.`
 The release entry is Markdown: each list item is one line on the release page.
 
 ### Patch notes template
@@ -239,6 +245,16 @@ The publisher fills this template. Gates 6 to 8 refer to the last full tag, not 
 - Snapshot commit: <snapshot sha>
 - Kind of release: patch release
 - Pi pin (runtime.piVersion): <version>
+
+## Update from <previous tag>
+
+- <"No new candidate expected." or "A new candidate may be needed: <reasons>.">
+- Pi pin: <"unchanged (<version>)" or "<old> -> <new>; install the new Pi first.">
+- <one line for each changed range: accepted range, Node range, Python range>
+- <"npm ci --ignore-scripts needed in: <packages>", "npm run build needed in: packages/promptr", or "No package line needed.">
+- Files that can change a generated profile: <paths and "removed: <path>" items, or none>
+- Run: `python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>`
+- A clean clone at this tag needs no test run.
 
 ## Gates
 
@@ -264,7 +280,7 @@ Gates 6-8: unchanged from <last full tag>
 
 ### Full notes template
 
-The publisher fills the identity, pin, stamp, changes and snapshot-range lines.
+The publisher fills the identity, pin, update block, stamp, changes and snapshot-range lines.
 The maintainer fills the other records. The `scan.sh all` line remains a placeholder until that scan runs.
 
 ```markdown
@@ -277,6 +293,16 @@ The maintainer fills the other records. The `scan.sh all` line remains a placeho
 - Accepted range (runtime.piAcceptedRange): <range>
 - Kind of release: full release
 - Qualification: <full qualification, or fast track: gate 6 not run, approved by the maintainer>
+
+## Update from <previous tag>
+
+- <"No new candidate expected." or "A new candidate may be needed: <reasons>.">
+- Pi pin: <"unchanged (<version>)" or "<old> -> <new>; install the new Pi first.">
+- <one line for each changed range: accepted range, Node range, Python range>
+- <"npm ci --ignore-scripts needed in: <packages>", "npm run build needed in: packages/promptr", or "No package line needed.">
+- Files that can change a generated profile: <paths and "removed: <path>" items, or none>
+- Run: `python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>`
+- A clean clone at this tag needs no test run.
 
 ## Gates
 

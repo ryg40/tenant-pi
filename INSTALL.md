@@ -110,12 +110,12 @@ Goal: Node, Python and Git at the required versions. Show the command for the ma
 The nvm block, for a user home that has no nvm:
 
 ```sh
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | PROFILE=/dev/null bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh | PROFILE=/dev/null bash
 . "$HOME/.nvm/nvm.sh"
 nvm install 24 && nvm use 24
 ```
 
-The first line installs nvm `v0.40.3` into `~/.nvm`. Before you run it, read the release page <https://github.com/nvm-sh/nvm/releases/tag/v0.40.3> and the script at the URL of the first line. The kit gives no checksum for the script. When `nvm` is already a command in the shell, run the third line only.
+The first line installs nvm `v0.40.8` into `~/.nvm`. Before you run it, read the release page <https://github.com/nvm-sh/nvm/releases/tag/v0.40.8> and the script at the URL of the first line. The kit gives no checksum for the script. When `nvm` is already a command in the shell, run the third line only.
 
 The kit never edits a shell startup file, so the user makes one of two choices:
 
@@ -135,16 +135,16 @@ Done when `node --version` and `python3 --version` print versions inside the req
 ```sh
 git clone <kit repository URL> ~/tenant-pi
 cd ~/tenant-pi
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -q
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
+# Optional, only for a clone with local changes:
+python3 scripts/check.py --tier fast
 ```
 
 Ask which URL when the user has more than one. The clone must not be the target directory. The user must not move or delete the clone later: the generated profile points at `packages/` inside it.
 
-The last test line starts with `OK`; a skipped-test count is expected and depends on the client.
+A clean clone of a release tag needs no test run. The GitHub workflow `.github/workflows/checks.yml` runs `python3 scripts/check.py` on Linux and macOS for each snapshot that is pushed to GitHub. The maintainer creates the release entry of a tag only after both runs pass ([continuous integration](docs/publishing.md#continuous-integration)). For a clone with local changes, the last line of the check is `check: passed`.
 The tests and the kit commands work with the usual umask values 0002, 022 and 077. The error `unsafe_permissions` means that a directory on the path is writable by its group or by others and has no sticky bit. Check the directory, then remove the write bit with `chmod go-w <directory>`.
 
-Done when the tests pass and the publish check prints `publish set valid`.
+Done when the clone exists, and for a clone with local changes, the checks pass.
 
 ## Stage 3: install Pi
 
@@ -241,7 +241,7 @@ This stage has three parts with separate results: the Herdr application (a host 
 
 Ask the questions of this stage with the question tool of your harness. Claude Code has its own question tool: use it, and install no Pi extension into Claude Code. When no question tool is loaded, ask in plain text: one question, its numbered options, the recommended option first. A headless or bootstrap session always uses plain text. Never make a step wait for the Pi question extension.
 
-The Herdr facts below come from the `herdr` command itself, version 0.9.3: `herdr --help`, `herdr update --help`, `herdr channel --help` and `herdr --skill`.
+The Herdr facts below come from the `herdr` command itself, version 0.9.5: `herdr --help`, `herdr update --help`, `herdr channel --help` and `herdr --skill`.
 
 | Fact | Source |
 | --- | --- |
@@ -252,7 +252,7 @@ The Herdr facts below come from the `herdr` command itself, version 0.9.3: `herd
 | `herdr --skill` prints the agent skill file of the installed version. | `herdr --help` |
 | The configuration file is `~/.config/herdr/config.toml`; `HERDR_CONFIG_PATH` names another file. | `herdr --help` |
 
-The reviewed source of the Herdr application is the open-source project `herdrdev/herdr` on GitHub, with the license Apache-2.0. Its stable release is 0.9.3. The install facts of part 5 come from the release page and the install script of the project. Do not use another URL or command. Not verified: an install with the commands of part 5 on a clean account. Not verified: the version range of Herdr that the bundled skill supports. The skill text names commands that were verified on Herdr 0.9.1.
+The reviewed source of the Herdr application is the open-source project `herdrdev/herdr` on GitHub, with the license Apache-2.0. Its stable release is 0.9.5. The install facts of part 5 come from the release page and the install script of the project. Do not use another URL or command. Not verified: an install with the commands of part 5 on a clean account. Not verified: the version range of Herdr that the bundled skill supports. The skill text names commands that were verified on Herdr 0.9.1.
 
 ### 1. Destination
 
@@ -333,7 +333,7 @@ python3 <clone>/scripts/tenant_pi.py remote-plan --ssh-target '<ssh target>' --r
 
 Show each line before you run it. The `identity` line fails for a wrong account, a wrong home or a system that is not Linux. A line with `"changes": true` needs a yes from the user. `docs/herdr-setup.md` lists the stages and the limits.
 
-Stop when the account name or the home directory is not the one that the user named. A wrong identity writes into another account. After each install step, check the owner of the new path: `stat -c '%U' '<path>'` on Linux prints the account name.
+Stop when the account name or the home directory is not the one that the user named. A wrong identity writes into another account. After each install step, check the owner of the new path: `stat -c '%U' '<path>'` on Linux prints the account name. The row "Owner of a file" in "Local differences" has the macOS form.
 
 ### 4. Detect Herdr
 
@@ -361,13 +361,13 @@ Only with `missing` in part 4, and only after approval. The kit does not run thi
 
    ```sh
    cd "$(mktemp -d)" &&
-   curl -fsSLO https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64 &&
-   echo '18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7  herdr-linux-x86_64' | sha256sum -c - &&
+   curl -fsSLO https://github.com/herdrdev/herdr/releases/download/v0.9.5/herdr-linux-x86_64 &&
+   echo '14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d  herdr-linux-x86_64' | sha256sum -c - &&
    mkdir -p ~/.local/bin &&
    install -m 755 herdr-linux-x86_64 ~/.local/bin/herdr
    ```
 
-   The command stops when the digest does not match. The digest is the SHA-256 of the asset of release 0.9.3. Another release needs its own reviewed digest.
+   The command stops when the digest does not match. The digest is the SHA-256 of the asset of release 0.9.5. Another release needs its own reviewed digest.
 
    The alternative form is the official install script `https://herdr.dev/install.sh`. It installs the latest release into `~/.local/bin` without root, and it verifies the checksum. The user saves the script to a file and reads it before it runs. Do not send the download directly into a shell.
 
@@ -506,7 +506,7 @@ KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file 
 KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml logs seat
 ```
 
-With a projects directory, each line has a second `-f`, for `compose.projects.yaml`. The build runs the four offline checks of the kit and installs the pinned Pi. The `logs` line shows one line for each step of the first start.
+With a projects directory, each line has a second `-f`, for `compose.projects.yaml`. The build runs the fast tier of the kit checks and installs the pinned Pi. The `logs` line shows one line for each step of the first start.
 
 Warning: `down -v` removes the home volume with the profile and the sessions, and the seat gets a new host key. The plan has no line with `-v`.
 
@@ -515,7 +515,7 @@ Warning: `down -v` removes the home volume with the profile and the sessions, an
 | Stage | In a Compose seat |
 | --- | --- |
 | 3 (Pi), 4 (package dependencies) | Skip. The image build does them. |
-| 4a, parts 2 to 8 | Skip. The image holds Herdr 0.9.3. `herdr` and `questions` are answers to question 7. |
+| 4a, parts 2 to 8 | Skip. The image holds Herdr 0.9.5. `herdr` and `questions` are answers to question 7. |
 | 5 (the overlay) | Parts 1 to 3 of this stage write the overlay. |
 | 6 (plan and generate), 7 (declared npm packages) | Skip. The entrypoint of the seat runs `check-runtime`, `validate`, `plan` and `generate` at the first start. |
 | 8 (authentication) | Part 4 of this stage: the key is in `compose.env`. |
@@ -790,17 +790,17 @@ Run the lines of `commands.setupDisplayOnly` that name `<target>`, in the order 
 PI_CODING_AGENT_DIR='<target>' pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR='<target>' pi install npm:@zosmaai/pi-llm-wiki
 PI_CODING_AGENT_DIR='<target>' pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR='<target>' pi install npm:@juicesharp/rpiv-ask-user-question@2.13.8
+PI_CODING_AGENT_DIR='<target>' pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9
 PI_CODING_AGENT_DIR='<target>' node <clone>/scripts/patch_extension_peers.mjs
 ```
 
 - Use each source string as the plan prints it. `pi install` leaves `settings.json` unchanged only when the string is identical to the declared string. With a different string, or with a source that the profile does not declare, Pi rewrites `settings.json`, and `compare` shows the change as drift.
-- `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 3.2.0, `pi-hermes-memory` 0.9.9 and `@zosmaai/pi-llm-wiki` 0.12.4. The facts of an existing vault are from `@zosmaai/pi-llm-wiki` 0.12.5. After an install or an update of the `wiki` package, check 8 of Stage 9 is the proof for the installed version.
+- `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 5.4.0, `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5. The facts of an existing vault are from the same version of the wiki. After an install or an update of the `wiki` package, check 8 of Stage 9 is the proof for the installed version.
 - The `pi install` line of `wiki` prints an audit summary of npm. Read "The audit summary of npm" below before you run that line.
-- `questions` is declared at the exact version 2.13.8, and its line installs that version.
+- `questions` is declared at the exact version 2.13.9, and its line installs that version.
 - `pi update --extensions` is not a setup command. With the kit pin it does not install or change a source with an exact version. It only moves an installed source without a version to the newest registry version.
 - The last command corrects host-provided peers in the installed manifests. Run it after the `pi install` lines. The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it.
-- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. The registry manifest of `@juicesharp/rpiv-ask-user-question` 2.13.8 lists `typebox` under `peerDependencies` with the range `*`, so the script makes no change for `questions` either. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
+- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. The registry manifest of `@juicesharp/rpiv-ask-user-question` 2.13.9 lists `typebox` under `peerDependencies` with the range `*`, so the script makes no change for `questions` either. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
 
 To reapply the correction after each update, `docs/host-peer-overrides.md` describes an `npmCommand` wrapper.
 
@@ -1071,6 +1071,9 @@ Adapt the syntax, keep the rule.
 | Difference | Linux | macOS |
 | --- | --- | --- |
 | Home root | `/home/<name>` | `/Users/<name>` |
+| `/tmp`, `/var` and `/etc` | real directories | links into `/private`; a kit path must be the resolved form (`/private/tmp/...`) or a path under the home directory |
+| Owner of a file | `stat -c '%U' <path>` | `stat -f '%Su' <path>` |
+| Resolved path | `realpath <path>` | `python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' <path>`; this form works on both |
 | Default shell | bash, mostly | zsh; `~/.zshrc`, not `~/.bashrc` |
 | GUI apps and the shell environment | varies | an app started from Finder or the Dock does not see the variables of `~/.zshrc`; launch Pi from a terminal, or through a launcher script |
 | Global npm without root | nvm, or an npm prefix in the user's home | Homebrew Node writes to `/opt/homebrew`, no sudo |
@@ -1088,9 +1091,9 @@ If a command of the kit fails on the machine for a syntax reason, rewrite the sy
 
 The first install ends with Stage 9. This stage is one message to the user, and it runs no command.
 
-Tell the user the rule of each later change: the kit changes no profile in place. A new kit version, a new component or a new Pi pin gives a new candidate directory from the same overlay with another `target.agentDir`. The old candidate stays as the fallback. Auth, sessions and memory are not copied.
+Tell the user the rule of each later change: the kit changes no profile in place. A new component gives a new candidate directory from the same overlay with another `target.agentDir`. A new kit version or a new Pi pin gives one only when the profile changes. The old candidate stays as the fallback. Auth, sessions and memory are not copied.
 
-[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. It gives the loop of a change one time. Then it has one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, a candidate comparison, the baseline, a removal, a new kit version, a new Pi version, a provider, and the update of a Compose seat.
+[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. Its first section, [Get a new version of the kit](POST_INSTALL.md#get-a-new-version-of-the-kit), is `git pull --ff-only` and one read-only command, `python3 scripts/tenant_pi.py update --overlay '<overlay>' --local-dir '<private dir>'`, which prints the verdict and the next lines. Then the guide gives the loop of a change one time, and one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, a candidate comparison, the baseline, a removal, a new Pi version, a provider, and the update of a Compose seat.
 
 ## Not in this kit
 

@@ -395,7 +395,7 @@ export interface MemoryCoreModule {
   personScope(registry: Registry, actorId: ActorId): IdentityScope;
   /** `/shared/*` and `/actor/*` for writes, moves and reads; no delete. */
   submitScope(registry: Registry): IdentityScope;
-  /** `/shared/*` and `/project/*/shared/*` for reads; no write, no move, no delete. */
+  /** Global shared and every project's shared tree for reads; no write, no move, no delete. */
   workerScope(registry: Registry): IdentityScope;
   /** The person config without `profile`, `ledgerPath` and `hostLabel`. */
   renderPersonConfig(registry: Registry, actorId: ActorId): MemoryConfig;

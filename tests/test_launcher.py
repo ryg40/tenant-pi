@@ -281,12 +281,14 @@ class CliTests(Fixture):
         self.assertFalse((self.base / "called").exists())
         self.assertEqual({"auth.json", "models.json", "settings.json"}, {p.name for p in self.agent.iterdir()})
         # The launcher runs the same command as the plan line: a recording `pi` sees the same arguments
-        # and environment. The key reaches `pi` only from the launching shell.
+        # and environment. The key reaches `pi` only from the launching shell. The dump leaves out the names
+        # that the shell sets itself: bash as `/bin/sh` (macOS) counts SHLVL, dash does not.
         record = self.base / "record bin"
         record.mkdir()
         fake = record / "pi"
         fake.write_text('#!/bin/sh\nprintf "%s|" "$@" "$PI_CODING_AGENT_DIR" "$TENANTEXT_LITELLM_BASE_URL" '
-                        '"${TENANTEXT_LITELLM_API_KEY-unset}"\nprintf "\\n"\nenv | sort\n')
+                        '"${TENANTEXT_LITELLM_API_KEY-unset}"\nprintf "\\n"\n'
+                        'env | grep -v -E "^(SHLVL|_|PWD|OLDPWD)=" | sort\n')
         fake.chmod(0o700)
         run_env = {"PATH": str(record) + ":/usr/bin:/bin", "TENANTEXT_LITELLM_API_KEY": "from-shell"}
         by_line = subprocess.run(["/bin/sh", "-c", line], env=run_env, cwd=self.base,

@@ -18,6 +18,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PIN = json.loads((ROOT / "config/manifest.json").read_text())["runtime"]["piVersion"]
 QUESTIONS = "@juicesharp/rpiv-ask-user-question"
 OLDER = "1.0.2"
+# The Python of a stub adds these names itself on macOS, also after `env -i`: LC_CTYPE when the
+# locale of LANG is absent (PEP 538 coercion), and the CoreFoundation encoding. No caller passes them.
+OWN_NAMES = ("LC_CTYPE", "__CF_USER_TEXT_ENCODING")
 
 FAKE_PI = '''import json, os, pathlib, sys, urllib.request
 home = pathlib.Path(os.environ["HOME"])
@@ -89,7 +92,7 @@ elif args[0] == "--test":
         sys.exit(7)
 else:
     assert pathlib.Path(args[0]).name == "openviking-load.mjs"
-    assert set(os.environ) == set(PI_KEYS)
+    assert set(os.environ) - set(OWN_NAMES) == set(PI_KEYS)
     assert "/prefix/node_modules/" in pathlib.Path(args[0]).read_text()
     if (control / "fail-openviking-load").exists():
         sys.exit(6)
@@ -114,8 +117,13 @@ class UpdateTests(unittest.TestCase):
         npm_script = ("#!" + sys.executable + "\nVERSION = " + repr(PIN) + "\nPI_SCRIPT = " + repr(pi_script) + "\n" + FAKE_NPM)
         (self.bin / "npm").write_text(npm_script)
         (self.bin / "npm").chmod(0o700)
-        # check-runtime tests the real Python, but does not need the caller's Node version.
-        (self.bin / "node").write_text("#!" + sys.executable + "\nPI_KEYS = " + repr(update.PI_KEYS) + "\n" + FAKE_NODE)
+        # An old `python3` comes first on the allow list, as `/usr/bin/python3` does on macOS.
+        # check-runtime tests the Python of the qualification instead.
+        (self.bin / "python3").write_text("#!/bin/sh\necho 'Python 3.9.6'\n")
+        (self.bin / "python3").chmod(0o700)
+        # check-runtime does not need the caller's Node version.
+        (self.bin / "node").write_text("#!" + sys.executable + "\nPI_KEYS = " + repr(update.PI_KEYS)
+                                       + "\nOWN_NAMES = " + repr(OWN_NAMES) + "\n" + FAKE_NODE)
         (self.bin / "node").chmod(0o700)
         self.env = patch.dict(os.environ, {"HOME": str(self.home), "PATH": str(self.bin) + ":/usr/bin:/bin",
                              "OPENAI_API_KEY": "synthetic-canary", "NODE_OPTIONS": "synthetic-canary",
@@ -403,7 +411,7 @@ class UpdateTests(unittest.TestCase):
         rows = [json.loads(line) for line in (run / "home/pi-env.jsonl").read_text().splitlines()]
         self.assertEqual(len(rows), 3 if tuple(map(int, PIN.split("-", 1)[0].split("."))) >= (1, 2, 0) else 2)
         for child in rows:
-            self.assertEqual(set(child), set(update.PI_KEYS))
+            self.assertEqual(set(child) - set(OWN_NAMES), set(update.PI_KEYS))
             self.assertTrue(Path(child["HOME"]).is_relative_to(run))
             self.assertTrue(Path(child["TMPDIR"]).is_relative_to(run))
             self.assertTrue(Path(child["PI_CODING_AGENT_DIR"]).is_relative_to(run))
@@ -427,7 +435,7 @@ class UpdateTests(unittest.TestCase):
         for row in nodes:
             self.assertNotIn("synthetic-canary", json.dumps(row))
         load = next(row for row in nodes if row["args"][0] != "--version" and row["args"][0] != "--test")
-        self.assertEqual(set(load["env"]), set(update.PI_KEYS))
+        self.assertEqual(set(load["env"]) - set(OWN_NAMES), set(update.PI_KEYS))
         tests = next(row for row in nodes if row["args"][0] == "--test")
         test_files = {path.name for path in (ROOT / "packages/openviking-pi/tests").glob("*.test.mjs")}
         self.assertEqual({Path(path).name for path in tests["args"][1:]}, test_files)

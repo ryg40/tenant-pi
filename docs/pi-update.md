@@ -52,7 +52,7 @@ Each step has `name`, `exitCode`, and an absolute `log` path. A skipped dependen
 1. Record a metadata baseline of `~/.pi/agent`, when it exists. No file content is read.
 2. Copy tracked kit files into the run's `kit` directory and move its pin to the requested version.
 3. Install the requested version under the run's `prefix` directory with `npm install --ignore-scripts`.
-4. Run `check-runtime --pi`, the full check set through `scripts/check.py`, then `PACKAGE_PY` from the candidate copy.
+4. Run `check-runtime --pi --python` with the Python that runs the qualification, the full check set through `scripts/check.py`, then `PACKAGE_PY` from the candidate copy.
 5. Copy `packages/tenantext`, `packages/promptr`, and `packages/openviking-pi` into the run directory.
 6. Run `npm ci --ignore-scripts` in each copy.
 7. Link each copy's Pi dependencies to the candidate installation. The links cover `pi-coding-agent`, `pi-ai`, `pi-tui`, and `pi-agent-core`.

@@ -473,8 +473,9 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
         installed = install(steps, requested)
         if installed:
             wrapper = pi_wrapper(run, env)
+            # Check the Python that runs the qualification. The `python3` of the allow list can be older, as on macOS.
             steps.command("check-runtime", [sys.executable, "-B", str(candidate / "scripts/tenant_pi.py"),
-                          "check-runtime", "--pi", str(wrapper)], cwd=candidate, timeout=90)
+                          "check-runtime", "--pi", str(wrapper), "--python", sys.executable], cwd=candidate, timeout=90)
         else:
             steps.skip("check-runtime")
         for name, args in OFFLINE:

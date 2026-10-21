@@ -118,7 +118,7 @@ def run_script(job_dir, cwd):
         f"cd {q(cwd)} 2>{q(out)} && bash {q(os.path.join(job_dir, 'cmd.sh'))} >{q(out)} 2>&1 </dev/null\n"
         "code=$?\n"
         f"echo \"$code\" >{q(code + '.tmp')} && mv {q(code + '.tmp')} {q(code)}\n"
-        f"echo \"relay {job} exit=$code bytes=$(wc -c <{q(out)})\"\n"
+        f"echo \"relay {job} exit=$code bytes=$(($(wc -c <{q(out)})))\"\n"
     )
 
 

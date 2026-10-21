@@ -197,7 +197,7 @@ The coordinator may run unblocked tickets in parallel panes, and the user may ru
 Each ticket that changes files runs on its own branch in its own worktree.
 The worker runs `python3 scripts/check.py --tier fast` and commits its result lines.
 The reviewer reads the diff and result lines and runs no suite.
-The coordinator merges the reviewed branch with `--no-ff` and runs `python3 scripts/check.py` once on `main`.
+The coordinator merges the reviewed branch with `--no-ff` and runs `python3 scripts/check.py --all` once on `main`.
 Read `python3 scripts/check.py --stamp-status` after the run and paste its stamp line and the check result lines into the merge record.
 A matching stamp replaces another full run on that unchanged tree and client.
 On failure, run `git revert -m 1 <merge>` and open a fix round in a new worker pane.

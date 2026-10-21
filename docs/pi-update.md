@@ -3,7 +3,7 @@
 `<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
 Replace `<new version>` with the detected version before running an example command.
 
-`scripts/pi_update.py` detects releases, tests a candidate, and reads release notes. It does not change the kit pin or an installed profile.
+`scripts/pi_update.py` detects releases, tests a candidate, reads release notes, and moves the kit pin. Only `pin` changes a file of the checkout: `config/manifest.json`. No action changes an installed profile.
 
 Python 3.11+, Node and npm are required. Qualification of a Git checkout also requires `git` on the runner's allow-list PATH. Qualification is Linux-first. Each action prints one JSON object on standard output, including failures.
 
@@ -14,6 +14,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py detect
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir /tmp/pi-qualification
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py qualify --version "<new version>" --workdir /tmp/pi-qualification --strict-baseline
 PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py notes --from "<pin>" --to "<new version>" --workdir /tmp/pi-notes
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py pin --version "<new version>"
 ```
 
 | Action | Network use | Result |
@@ -21,10 +22,11 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py notes --from "<pin>" --to
 | `detect` | Public npm registry metadata | `core`, then a `modules` list, and the `new` flag |
 | `qualify` | Public npm installs and a loopback test endpoint | `version`, `workdir`, `passed`, and ordered `steps` |
 | `notes` | Public npm install of the destination version | `from`, `to`, `breaking`, and ordered `entries` |
+| `pin` | None | `from`, `to`, and the new `range`; `--range` sets a reviewed range |
 
 | Exit code | Meaning |
 | --- | --- |
-| 0 | Detection finds no changed pin, qualification passes, or notes succeed. |
+| 0 | Detection finds no changed pin, qualification passes, notes succeed, or the pin moves. |
 | 10 | Detection finds a version different from a pinned version. |
 | 1 | A qualification step fails, or the notes install fails. |
 | 2 | Invalid arguments, an unsafe directory, unreadable input, or an unavailable registry or changelog. |
@@ -52,32 +54,20 @@ Each step has `name`, `exitCode`, and an absolute `log` path. A skipped dependen
 1. Record a metadata baseline of `~/.pi/agent`, when it exists. No file content is read.
 2. Copy tracked kit files into the run's `kit` directory and move its pin to the requested version.
 3. Install the requested version under the run's `prefix` directory with `npm install --ignore-scripts`.
-4. Run `check-runtime --pi --python` with the Python that runs the qualification, the full check set through `scripts/check.py`, then `PACKAGE_PY` from the candidate copy.
-5. Copy `packages/tenantext`, `packages/promptr`, and `packages/openviking-pi` into the run directory.
-6. Run `npm ci --ignore-scripts` in each copy.
-7. Link each copy's Pi dependencies to the candidate installation. The links cover `pi-coding-agent`, `pi-ai`, `pi-tui`, and `pi-agent-core`.
-8. Run Tenantext's type check and tests. Run Promptr's build and tests. The Tenantext test file `test/pi-package-install.test.ts` checks three rules of the candidate Pi that the setup lines of the plan depend on. `update()` installs no missing npm source with an exact version. `update()` installs a missing npm source without a version. An install of a declared source by its identical string runs one install and leaves the bytes of `settings.json` equal. A failure of that file means that the setup lines of `scripts/profile_plan.py` need a review.
-9. Run every OpenViking package test, including loopback MCP fixtures and SDK lifecycle checks, with candidate Pi dependencies.
-10. Check OpenViking's explicit file source with the candidate package resolver and extension factory loader, without starting a session.
-11. Generate a core-only profile from the candidate copy in the run directory.
-12. Launch that profile in print mode against the built-in loopback endpoint for the successful reply contract.
-13. For candidate versions 1.2.0 and later, run a separate loopback launch for the output-limit truncation contract.
-14. Compare the live directory with its baseline, also after a failed step.
-
-Qualification does not rebuild or check page currency. The publisher checks both public pages before a snapshot.
-Generate the local edition separately with `python3 scripts/architecture_build.py --local` after preparing its untracked values file.
+4. Run `check-runtime --pi --python` with the Python that runs the qualification.
+5. Run `npm ci --ignore-scripts` in each package of the candidate copy that has a lock file.
+6. Link the Pi dependencies of `packages/tenantext` and `packages/openviking-pi` to the candidate installation. The links cover `pi-coding-agent`, `pi-ai`, `pi-tui`, and `pi-agent-core`.
+7. Run the full check set, `scripts/check.py --all`, in the candidate copy. It runs every root test module and every package suite, with Tenantext's type check and tests. The Tenantext test file `test/pi-package-install.test.ts` checks three rules of the candidate Pi that the setup lines of the plan depend on. `update()` installs no missing npm source with an exact version. `update()` installs a missing npm source without a version. An install of a declared source by its identical string runs one install and leaves the bytes of `settings.json` equal. A failure of that file means that the setup lines of `scripts/profile_plan.py` need a review.
+8. Run every OpenViking package test, including loopback MCP fixtures and SDK lifecycle checks, with candidate Pi dependencies.
+9. Check OpenViking's explicit file source with the candidate package resolver and extension factory loader, without starting a session.
+10. Generate a core-only profile from the candidate copy in the run directory.
+11. Launch that profile in print mode against the built-in loopback endpoint for the successful reply contract.
+12. For candidate versions 1.2.0 and later, run a separate loopback launch for the output-limit truncation contract.
+13. Compare the live directory with its baseline, also after a failed step.
 
 A failed step fails qualification. Independent later steps still run. Each package log includes its native test output.
 
-The `check-set` step runs unit shards and both publish checks without Git metadata; it skips the diff check and writes no stamp.
-The `PACKAGE_PY` step runs four package Python suites in order:
-
-- Tracker: `python3 -m unittest discover -s tracker/tests -t .` from `packages/tenantext`.
-- Herdr: `python3 -m unittest discover -s skills/herdr/tests` from `packages/tenantext`.
-- Herdr relay: `python3 -m unittest discover -s skills/herdr-relay/tests` from `packages/tenantext`.
-- Watch: `python3 scripts/test_watch.py` from `packages/promptr/skills/watch-herdr-agents`.
-
-All four run even when one fails. The log ends with `PACKAGE_PY: passed` or `PACKAGE_PY: FAILED`.
+The `check-set` step has no Git metadata: it skips the scan and the diff check and writes no stamp. Its log has one line for each package suite.
 
 OpenViking steps use the names `openviking-install`, `openviking-links`, `openviking-test-inventory`, `openviking-test`, and `openviking-load`.
 The inventory records every `tests/*.test.mjs` file. No test file is excluded.
@@ -96,19 +86,13 @@ The factory must load without errors and register `/viking` and `before_agent_st
 The probe blocks fetch and socket connections and requires zero attempted connections.
 It never dispatches session or model events, so this check does not prove lifecycle behavior.
 
-The candidate copy changes `runtime.piVersion`, `runtime.piAcceptedRange` and the core spec in `config/manifest.json`, plus the core anchor in `scripts/validate.py`. A changed stable pin sets the lower bound to that version and the upper bound to the next minor line. See [the pin move rule](guides/release-checklist.md#gates). The manual pin move guide uses the same `pin_contents` function. The checkout stays unchanged.
+The candidate copy changes `runtime.piVersion`, `runtime.piAcceptedRange` and the core spec in `config/manifest.json`. A changed stable pin sets the lower bound to that version and the upper bound to the next minor line. See [the pin move rule](guides/release-checklist.md#gates). The `pin` action uses the same `pin_contents` function on the checkout. Qualification leaves the checkout unchanged.
 
 With `.git` present, the copy takes the working-tree bytes of tracked files, including uncommitted edits. Without `.git`, it copies every file, except entries under `.git`, `.local`, `node_modules`, or `__pycache__`. Those directories are excluded in both cases. This includes untracked files such as `.env` in a tree without Git metadata. Symbolic-link sources are refused. The copy has no Git metadata.
 
 A missing `git`, a Git timeout, or a nonzero Git exit fails the `candidate-copy` step. Its log records `git_unavailable`, `git_timeout`, or `git_failed`, without raw Git output. Qualification still prints one JSON object and records the final baseline comparison.
 
 `check-runtime` compares against the candidate pin. Current-pin test fixtures read the manifest of the candidate copy. A failed check still fails qualification; the report keeps its log. It does not edit tests to force a pass. See [the runtime check](check-runtime.md).
-
-The wizard plan fixture `tests/fixtures/wizard_plan_tenant_pi.json` holds the current pin; the qualifier does not regenerate it.
-Move the pins and regenerate the fixture from `tenant_pi_plan_text()` before the first qualification.
-Review its diff, then qualify once from that worktree.
-An old fixture fails `test_tenant_pi_plan_is_unchanged` in `check-set`.
-The steps are in [the pin move guide](guides/pin-move-release.md#move-pins-and-measured-facts), step 4.
 
 The print tests select `local-test/sum-model` explicitly. Each server binds only to `127.0.0.1` on an unused port.
 They return fixed replies, not real model responses. Each launch has a 90-second timeout; request-body reads have a five-second timeout.

@@ -1,7 +1,7 @@
 {
   "name": "tenantext",
   "version": "1.0.0",
-  "description": "Pi extension suite with language rules, effort reports, Codex routing, Copilot, Anthropic and Codex quota meters, context warnings, an operations dashboard, and a setup doctor.",
+  "description": "Pi extension suite with language rules, Codex routing, Copilot, Anthropic and Codex quota meters, context warnings, an operations dashboard, and a setup doctor.",
   "license": "MIT",
   "type": "module",
   "private": true,
@@ -14,14 +14,13 @@
     "node": ">=24.0.0 <25"
   },
   "scripts": {
-    "test": "node --experimental-strip-types --no-warnings --test test/*.test.ts slopscore/test/*.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "doctor": "node --experimental-strip-types --no-warnings scripts/doctor.ts"
   },
   "pi": {
     "extensions": [
       "./extensions/tenantext/index.ts",
-      "./extensions/slopscore/index.ts",
       "./extensions/codex-accounts/index.ts",
       "./extensions/context-meter/index.ts",
       "./extensions/ops-footer/index.ts",
@@ -38,7 +37,6 @@
   "files": [
     "extensions",
     "src",
-    "slopscore/src",
     "skills",
     "README.md",
     "LICENSE",
@@ -64,8 +62,5 @@
   "devDependencies": {
     "@types/node": "24.19.2",
     "typescript": "7.0.2"
-  },
-  "dependencies": {
-    "yaml": "2.9.1"
   }
 }

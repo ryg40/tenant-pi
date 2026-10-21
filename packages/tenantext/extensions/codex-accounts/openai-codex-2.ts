@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "@earendil-works/pi-ai/oauth";
-import type { CodexAccountConfig } from "./config.ts";
-import { PRIMARY_CODEX_PROVIDER } from "./config.ts";
+import { PRIMARY_CODEX_PROVIDER, type CodexAccountConfig } from "./settings.ts";
 import { assertUniqueAccountIdentity } from "./identity.ts";
 import {
 	canonicalCodexOAuth,

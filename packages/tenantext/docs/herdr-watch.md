@@ -39,7 +39,7 @@ The kit does not install or check these host tools:
 The extension looks for the scripts of the skill in this order:
 
 1. `$HERDR_SKILL_DIR/scripts/`, when `HERDR_SKILL_DIR` is set. Then no other place is searched.
-2. `~/.agents/skills/herdr/scripts/`, the installed skill.
+2. `~/.agents/skills/herdr/scripts/`, the installed skill. When this path resolves into the kit copy, as after `install.sh` of the herdr skill, the extension skips it: the kit copy is the same folder.
 3. `skills/herdr/scripts/` of this package, the kit copy.
 
 `herdr_watch_start` takes the first directory with `ask.py`. `herdr_spawn` takes the first directory with `spawn.py`, and then uses `ask.py` and `close.py` of the same directory. When a script is not found, the tool fails with an error that names each searched path. No process starts then.
@@ -49,10 +49,12 @@ The extension looks for the scripts of the skill in this order:
 | Name | What it does |
 | --- | --- |
 | `herdr_spawn` | Starts a task session with `spawn.py`, then starts a watch on its pane. Parameters: see the next section. The call returns when `spawn.py` has started the pane: after about 10 to 60 seconds, at most 180 seconds. Then the watch runs in the background. Returns the spawn facts (pane id, name, model, thinking level, placement), the task id, the process id and the file paths. |
-| `herdr_watch_start` | Starts a watch. Parameters: `pane` (pane id or agent name), `prompt` or `prompt_file` (exactly one), `timeout_seconds` (default 1500), `label` (optional short text). Returns the task id, the pane, the process id and the file paths. |
+| `herdr_watch_start` | Starts a watch. Parameters: `pane` (pane id or agent name), `prompt` or `prompt_file` (exactly one), or `wait_only: true` with neither, `timeout_seconds` (default 1500), `label` (optional short text). With `wait_only`, `ask.py` runs with `--wait-only`: it sends no prompt and gives the last reply when the pane settles. Returns the task id, the pane, the process id and the file paths. |
 | `herdr_watch_status` | Without `id`: one line for each watch of the session, with the state, the elapsed time and the exit code. With `id`: one watch, its files and the last 2000 characters of its output. |
 | `herdr_watch_stop` | Sends `SIGTERM` to the process group of one watch: `ask.py` and the `herdr` command that it waits on. The pane keeps running. No notification follows for a stopped watch. |
 | `/herdr-watch [id]` | Shows the same list, or one watch, to the user. |
+
+Each tool has `executionMode: "sequential"`. Pi runs it one at a time with the other tool calls of a batch, so a `prompt_file` that an earlier call of the batch writes is complete when the watch reads it.
 
 ### Parameters of `herdr_spawn`
 
@@ -60,7 +62,7 @@ The extension looks for the scripts of the skill in this order:
 | --- | --- | --- |
 | `harness` | `pi` or `claude` | `--harness` |
 | `role` | `researcher`, `scout`, `worker` or `reviewer`. `coordinator` is refused. | `--role` |
-| `model` | Optional. As for `spawn.py`. | `--model` |
+| `model` | Optional only when `models.json` of the herdr skill names a model for the role and the harness. Without a model, `spawn.py` starts no pane, and the tool returns its exit 2 with the message. | `--model` |
 | `thinking` | Optional. `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` | `--thinking` |
 | `cwd` | Required. The absolute working directory of the new agent. | `--cwd` |
 | `prompt` or `prompt_file` | Exactly one. The task. | nothing; `ask.py` sends it |
@@ -156,7 +158,7 @@ close: python3 <scripts>/close.py <pane_id>
 
 ### Status words
 
-The `status` line gives the meaning of the exit code of `ask.py`:
+The `status` line gives the meaning of the exit code of `ask.py`. The extension reads the meanings from `contract.json` of the herdr skill:
 
 | Exit | Status | What to do |
 | --- | --- | --- |
@@ -178,7 +180,6 @@ The `status` line gives the meaning of the exit code of `ask.py`:
 - After a reload or in a new session, the list of watches is empty. The notifications that arrived stay in the session.
 - In print mode and JSON mode, Pi sends `session_shutdown` and exits when the run ends. A watch that runs at that time ends with Pi, and its notification does not arrive (source reading).
 - A second watch on the same pane gets exit 3 while the first prompt runs.
-- `promptr-watch-herdr-agents` of the `promptr` package is a different tool: a detached Python observer that wakes a coordinator one time with `herdr agent prompt`. `herdr-watch` runs inside the Pi process and has one watch for each task.
 
 Not verified: a live Pi session that starts a watch on a Herdr pane, takes a second prompt during the wait, and reads the notification. Not verified: a live `herdr_spawn` call that starts a real pane, gets control back after `spawn.py`, and closes the pane after the notification.
 

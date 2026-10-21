@@ -2,22 +2,7 @@
 
 `coordinator-skills` is one skill component of the kit. It ships skills for an agent that plans and coordinates work with the user: each skill is one directory with a `SKILL.md`, an `agents/openai.yaml` and a `CREDITS.md`. The skills work the same in Claude Code and in Pi. One shipped copy serves both harnesses.
 
-| Skill | Use |
-| --- | --- |
-| `grilling` | Interview the user about a plan, three questions for each round, with a recommended answer first. |
-| `grill-me` | The user command that loads `grilling`. |
-| `wayfinder` | The user command that charts a large effort as a map of decision tickets on the issue tracker, and works the tickets. |
-| `research` | Answer a question from primary sources in a researcher pane. The findings go to a comment on the ticket. |
-| `prototype` | Build a throwaway prototype that answers a design question, on a branch that is never merged. |
-| `domain-modeling` | Sharpen the terms of the project and write them to `GLOSSARY.md` at the repository root. |
-| `to-spec` | The user command that turns the conversation into a spec and publishes it as one Gitea issue. |
-| `to-tickets` | The user command that breaks a spec into tracer-bullet tickets and publishes them on Gitea with native dependencies. |
-| `pr` | The template of a merge record: the comment on the Gitea issue of a merged topic branch, and the body of a Gitea pull request. |
-| `show-me` | Visual forms for conversation and Gitea comments: pseudocode, trees, Mermaid, diff, and an HTML artifact. |
-| `retro` | The user command for a retrospective: findings from the last OpenViking sessions of both harnesses, each mapped to the file that enforces it. |
-| `get-status` | Gather the work status into a bundle and start a Herdr coordinator. After `PLAN`, record the handoff when OpenKnowledge is present, then send `go`. Close the sending pane only when `go` is delivered; otherwise keep it open. The new coordinator reports the round in its own pane. |
-| `dummies` | The user command that turns the junior-developer report on or off for one harness: `on`, `off`, `status`. When it is on, a coordinator session reports in three tables: summary, completed work and likely next steps. It ends with the same three tables and five completed actions, and adds one entry to the human session log `DUMMIES` of the project in OpenKnowledge. |
-| `writing-for-agents` | The style reference for a document that an agent reads: a skill, a steering file, a doc behind a pointer. |
+Each folder of this directory is one skill. `resources.skills` of `coordinator-skills` in `config/manifest.json` names the shipped ones. The `description` of each `SKILL.md` says when to use the skill, and its `CREDITS.md` names the upstream source and the license.
 
 The separate [knowledge-skills component](../knowledge-skills/README.md) ships OpenKnowledge discovery, skill authoring and OKF guidance.
 
@@ -144,7 +129,7 @@ To make the estimate again:
 
 ## Rules for a cross-skill call
 
-A skill that needs another skill says: "Load the <name> skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi." The case of the first letter is free. The rest is exact, with single spaces. `<name>` is a skill of this component, or one of the kit skills `herdr` and `slopscore-pr`. A skill that only the user starts is never loaded from another skill: `grill-me`, `to-spec`, `to-tickets`, `wayfinder`, `retro`, `get-status`, `dummies`.
+A skill that needs another skill says: "Load the <name> skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi." The case of the first letter is free. The rest is exact, with single spaces. `<name>` is a skill of this component, or the kit skill `herdr`. A skill that only the user starts is never loaded from another skill: `grill-me`, `to-spec`, `to-tickets`, `wayfinder`, `retro`, `get-status`, `dummies`.
 
 The test `tests/test_skill_invariants.py` of the kit checks these rules in each `.md` file of a skill directory and in this file.
 

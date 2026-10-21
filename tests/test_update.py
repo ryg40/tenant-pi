@@ -273,30 +273,7 @@ class UpdateTests(unittest.TestCase):
                     packages = {"node_modules/yaml": {"version": installed, "integrity": "sha512-a"}}
                     hidden.write_text(json.dumps({**lock, "packages": packages}))
                 checked = tenant_pi._package_check(self.base / "clone", "packages/tenantext")
-                self.assertEqual((expected, None), (checked["lines"], checked["build"]))
-
-    def test_the_promptr_build_line_follows_the_source_and_input_times(self):
-        package = self.base / "clone/packages/promptr"
-        source = package / "src/state/receipts.mts"
-        output = package / "dist/src/state/receipts.mjs"
-        # A compiler bump changes the lock file, a build input; a lock without dependencies needs no npm ci line.
-        lock = package / "package-lock.json"
-        source.parent.mkdir(parents=True)
-        source.write_text("export {};\n")
-        lock.write_text(json.dumps({"lockfileVersion": 3, "packages": {"": {"name": "promptr"}}}))
-        line = "npm --prefix " + str(package) + " run build"
-        steps = ((None, None, None, "not_built"), (1, 2, 1, "current"), (3, 2, 1, "source_newer"),
-                 (1, 2, 3, "input_newer"))
-        for source_time, output_time, input_time, reason in steps:
-            with self.subTest(reason=reason):
-                if source_time is not None:
-                    output.parent.mkdir(parents=True, exist_ok=True)
-                    output.write_text("export {};\n")
-                    for path, value in ((source, source_time), (output, output_time), (lock, input_time)):
-                        os.utime(path, ns=(value * 10 ** 18, value * 10 ** 18))
-                checked = tenant_pi._package_check(self.base / "clone", "packages/promptr")
-                self.assertEqual(reason, checked["build"]["reason"] or checked["build"]["status"])
-                self.assertEqual([line] if reason != "current" else [], checked["lines"])
+                self.assertEqual(expected, checked["lines"])
 
     def test_the_clone_state_reads_the_tag_and_the_tree_without_a_write(self):
         repo = git_repo(self.base / "repo")

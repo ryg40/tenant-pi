@@ -115,89 +115,22 @@ These checks are not run by the kit and are not qualified. Record each as passed
 | The question dialog | Launch the candidate in an interactive terminal. Check that startup prints no extension error. Ask the agent for one question with two options. The dialog shows the options, and the answer reaches the agent. This check sends a model request. | Not run |
 | The plain-text fallback | Run a session without the extension, or a session without a terminal. The agent asks in plain text with numbered options. | Not run |
 | The temporary Herdr session | With the approval of the owner, start a named test session, read its state, stop it and delete it. Send no prompt to an agent, so that no model request starts. Remove only the session that the check created. | Not run |
-| The remote install | Run the lines of `remote-plan` on a disposable Linux host that the owner approves. | Not run |
 
 Facts for the temporary session, from `herdr --help` at version 0.9.5: `herdr --session <name>` uses or creates a named persistent session; `herdr session list` lists the sessions; `herdr session stop <name>` stops one; `herdr session delete <name>` deletes a stopped session. Not verified: the exact command sequence of a session check on a machine without a terminal. A missing terminal is a blocker for this check, not a pass. Do not stop or delete a session that the check did not create, and do not run `herdr server stop`.
 
-## The remote plan
-
-For an install on a remote Linux host, the `remote-plan` action prints the SSH command lines of the remote stages. It runs none of them.
-
-```sh
-python3 scripts/tenant_pi.py remote-plan --ssh-target build-host --remote-user deploy --remote-home /home/deploy
-```
-
-| Option | Rule |
-| --- | --- |
-| `--ssh-target <target>` | A host alias, a host name or an address, with an optional `<user>@`. No port, no option, no space: else `ssh_target: remote-plan.ssh_target`. A port or a jump host belongs to the SSH configuration of the user. |
-| `--remote-user <name>` | The account that owns the install: else `remote_user: remote-plan.remote_user`. A target that names another account gives `ssh_user_mismatch: remote-plan.ssh_target`. |
-| `--remote-home <path>` | The absolute home directory of that account: else `absolute_path: remote-plan.remote_home`. A path can hold spaces. |
-
-The action starts no process, opens no file, and reads no environment value. It reads no SSH key, no SSH configuration and no credential. A diagnostic names the rule and the field only.
-
-The output is one JSON object. `runs` is always `false`. `paths` holds the clone, the private directory, the profile and the Herdr configuration directory below the home. `stages` is an ordered list:
-
-| Stage | Remote command | Changes the host |
-| --- | --- | --- |
-| `identity` | Compares the account name, `HOME` and the system name with the inputs. A wrong identity gives an exit code other than 0. | no |
-| `home-owner` | `stat -c %U` of the home directory | no |
-| `tools` | The versions of Node, npm, Python and Git | no |
-| `herdr` | `command -v herdr && herdr --version` | no |
-| `check-runtime` | The kit action in the remote clone | no |
-| `check-herdr` | The kit action in the remote clone | no |
-| `herdr-skill-files` | `test -r` of the `SKILL.md` of the bundled Herdr skill | no |
-| `init-private` | The kit action with the private directory and the profile | yes |
-| `plan` | The kit action with the overlay of the private directory | no |
-| `generate` | The kit action with the overlay and the profile | yes |
-| `inventory` | The kit action with the profile | no |
-
-Each stage has `argv` and `display`. `argv` is the list `ssh`, `--`, the target, and one remote command. `display` is the same list as one line for a POSIX shell. A stage that changes the host has `"approval": "user_approval_required"`.
-
-Rules of the lines:
-
-- No line has an SSH option. The SSH configuration, the keys, the agent and the known hosts of the user stay in force. Host key verification is never turned off. `hostKeyChecking` is `unchanged`.
-- `--` ends the SSH options, so the target is never read as an option.
-- SSH gives the remote command to the login shell of the account as one string. The action quotes each argument for a POSIX shell. A path with a space, an apostrophe or a quotation mark stays one argument.
-- No line installs or updates Herdr, creates an account, uses `sudo`, or runs the shared skill installer.
-
-Limits:
-
-- The plan has no clone step: the kit does not know the address of your copy of the repository.
-- A remote command through SSH does not read the files of an interactive shell. Not verified: a Node from a version manager is on `PATH` for these lines.
-- Not verified: a login shell that is not a POSIX shell.
-- Offline tests run each line through a fake `ssh`. No test opens a connection. A remote install is not qualified: it needs a trial on a disposable Linux host that the owner approves.
-
 ## The question extension component
 
-| Field | Value |
-| --- | --- |
-| Component ID | `questions` |
-| Source | npm `@juicesharp/rpiv-ask-user-question@2.13.9` |
-| License | MIT |
-| Requires | `core` |
-| Resource filter | `extensions`: `index.ts` |
-| Status | `unverified` |
-| Default | Disabled in `config/config.example.json` |
+The entry `questions` of `config/manifest.json` holds the source, the license, the requirements, the resource filter `index.ts`, the status and the gaps of the component. The example overlay disables it.
 
-The registry metadata of version 2.13.9 was read: the name, the license, the one extension entry `./index.ts`, and the dependency lists. The source files of that version were not reviewed.
+The registry metadata of the pinned version was read: the name, the license, the one extension entry `./index.ts`, and the dependency lists. The source files of that version were not reviewed. The gap facts of `questions` in `config/manifest.json` name that version.
 
 With `questions` in `selection.enable`, the plan does this:
 
-- It adds one entry to `packages` of `settings.json`: the source `npm:@juicesharp/rpiv-ask-user-question@2.13.9` with the filter `extensions: ["index.ts"]`. The entry comes after the in-tree packages, the memory packages and the MCP package, and before owner packages.
-- It adds two setup lines: `pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9` with the target directory, then `node <kit>/scripts/patch_extension_peers.mjs` with the target directory and the absolute path of the script. The first line installs the package under `<target>/npm/`. `pi update --extensions` does not install it, because the source has an exact version. The second line corrects host-provided peers in the installed manifest. The registry manifest of version 2.13.9 lists `typebox` under `peerDependencies` with the range `*`, so the line makes no change for this version; see [host peer overrides](host-peer-overrides.md).
+- It adds one entry to `packages` of `settings.json`: the source `npm:` and the spec of the manifest, with the filter `extensions: ["index.ts"]`. The entry comes after the in-tree packages, the memory packages and the MCP package, and before owner packages.
+- It adds two setup lines: `pi install` with that source and the target directory, then `node <kit>/scripts/patch_extension_peers.mjs` with the target directory and the absolute path of the script. The first line installs the package under `<target>/npm/`. `pi update --extensions` does not install it, because the source has an exact version. The second line corrects host-provided peers in the installed manifest. The registry manifest of the pinned version lists `typebox` under `peerDependencies` with the range `*`, so the line makes no change for this version; see [host peer overrides](host-peer-overrides.md).
 - It writes no other file. The extension reads its guidance file below the configuration directory of the user. The kit does not write or check that file.
 
-The plan lists these gaps with the subject `questions`:
-
-| Gap | Fact |
-| --- | --- |
-| `package_runtime_unverified` | No session loaded the package from a generated profile. |
-| `pi_line_unqualified` | No test in this repository loads the component with the kit pin. |
-| `package_source_unreviewed` | Only the registry metadata of version 2.13.9 was read. |
-| `peer_package_unverified` | The package names the peer package `@juicesharp/rpiv-i18n`. No install of version 2.13.9 with the kit pin was observed. |
-| `question_ui_unverified` | The tool needs an interactive Pi session. A loaded extension does not prove that the question dialog works. From version 2.13.9, the extension accepts the inbound event `rpiv:ask-user:answer`, so another extension in the same Pi process can answer an open question dialog. |
-| `shared_config_outside_profile` | The guidance file of the extension is outside the profile. Every profile of the user shares it. |
-| `kit_test_missing` | No test in this repository loads the component in a generated profile. |
+The plan lists each gap of the manifest entry with the subject `questions`, and `package_runtime_unverified`: no session loaded the package from a generated profile. The pinned version accepts the inbound event `rpiv:ask-user:answer`, so another extension in the same Pi process can answer an open question dialog.
 
 A setup step must not depend on the question tool. When no question tool is loaded, the agent asks in plain text.
 

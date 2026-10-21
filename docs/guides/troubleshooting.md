@@ -60,14 +60,12 @@ See [Switch wiki embeddings off](../memory-modules.md#switch-wiki-embeddings-off
 | `memory_choices_required: overlay.memory` | A memory module is enabled, and the overlay has no `memory` block. `validate` looks for the block first, so this error comes before the consent error. | Add the `memory` block of [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay), step 5. |
 | `memory_consent_required: overlay.consent.memoryCapture` | A memory module is enabled, the overlay has the `memory` block, and `consent.memoryCapture` is `false`. (documented) | Set `consent.memoryCapture: true` after you read [memory modules](../memory-modules.md). |
 | `moved_key: overlay.endpoints.tenantext is now overlay.endpoints.codex-accounts` | The overlay uses the old gateway key. | Rename the key to `codex-accounts` in `endpoints` and `env`. |
-| `undeclared_env: overlay.env` | An `env` value of the overlay names a variable that the manifest does not declare for the module. For `codex-accounts`, the allowed names are `TENANTEXT_LITELLM_API_KEY` for the key and `TENANTEXT_LITELLM_BASE_URL` for the URL. | Use the allowed name. With `compose-plan`, leave `--key-var` at its default. |
+| `undeclared_env: overlay.env` | An `env` value of the overlay names a variable that the manifest does not declare for the module. For `codex-accounts`, the allowed names are `TENANTEXT_LITELLM_API_KEY` for the key and `TENANTEXT_LITELLM_BASE_URL` for the URL. | Use the allowed name. |
 | `unknown_fields: overlay` | The overlay has a key that this kit does not define. (documented) | Remove the key. |
 | `input_missing: runtime_report.file`, `invalid_json: runtime_report.file` | The `--runtime-report` file is absent (`input_missing`), or it is empty or not JSON (`invalid_json`). A `check-runtime` run that stops with exit code 2 leaves an empty file behind a `>` redirect. (documented) | Run `python3 scripts/tenant_pi.py check-runtime > "<file>"` again and read its exit code. Exit code 1 still writes the report. |
 | `runtime_report_required: runtime_report.pi.required`, `runtime_report.pi.tested` or `runtime_report.pi.acceptedRange` | The report comes from another tested version or range. The `required` rule also exists for `node` and `python`. (documented) | Make the report again with this kit. |
 | `runtime_report_status: runtime_report.pi.status`, `runtime_report_installed: runtime_report.pi.installed` | The file is not an unchanged `check-runtime` report: a status does not agree with its versions, or `installed` is not a version. (documented) | Make the report again. Do not edit the file. |
 | `herdr_report_status: herdr_report.herdr.status`, `herdr_report_installed: herdr_report.herdr.installed` | The `--herdr-report` file is not an unchanged `check-herdr` report: the status is unknown, or `installed` does not agree with it. (documented) | Run `check-herdr` again and save its output. Do not edit the file. |
-| `ssh_target: remote-plan.ssh_target` | The SSH target has a space, a port, an option or another character outside the host form. (documented) | Give a host alias or `<user>@<host>`. Put a port or a jump host into your SSH configuration. |
-| `ssh_user_mismatch: remote-plan.ssh_target` | The target names another account than `--remote-user`. (documented) | Use the account that owns the install in both places. |
 
 The same rules apply to each JSON input, with another field: `manifest.file`, `registry.file`, `mcp.file`. [The CLI contract](../generator.md#input-file-errors) has the full table.
 
@@ -102,38 +100,13 @@ For `init-private --target`, keep the target outside the private directory, live
 | `target_exists: launcher.path` | The launcher file exists. The check runs before the target is created. | Remove the old file after review, or use a new name, for example `launch-main-2.sh`. |
 | `absolute_path: launcher.path` | The launcher path is relative. | Give an absolute path. |
 
-## The Compose seat
-
-The `compose-plan` action refuses an answer or a file with one of these rules. With `--write`, each refusal comes before the first write. [The CLI contract](../generator.md#compose-plan-the-files-and-the-commands-of-a-compose-seat) has the full table. [The Compose seat guide](compose-seat.md) has the procedure.
-
-| Diagnostic | Cause | Fix |
-| --- | --- | --- |
-| `reserved_account: compose-plan.account` | The account name is `root` or an account of the base image, for example `node` or `sshd`. (documented) | Use a new name, for example the default `pi`. |
-| `account_id: compose-plan.uid`, `account_id: compose-plan.gid` | The UID or the GID is outside 500 to 65533. The GID 20 is accepted. (documented) | Give the output of `id -u` and `id -g` of the operator. For `root`, choose a value from 1000. |
-| `port: compose-plan.ssh_port` | The port is outside 1024 to 65535. (documented) | Use a free port in that range, for example `2222`. |
-| `public_key_missing: compose-plan.public_key` | The public key file has no key line. An empty line and a comment line are not key lines. (documented) | Give the path of a `.pub` file that holds one key. |
-| `public_key_line: compose-plan.public_key` | A line is not `<type> <key> [comment]`, or it has an option before the type. (documented) | Give a `.pub` file that `ssh-keygen` wrote, without an option in front of the key. |
-| `public_key_count: compose-plan.public_key has <n> key lines` | The file has more than one key line. The seat takes exactly one. (documented) | Give a file with one key. To add a key later, edit `<private dir>/authorized_keys` and start the seat again. |
-| `private_key: compose-plan.public_key` | The file holds the text `PRIVATE KEY`. (documented) | Give the `.pub` file. Never give a private key to the kit. |
-| `private_dir_missing: compose-plan.private_dir` | With `--write`: the private directory does not exist. (documented) | Create it with `mkdir -p` and give it mode 700. Then run the command again. |
-| `under_kit: compose-plan.private_dir` | The private directory overlaps the clone. | Choose a separate directory, such as `"$HOME/.config/tenant-pi"`. |
-| `private_dir_unsafe: compose-plan.private_dir` | With `--write`: the directory or a directory above it is a symbolic link or is not a directory. (documented) | Give a path through real directories. |
-| `target_exists: compose-plan.<file>` | With `--write`: one of the five files exists. The action then writes none. (documented) | Move the file after review, or name another private directory. Do not delete a file to make the action pass. |
-| `credential_free_https_url: compose-plan.gateway_url` | The URL breaks the gateway rule of the overlay: it is not HTTPS on port 443, or it holds a credential, a query or a fragment. (documented) | Give an HTTPS URL on port 443 without a user name, a password, a key, a `?` part or a `#` part. |
-| `gateway_api_prefix: compose-plan.gateway_url` | The URL does not end in `/v1`. (documented) | Add `/v1` at the end of the URL. |
-| `unsupported_gateway_model: compose-plan.model` | The provider is `litellm-codex`, and the model is not one of its three aliases. (documented) | Give `codex-auto/astra`, `codex-auto/sol` or `codex-auto/luna`. |
-| `unsupported_gateway_model: overlay.modelRoutes.choice` | The provider is not `litellm-codex`. The action runs the route rules with the registry of the plan, and the seat has the gateway route only. (documented) | Leave `--provider` at its default, `litellm-codex`. |
-
-The action also runs the overlay validator on the plan. `undeclared_env: overlay.env`, for a `--key-var` name that the manifest does not declare, has its row in [Overlay and input](#overlay-and-input).
-
-Faults of a seat that starts or updates:
-
-- The container stops at once. Read `logs seat`: a line with the prefix `seat:` names the step. An absent or empty `authorized_keys` stops the start.
-- The seat still runs the old kit after `up -d`. The image tag is `KIT_COMMIT`: set the new value, run `build`, then `up -d`.
-- `up` fails on the projects bind. Create the directory as the operator before the start, or leave out `compose.projects.yaml`. Not verified: a missing directory under Docker may be created with root as owner, and Podman may refuse the start.
-- Pi gets no reply from the gateway. The URL must be HTTPS on port 443, reachable from inside the container. See [the gateway route](compose-seat.md#the-gateway-route).
-
 ## Comparison
+
+The command of [the candidate update guide](../../POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate):
+
+```sh
+python3 scripts/tenant_pi.py compare --left '<old target>' --right '<new target>' > '<private dir>/report.json'
+```
 
 | Diagnostic | Cause | Fix |
 | --- | --- | --- |
@@ -179,15 +152,10 @@ A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of t
 | `mismatch` for `pi` | Keep the other Pi and record the gap, or install the manifest pin (`runtime.piVersion`) under a prefix. Do not run the global install line as a default step: it replaces the other Pi for every profile. Example: an installed Pi `0.99.2` is a `mismatch`. |
 | `mismatch` for `node` | Select Node 24 with your version manager in the launching shell. |
 | `unparsed` | Run the tool with `--version` by hand and read the output. |
-| `Cannot connect to Podman` | The Podman machine may be stopped. Run `podman machine list`, then `podman machine start` if stopped; check `podman info` and the [Podman steps of the Compose seat](compose-seat.md#podman-on-macos-on-apple-silicon). Not verified: this diagnostic with the kit on macOS. |
 
 ### The key or the `PATH` line is missing in another shell
 
 A non-interactive SSH command, a browser terminal, a desktop launcher or a service does not always read your interactive startup file. See [INSTALL.md](../../INSTALL.md#shells-that-do-not-inherit-your-variables). Run `check-runtime` and the `test -n` check in the shell that starts Pi.
-
-### Pi starts with `Cannot find module 'yaml'`
-
-The Node dependencies of `packages/tenantext` are absent. Run `npm ci --ignore-scripts` in that directory by hand. Observed with Pi 0.99.1.
 
 ### Pi warns about host-provided extension packages
 
@@ -198,7 +166,7 @@ Warning: Extension package ".../package.json": Host-provided extension packages 
 peerDependencies with a "*" range, not dependencies: typebox.
 ```
 
-An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 listed `typebox` under `dependencies`; the registry manifest of 2.13.9, the kit pin, lists it under `peerDependencies` with the range `*`. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
+An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 listed `typebox` under `dependencies`; the registry manifest of the kit pin lists it under `peerDependencies` with the range `*`. The gap `peer_package_unverified` in `config/manifest.json` names that version. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
@@ -232,7 +200,7 @@ One path line follows the finding line for each such file. The sample shows the 
 1. Remove the cache directory: `rm -rf .pytest_cache`. Check the path before you run it.
 2. Run the tests with `python3 scripts/check.py --tier fast`.
 
-The same failure comes from any untracked file in the clone, for example `dist/` of `packages/promptr`.
+The same failure comes from any untracked file in the clone.
 
 ### The documentation check fails
 

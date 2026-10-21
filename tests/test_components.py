@@ -12,12 +12,14 @@ from tests.support import slow
 from scripts import components, tenant_pi
 from scripts.components import LOCKED, RECOMMENDED, parse_select, prerequisites, report, selection, text
 from scripts.profile_plan import prepare
-from scripts.validate import Invalid, load, manifest, overlay
+from scripts.validate import Invalid, load, manifest, optional_tree_absent, overlay
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
 MANIFEST = load(ROOT / "config/manifest.json")
 KNOWN = manifest(MANIFEST)
+# The checklist number of each component: its place in the manifest.
+NUMBER = {cid: number for number, cid in enumerate(KNOWN, 1)}
 EXAMPLE = ROOT / "config/config.example.json"
 CANARY = "CANARY_SECRET"
 MEMORY_BLOCKS = {"hermes": {"backgroundReview": False},
@@ -70,11 +72,10 @@ def rule(call, *args):
 class ChecklistTests(unittest.TestCase):
     def test_count_and_order_are_the_manifest(self):
         result = report(KNOWN)
-        self.assertEqual(29, len(MANIFEST["components"]))
         self.assertEqual(list(MANIFEST["components"]), [item["id"] for item in result["components"]])
-        self.assertEqual(list(range(1, 30)), [item["number"] for item in result["components"]])
+        self.assertEqual(list(range(1, len(KNOWN) + 1)), [item["number"] for item in result["components"]])
         self.assertEqual({"count", "marks", "components", "scope"}, set(result))
-        self.assertEqual((29, "recommended"), (result["count"], result["marks"]))
+        self.assertEqual((len(KNOWN), "recommended"), (result["count"], result["marks"]))
         fields = {"number", "id", "kind", "status", "extensions", "skills", "requires", "prerequisites",
                   "recommended", "marked", "locked"}
         self.assertTrue(all(set(item) == fields for item in result["components"]))
@@ -85,17 +86,14 @@ class ChecklistTests(unittest.TestCase):
                           "requires": [], "prerequisites": [], "recommended": True, "marked": True, "locked": True},
                          row("core"))
         skills = row("coordinator-skills")
-        self.assertEqual((15, "tree", "unverified", [], ["core"], True, True, False),
+        self.assertEqual((NUMBER["coordinator-skills"], "tree", "unverified", [], ["core"], True, True, False),
                          tuple(skills[key] for key in ("number", "kind", "status", "extensions", "requires",
                                                        "recommended", "marked", "locked")))
-        self.assertEqual(["grilling", "grill-me", "wayfinder", "research", "prototype", "domain-modeling", "to-spec",
-                          "to-tickets", "pr", "show-me", "retro", "get-status", "dummies", "writing-for-agents"],
-                         skills["skills"])
         self.assertEqual(["env:GITEA_TOKEN", "gap:host_tool_required"], skills["prerequisites"])
-        self.assertEqual({"number": 7, "id": "ops-footer", "kind": "tree", "status": "unverified",
+        self.assertEqual({"number": NUMBER["ops-footer"], "id": "ops-footer", "kind": "tree", "status": "unverified",
                           "extensions": ["ops-footer"], "skills": [], "requires": ["core", "context-meter"],
                           "prerequisites": [], "recommended": True, "marked": True, "locked": False}, row("ops-footer"))
-        self.assertEqual({"number": 27, "id": "wiki", "kind": "npm", "status": "tested",
+        self.assertEqual({"number": NUMBER["wiki"], "id": "wiki", "kind": "npm", "status": "tested",
                           "extensions": ["llm-wiki"], "skills": [], "requires": ["core"],
                           "prerequisites": ["overlay:consent.memoryCapture", "overlay:memory.wiki",
                                             "gap:peer_override_required", "setup:pi install npm:@zosmaai/pi-llm-wiki",
@@ -103,7 +101,6 @@ class ChecklistTests(unittest.TestCase):
                           "recommended": True, "marked": True, "locked": False}, row("wiki"))
 
     def test_names_come_from_the_manifest_resources(self):
-        self.assertEqual(4, len(row("knowledge-skills")["skills"]))
         self.assertEqual(["builtin", None], [row("model-routing")["kind"], None])
         for cid, component in KNOWN.items():
             with self.subTest(cid=cid):
@@ -112,12 +109,11 @@ class ChecklistTests(unittest.TestCase):
                 self.assertEqual(len(component["resources"]["extensions"]), len(found["extensions"]))
                 self.assertFalse({"index", "index.ts", "src", "extensions", ""} & set(found["extensions"]))
         # A path with no directory of its own gives the package name.
-        self.assertEqual({"promptr": ["promptr"], "mcp": ["pi-mcp-adapter"], "hermes": ["pi-hermes-memory"],
+        self.assertEqual({"mcp": ["pi-mcp-adapter"], "hermes": ["pi-hermes-memory"],
                           "questions": ["@juicesharp/rpiv-ask-user-question"], "openviking": ["openviking-pi"]},
-                         {cid: row(cid)["extensions"] for cid in ("promptr", "mcp", "hermes", "questions", "openviking")})
+                         {cid: row(cid)["extensions"] for cid in ("mcp", "hermes", "questions", "openviking")})
 
     def test_recommended_set_is_in_the_manifest_and_closed(self):
-        self.assertEqual(16, len(RECOMMENDED))
         self.assertNotIn("agentcore", RECOMMENDED)
         self.assertFalse(row("agentcore")["marked"])
         self.assertEqual(len(set(RECOMMENDED)), len(RECOMMENDED))
@@ -135,7 +131,7 @@ class ChecklistTests(unittest.TestCase):
         result = report(KNOWN, components.overlay_enabled(load(EXAMPLE), KNOWN))
         self.assertEqual("overlay", result["marks"])
         self.assertEqual(["core"], [item["id"] for item in result["components"] if item["marked"]])
-        self.assertEqual(16, sum(item["recommended"] for item in result["components"]))
+        self.assertEqual(len(RECOMMENDED), sum(item["recommended"] for item in result["components"]))
         # A locked component stays marked.
         self.assertTrue(row("core", [])["marked"])
         for data, expected in (([], "required_fields: overlay.selection"), ({"selection": {}}, "required_fields: overlay.selection"),
@@ -157,6 +153,8 @@ class PrerequisiteTests(unittest.TestCase):
                            ("agentcore", ["overlay:consent.memoryCapture", "overlay:consent.remoteMemoryWrites",
                                           "overlay:memory.agentcore"])):
             with self.subTest(cid=cid):
+                if optional_tree_absent(cid):
+                    self.skipTest(cid + " is absent from this kit")
                 self.assertEqual(codes, [code for code in row(cid)["prerequisites"] if code.startswith("overlay:")])
                 data = chosen_overlay([cid])
                 overlay(data, KNOWN)
@@ -186,14 +184,15 @@ class PrerequisiteTests(unittest.TestCase):
         self.assertEqual([], row("core")["prerequisites"])
         self.assertEqual(["env:TENANTEXT_LITELLM_BASE_URL", "env:TENANTEXT_LITELLM_API_KEY"],
                          row("codex-accounts")["prerequisites"])
-        self.assertEqual(["gap:build_step_required"], row("promptr")["prerequisites"])
         self.assertIn("gap:install_step_required", row("openviking")["prerequisites"])
         self.assertIn("gap:native_addon_unverified", row("hermes")["prerequisites"])
 
     def test_setup_and_plan_gap_codes_are_the_plan(self):
         base = prepare(MANIFEST, load(EXAMPLE))
-        for cid in ("hermes", "wiki", "openviking", "agentcore", "questions", "mcp", "ops-footer", "promptr"):
+        for cid in ("hermes", "wiki", "openviking", "agentcore", "questions", "mcp", "ops-footer"):
             with self.subTest(cid=cid):
+                if optional_tree_absent(cid):
+                    self.skipTest(cid + " is absent from this kit")
                 data = chosen_overlay([cid])
                 extra = {}
                 if cid == "mcp":
@@ -213,7 +212,7 @@ class PrerequisiteTests(unittest.TestCase):
                         self.assertIn(code[4:], gaps)
         peer = "node scripts/patch_extension_peers.mjs"
         self.assertEqual({"mcp": ["pi install npm:pi-mcp-adapter"],
-                          "questions": ["pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9", peer],
+                          "questions": ["pi install npm:" + KNOWN["questions"]["source"]["spec"], peer],
                           "hermes": ["pi install npm:pi-hermes-memory", peer],
                           "wiki": ["pi install npm:@zosmaai/pi-llm-wiki", peer],
                           "openviking": ["npm --prefix packages/openviking-pi ci --ignore-scripts"]},
@@ -227,7 +226,7 @@ class TextTests(unittest.TestCase):
         self.assertEqual(output, text(report(KNOWN)))
         self.assertTrue(output.endswith("\n") and not output.endswith("\n\n"))
         lines = output.splitlines()
-        self.assertEqual(30, len(lines))
+        self.assertEqual(len(KNOWN) + 1, len(lines))
         self.assertEqual(components.ANSWER, lines[-1])
         self.assertIn("`ok`", lines[-1])
         for number, (line, cid) in enumerate(zip(lines, KNOWN), 1):
@@ -240,18 +239,20 @@ class TextTests(unittest.TestCase):
                 for needed in KNOWN[cid]["requires"]:
                     if needed not in LOCKED:
                         self.assertIn(needed, line.split("requires: ", 1)[1])
-        self.assertEqual(16, sum("[x]" in line for line in lines[:29]))
+        self.assertEqual(len(RECOMMENDED), sum("[x]" in line for line in lines[:-1]))
         self.assertEqual(" 1 [x] core (locked) | tested", lines[0])
-        self.assertEqual(" 7 [x] ops-footer | extension: ops-footer | unverified | requires: context-meter", lines[6])
-        self.assertEqual(14, lines[14].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
-        self.assertEqual(4, lines[15].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
-        self.assertEqual("27 [x] wiki | extension: llm-wiki | tested | needs: consent.memoryCapture, "
-                         "memory.wiki, peer_override_required, 2 setup lines", lines[26])
+        self.assertEqual(f"{NUMBER['ops-footer']:>2} [x] ops-footer | extension: ops-footer | unverified | requires: context-meter",
+                         lines[NUMBER["ops-footer"] - 1])
+        for cid in ("coordinator-skills", "knowledge-skills"):
+            self.assertEqual(len(KNOWN[cid]["resources"]["skills"]),
+                             lines[NUMBER[cid] - 1].split("skills: ", 1)[1].split(" | ")[0].count(",") + 1)
+        self.assertEqual(f"{NUMBER['wiki']:>2} [x] wiki | extension: llm-wiki | tested | needs: consent.memoryCapture, "
+                         "memory.wiki, peer_override_required, 2 setup lines", lines[NUMBER["wiki"] - 1])
         self.assertTrue(output.isascii())
 
     def test_marks_follow_an_overlay(self):
         lines = text(report(KNOWN, ["core", "herdr"])).splitlines()
-        self.assertEqual([1, 12], [number for number, line in enumerate(lines[:29], 1) if "[x]" in line])
+        self.assertEqual([1, NUMBER["herdr"]], [number for number, line in enumerate(lines[:-1], 1) if "[x]" in line])
 
 
 class SelectionTests(unittest.TestCase):
@@ -265,16 +266,17 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual((["core", "herdr", "herdr-relay"], ["herdr"]), (relay["selection"]["enable"], relay["added"]))
         self.assertEqual({"herdr": ["gap:host_tool_required"], "herdr-relay": ["gap:host_tool_required"]},
                          relay["prerequisites"])
-        skill = selection(KNOWN, ["promptr-handoff"])
-        self.assertEqual((["promptr"], {"promptr": ["gap:build_step_required"]}), (skill["added"], skill["prerequisites"]))
         self.assertEqual((["core"], []), (selection(KNOWN, ["core"])["selection"]["enable"], selection(KNOWN, [])["added"]))
 
     def test_numbers_and_ids_name_the_same_components(self):
-        self.assertEqual(["ops-footer", "herdr-relay"], parse_select("7,13", KNOWN))
-        self.assertEqual(["ops-footer", "herdr-relay", "wiki"], parse_select(" 7 , herdr-relay,27,ops-footer,7", KNOWN))
-        self.assertEqual(dump(selection(KNOWN, parse_select("7,13", KNOWN))),
+        number = {cid: str(index) for index, cid in enumerate(KNOWN, 1)}
+        footer, relay, wiki = number["ops-footer"], number["herdr-relay"], number["wiki"]
+        self.assertEqual(["ops-footer", "herdr-relay"], parse_select(f"{footer},{relay}", KNOWN))
+        self.assertEqual(["ops-footer", "herdr-relay", "wiki"],
+                         parse_select(f" {footer} , herdr-relay,{wiki},ops-footer,{footer}", KNOWN))
+        self.assertEqual(dump(selection(KNOWN, parse_select(f"{footer},{relay}", KNOWN))),
                          dump(selection(KNOWN, parse_select("herdr-relay,ops-footer", KNOWN))))
-        self.assertEqual(list(KNOWN), parse_select(",".join(str(number) for number in range(1, 30)), KNOWN))
+        self.assertEqual(list(KNOWN), parse_select(",".join(number.values()), KNOWN))
 
     def test_unknown_id_or_number_is_refused_without_its_value(self):
         for value in ("nope", "0", "30", "7,,13", "", "7;13", "-1", "1.5", "9999999", "٧", CANARY, "core," + CANARY):
@@ -287,7 +289,7 @@ class SelectionTests(unittest.TestCase):
         self.assertEqual("blocked_component: components.select", rule(selection, known, ["herdr-relay"]))
 
     def test_each_selection_passes_the_selection_rules_of_validate(self):
-        for chosen in (list(RECOMMENDED), ["ops-footer"], ["herdr-relay"], ["promptr-handoff", "tracker-site"], []):
+        for chosen in (list(RECOMMENDED), ["ops-footer"], ["herdr-relay"], ["tracker-site"], []):
             with self.subTest(chosen=chosen):
                 data = chosen_overlay(chosen)
                 self.assertEqual(set(KNOWN), set(data["selection"]["enable"]) | set(data["selection"]["disable"]))
@@ -296,8 +298,8 @@ class SelectionTests(unittest.TestCase):
     def test_recommended_selection_validates_with_consent_and_memory(self):
         result = selection(KNOWN, list(RECOMMENDED))
         self.assertEqual(["core", *sorted(set(RECOMMENDED) - {"core"})], result["selection"]["enable"])
-        self.assertEqual(13, len(result["selection"]["disable"]))
-        self.assertEqual({"codex-accounts", "doctor", "coordinator-skills", "knowledge-skills", "slopscore-pr",
+        self.assertEqual(len(KNOWN) - len(RECOMMENDED), len(result["selection"]["disable"]))
+        self.assertEqual({"codex-accounts", "doctor", "coordinator-skills", "knowledge-skills",
                           "hermes", "wiki"}, set(result["prerequisites"]))
         data = load(EXAMPLE)
         data["selection"] = result["selection"]
@@ -330,7 +332,7 @@ class ComponentsCliTests(unittest.TestCase):
     def test_three_forms_are_deterministic_and_write_nothing(self):
         before = sorted(path.name for path in self.base.iterdir())
         for args in ((), ("--format", "text"), ("--overlay", str(EXAMPLE)), ("--overlay", str(EXAMPLE), "--format", "text"),
-                     ("--select", ",".join(RECOMMENDED)), ("--select", "7,13")):
+                     ("--select", ",".join(RECOMMENDED)), ("--select", f"{NUMBER['ops-footer']},{NUMBER['herdr-relay']}")):
             with self.subTest(args=args):
                 runs = [self.run_cli(*args) for _ in range(2)]
                 self.assertEqual([0, 0, ""], [runs[0].returncode, runs[1].returncode, runs[0].stderr], runs[0].stderr)
@@ -344,7 +346,7 @@ class ComponentsCliTests(unittest.TestCase):
         marked = json.loads(self.run_cli("--overlay", str(EXAMPLE)).stdout)
         self.assertEqual(("overlay", ["core"]), (marked["marks"], [item["id"] for item in marked["components"] if item["marked"]]))
         self.assertEqual(1, self.run_cli("--overlay", str(EXAMPLE), "--format", "text").stdout.count("[x]"))
-        chosen = json.loads(self.run_cli("--select", "7,13").stdout)
+        chosen = json.loads(self.run_cli("--select", f"{NUMBER['ops-footer']},{NUMBER['herdr-relay']}").stdout)
         self.assertEqual((["core", "context-meter", "herdr", "herdr-relay", "ops-footer"], ["context-meter", "herdr"]),
                          (chosen["selection"]["enable"], chosen["added"]))
         self.assertEqual(dump(selection(KNOWN, list(RECOMMENDED))), self.run_cli("--select", ",".join(RECOMMENDED)).stdout.strip())

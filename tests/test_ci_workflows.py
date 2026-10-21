@@ -6,7 +6,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ".github/workflows/checks.yml"
-CHECKS = ("python3 scripts/check.py",)
+# The command of the check of everything; a job ends with it.
+CHECK = "python3 scripts/check.py --all"
 
 
 def version(text):
@@ -37,29 +38,27 @@ class Workflows(unittest.TestCase):
             for step in job["steps"]:
                 if "uses" in step:
                     self.assertRegex(step["uses"], r"@[0-9a-f]{40}$")
-                if "run" not in step:
-                    continue
-                command = step["run"]
-                self.assertIn(command, CHECKS)
-                self.assertTrue((ROOT / command.split()[1]).is_file())
-                self.assertNotIn("publish_portable", command)
-                self.assertNotIn("pi ", command)
+                self.assertNotIn("publish_portable", step.get("run", ""))
+        # The local check and CI run the same command. A job that a downstream repository adds can run other steps.
+        self.assertIn(CHECK, [step.get("run") for job in workflow["jobs"].values() for step in job["steps"]])
 
     def test_offline_workflows_no_secrets(self):
         workflow = self.load()
         self.assertEqual(workflow["on"], {"push": {}, "pull_request": {}})
         self.assertEqual(workflow["permissions"], {"contents": "read"})
-        self.assertEqual(set(workflow["jobs"]), {"offline"})
         text = json.dumps(workflow)
         self.assertNotIn("secrets.", text)
         self.assertNotIn("TOKEN", text)
-        self.assertNotIn("npm", text)
         # Expressions read only the fixed matrix, never event data such as a branch name.
         for expression in re.findall(r"\$\{\{(.*?)\}\}", text):
             self.assertRegex(expression, r"^\s*matrix\.[a-z]+\s*$")
-        steps = workflow["jobs"]["offline"]["steps"]
-        self.assertEqual([s["run"] for s in steps if "run" in s], list(CHECKS))
-        self.assertIs(steps[0]["with"]["persist-credentials"], False)
+        for job in workflow["jobs"].values():
+            checkout = [step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")]
+            self.assertEqual([False], [step["with"]["persist-credentials"] for step in checkout])
+
+    def test_the_pi_version_comes_from_the_manifest(self):
+        manifest = json.loads((ROOT / "config/manifest.json").read_text())
+        self.assertNotIn(manifest["runtime"]["piVersion"], (ROOT / WORKFLOW).read_text())
 
     def test_matrix_runs_linux_floor_and_macos(self):
         job = self.load()["jobs"]["offline"]

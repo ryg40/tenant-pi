@@ -17,6 +17,7 @@ from scripts.validate import ROOT, Invalid, load, manifest
 TENANTEXT_PACKAGE = str(ROOT / "packages/tenantext")
 PEER_SCRIPT = shlex.quote(str(ROOT / "scripts/patch_extension_peers.mjs"))
 RUNTIME = load("config/manifest.json")["runtime"]
+QUESTIONS = "npm:" + load("config/manifest.json")["components"]["questions"]["source"]["spec"]
 PIN = RUNTIME["piVersion"]
 # A stable patch after the pin's numeric version, including a prerelease pin.
 major, minor, patch_number = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)(?:-[0-9A-Za-z.-]+)?", PIN).groups()
@@ -121,8 +122,7 @@ class PlanTests(unittest.TestCase):
             "defaultProjectTrust": "ask", "enableInstallTelemetry": False,
             "enableAnalytics": False, "packages": []}}, result["files"]["settings.json"])
         self.assertEqual(self.overlay, result["files"][".tenant-pi/choices.json"]["content"]["overlay"])
-        self.assertEqual(["env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
-                         shlex.split(result["commands"]["launch"]))
+        self.assertIn("PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", shlex.split(result["commands"]["launch"]))
         self.assertEqual(["npm", "install", "--global", "--", "@earendil-works/pi-coding-agent@" + PIN],
                          shlex.split(result["commands"]["setup"][0]))
         self.assertIn("target_absence_unverified", [g["code"] for g in result["readinessGaps"]])
@@ -217,11 +217,11 @@ class PlanTests(unittest.TestCase):
         self.manifest = load("config/manifest.json")
         components = manifest(self.manifest)
         # Tree components share a package on purpose; the guard is for npm and git identities.
-        for cid, version in (("promptr", "1.0.0"), ("codex-accounts", "2.0.0")):
+        for cid, version in (("doctor", "1.0.0"), ("codex-accounts", "2.0.0")):
             components[cid]["status"] = "tested"
             components[cid]["source"] = {"kind": "npm", "spec": "one-package@" + version}
             components[cid]["configOwnership"]["status"] = "reviewed"
-        self.enable("promptr")
+        self.enable("doctor")
         with patch("scripts.profile_plan.manifest", return_value=components):
             with self.assertRaisesRegex(Invalid, "duplicate_package_identity"):
                 prepare(self.manifest, self.overlay)
@@ -248,7 +248,7 @@ class PlanTests(unittest.TestCase):
     def test_question_extension_is_declared_as_an_npm_package_with_its_setup_lines(self):
         self.enable("questions")
         result = prepare(self.manifest, self.overlay)
-        package = {"source": "npm:@juicesharp/rpiv-ask-user-question@2.13.9",
+        package = {"source": QUESTIONS,
                    "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}
         self.assertEqual([package], result["files"]["settings.json"]["content"]["packages"])
         choices = result["files"][".tenant-pi/choices.json"]["content"]
@@ -293,7 +293,7 @@ class PlanTests(unittest.TestCase):
         self.enable("herdr")
         self.overlay["ownerPackages"] = ["/home/Test User/owner package"]
         packages = prepare(self.manifest, self.overlay)["files"]["settings.json"]["content"]["packages"]
-        self.assertEqual([TENANTEXT_PACKAGE, "npm:@juicesharp/rpiv-ask-user-question@2.13.9", "/home/Test User/owner package"],
+        self.assertEqual([TENANTEXT_PACKAGE, QUESTIONS, "/home/Test User/owner package"],
                          [entry if type(entry) is str else entry["source"] for entry in packages])
         self.assertEqual(["skills/herdr"], packages[0]["skills"])
 

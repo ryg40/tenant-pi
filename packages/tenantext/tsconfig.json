@@ -15,8 +15,6 @@
     "extensions/**/*.ts",
     "src/**/*.ts",
     "test/**/*.ts",
-    "scripts/**/*.ts",
-    "slopscore/src/**/*.ts",
-    "slopscore/test/**/*.ts"
+    "scripts/**/*.ts"
   ]
 }

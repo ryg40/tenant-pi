@@ -37,7 +37,7 @@ Each skill directory has a `CREDITS.md` with its upstream path and changes.
 - Copyright: 2026 Inkeep
 
 The full upstream license text is in [`licenses/open-knowledge-skills-MIT.txt`](licenses/open-knowledge-skills-MIT.txt).
-The kit ships the four skills listed in `skills/knowledge-skills/README.md`, including the MIT `skills/core/open-knowledge` source.
+The kit ships the skill folders of `skills/knowledge-skills/`, including the MIT `skills/core/open-knowledge` source.
 It excludes the GPL copy from `inkeep/open-knowledge`.
 
 ## `humanlayer/skills`

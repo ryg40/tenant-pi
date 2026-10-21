@@ -19,8 +19,9 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import architecture_build  # noqa: E402
 import publish_check  # noqa: E402
 from scripts.doc_check import published  # noqa: E402
+from tests.support import needs_folder  # noqa: E402
 
-PUBLIC_FILES = (architecture_build.PUBLIC_OUT, architecture_build.MODEL_REL, "docs/architecture.md")
+PUBLIC_FILES = (architecture_build.MODEL_REL, "docs/architecture.md")
 # A placeholder left in the page. The test keeps its own pattern, so a narrow build pattern cannot hide a leak.
 LEAK = re.compile(r"\{\{[a-z0-9_]+\}\}")
 
@@ -33,7 +34,7 @@ def encoded(value):
 
 def local_values():
     placeholders = json.loads((ROOT / architecture_build.MODEL_REL).read_text())["placeholders"]
-    return {"values": {name: "<fixture-only-" + name + ">" for name in placeholders}, "planned": ["seat_address"]}
+    return {"values": {name: "<fixture-only-" + name + ">" for name in placeholders}, "planned": []}
 
 
 def local_graph():
@@ -48,6 +49,8 @@ def editions():
     yield "local", local_graph()
 
 
+# The model names files of each package.
+@needs_folder()
 class PublicBuildTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -85,6 +88,7 @@ class PublicBuildTests(unittest.TestCase):
                         self.assertTrue(published(path.partition("#")[0]), f"{view['id']}.{node['id']}")
 
 
+@needs_folder()
 class GraphTests(unittest.TestCase):
     def test_every_edge_points_to_a_node(self):
         for edition, graph in editions():
@@ -161,6 +165,7 @@ def script_function(name):
     return match.group(1)
 
 
+@needs_folder()
 class PageScriptTests(unittest.TestCase):
     """The page script needs a browser. These tests read its source and the graph data that it uses."""
 
@@ -192,6 +197,7 @@ class PageScriptTests(unittest.TestCase):
         self.assertIn('s("title", null, n.label', body)
 
 
+@needs_folder()
 class LocalBuildTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -241,14 +247,6 @@ class LocalBuildTests(unittest.TestCase):
             self.assertEqual(before, values.read_bytes())
             self.assertEqual(expected, (root / architecture_build.LOCAL_OUT).read_text())
 
-    def test_a_planned_value_is_tagged(self):
-        self.assertIn("seat_address", local_values()["planned"])
-        graph = local_graph()
-        tagged = {node["id"] for view in graph["views"] for node in view["nodes"]
-                  if architecture_build.PLANNED_TAG in node.get("tags", [])}
-        self.assertIn("compose-seat", tagged)
-        self.assertNotIn(architecture_build.PLANNED_TAG, self.public)
-
     def test_local_files_are_development_only(self):
         ignored = (ROOT / ".gitignore").read_text().splitlines()
         for name in (architecture_build.LOCAL_REL, architecture_build.LOCAL_OUT):
@@ -257,6 +255,7 @@ class LocalBuildTests(unittest.TestCase):
             self.assertNotIn(name, publish_check.rule_files({name})[0])
 
 
+@needs_folder()
 class RuntimeContractTests(unittest.TestCase):
     def test_default_view_is_runtime_not_install_pipeline(self):
         graph = architecture_build.build(ROOT)
@@ -403,6 +402,7 @@ BROWSER_GEOMETRY = r"""() => {
 
 
 @unittest.skipUnless(os.environ.get("ARCHITECTURE_BROWSER_TESTS") == "1", "opt-in: existing Playwright and Chromium required")
+@needs_folder()
 class BrowserTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

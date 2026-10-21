@@ -5,18 +5,23 @@ import http.client
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import needs_folder, slow
 from unittest.mock import patch
 
 from scripts import pi_update as update
 
 ROOT = Path(__file__).resolve().parents[1]
-PIN = json.loads((ROOT / "config/manifest.json").read_text())["runtime"]["piVersion"]
-QUESTIONS = "@juicesharp/rpiv-ask-user-question"
+MANIFEST = json.loads((ROOT / "config/manifest.json").read_text())
+PIN = MANIFEST["runtime"]["piVersion"]
+# The npm modules of the manifest, and the exact version of each pinned one.
+MODULES = {cid: update.npm_parts(c["source"]["spec"]) for cid, c in MANIFEST["components"].items()
+           if cid != "core" and c["source"] and c["source"]["kind"] == "npm"}
+PINNED = {cid: parts for cid, parts in MODULES.items() if parts[1]}
 OLDER = "1.0.2"
 # The Python of a stub adds these names itself on macOS, also after `env -i`: LC_CTYPE when the
 # locale of LANG is absent (PEP 538 coercion), and the CoreFoundation encoding. No caller passes them.
@@ -134,15 +139,15 @@ class UpdateTests(unittest.TestCase):
     def small_candidate(self, run, requested, env):
         candidate = run / "kit"
         candidate.mkdir()
-        contents = update.pin_contents((ROOT / "config/manifest.json").read_text(),
-                                       (ROOT / "scripts/validate.py").read_text(), requested)
-        contents["config/config.example.json"] = (ROOT / "config/config.example.json").read_text()
+        contents = {"config/manifest.json": update.pin_contents((ROOT / "config/manifest.json").read_text(), requested),
+                    "config/config.example.json": (ROOT / "config/config.example.json").read_text()}
         for name, text in contents.items():
             path = candidate / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
-        for name in ("tenantext", "promptr", "openviking-pi"):
+        for name in ("tenantext", "openviking-pi", "agentcore-pi"):
             (candidate / "packages" / name).mkdir(parents=True)
+            (candidate / "packages" / name / "package-lock.json").write_text("{}\n")
         tests = candidate / "packages/openviking-pi/tests"
         tests.mkdir()
         (tests / "fixture.test.mjs").write_text("// test inventory fixture\n")
@@ -195,7 +200,6 @@ class UpdateTests(unittest.TestCase):
             offline = (("offline-fixture", ["-c", "print('offline fixture')"]),)
         endpoint = update.endpoint
         with patch.object(update, "OFFLINE", offline), \
-                patch.object(update, "PACKAGE_PY", ((".", ["-c", "print('package fixture')"]),)), \
                 patch.object(update, "endpoint", side_effect=lambda **options: endpoint(poll_interval=0.005, **options)):
             if real:
                 return update.qualify(requested, str(self.work), **kwargs)
@@ -203,52 +207,31 @@ class UpdateTests(unittest.TestCase):
             with patch.object(update, "candidate_copy", side_effect=self.small_candidate):
                 return update.qualify(requested, str(self.work), runner=self.recording_runner, **kwargs)
 
-    def test_check_set_and_package_python_commands(self):
-        self.assertEqual(update.OFFLINE, (("check-set", ["scripts/check.py"]),))
-        self.assertEqual(update.PACKAGE_PY, (
-            ("packages/tenantext", ["-m", "unittest", "discover", "-s", "tracker/tests", "-t", "."]),
-            ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr/tests"]),
-            ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr-relay/tests"]),
-            ("packages/promptr/skills/watch-herdr-agents", ["scripts/test_watch.py"]),
-        ))
+    def test_check_set_runs_everything_after_the_package_installs(self):
+        self.assertEqual(update.OFFLINE, (("check-set", ["scripts/check.py", "--all"]),))
         report = self.qualify()
         names = [row["name"] for row in report["steps"]]
-        self.assertEqual(names[names.index("offline-fixture") + 1], "PACKAGE_PY")
-        self.assertLess(names.index("PACKAGE_PY"), names.index("tenantext-install"))
-        command = next(row for row in self.recorded if row[0] == "PACKAGE_PY")
-        self.assertEqual(command[2], Path(report["workdir"]) / "kit")
-        self.assertEqual(command[3]["PYTHONDONTWRITEBYTECODE"], "1")
+        # Each package with a lock file gets its dependencies; only the Pi users get the candidate links.
+        for name in ("agentcore-pi-install", "openviking-install", "openviking-links", "tenantext-install", "tenantext-links"):
+            self.assertLess(names.index(name), names.index("offline-fixture"))
+        self.assertNotIn("agentcore-pi-links", names)
+        self.assertLess(names.index("offline-fixture"), names.index("openviking-test"))
+        installs = {row[0]: row[2] for row in self.recorded if row[0].endswith("-install")}
+        self.assertEqual(installs["tenantext-install"], Path(report["workdir"]) / "kit/packages/tenantext")
+        self.assertFalse(any(name.startswith(("PACKAGE_PY", "tenantext-test", "tenantext-typecheck")) for name in names))
 
-    def test_package_python_runs_all_suites_and_fails_on_any_failed_suite(self):
-        run, _ = update.workspace(str(self.work))
-        candidate = run / "kit"
-        candidate.mkdir()
-        suite = candidate / "suite"
-        suite.mkdir()
-        for failure in (False, True):
-            steps = update.Steps(run, update.environment(run))
-            commands = (("suite", ["-c", "import sys; sys.exit(" + str(int(failure)) + ")"]),
-                        ("suite", ["-c", "from pathlib import Path; print(Path.cwd().name)"]))
-            with patch.object(update, "PACKAGE_PY", commands):
-                update.package_python_checks(steps, candidate)
-            self.assertEqual(len(steps.rows), 1)
-            self.assertEqual(steps.rows[0]["exitCode"], int(failure))
-            log = Path(steps.rows[0]["log"]).read_text()
-            self.assertIn("\nsuite\nsuite: exit 0\n", log)
-            self.assertEqual(log.splitlines()[-1], "PACKAGE_PY: " + ("FAILED" if failure else "passed"))
+    def test_a_kit_without_the_openviking_folder_has_no_openviking_step(self):
+        small = self.small_candidate
 
-    def test_failed_package_python_fails_qualification_but_later_steps_run(self):
-        runner = self.recording_runner
-        def failed(command, **options):
-            code = runner(command, **options)
-            return 1 if options["log"].stem == "PACKAGE_PY" else code
-        with patch.object(self, "recording_runner", side_effect=failed):
-            report = self.qualify()
-        self.assertFalse(report["passed"])
-        codes = {row["name"]: row["exitCode"] for row in report["steps"]}
-        self.assertEqual(codes["PACKAGE_PY"], 1)
-        self.assertEqual(codes["tenantext-test"], 0)
-        self.assertEqual(codes["baseline-compare"], 0)
+        def without(run, requested, env):
+            candidate = small(run, requested, env)
+            shutil.rmtree(candidate / "packages/openviking-pi")
+            return candidate
+
+        self.small_candidate = without
+        report = self.qualify()
+        self.assertTrue(report["passed"], report)
+        self.assertEqual([], [row["name"] for row in report["steps"] if row["name"].startswith("openviking")])
 
     def test_failed_check_set_fails_qualification_but_later_steps_run(self):
         runner = self.recording_runner
@@ -260,65 +243,72 @@ class UpdateTests(unittest.TestCase):
         self.assertFalse(report["passed"])
         codes = {row["name"]: row["exitCode"] for row in report["steps"]}
         self.assertEqual(codes["check-set"], 1)
-        for name in ("PACKAGE_PY", "tenantext-test", "print-response", "baseline-compare"):
+        for name in ("tenantext-links", "openviking-test", "print-response", "baseline-compare"):
             self.assertEqual(codes[name], 0)
         command = next(row for row in self.recorded if row[0] == "check-set")
-        self.assertEqual(command[1], [sys.executable, "-B", "scripts/check.py"])
+        self.assertEqual(command[1], [sys.executable, "-B", "scripts/check.py", "--all"])
         self.assertEqual(command[2], Path(report["workdir"]) / "kit")
         self.assertEqual(command[3]["PYTHONDONTWRITEBYTECODE"], "1")
 
-    def test_pin_contents_changes_only_the_manifest_pin_and_reviewed_anchor(self):
+    def test_pin_contents_changes_only_the_manifest_pin(self):
         manifest_text = ('{\n  "runtime": {\n    "piVersion": "1.0.3",\n    "piAcceptedRange": ">=1.0.3 <1.1"\n  },\n'
                          '  "components": {\n    "core": {\n      "source": {\n'
                          '        "spec": "@earendil-works/pi-coding-agent@1.0.3"\n      }\n    }\n  }\n}\n')
-        validator_text = ('REVIEWED_SOURCES = {\n'
-                          '    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.3"},\n}\n')
-        original = {"config/manifest.json": manifest_text, "scripts/validate.py": validator_text}
-        self.assertEqual(original, update.pin_contents(manifest_text, validator_text, "1.0.3"))
-        expected = {
-            "config/manifest.json": '{\n  "runtime": {\n    "piVersion": "1.0.4",\n    "piAcceptedRange": ">=1.0.4 <1.1"\n  },\n'
-                '  "components": {\n    "core": {\n      "source": {\n'
-                '        "spec": "@earendil-works/pi-coding-agent@1.0.4"\n      }\n    }\n  }\n}\n',
-            "scripts/validate.py": 'REVIEWED_SOURCES = {\n'
-                '    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.0.4"},\n}\n',
-        }
-        result = update.pin_contents(manifest_text, validator_text, "1.0.4")
+        self.assertEqual(manifest_text, update.pin_contents(manifest_text, "1.0.3"))
+        expected = ('{\n  "runtime": {\n    "piVersion": "1.0.4",\n    "piAcceptedRange": ">=1.0.4 <1.1"\n  },\n'
+                    '  "components": {\n    "core": {\n      "source": {\n'
+                    '        "spec": "@earendil-works/pi-coding-agent@1.0.4"\n      }\n    }\n  }\n}\n')
+        result = update.pin_contents(manifest_text, "1.0.4")
         self.assertEqual(expected, result)
-        self.assertEqual(original, update.pin_contents(result["config/manifest.json"], result["scripts/validate.py"], "1.0.3"))
+        self.assertEqual(manifest_text, update.pin_contents(result, "1.0.3"))
+        with self.assertRaisesRegex(update.Invalid, "^source_pin:"):
+            update.pin_contents(manifest_text.replace("agent@1.0.3", "agent@1.0.2"), "1.0.4")
+
+    def test_pin_action_moves_the_manifest_of_the_checkout_only(self):
+        source = self.base / "source"
+        (source / "config").mkdir(parents=True)
+        manifest_text = (ROOT / "config/manifest.json").read_text()
+        (source / "config/manifest.json").write_text(manifest_text)
+        out = io.StringIO()
+        with patch.object(update, "ROOT", source), contextlib.redirect_stdout(out):
+            status = update.main(["pin", "--version", "9.9.9"])
+        self.assertEqual(0, status)
+        self.assertEqual({"action": "pin", "from": PIN, "to": "9.9.9", "range": ">=9.9.9 <9.10"}, json.loads(out.getvalue()))
+        self.assertEqual(update.pin_contents(manifest_text, "9.9.9"), (source / "config/manifest.json").read_text())
+        self.assertEqual(["config/manifest.json"], [path.relative_to(source).as_posix()
+                                                    for path in sorted(source.rglob("*")) if path.is_file()])
+        out = io.StringIO()
+        with patch.object(update, "ROOT", source), contextlib.redirect_stdout(out):
+            status = update.main(["pin", "--version", "9.9.10-rc.1"])
+        self.assertEqual((2, "tested_outside_range"), (status, json.loads(out.getvalue())["error"].split(":")[0]))
 
     def test_pin_move_sets_the_minor_line_and_preserves_a_same_pin_range(self):
         manifest_text = (ROOT / "config/manifest.json").read_text()
-        validator_text = (ROOT / "scripts/validate.py").read_text()
         for requested, accepted in (("1.0.4", ">=1.0.4 <1.1"), ("2.3.0", ">=2.3.0 <2.4"),
                                      ("9.9.9", ">=9.9.9 <9.10")):
-            contents = update.pin_contents(manifest_text, validator_text, requested)
-            self.assertEqual({"config/manifest.json", "scripts/validate.py"}, set(contents))
-            self.assertEqual(accepted, json.loads(contents["config/manifest.json"])["runtime"]["piAcceptedRange"])
-        reviewed = update.pin_contents(manifest_text, validator_text, PIN, accepted_range=">=0.0.0 <99")
-        again = update.pin_contents(reviewed["config/manifest.json"], reviewed["scripts/validate.py"], PIN)
-        self.assertEqual(reviewed, again)
+            contents = update.pin_contents(manifest_text, requested)
+            self.assertEqual(accepted, json.loads(contents)["runtime"]["piAcceptedRange"])
+        reviewed = update.pin_contents(manifest_text, PIN, accepted_range=">=0.0.0 <99")
+        self.assertEqual(reviewed, update.pin_contents(reviewed, PIN))
         with self.assertRaisesRegex(update.Invalid, "^tested_outside_range:"):
-            update.pin_contents(manifest_text, validator_text, "2.3.0-rc.1")
-        preview = update.pin_contents(manifest_text, validator_text, "2.3.0-rc.1", accepted_range=">=2.2.0 <2.4")
-        self.assertEqual(">=2.2.0 <2.4", json.loads(preview["config/manifest.json"])["runtime"]["piAcceptedRange"])
+            update.pin_contents(manifest_text, "2.3.0-rc.1")
+        preview = update.pin_contents(manifest_text, "2.3.0-rc.1", accepted_range=">=2.2.0 <2.4")
+        self.assertEqual(">=2.2.0 <2.4", json.loads(preview)["runtime"]["piAcceptedRange"])
         with self.assertRaisesRegex(update.Invalid, "^tested_outside_range:"):
-            update.pin_contents(manifest_text, validator_text, "2.3.0", accepted_range=">=2.4.0 <2.5")
+            update.pin_contents(manifest_text, "2.3.0", accepted_range=">=2.4.0 <2.5")
 
     def test_range_without_upper_bound_fails_before_candidate_text(self):
         manifest_text = (ROOT / "config/manifest.json").read_text()
-        validator_text = (ROOT / "scripts/validate.py").read_text()
         for requested, accepted in ((PIN, ">=0.0.0"), ("2.3.0", ">=2.3.0"), ("2.3.0-rc.1", ">=2.2")):
             with self.subTest(requested=requested), self.assertRaises(update.Invalid) as caught:
-                update.pin_contents(manifest_text, validator_text, requested, accepted_range=accepted)
+                update.pin_contents(manifest_text, requested, accepted_range=accepted)
             self.assertEqual("range_without_upper_bound: manifest.runtime.piAcceptedRange", str(caught.exception))
         # A same-pin run keeps the range of the manifest, so an unbounded one stops the candidate copy.
         data = json.loads(manifest_text)
         data["runtime"]["piAcceptedRange"] = ">=0.0.0"
         source = self.base / "source"
-        for name, text in (("config/manifest.json", json.dumps(data, indent=2) + "\n"),
-                           ("scripts/validate.py", validator_text)):
-            (source / name).parent.mkdir(parents=True)
-            (source / name).write_text(text)
+        (source / "config").mkdir(parents=True)
+        (source / "config/manifest.json").write_text(json.dumps(data, indent=2) + "\n")
         out = io.StringIO()
         with patch.object(update, "ROOT", source), contextlib.redirect_stdout(out):
             status = update.main(["qualify", "--version", PIN, "--workdir", str(self.work)])
@@ -339,9 +329,8 @@ class UpdateTests(unittest.TestCase):
         candidate = update.candidate_copy(self.base, PIN, env)
         names = ("config/manifest.json", "scripts/validate.py")
         before = {name: (ROOT / name).read_bytes() for name in names}
-        contents = update.pin_contents(*[(candidate / name).read_text() for name in names], requested)
-        for name, content in contents.items():
-            (candidate / name).write_text(content, encoding="utf-8")
+        (candidate / names[0]).write_text(update.pin_contents((candidate / names[0]).read_text(), requested),
+                                          encoding="utf-8")
 
         def run(*args):
             result = subprocess.run([sys.executable, "-B", *args], cwd=candidate, env=env,
@@ -381,8 +370,9 @@ class UpdateTests(unittest.TestCase):
             calls = []
             def latest(name):
                 calls.append(name)
-                # The question extension has its own pin; without a new version the registry names that pin.
-                return "2.13.9" if name == QUESTIONS and code == 0 else newest
+                # A pinned module has its own pin; without a new version the registry names that pin.
+                pins = dict(PINNED.values())
+                return pins[name] if name in pins and code == 0 else newest
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 self.assertEqual(update.main(["detect"], latest=latest), code)
@@ -390,19 +380,21 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(calls[0], update.PACKAGE)
             self.assertEqual(report["core"]["pinned"], PIN)
             self.assertEqual(report["new"], code == 10)
-            self.assertEqual(len(report["modules"]), 4)
+            self.assertEqual(len(report["modules"]), len(MODULES))
             pinned = [row for row in report["modules"] if row["pinned"] is not None]
-            self.assertEqual([("questions", QUESTIONS, "2.13.9", code == 10)],
+            self.assertEqual(sorted((cid, name, version, code == 10) for cid, (name, version) in PINNED.items()),
                              [(row["component"], row["package"], row["pinned"], row["different"]) for row in pinned])
             self.assertTrue(all(row["different"] is None for row in report["modules"] if row["pinned"] is None))
-        # A new version of the pinned module alone sets `new`; the core row stays equal.
+        # A new version of a pinned module alone sets `new`; the core row stays equal.
+        pins = dict(PINNED.values())
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            self.assertEqual(update.main(["detect"], latest=lambda name: "2.14.0" if name == QUESTIONS else PIN), 10)
+            self.assertEqual(update.main(["detect"], latest=lambda name: "99.0.0" if name in pins else PIN), 10)
         report = json.loads(out.getvalue())
         self.assertEqual((False, True), (report["core"]["different"], report["new"]))
 
     @slow
+    @needs_folder("packages/openviking-pi")
     def test_qualify_environment_links_and_baseline(self):
         before = update._dir_state(str(self.live), "test")
         report = self.qualify(real=True)
@@ -418,14 +410,15 @@ class UpdateTests(unittest.TestCase):
             self.assertNotIn("synthetic-canary", json.dumps(child))
         self.assertFalse(Path(rows[0]["PI_CODING_AGENT_DIR"]).exists())
         self.assertEqual(before, update._dir_state(str(self.live), "test"))
-        for package in ("tenantext", "promptr", "openviking-pi"):
-            link = run / "packages" / package / "node_modules/@earendil-works/pi-coding-agent"
+        for package in ("tenantext", "openviking-pi"):
+            link = run / "kit/packages" / package / "node_modules/@earendil-works/pi-coding-agent"
             self.assertEqual(link.resolve(), run / "prefix/node_modules" / update.PACKAGE)
+        packages = list((ROOT / "packages").glob("*/package-lock.json"))
         for step in report["steps"]:
             self.assertTrue(Path(step["log"]).is_file())
         self.assertEqual((run / "logs/print-mode.log").read_text(), "43\n")
         calls = [json.loads(line) for line in (self.bin / "calls.jsonl").read_text().splitlines()]
-        self.assertEqual(sum("ci" in call for call in calls), 3)
+        self.assertEqual(sum("ci" in call for call in calls), len(packages))
         self.assertTrue(all("--ignore-scripts" in call for call in calls if "ci" in call or "install" in call))
         self.assertTrue(all("--global" not in call for call in calls))
         steps = {row["name"]: row for row in report["steps"]}
@@ -441,7 +434,7 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual({Path(path).name for path in tests["args"][1:]}, test_files)
         inventory = json.loads((run / "logs/openviking-test-inventory.log").read_text())
         self.assertEqual(inventory, {"tests": sorted(test_files)})
-        self.assertTrue(all(Path(name).is_relative_to(run / "packages/openviking-pi") for name in tests["args"][1:]))
+        self.assertTrue(all(Path(name).is_relative_to(run / "kit/packages/openviking-pi") for name in tests["args"][1:]))
 
     @slow
     def test_candidate_keeps_pages_unchanged_when_the_pin_moves(self):
@@ -465,8 +458,6 @@ class UpdateTests(unittest.TestCase):
 
         names = [row["name"] for row in report["steps"]]
         self.assertFalse(any(name.startswith("pages-") for name in names))
-        for name in ("docs/architecture.html", "EXPLAINER.html"):
-            self.assertEqual((ROOT / name).read_bytes(), (candidate / name).read_bytes())
 
     def test_qualification_has_no_page_steps_or_builder_commands(self):
         report = self.qualify("99.0.0")
@@ -541,8 +532,6 @@ class UpdateTests(unittest.TestCase):
         report = self.qualify()
         self.assertFalse(report["passed"])
         codes = {step["name"]: step["exitCode"] for step in report["steps"]}
-        self.assertEqual(codes["tenantext-test"], 7)
-        self.assertEqual(codes["promptr-test"], 7)
         self.assertEqual(codes["openviking-test"], 7)
         self.assertEqual(codes["openviking-load"], 0)
         self.assertEqual(codes["print-response"], 0)

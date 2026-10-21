@@ -36,17 +36,14 @@ if HAS_LIST:
 from scripts.profile_inventory import RESOURCE_DIRS, coordination_files, inventory
 from scripts.check_runtime import HERDR, TOOLS, check, check_herdr, matches
 from scripts import components as checklist
-from scripts import compose_plan as seat
 from scripts import install_results as results
 from scripts import launcher
-from scripts.model_routes import render
 from scripts.private_init import TARGET, TEMPLATES, check_target, init, report as init_report, with_target
 from scripts.profile_plan import (PROVIDER_KEY_NAMES, herdr_report, prepare, provider_key_warning, readiness,
                                    runtime_report, setup_commands)
 from scripts.profile_inputs import PROFILE_INPUTS
 from scripts.profile_write import (STATE, UNKNOWN, WriteError, _validated_bytes, check_location, commit, inside,
                                    output_digests, preflight, utc_now, write)
-from scripts.remote_plan import remote_plan
 from scripts import wiki_vault
 from scripts.validate import (OWNER_RESOURCES, SAMPLE_TARGET, Invalid, absolute, hint_field, link_hint, manifest,
                              overlay, parse, path_segment, place, fail)
@@ -506,73 +503,6 @@ def _init_private(args):
     return init_report(init(args.dir, contents, forbidden), str(ROOT), args.target)
 
 
-def _integer(value, field):
-    """One decimal option value as an integer; the diagnostic does not echo it."""
-    if not value.isascii() or not value.isdigit() or len(value) > 6:
-        fail("integer", field)
-    return int(value)
-
-
-def _compose_write(plan, key_data):
-    """Create the five absent files of the Compose seat in the existing private directory, each with mode 0600.
-
-    No key value is written: the key line of `compose.env` is empty, and `authorized_keys` is the public key file.
-    """
-    private = plan["answers"]["privateDir"]
-    home = _home("compose-plan.home")
-    _outside(private, (("under_kit", str(ROOT)), ("under_pi_agent", home + "/.pi/agent"),
-                       *_wiki_vaults(home, plan["overlay"])), "compose-plan.private_dir")
-    contents = {"overlay.json": (json.dumps(plan["overlay"], indent=2) + "\n").encode(),
-                "seat.env": ("\n".join(plan["seatEnv"]) + "\n").encode(),
-                "compose.env": ("\n".join(plan["composeEnv"]) + "\n").encode(),
-                "authorized_keys": key_data,
-                "registry.json": (json.dumps(plan["registry"], indent=2) + "\n").encode()}
-    try:
-        fd = _open_dir(private)
-    except FileNotFoundError:
-        fail("private_dir_missing", "compose-plan.private_dir")
-    except OSError as exc:
-        # The directory or a directory above it is a symbolic link or is not a directory.
-        fail("private_dir_unsafe", "compose-plan.private_dir", hint=link_hint(private, exc))
-    try:
-        # Every refusal comes before the first write.
-        for name in seat.FILES:
-            try:
-                os.stat(name, dir_fd=fd, follow_symlinks=False)
-            except FileNotFoundError:
-                continue
-            fail("target_exists", "compose-plan." + name)
-        for name in seat.FILES:
-            # Exclusive creation: an entry that appears after the check is refused, and no link is followed.
-            try:
-                out = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=fd)
-            except FileExistsError:
-                fail("target_exists", "compose-plan." + name)
-            with os.fdopen(out, "wb") as stream:
-                os.fchmod(stream.fileno(), 0o600)
-                stream.write(contents[name])
-    except OSError:
-        fail("write_failed", "compose-plan.private_dir")
-    finally:
-        os.close(fd)
-    return [plan["files"][name] for name in seat.FILES]
-
-
-def _compose_plan(args):
-    """The plan of the Compose seat. Reads the manifest and the public key file; writes only with `--write`."""
-    known = manifest(_load_input(args.manifest, "manifest.file"))
-    plan = seat.compose_plan(args.account, _integer(args.uid, "compose-plan.uid"), _integer(args.gid, "compose-plan.gid"),
-                             args.public_key, _integer(args.ssh_port, "compose-plan.ssh_port"), args.projects_dir,
-                             args.gateway_url, args.key_var, args.enable, args.private_dir, args.clone, known=known,
-                             model=args.model, provider=args.provider, thinking=args.thinking)
-    # The same rules as `validate`: a plan never holds an overlay that the entrypoint of the seat refuses.
-    overlay(plan["overlay"], known)
-    # The route rules with the registry of the plan: the gateway has no model of another provider.
-    render(plan["overlay"], plan["registry"])
-    key_data = seat.public_key(_load_input(args.public_key, "compose-plan.public_key", raw=True, limit=seat.MAX_KEY_FILE))
-    return {**plan, "written": _compose_write(plan, key_data) if args.write else []}
-
-
 def _results_candidate(directory, launchers):
     """The row of one `--target` directory: its state record, its `settings.json` and one status call for each declared npm package."""
     field = "results.target"
@@ -830,58 +760,8 @@ def _launcher_check(path, private_dir, current, plan):
             "found": found}
 
 
-def _file_times(directory, field):
-    """The modification times in nanoseconds of the regular files below one directory, by relative path.
-
-    None when the directory is absent. Each directory opens without following a link; a link is not entered.
-    """
-    try:
-        fd = _open_dir(directory)
-    except FileNotFoundError:
-        return None
-    except OSError:
-        fail("unreadable", field)
-    times, pending, count = {}, [("", fd)], 0
-    try:
-        while pending:
-            prefix, parent = pending.pop()
-            try:
-                with os.scandir(parent) as found:
-                    for entry in found:
-                        count += 1
-                        if count > MAX_ENTRIES:
-                            fail("input_too_large", field)
-                        if entry.is_dir(follow_symlinks=False):
-                            pending.append((prefix + entry.name + "/", os.open(entry.name, DIR_FLAGS, dir_fd=parent)))
-                        elif entry.is_file(follow_symlinks=False):
-                            times[prefix + entry.name] = entry.stat(follow_symlinks=False).st_mtime_ns
-            finally:
-                os.close(parent)
-    except OSError:
-        fail("unreadable", field)
-    finally:
-        for _, parent in pending:
-            os.close(parent)
-    return times
-
-
-def _input_times(directory, names, field):
-    """The modification times in nanoseconds of the named regular files of one directory; an absent file is left out."""
-    times = {}
-    for name in names:
-        try:
-            info = os.lstat(directory + "/" + name)
-        except FileNotFoundError:
-            continue
-        except OSError:
-            fail("unreadable", field)
-        if stat.S_ISREG(info.st_mode):
-            times[name] = info.st_mtime_ns
-    return times
-
-
 def _package_check(root, rel):
-    """The `npm ci` state and, for a package with a build, the build state of one in-tree package, with its lines."""
+    """The `npm ci` state of one in-tree package, with its lines."""
     directory = str(root) + "/" + rel
     try:
         lock = _load_input(directory + "/package-lock.json", "update.package.lock", optional=True)
@@ -889,20 +769,8 @@ def _package_check(root, rel):
             lock, _load_input(directory + "/node_modules/.package-lock.json", "update.package.installed", optional=True))
     except Invalid:
         install = ("needed", "unreadable")
-    build = None
-    if rel in kit_update.BUILDS:
-        sources, source_suffix, outputs, output_suffix, inputs = kit_update.BUILDS[rel]
-        try:
-            build = kit_update.build_status(_file_times(directory + "/" + sources, "update.package.sources") or {},
-                                            _file_times(directory + "/" + outputs, "update.package.outputs"),
-                                            _input_times(directory, inputs, "update.package.inputs"),
-                                            source_suffix, output_suffix)
-        except Invalid:
-            build = ("needed", "unreadable")
-    lines = ([kit_update.install_line(directory)] if install[0] == "needed" else []) + (
-        [kit_update.build_line(directory)] if build is not None and build[0] == "needed" else [])
-    return {"path": directory, "install": {"status": install[0], "reason": install[1]},
-            "build": None if build is None else {"status": build[0], "reason": build[1]}, "lines": lines}
+    lines = [kit_update.install_line(directory)] if install[0] == "needed" else []
+    return {"path": directory, "install": {"status": install[0], "reason": install[1]}, "lines": lines}
 
 
 def _with_target(overlay_data, target):
@@ -1016,8 +884,6 @@ def _update(args, clock):
 def main(argv=None, *, clock=utc_now):
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest="action", required=True)
-    from scripts import wizard
-    wizard.arguments(subs, ROOT)
     cmp = subs.add_parser("compare", help="redacted field comparison of two explicit profile directories")
     cmp.add_argument("--left", required=True, help="absolute path of the previous candidate or profile")
     cmp.add_argument("--right", required=True, help="absolute path of the new candidate")
@@ -1063,33 +929,6 @@ def main(argv=None, *, clock=utc_now):
     hrd.add_argument("--" + HERDR, help=f"absolute path of the {HERDR} executable (default: {HERDR} on PATH)")
     subs.add_parser("check-wiki-vault", help="report the personal LLM Wiki vault of this account: present, absent, "
                     "or a second vault through WIKI_HOME")
-    rem = subs.add_parser("remote-plan", help="print the SSH command lines of the remote stages; runs none of them")
-    rem.add_argument("--ssh-target", required=True, help="SSH target of the user: a host alias, or <user>@<host>")
-    rem.add_argument("--remote-user", required=True, help="account on the remote host that owns the install")
-    rem.add_argument("--remote-home", required=True, help="absolute home directory of that account on the remote host")
-    cmp_seat = subs.add_parser("compose-plan", help="print the files and the command lines of a Compose seat; runs none of them")
-    cmp_seat.add_argument("--account", default="pi", help="account name of the seat (default: pi)")
-    cmp_seat.add_argument("--uid", required=True, help="UID of the account: the UID of the user (id -u)")
-    cmp_seat.add_argument("--gid", required=True, help="GID of the account: the GID of the user (id -g)")
-    cmp_seat.add_argument("--public-key", required=True, help="absolute path of the SSH public key file of the user")
-    cmp_seat.add_argument("--ssh-port", default="2222", help="port on this machine that receives the SSH connections (default: 2222)")
-    cmp_seat.add_argument("--projects-dir", help="absolute path of the optional projects directory")
-    cmp_seat.add_argument("--gateway-url", required=True, help="credential-free HTTPS URL of the gateway; it ends in /v1")
-    cmp_seat.add_argument("--key-var", default="TENANTEXT_LITELLM_API_KEY",
-                          help="name of the variable that holds the gateway key (default: TENANTEXT_LITELLM_API_KEY)")
-    cmp_seat.add_argument("--enable", action="append", default=[], help="component ID to enable; repeat for more components")
-    cmp_seat.add_argument("--provider", default=seat.GATEWAY_PROVIDER,
-                          help="provider of the interactive role (default: litellm-codex)")
-    cmp_seat.add_argument("--model", required=True,
-                          help="model of the interactive role: codex-auto/luna, codex-auto/sol or codex-auto/astra")
-    cmp_seat.add_argument("--thinking", default="high", help="thinking level of the interactive role (default: high)")
-    cmp_seat.add_argument("--private-dir", required=True, help="absolute path of the existing private directory, outside the clone")
-    cmp_seat.add_argument("--clone", default=str(ROOT), help="absolute path of the kit clone (default: this clone)")
-    cmp_seat.add_argument("--write", action="store_true",
-                          help="write overlay.json, seat.env, compose.env, authorized_keys and registry.json into the private directory; "
-                          "each must be absent")
-    cmp_seat.add_argument("--manifest", default=str(ROOT / "config/manifest.json"),
-                          help="reviewed kit manifest (override remains strictly validated)")
     cmpn = subs.add_parser("components", help="print the checklist of all components: data, a numbered list, or a selection")
     cmpn.add_argument("--format", choices=checklist.FORMATS, default="json",
                       help="json (default): the checklist as data; text: the numbered list for a person")
@@ -1135,10 +974,6 @@ def main(argv=None, *, clock=utc_now):
     args = parser.parse_args(argv)
     code = 0
     try:
-        if args.action == "wizard":
-            output = wizard.run(args, sys.modules[__name__])
-            print(json.dumps(output, sort_keys=True, ensure_ascii=True))
-            return 0 if output["status"] in ("saved_handoff", "data_only", "handoff") else 1
         if args.action == "compare":
             if args.left == args.right:
                 fail("same_directory", "compare.right")
@@ -1197,15 +1032,6 @@ def main(argv=None, *, clock=utc_now):
         if args.action == "check-wiki-vault":
             # `lstat` calls only: no file of a vault is opened, no directory is listed, and nothing is written.
             print(json.dumps(_check_wiki_vault(), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
-            return 0
-        if args.action == "remote-plan":
-            # Display only: no process starts, no file is opened, and no SSH option is added.
-            report = remote_plan(args.ssh_target, args.remote_user, args.remote_home)
-            print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
-            return 0
-        if args.action == "compose-plan":
-            # Display only without `--write`: no process starts. The key variable is a name; its value is never read.
-            print(json.dumps(_compose_plan(args), sort_keys=True, ensure_ascii=True, separators=(",", ":")))
             return 0
         if args.action == "components":
             # Read-only: no process starts and no file is written. `--select` prints a selection; it changes no overlay.

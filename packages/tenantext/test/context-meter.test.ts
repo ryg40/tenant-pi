@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { defaults, loadSettings, saveSettings, settingsPath, validateSettings } from "../extensions/context-meter/settings.ts";
+import { defaults, loadSettings, saveSettings, settingsPath, validateSettings } from "../src/context-meter-settings.ts";
 import { allocate, contextState, emptyEstimates, estimateSources, providerSystemTokens, reconciledWeights, snapshot } from "../extensions/context-meter/snapshot.ts";
 import { renderMeter } from "../extensions/context-meter/render.ts";
 import { createContextMeter } from "../extensions/context-meter/service.ts";

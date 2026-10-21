@@ -55,7 +55,7 @@ Use these issue-list URLs. Replace the placeholders from the tracker document or
 | Gitea | `GET <gitea base URL>/api/v1/repos/<namespace>/<repository>/issues?state=all&type=issues&limit=50&page=<page>` |
 | GitHub | `GET https://api.github.com/repos/<namespace>/<repository>/issues?state=all&per_page=50&page=<page>` |
 
-For GitHub Enterprise, replace `https://api.github.com` with `<host URL>/api/v3`. Skip GitHub entries with a `pull_request` field. The shipped adapters `packages/promptr/src/tracking/gitea.mts` and `packages/promptr/src/tracking/github.mts` use these paths.
+For GitHub Enterprise, replace `https://api.github.com` with `<host URL>/api/v3`. Skip GitHub entries with a `pull_request` field.
 
 Skip this section when the document says the clone has no tracker, no token is present, or a request fails. Also skip it when the host is unsupported or the repository has no issue tracker. Write one line under Sources with the reason, then continue.
 

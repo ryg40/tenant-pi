@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from validate import ROOT, OPTIONAL_TREE_COMPONENTS, TREE_COMPONENTS, Invalid, load, manifest, overlay, fail, tree_items
+from validate import ROOT, TREE_COMPONENTS, Invalid, load, manifest, overlay, fail, tree_items
 from examples import render
 
 # Required paths outside the script, test and documentation directory rules.
@@ -19,7 +19,6 @@ PUBLISH = (
     ".env.example",
     "README.md",
     "LICENSE",
-    "packages/promptr/LICENSE",
     "packages/openviking-pi/LICENSE",
     "packages/tenantext/extensions/doctor/wiki.ts",
     "packages/tenantext/test/doctor-wiki.test.ts",
@@ -28,17 +27,9 @@ PUBLISH = (
     "packages/tenantext/skills/herdr-relay/relay.example.json",
     "packages/tenantext/skills/herdr-relay/scripts/relay.py",
     "packages/tenantext/skills/herdr-relay/tests/test_relay.py",
-    "packages/promptr/src/herdr/adapter.mts",
-    "packages/promptr/src/herdr/role-handoff.mts",
-    "packages/promptr/src/state/run-receipts.mts",
-    "packages/promptr/docs/herdr-handoff.md",
-    "packages/promptr/test/herdr/handoff.test.mjs",
-    "packages/promptr/test/herdr/fixtures/agent-get.json",
-    "packages/promptr/test/herdr/fixtures/agent-list.json",
-    "packages/promptr/test/herdr/fixtures/agent-prompt-wait.json",
-    "packages/promptr/test/herdr/fixtures/agent-wait.json",
     "INSTALL.md",
     "POST_INSTALL.md",
+    "UPDATE.md",
     "EXPLAINER.md",
     "config/manifest.json",
     "config/config.example.json",
@@ -52,37 +43,22 @@ PUBLISH = (
     "config/private/gitignore",
     "AGENTS.md",
     "GLOSSARY.md",
-    ".dockerignore",
-    "deploy/compose/Dockerfile",
-    "deploy/compose/sshd_config",
-    "deploy/compose/entrypoint.sh",
-    "deploy/compose/README.md",
-    "deploy/compose/compose.yaml",
-    "deploy/compose/compose.projects.yaml",
-    "deploy/compose/seat.env.example",
-    "deploy/compose/compose.env.example",
-    "deploy/compose/profile.sh",
-    "EXPLAINER.html",
 )
-# Exact local artifacts, never part of the portable inventory or a tracked source tree.
-LOCAL_FILES = ("docs/architecture-local.html", "docs/architecture/local-values.json")
+# Exact local artifacts, never part of the portable inventory or a tracked source tree. The pages are
+# built on demand with `scripts/architecture_build.py` and `scripts/explainer_build.py`.
+LOCAL_FILES = ("docs/architecture-local.html", "docs/architecture/local-values.json", "docs/architecture.html",
+               "EXPLAINER.html")
 
 # Directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.
 PUBLISH_DIRS = (
     ("scripts", ()),
     ("tests", ()),
-    ("docs", tuple(name.removeprefix("docs/") for name in LOCAL_FILES)),
+    ("docs", tuple(name.removeprefix("docs/") for name in LOCAL_FILES if name.startswith("docs/"))),
     ("packages/tenantext", ("node_modules/", "extensions/doctor/wiki.ts", "test/doctor-wiki.test.ts",
                             "skills/herdr-relay/SKILL.md", "skills/herdr-relay/install.sh",
                             "skills/herdr-relay/relay.example.json", "skills/herdr-relay/scripts/relay.py",
                             "skills/herdr-relay/tests/test_relay.py")),
-    # The license is explicit in PUBLISH, so the directory rule must not add it again.
-    ("packages/promptr", ("node_modules/", "dist/", "LICENSE",
-        "src/herdr/adapter.mts", "src/herdr/role-handoff.mts", "src/state/run-receipts.mts",
-        "docs/herdr-handoff.md", "test/herdr/handoff.test.mjs",
-        "test/herdr/fixtures/agent-get.json", "test/herdr/fixtures/agent-list.json",
-        "test/herdr/fixtures/agent-prompt-wait.json", "test/herdr/fixtures/agent-wait.json")),
     # A vendored copy. Its `shared/` directory is committed source, not build output.
     ("packages/openviking-pi", ("node_modules/", "LICENSE")),
     ("packages/agentcore-pi", ("node_modules/",)),
@@ -309,10 +285,6 @@ def tracked_files(root=ROOT, ref=None):
     return {name for name in result.stdout.split("\0") if name}
 
 
-# Build output of an in-tree package. Never tracked, never published; `npm run build` makes it in a clone.
-BUILD_DIRS = ("packages/promptr/dist",)
-
-
 def node_modules_guard(tracked):
     """Fail on a tracked path under a `node_modules` directory: the inventory skips those directories."""
     for name in sorted(tracked):
@@ -321,29 +293,31 @@ def node_modules_guard(tracked):
 
 
 def build_output_guard(tracked):
-    """Fail on a tracked path under a build output directory: the inventory skips those directories."""
+    """Fail on a tracked local file: the inventory skips those files."""
     for name in sorted(tracked):
         if name in LOCAL_FILES:
             fail("tracked_local_file", name)
-        if any(name.startswith(item + "/") for item in BUILD_DIRS):
-            fail("tracked_build_output", name)
+
+
+def absent_folders(root=ROOT):
+    """The folders of tree components that the kit leaves out, each with a final `/`: the package or the skill."""
+    return tuple(path + "/" if not (root / path).exists() else path + "/" + item + "/"
+                 for path, _, items in TREE_COMPONENTS.values() for item in tree_items(items)
+                 if not (root / path / item).exists() and not (root / path / item).is_symlink())
 
 
 def explicit_files(root=ROOT, files=PUBLISH):
-    """Keep all explicit files unless their optional skill directory is entirely absent."""
-    absent = tuple(path + "/" + item + "/" for cid in OPTIONAL_TREE_COMPONENTS
-                   for path, _, items in (TREE_COMPONENTS[cid],) for item in tree_items(items)
-                   if not (root / path / item).exists() and not (root / path / item).is_symlink())
+    """Keep all explicit files unless the folder of their tree component is absent."""
+    absent = absent_folders(root)
     return tuple(name for name in files if not name.startswith(absent))
 
 
 def inventory_files(root):
-    """Prune installed dependencies and build output before walking their contents."""
+    """Prune installed dependencies before walking their contents."""
     found = set()
     for directory, dirs, files in os.walk(root):
         relative = Path(directory).relative_to(root)
-        dirs[:] = [name for name in dirs if name not in {".local", ".git", "__pycache__", "node_modules"}
-                   and (relative / name).as_posix() not in BUILD_DIRS]
+        dirs[:] = [name for name in dirs if name not in {".local", ".git", "__pycache__", "node_modules"}]
         found.update((relative / name).as_posix() for name in files if (Path(directory) / name).is_file()
                      and name not in {".git", ".local", "__pycache__", "node_modules"}
                      and (relative / name).as_posix() not in LOCAL_FILES)

@@ -8,7 +8,7 @@ This guide adds three providers to one generated Pi profile. Use each part that 
 | llama-swap | A local proxy that starts and stops model servers. It serves an OpenAI-compatible API. | A provider that you register in `models.json` of the profile. |
 | vLLM | A local or LAN inference server. It serves an OpenAI-compatible API. | A provider that you register in `models.json` of the profile. |
 
-The kit runs none of these steps. `validate`, `plan` and `generate` write no credential. `generate` can now emit validated non-secret `models.json` input; see [the wizard contract](wizard.md#direct-providers). You do each step by hand, or an agent does it after you say yes.
+The kit runs none of these steps. `validate`, `plan` and `generate` write no credential. `generate` can now emit validated non-secret `models.json` input; see [direct providers](#direct-providers). You do each step by hand, or an agent does it after you say yes.
 
 ## Words in this guide
 
@@ -226,7 +226,7 @@ The two numbers are examples, not values for your model. Not verified in this ki
 
 ### Write the file
 
-Pi reads `models.json` from `<target>` only. Prefer the validated `inputs/models.json` path described in [the wizard guide](wizard.md#direct-providers). The following manual route is for Pi features outside that closed subset.
+Pi reads `models.json` from `<target>` only. Prefer the validated `inputs/models.json` path described in [direct providers](#direct-providers). The following manual route is for Pi features outside that closed subset.
 
 1. Keep the master copy in the private directory, with mode 600. The private directory must exist first. The subshell keeps the `umask` of your shell unchanged:
 
@@ -265,6 +265,36 @@ For the manual route only, after each generation into a new target:
 3. Run the verification below for the new candidate.
 
 The old candidate keeps its own file. See [the candidate update guide](../../POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate).
+
+## Direct providers
+
+The supported durable input is `inputs.modelsFile: "inputs/models.json"`.
+Every `validate`, `plan` and `generate` call needs the same `--local-dir`.
+The input has a closed subset of Pi's `models.json` format:
+
+```json
+{
+  "providers": {
+    "local-server": {
+      "baseUrl": "http://127.0.0.1:8080/v1",
+      "api": "openai-completions",
+      "apiKey": "${LOCAL_MODEL_KEY}",
+      "models": [{"id": "served-model"}]
+    }
+  }
+}
+```
+
+`apiKey` accepts an environment-variable reference or the fixed dummy value `none` for a server without authentication.
+Literal keys, credential commands, headers and unknown fields are rejected. No environment value is resolved.
+Provider and model updates preserve other providers and other model entries in the supplied validated input.
+The kit does not import a live `models.json`. It copies no `auth.json`.
+
+Optional metadata fields are `name`, `contextWindow`, `maxTokens`, `reasoning` and `input`.
+Supply metadata from server documentation; the kit invents none. Omitted metadata uses Pi's defaults, not verified server capabilities.
+Generation writes `models.json` privately into the new candidate and records the definitions for replay validation.
+Comparison reports private values as change markers. Carry does not migrate authentication or arbitrary runtime registrations.
+Keep the saved input for regeneration; candidate files are not the master copy.
 
 ## Select a registered model
 

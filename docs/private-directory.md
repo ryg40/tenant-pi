@@ -87,18 +87,17 @@ A refusal for a link in the path also has a `hint` key with the link and the res
 
 | Rule | Protected roots and scope | Symbolic links and environment variants |
 | --- | --- | --- |
-| `under_kit` | The running kit clone, including `.local/`. Profile targets, private directories, launcher files, baseline files and results output directories cannot equal or descend from it. `compose-plan` also separates its declared clone and private directory in both directions. | Each root counts as written and resolved. A second clone or another worktree is not protected. |
-| `under_pi_agent` | `<HOME>/.pi/agent`, the profile that a bare `pi` opens. Applies to profile targets, private directories, launcher files and baseline files. `compose-plan --write` checks its private directory. Results output uses its separate `under_target` rule, not this rule. | A linked `HOME` or agent root protects both names. `HOME` must be set and absolute, without a trailing slash. `PI_CODING_AGENT_DIR` does not select a protected root. |
+| `under_kit` | The running kit clone, including `.local/`. Profile targets, private directories, launcher files, baseline files and results output directories cannot equal or descend from it. | Each root counts as written and resolved. A second clone or another worktree is not protected. |
+| `under_pi_agent` | `<HOME>/.pi/agent`, the profile that a bare `pi` opens. Applies to profile targets, private directories, launcher files and baseline files. Results output uses its separate `under_target` rule, not this rule. | A linked `HOME` or agent root protects both names. `HOME` must be set and absolute, without a trailing slash. `PI_CODING_AGENT_DIR` does not select a protected root. |
 | `under_wiki_vault` | `<HOME>/.llm-wiki` and `<WIKI_HOME>/.llm-wiki`. An action that reads an overlay also protects `<wikiHome>/.llm-wiki` from `memory.wiki.wikiHome`. Applies to profile targets, private directories, launcher files, baseline files and results directories and targets. | Each vault root counts as written and resolved. An absent, empty or relative `WIKI_HOME` adds no root. Trailing `/` characters do not count. `baseline` and `init-private` know only the environment roots, not another overlay's vault. |
 
 A protected root and every descendant are refused; a sibling with the same name prefix is not.
-Profile targets, results paths and Compose write paths also count with their symbolic links resolved.
+Profile targets and results paths also count with their symbolic links resolved.
 New private directories, launcher files and baseline files use a no-follow ancestor walk after the path-text check.
 That walk refuses every linked ancestor, even when the link leads outside a protected root.
 Resolving a link reads its target name, not file content.
 Bind mounts and hard-linked directories can expose a root under a name that these checks do not detect.
 
-The wizard checks its private directory and local target against these roots too.
 `results` without `--out-dir` permits missing or invalid `HOME`; only the other known vault roots then count.
 With `--out-dir`, `results` requires a valid `HOME`.
 `baseline --dir` may name a vault because it lists metadata without opening its files; the output must stay outside it.

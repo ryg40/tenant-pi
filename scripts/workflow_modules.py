@@ -1,17 +1,16 @@
-"""Pure workflow-module contract: MCP adapter definitions and the Promptr readiness matrix.
+"""Pure workflow-module contract: MCP adapter definitions and their readiness record.
 
 No file, environment, subprocess, or network access. Every diagnostic is a static
 `rule: field` string; definition values never enter it. The facts below name the
 reviewed sources: `pi-mcp-adapter` 5.4.0, the version reviewed, declared without a version (`config.ts`, `types.ts`, `init.ts`, `utils.ts`),
-Pi 0.99.1 (`dist/extensions/mcp/config.js`, `dist/core/package-manager.js`), and the in-tree
-Promptr package `packages/promptr`.
+and Pi 0.99.1 (`dist/extensions/mcp/config.js`, `dist/core/package-manager.js`).
 """
 import copy
 import re
 from ipaddress import ip_address
 from urllib.parse import unquote, urlsplit
 
-from scripts.validate import ENV, REF, REVIEWED_SOURCES, absolute, fail, fields, text
+from scripts.validate import ENV, REF, absolute, fail, fields, text
 
 MCP_CONFIG = "mcp-adapter.json"  # `<agent dir>/mcp-adapter.json`, the adapter's own file.
 # `PI_MCP_CONFIG_MODE=exclusive` (adapter `config.ts` isExclusiveConfigMode): only the agent-dir
@@ -47,22 +46,6 @@ UNSUPPORTED_TRANSPORT = frozenset(("socket",))
 CREDENTIAL_ARG = re.compile(r"(?i)token|secret|passw|api[-_]?key|bearer|authorization|credential|cookie")
 # Written into the generated file; honoured because the exclusive source has kind `user`.
 ADAPTER_SETTINGS = {"hostConfigDiscovery": "off", "projectServers": "ask", "allowInstall": False}
-# Readiness matrix of the in-tree Promptr package; each entry is a fact of `packages/promptr`.
-# `met`: measured at the version in the fact, not a qualified runtime. `open`: a named gap.
-PROMPTR_PREREQUISITES = (
-    {"code": "local_package_load", "subject": "promptr", "status": "met",
-     "fact": "Pi 1.0.2 and Pi 1.0.3 load the built packages/promptr as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills."},
-    {"code": "pi_line_build_and_tests", "subject": "promptr", "status": "met",
-     "fact": "The package pins pi-tui and pi-coding-agent to runtime.piVersion in config/manifest.json. The package tests pass, as do the build, the typecheck and `npm run smoke`. `npm run smoke:installed` and a package load on the kit pin are not verified."},
-    {"code": "build_step_required", "subject": "promptr", "status": "open",
-     "fact": "packages/promptr/index.ts re-exports dist/src/extension/index.mjs; dist/ is ignored and absent in the tree, so `npm ci` and `npm run build` must run first."},
-    {"code": "host_module_dependency", "subject": "@earendil-works/pi-tui@" + REVIEWED_SOURCES["core"]["spec"].rsplit("@", 1)[1], "status": "open",
-     "fact": "packages/promptr/package.json pins pi-tui under dependencies because the companion process needs it. Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning at each start. Those releases load a second copy from packages/promptr/node_modules for the built files. The package pins match runtime.piVersion in config/manifest.json. Pi declares its pi-tui dependency at that exact version. Interactive key handling and the warning on the kit pin are not verified."},
-    {"code": "private_renderer_adapters", "subject": "promptr", "status": "open",
-     "fact": "The sidebar uses private Pi renderer adapters; a start on Pi 1.0.2 shows the sidebar, and no session with a model ran."},
-    {"code": "automatic_dispatch_path_unverified", "subject": "promptr", "status": "open",
-     "fact": "packages/promptr/src/extension/index.mts calls requestHandoff with automatic: true; the kit has not verified its switch."},
-)
 
 
 def mcp_url(value, at):
@@ -222,10 +205,6 @@ def render_mcp(definitions, components):
             "gaps": gaps, "activation": activation}
 
 
-def workflow_record(components, mcp, promptr_enabled=False):
-    """Per-module readiness matrix recorded with every plan, enabled or not."""
-    promptr = components["promptr"]
-    return {"promptr": {"enabled": promptr_enabled, "status": promptr["status"],
-                        "prerequisites": [{"code": p["code"], "subject": p["subject"], "status": p["status"]}
-                                          for p in PROMPTR_PREREQUISITES]},
-            "mcp": mcp["activation"] if mcp else {"enabled": False, "status": components["mcp"]["status"]}}
+def workflow_record(components, mcp):
+    """Per-module readiness record kept with every plan, enabled or not."""
+    return {"mcp": mcp["activation"] if mcp else {"enabled": False, "status": components["mcp"]["status"]}}

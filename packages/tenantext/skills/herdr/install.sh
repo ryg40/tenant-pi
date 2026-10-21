@@ -2,24 +2,27 @@
 # Install the herdr skill at user level for Pi or Claude Code without the plugin.
 # Claude Code plugin users do not need this installer.
 # Usage: skills/herdr/install.sh
-# It is safe to run again. It replaces the installed copy.
+# It is safe to run again. The installed path becomes a link to this folder, so a pull of the kit
+# updates the skill at once. A real directory at that path moves to a backup name beside it.
 set -euo pipefail
 
 src=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 dest="${HERDR_SKILL_HOME:-$HOME/.agents/skills/herdr}"
 
 mkdir -p "$(dirname "$dest")"
-if [ -L "$dest" ]; then rm "$dest"; fi
-if [ "$src" != "$(cd "$dest" 2>/dev/null && pwd -P || true)" ]; then
-  mkdir -p "$dest"
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete --exclude '__pycache__' "$src/" "$dest/"
-  else
-    rm -rf "${dest:?}"/* && cp -R "$src/." "$dest/"
+if [ ! -L "$dest" ] && [ "$(cd "$dest" 2>/dev/null && pwd -P || true)" = "$src" ]; then
+  echo "skill:   $dest is this folder"
+else
+  if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+    stamp="$dest.backup-$(date +%Y%m%d-%H%M%S)"
+    backup="$stamp" n=1
+    while [ -e "$backup" ] || [ -L "$backup" ]; do backup="$stamp-$n"; n=$((n + 1)); done
+    mv "$dest" "$backup"
+    echo "backup:  $backup"
   fi
+  ln -sfn "$src" "$dest"
+  echo "skill:   $dest -> $src"
 fi
-chmod +x "$dest"/scripts/*.py "$dest"/scripts/*.sh "$dest/install.sh"
-echo "skill:   $dest"
 
 link() { # <skills directory of a harness>
   mkdir -p "$1"

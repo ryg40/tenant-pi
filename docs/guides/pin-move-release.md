@@ -83,97 +83,21 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    `breaking: true` means an upstream `Breaking Changes` heading exists; false does not prove compatibility.
    Resolve any required migration before accepting the candidate.
 
-## Move pins and measured facts
+## Move the pin
 
-1. Apply the shared pin editor from the worktree root.
-
-   ```sh
-   PYTHONDONTWRITEBYTECODE=1 python3 - <<'EOF'
-   from pathlib import Path
-   from scripts.pi_update import pin_contents
-
-   contents = pin_contents(Path("config/manifest.json").read_text(encoding="utf-8"),
-                           Path("scripts/validate.py").read_text(encoding="utf-8"), "<new version>")
-   for name, content in contents.items():
-       Path(name).write_text(content, encoding="utf-8")
-   EOF
-   git diff -- config/manifest.json scripts/validate.py
-   ```
-
-   Check the tested version, core npm spec, validator anchor, and accepted range from the new pin to the next minor line.
-   See the [pin move rule](release-checklist.md#gates) for separately reviewed ranges and prerelease pins.
-
-   Then rebuild the public pages that hold the core spec before publication:
+1. Move the pin from the worktree root, then run the check.
 
    ```sh
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/architecture_build.py
-   PYTHONDONTWRITEBYTECODE=1 python3 scripts/explainer_build.py
-   ```
-
-   Generate the local edition separately with `python3 scripts/architecture_build.py --local` after preparing its untracked values file.
-
-   Warning: the pin editor replaces both tracked files; preserve unrelated edits before running it.
-
-2. Move Promptr's two exact package pins and regenerate its lock file.
-
-   ```sh
-   (
-     cd packages/promptr
-     npm pkg set 'dependencies.@earendil-works/pi-tui=<new version>' 'devDependencies.@earendil-works/pi-coding-agent=<new version>'
-     npm install
-   )
-   git diff -- packages/promptr/package.json packages/promptr/package-lock.json
-   ```
-
-   Check that both pins and the resolved lock entries use the candidate; do not hand-edit lock integrity values.
-
-3. Search for current-pin claims and update their measured facts.
-
-   ```sh
-   git grep -n -F '<pin>' -- config scripts tests docs packages README.md INSTALL.md
+   PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py pin --version "<new version>"
+   python3 scripts/check.py --tier fast
    git diff --stat
    ```
 
-   Check the pin commit's file inventory against this list, and preserve historical reviewed-release facts and fixed test fixtures.
+   The `pin` action sets `runtime.piVersion`, the core npm spec and `runtime.piAcceptedRange` in `config/manifest.json`, and changes no other file.
+   The range goes from the new pin to the next minor line. See the [pin move rule](release-checklist.md#gates) for a separately reviewed range and prerelease pins.
+   Docs and tests read the pin from the manifest. Version-scoped evidence, for example in `docs/check-runtime.md`, stays as it is.
 
-   | Files | Review |
-   | --- | --- |
-   | `config/manifest.json`, `scripts/validate.py` | Core pin, range, core anchor, and Promptr readiness fact. |
-   | `docs/architecture.html` and `EXPLAINER.html` | Rebuilt pages only; no hand edit. |
-   | `packages/promptr/package.json`, `packages/promptr/package-lock.json` | Exact package pins and resolved dependencies. |
-   | `docs/packages.md`, `docs/workflow-modules.md` | Check manifest-derived pin references and readiness gaps; preserve version-scoped historical evidence. |
-   | The foundation table of the development repository, if your copy has one | Core and Promptr rows. |
-   | `scripts/workflow_modules.py`, `tests/test_workflow_modules.py` | Check manifest-derived readiness facts and structural assertions; do not add version or test-count literals. |
-   | `docs/check-runtime.md` | Version-probe evidence; preserve its explicitly defined historical reviewed release. |
-   | A private chronology file, if your copy has one | Do not publish a dated machine record. |
-   | `packages/promptr/README.md`, `packages/promptr/docs/sidebar-prototype.md`, `packages/promptr/src/doctor/doctor.mts` | Current compatibility statements and comments. |
-   | `tests/fixtures/wizard_plan_tenant_pi.json` | Regenerated plan fixture only; see the next step. |
-
-   Add a changelog entry if the repository has a current changelog; do not rewrite archived history.
-   Inspect changed key defaults against package bindings and documentation before changing any handler.
-   Package tests are not proof of a live package load.
-
-4. Regenerate the wizard plan fixture.
-
-   `tests/fixtures/wizard_plan_tenant_pi.json` is the plan of the tenant-pi wizard for one fixed state, with the kit root as `/KIT_ROOT`.
-   The plan holds the pin, the accepted range, the core spec and the measured facts of `config/manifest.json`.
-   Regenerate it after each reviewed change of the manifest or of the wizard plan, also outside a pin move.
-   Run the command from the worktree root after the edits of steps 1 to 3:
-
-   ```sh
-   PYTHONDONTWRITEBYTECODE=1 python3 - <<'EOF'
-   from tests.test_wizard_seam import PLAN, tenant_pi_plan_text
-
-   PLAN.write_text(tenant_pi_plan_text(), encoding="utf-8")
-   EOF
-   git diff -- tests/fixtures/wizard_plan_tenant_pi.json
-   ```
-
-   Check that each changed line comes from the reviewed change: the core spec, `piVersion`, the accepted range, the `required` and `tested` versions, the runtime `status`, the readiness entries and the measured facts.
-   The `digest` line changes with each other change.
-   A changed line that the reviewed change does not explain is a plan change: stop and review it before the commit.
-   The fixture must hold no host path; the kit root is always `/KIT_ROOT`.
-   See [the pin move in the update checks](../pi-update.md#qualify) for the qualification run.
+   Warning: the `pin` action replaces `config/manifest.json`; preserve unrelated edits before running it.
 
 ## Qualify the moved pin once
 
@@ -190,9 +114,9 @@ The [update checks](../pi-update.md), [publisher](../publishing.md), and [runtim
    Qualification installs into a private run directory and edits only a candidate copy.
    It checks runtime versions, repository checks, package tests, generation, and one core-only loopback print reply.
    A failure blocks the move; read its log and fix the cause before a new qualification attempt.
-   Move the pins and regenerate the wizard plan fixture before this run.
+   Move the pin before this run.
    The qualifier copies those working-tree bytes and runs the full unit suite inside the candidate copy.
-   It also runs `PACKAGE_PY` and the package Node tests; do not repeat them in the worktree.
+   Its `check-set` step runs `scripts/check.py --all` with every package suite; do not repeat them in the worktree.
 
 2. Inspect the isolation fields separately from the test result.
 
@@ -289,7 +213,7 @@ The commands match the release evidence, with explicit failure handling instead 
    if PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --stamp-status | tee "$LOGDIR/stamp.log"; then
      :
    else
-     if ! PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py 2>&1 | tee "$LOGDIR/check.log"; then
+     if ! PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --all 2>&1 | tee "$LOGDIR/check.log"; then
        git revert -m 1 <merge>
        exit 1
      fi
@@ -310,14 +234,12 @@ The commands match the release evidence, with explicit failure handling instead 
    scripts/scan.sh all 2>&1 | tee "$LOGDIR/scan-all.log"
    printf '%s\n' 'gate 6 clean Linux core trial: not run (fast track)' | tee "$LOGDIR/gate-6.log"
    printf '%s\n' 'gate 7 optional live services: <one line for each module, route and service>' | tee "$LOGDIR/gate-7.log"
-   printf '%s\n' 'gate 8 Compose seat: config not run, build not run, table check not run' | tee "$LOGDIR/gate-8.log"
    ```
 
    A pin move or a new component requires `scripts/scan.sh all`; this pin guide therefore runs it before the push.
    Check the scan exit code and its level; a development `level warn` result does not approve snapshot content.
    Record maintainer approval for the fast track, and record every gate 7 optional service separately as passed, failed, blocked, or not run.
    Replace the gate 7 placeholder in the script with one line for each optional module, route and service.
-   Replace a `not run` part of gate 8 only with the result of the steps of [gate 8](release-checklist.md#gate-8-the-compose-seat).
 
 4. Build without pushing and inspect the exact snapshot and tag.
 
@@ -424,7 +346,7 @@ The commands match the release evidence, with explicit failure handling instead 
 
    Check installer output and skipped targets, then reload the consuming session or start a new one; run only installers for changed skills.
 
-   Warning: the Herdr installer replaces its installed copy; preserve local customizations before running it.
+   The Herdr installer makes the installed path a link to the checkout; an earlier real directory there moves to a backup name beside it.
 
 2. Remove only clean task worktrees whose branch tips are ancestors of `main`.
 
@@ -452,8 +374,6 @@ The commands match the release evidence, with explicit failure handling instead 
 ## Pitfalls from the first run
 
 1. A worktree can lack Pi peer packages after `npm ci`; qualification links its copied packages to the candidate installation.
-   Tenantext's `npm test` is hermetic: the slopscore test helpers default their trace directories to fresh temporary directories.
-   Those helpers do not read the caller's agent traces.
 2. Tests can also fail at the unchanged baseline; record the comparison and block unexplained failures instead of blaming the pin.
    Footer tests must check complete paths up to the adapter's 256-character cap at a sufficient width.
    Test renderer truncation separately, because qualification work-directory lengths vary.

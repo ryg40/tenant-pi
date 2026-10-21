@@ -11,9 +11,10 @@ const COMMANDS = ["RetrieveMemoryRecordsCommand", "ListMemoryRecordsCommand", "B
 test("the pinned SDK has the four command classes of the core", () => {
   for (const name of COMMANDS) assert.equal(typeof sdk[name], "function", name);
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-  assert.equal(pkg.dependencies["@aws-sdk/client-bedrock-agentcore"], "3.1154.0");
+  const pinned = pkg.dependencies["@aws-sdk/client-bedrock-agentcore"];
+  assert.match(pinned, /^\d+\.\d+\.\d+$/);
   const lock = JSON.parse(readFileSync(new URL("../package-lock.json", import.meta.url), "utf8"));
-  assert.equal(lock.packages["node_modules/@aws-sdk/client-bedrock-agentcore"].version, "3.1154.0");
+  assert.equal(lock.packages["node_modules/@aws-sdk/client-bedrock-agentcore"].version, pinned);
 });
 
 test("the core module never references a delete command or a delete method", () => {

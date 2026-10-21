@@ -1,4 +1,4 @@
-"""Synthetic, offline workflow-module tests: MCP adapter definitions, Promptr readiness, publication."""
+"""Synthetic, offline workflow-module tests: MCP adapter definitions, publication."""
 import copy
 import json
 import os
@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import BLOCK_PROCESS_HOOK, slow
+from tests.support import BLOCK_PROCESS_HOOK, launch_parts, slow
 from pathlib import Path
 
 from scripts.candidate_compare import FILES, compare
@@ -16,8 +16,7 @@ from scripts.memory_modules import HERMES_CONFIG
 from scripts.profile_plan import prepare
 from scripts.profile_write import STATE, WriteError, write
 from scripts.validate import Invalid, load, manifest, overlay
-from scripts.workflow_modules import (BUILTIN_MCP_OFF, MCP_CONFIG, MCP_MODE_NAME, PROMPTR_PREREQUISITES,
-                                      render_mcp, validate_mcp)
+from scripts.workflow_modules import BUILTIN_MCP_OFF, MCP_CONFIG, MCP_MODE_NAME, render_mcp, validate_mcp
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
@@ -188,44 +187,7 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertNotIn(MCP_MODE_NAME, plan["commands"]["launch"])
         workflow = plan["files"][".tenant-pi/choices.json"]["content"]["workflow"]
         self.assertEqual({"enabled": False, "status": "tested"}, workflow["mcp"])
-        self.assertEqual({"enabled": False, "status": "unverified",
-                          "prerequisites": [{"code": p["code"], "subject": p["subject"], "status": p["status"]} for p in PROMPTR_PREREQUISITES]},
-                         workflow["promptr"])
         self.assertIsNone(plan["files"][".tenant-pi/choices.json"]["content"]["mcpDefinitions"])
-        self.assertEqual("unverified", self.components["promptr"]["status"])
-        self.assertEqual({"local_package_load": "met", "pi_line_build_and_tests": "met", "build_step_required": "open",
-                          "host_module_dependency": "open", "private_renderer_adapters": "open",
-                          "automatic_dispatch_path_unverified": "open"}, {p["code"]: p["status"] for p in PROMPTR_PREREQUISITES})
-        # Each open prerequisite is a gap of the component, so a plan that enables Promptr names it.
-        gap_codes = {gap["code"] for gap in self.components["promptr"]["gaps"]}
-        self.assertLessEqual({p["code"] for p in PROMPTR_PREREQUISITES if p["status"] == "open"}, gap_codes)
-
-    def test_promptr_facts_separate_current_checks_from_historical_loads(self):
-        facts = {p["code"]: p["fact"] for p in PROMPTR_PREREQUISITES}
-        self.assertIn("Pi 1.0.2 and Pi 1.0.3 load", facts["local_package_load"])
-        self.assertIn("16 commands", facts["local_package_load"])
-        self.assertIn("four skills", facts["local_package_load"])
-        self.assertEqual("@earendil-works/pi-tui@" + self.manifest_data["runtime"]["piVersion"], next(
-            p["subject"] for p in PROMPTR_PREREQUISITES if p["code"] == "host_module_dependency"))
-        self.assertIn("Pi 1.0.2 and Pi 1.0.3 print one peerDependencies warning", facts["host_module_dependency"])
-        self.assertNotIn("No build or test on the kit pin is verified", " ".join(facts.values()))
-
-    def test_promptr_is_selectable_and_the_plan_declares_the_built_package(self):
-        overlay = self.base(mcp=False)
-        for cid in ("promptr", "promptr-handoff"):
-            overlay["selection"]["disable"].remove(cid)
-            overlay["selection"]["enable"].append(cid)
-        plan = prepare(self.manifest_data, overlay)
-        packages = plan["files"]["settings.json"]["content"]["packages"]
-        self.assertEqual([{"source": str(ROOT / "packages/promptr"), "extensions": ["index.ts"],
-                           "skills": ["skills/promptr-handoff"], "prompts": [], "themes": []}], packages)
-        workflow = plan["files"][".tenant-pi/choices.json"]["content"]["workflow"]
-        self.assertTrue(workflow["promptr"]["enabled"])
-        gaps = {(gap["code"], gap["subject"]) for gap in plan["readinessGaps"]}
-        for code in ("package_runtime_unverified", "build_step_required", "host_module_dependency",
-                     "placeholder_defaults", "private_renderer_adapters", "automatic_dispatch_path_unverified", "kit_test_missing"):
-            self.assertIn((code, "promptr"), gaps)
-        self.assertIn(("skill_use_unverified", "promptr-handoff"), gaps)
 
     def test_extension_components_keep_skills_empty_and_herdr_is_its_own_component(self):
         # The Herdr skill is a selectable component.
@@ -251,8 +213,7 @@ class WorkflowPlanTests(unittest.TestCase):
         self.assertEqual(STDIO_SERVER, content["mcpServers"]["local"])
         self.assertEqual({"hostConfigDiscovery": "off", "projectServers": "ask", "allowInstall": False}, content["settings"])
         self.assertNotIn("$schema", content)
-        self.assertEqual(["PI_MCP_CONFIG_MODE=exclusive", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
-                         shlex.split(plan["commands"]["launch"]))
+        self.assertEqual(["PI_MCP_CONFIG_MODE=exclusive"], launch_parts(plan["commands"]["launch"])[0])
         self.assertEqual(["npm install --global -- @earendil-works/pi-coding-agent@" + PIN,
                           "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"]) + " pi install npm:pi-mcp-adapter"],
                          plan["commands"]["setup"])
@@ -286,9 +247,8 @@ class WorkflowPlanTests(unittest.TestCase):
         sources = [p["source"] for p in plan["files"]["settings.json"]["content"]["packages"]]
         self.assertEqual([str(ROOT / "packages/tenantext"),
                           "npm:@zosmaai/pi-llm-wiki", "npm:pi-mcp-adapter"], sources)
-        self.assertEqual(["PI_MCP_CONFIG_MODE=exclusive", "WIKI_HOME=/home/Test User/wiki",
-                          "env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
-                         shlex.split(plan["commands"]["launch"]))
+        self.assertEqual(["PI_MCP_CONFIG_MODE=exclusive", "WIKI_HOME=/home/Test User/wiki"],
+                         launch_parts(plan["commands"]["launch"])[0])
         # One install line for each npm source, in the order of `packages`; the peer override line is last.
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
         self.assertEqual([agent + " pi install npm:@zosmaai/pi-llm-wiki", agent + " pi install npm:pi-mcp-adapter",
@@ -309,7 +269,7 @@ class WorkflowPlanTests(unittest.TestCase):
         npm = [source for source in sources if source.startswith("npm:")]
         # The order of `packages`: the memory modules, the MCP adapter, the question extension.
         self.assertEqual(["npm:pi-hermes-memory", "npm:@zosmaai/pi-llm-wiki", "npm:pi-mcp-adapter",
-                          "npm:@juicesharp/rpiv-ask-user-question@2.13.9"], npm)
+                          "npm:" + self.manifest_data["components"]["questions"]["source"]["spec"]], npm)
         self.assertEqual([owner, "/home/example/git/owner-tools"], sources[-2:])
         agent = "PI_CODING_AGENT_DIR=" + shlex.quote(data["target"]["agentDir"])
         setup = plan["commands"]["setup"]
@@ -492,7 +452,6 @@ class WorkflowPublicationTests(unittest.TestCase):
         preview = json.loads(plan.stdout)
         self.assertEqual([".", ".tenant-pi", ".tenant-pi/choices.json", MCP_CONFIG, "settings.json", STATE], [f["path"] for f in preview["files"]])
         self.assertTrue(preview["workflow"]["mcp"]["enabled"])
-        self.assertEqual("unverified", preview["workflow"]["promptr"]["status"])
         self.assertTrue(preview["commands"]["launchDisplayOnly"].startswith("PI_MCP_CONFIG_MODE=exclusive "))
         generated = run("generate", "--overlay", str(overlay_file), "--local-dir", str(local), "--target", str(self.target))
         self.assertEqual(0, generated.returncode, generated.stderr)

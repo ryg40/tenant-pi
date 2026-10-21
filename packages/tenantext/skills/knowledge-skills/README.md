@@ -1,16 +1,11 @@
 # knowledge-skills
 
 `knowledge-skills` is an optional skill component of the kit.
-It ships four MIT skills from `inkeep/open-knowledge-skills` for Claude Code and Pi.
+It ships MIT skills from `inkeep/open-knowledge-skills` for Claude Code and Pi.
 Each skill has a `SKILL.md`, an `agents/openai.yaml` and a `CREDITS.md`.
 One shipped copy serves both harnesses.
 
-| Skill | Use |
-| --- | --- |
-| `okf-knowledge-base` | Read, author and maintain Open Knowledge Format (OKF) v0.2 bundles. |
-| `open-knowledge-write-skill` | Author, evaluate and maintain Agent Skills, including skills in a distribution repository. |
-| `open-knowledge-discovery` | Discover OpenKnowledge, set up a project and open a Markdown file. |
-| `open-knowledge` | Read, author and maintain an OpenKnowledge project's content through MCP. |
+Each folder of this directory is one skill. `resources.skills` of `knowledge-skills` in `config/manifest.json` names the shipped ones. The `description` of each `SKILL.md` says when to use the skill.
 
 ## Install
 
@@ -54,7 +49,7 @@ The discovery skill only covers setup and discovery.
 
 ## Credits and checks
 
-All four skills use upstream commit `776760f49d5b3b5c24921165b6c1ea17e8990fd5`.
+All its skills use upstream commit `776760f49d5b3b5c24921165b6c1ea17e8990fd5`.
 Each `CREDITS.md` records the source paths, source comparison and adaptations.
 The MIT licence text is in `../../licenses/open-knowledge-skills-MIT.txt`.
 The kit additions use the package MIT licence.

@@ -15,9 +15,8 @@ Use your question tool, or plain text during bootstrap. Offer two to four concre
 - "Which Node do you want Pi to use?" Follow [requirements](../../INSTALL.md#stage-1-requirements) when several installs exist.
 - "Which remote do you want to clone from?" Ask only when unclear; follow [clone and check](../../INSTALL.md#stage-2-clone-and-check-the-kit).
 - "Install Pi globally with this Node, or do you manage global npm packages another way?" Follow [the Pi decision](../../INSTALL.md#stage-3-install-pi).
-- "Install on this machine, on a remote Linux host over SSH, or in a container on this machine?" Confirm before changes. Follow [destination, account and paths](../../INSTALL.md#stage-4a-herdr-and-the-question-tool).
+- "Install on this machine, or on a remote Linux host over SSH?" Confirm before changes. Follow [destination, account and paths](../../INSTALL.md#stage-4a-herdr-and-the-question-tool).
 - "Where do you want the Herdr skill?" "Structured questions in Pi?" Follow [Herdr and the question tool](../../INSTALL.md#stage-4a-herdr-and-the-question-tool).
-- For a container, ask [the eight seat questions](../../INSTALL.md#stage-4c-the-compose-seat).
 - "Where should the new profile live?" Follow [the private overlay](../../INSTALL.md#stage-5-the-private-overlay).
 - "Which components do you want?" Use [the checklist](../../INSTALL.md#the-checklist). Review the full plan before changes.
 - Ask explicitly about memory storage and recall consent. With wiki, follow [the vault check](../../INSTALL.md#the-llm-wiki-vault).

@@ -11,7 +11,7 @@ import re
 from scripts.profile_write import GENERATED_AT, commit
 from scripts.memory_modules import HERMES_CONFIG, MEMORY, MODULE_FIELDS
 from scripts.profile_plan import prepare, source_pin
-from scripts.validate import HEX, ID, OWNER_RESOURCES, REVIEWED_SOURCES, ROLE_NAMES, Invalid, fail, path_segment, npm_name, npm_parts, unmanaged
+from scripts.validate import HEX, ID, OWNER_RESOURCES, REVIEWED_SOURCES, ROLE_NAMES, Invalid, fail, path_segment, npm_parts, unmanaged
 from scripts.workflow_modules import LIFECYCLES, MCP_CONFIG, SERVER_NAME
 
 FILES = ("settings.json", ".tenant-pi/choices.json", ".tenant-pi/state.json", HERMES_CONFIG, MCP_CONFIG, "models.json")
@@ -37,7 +37,7 @@ SAFE_NAME = re.compile(r"[A-Za-z0-9_.:@-]{1,64}\Z")
 RANGES = (">=24.0.0 <25", ">=3.11")
 PLAIN_VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")  # no free-text prerelease tag
 DECLARED_ENV = frozenset(("TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY", "GITEA_TOKEN"))
-REVIEWED_NPM = frozenset(npm_name(s["spec"]) for s in REVIEWED_SOURCES.values() if s and s["kind"] == "npm")
+REVIEWED_NPM = frozenset(s["name"] for s in REVIEWED_SOURCES.values() if s and s["kind"] == "npm")
 REVIEWED_GIT = {(s["url"], s["subdir"]) for s in REVIEWED_SOURCES.values() if s and s["kind"] == "git"}
 REVIEWED_TREE = frozenset(s["path"] for s in REVIEWED_SOURCES.values() if s and s["kind"] == "tree")
 # The overlay `memory` fields: a switch and a closed name by value, a path as a marker.

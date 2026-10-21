@@ -78,15 +78,20 @@ state the task, the limits (read-only or not), and the shape of the answer.
 | 0 | The reply is printed | Use the reply. Continue the task of the user. A line `note: reply was an API error` means that the text is the last assistant message that the agent wrote after the prompt, not a final reply. When the note ends with `; from before this prompt`, the text is from an earlier turn. A line `NO NEW REPLY in the transcript` means that the agent wrote no new reply: read the screen tail that follows it, and do not send the prompt again before you know why. The `herdr-watch` status of this case is `no new reply, read the screen`. |
 | 3 | The target works on another turn. Nothing was sent | `herdr agent wait <pane-id> --timeout 600000`, then call `ask.py` again. Or ask the user. |
 | 4 | The target waits on a question or an approval | Show the screen text to the user. Do not answer it yourself. |
-| 5 | Herdr wrote the prompt but no turn started | Read the screen. Do not send the prompt again before you know why. |
+| 5 | Herdr wrote the prompt but no turn started. After the stall of Herdr, `ask.py` waited up to 60 seconds more, inside `--timeout`, and never sent the prompt again | Read the screen. Do not send the prompt again before you know why. |
 | 6 | The reply is an API error and the transcript holds no other reply | Read the commit of the agent for its record. Send the task again only in a new pane. |
 | 124 | Time is up and the target still works | The prompt was delivered. Wait again, then use A3. |
+
+A compaction in the turn can set the status to done before the reply. When the transcript shows a compaction after the prompt and no new reply, `ask.py` waits again, until the timeout.
 
 ### A3. Read the last reply without a prompt
 
 ```bash
 python3 $S/last-reply.py <pane-id-or-name>
 ```
+
+`python3 $S/ask.py <pane-id-or-name> --wait-only --timeout 600` sends no prompt: it waits until the pane settles and prints the last reply, with the exit codes of A2.
+In Pi, `herdr_watch_start` with `wait_only: true` and no prompt runs that form in the background, for example after a timeout.
 
 ### A4. Finish the job
 
@@ -119,7 +124,7 @@ exists, use `herdr_watch_start`. Use the blocking `ask.py` only in these cases:
 | --- | --- | --- |
 | harness | `pi`, `claude` | `claude` for "fable", "opus", "sonnet", "haiku", "claude". `pi` for a model name that `pi --list-models` finds. Otherwise your own harness. |
 | role | `coordinator`, `researcher` (context gatherer, the web first), `scout` (context gatherer, local files and repositories first), `worker`, `reviewer` | Choose from the task. Ask only if two roles fit. |
-| model | The name that the user gives. pi: `provider/model` or a name that `pi --list-models` finds one time. claude: a model ID or a CLI alias. | Leave it out. The local file can supply a default. |
+| model | The name that the user gives. pi: `provider/model` or a name that `pi --list-models` finds one time. claude: a model ID or a CLI alias. | Leave it out only when the local file names a model for the role and the harness. Else ask the user: without a model, `spawn.py` starts no pane and exits with 2. |
 | thinking | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Leave it out. The local file can supply a level. |
 
 The user usually names the model and the thinking level. Pass them as given;
@@ -127,7 +132,7 @@ do not replace them.
 
 Optional `~/.config/herdr-skill/models.json` supplies defaults in the shape `{"roles":{"<role>":{"<harness>":{"model":"<name>","thinking":"<level>"}}}}`.
 Each key is optional; `XDG_CONFIG_HOME` replaces `~/.config` when set.
-The order is request, file, harness default. A named model skips the file; a requested thinking level wins.
+The order is request, then file. A named model skips the file; a requested thinking level wins. With no model from either, `spawn.py` starts no pane and exits with 2; the message names `--model` and the file. With no thinking level from either, the harness chooses.
 The skill ships no model choice. See `models.example.json`.
 
 A role gives the agent an order of preference for its tools, with fallbacks.

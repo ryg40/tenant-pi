@@ -109,7 +109,7 @@ class OwnerResourceTests(unittest.TestCase):
     def test_entry_in_at_or_above_the_kit_packages_is_rejected(self):
         for kind in ("skills", "prompts"):
             for value in (str(ROOT / "packages"), str(ROOT / "packages/tenantext"), str(ROOT / "packages/tenantext/skills"),
-                          str(ROOT / "packages/promptr/skills/promptr-handoff"), str(ROOT / "packages/absent"),
+                          str(ROOT / "packages/tenantext/skills/herdr"), str(ROOT / "packages/absent"),
                           str(ROOT), str(ROOT.parent)):
                 with self.subTest(kind=kind, value=value):
                     self.error({kind: [value]}, "kit_package", "overlay.ownerResources." + kind)

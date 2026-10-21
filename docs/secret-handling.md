@@ -164,7 +164,7 @@ The policy checks, the file names and the commit messages use `git diff-tree -m`
 3. `scripts/scan.sh` adds `targetRules` with all secret rules to each allowlist that has none, so that no allowlist hides a host value. An allowlist can set `targetRules` to fewer secret rules. A `targetRules` line that names a host-value rule stops the scan with exit 2.
 4. After each change of `.gitleaks.toml`, `scripts/host-values.deny`, `scripts/host-values.allow`, `scripts/host-values.regex` or `scripts/scan.sh`, run `sh tests/test_scan.sh`. The test uses a copy of the scan with a local deny list and an allow list of its own. After a change of `.local/host-values.deny`, run `scripts/scan.sh selftest`. The pre-commit hook runs `scripts/scan.sh selftest` when one of the tracked files is staged.
 5. A deny pattern is a literal string, case-insensitive. Quotes and backslashes are not allowed. Do not add a value of a real host to `scripts/host-values.deny`; add it to `.local/host-values.deny`.
-6. Add a line to `scripts/host-values.allow` only after a decision of the maintainer. Each line is one exact URL. Add a line to `scripts/host-values.allow-lines` only after a decision of the maintainer, and record the file, the line, the value class and the reason in the section "Accepted host values in the publish set" below.
+6. Add a line to `scripts/host-values.allow` only after a decision of the maintainer. Each line is one exact URL. Add a line to `scripts/host-values.allow-lines` only after a decision of the maintainer, and record the value class and the reason in the section "Accepted host values in the publish set" below when they are new.
 7. A regex rule in `scripts/host-values.regex` has a name, a sample and a regular expression (format in the file). The file must not contain an address.
 8. Do not write a token or a host value into a tracked file, also not into a test. Build it at run time from parts, as `tests/test_scan.sh` does.
 9. Do not use `gitleaks:allow`, `betterleaks:allow`, `.gitleaksignore`, `.betterleaksignore` or a baseline to accept a finding. The scan ignores the comment and refuses the files. Correct the content, or add a narrow content allowlist (rules 1 and 2).
@@ -379,15 +379,9 @@ The test covers the negative control, a clean tree, a synthetic secret and a hos
 
 ## Accepted host values in the publish set
 
-The lines below stay in the portable publication, accepted one by one by hash in `scripts/host-values.allow-lines`. No line holds a host value. Each line is sample data of a tracker feature: the rule `tracker-reference` of the public reader check finds the form "issue" or "ticket" with a number, and it cannot tell sample data from a reference. The line numbers can be out of date; the list accepts the text, not the number.
+The lines of `scripts/host-values.allow-lines` stay in the portable publication, accepted one by one by path and hash. The file is the list. No line holds a host value. Each line is sample data of a tracker feature, for example a synthetic fixture of the tracker tests: the rule `tracker-reference` of the public reader check finds the form "issue" or "ticket" with a number, and it cannot tell sample data from a reference. The list accepts the text, not a line number.
 
-| File and lines | Rule | Reason |
-| --- | --- | --- |
-| `packages/promptr/test/workboard/prompt-draft.test.mjs` (4 lines), `packages/promptr/test/workboard/selection-board.test.mjs` (1 line) | `tracker-reference` | Sample issue titles of the workboard tests. |
-| `packages/tenantext/README.md` (1 line), `packages/tenantext/slopscore/test/pr.test.ts` (2 lines) | `tracker-reference` | Sample output of the slopscore block, which counts tickets. |
-| `packages/tenantext/tracker/tests/fixtures/pipeline-previous-brief.md` (4 lines), `packages/tenantext/tracker/tests/fixtures/pipeline-synthesis-long.md` (1 line) | `tracker-reference` | Synthetic fixtures of the tracker tests. |
-
-A scan at level `fail` on the tree of `portable` passes with this list. A change of any of these lines needs a new decision. When a maintainer accepts a new line, list it by hash and add it to this table with the rule or the value class and the reason. Do not write a host value here.
+A scan at level `fail` on the tree of `portable` passes with this list. A change of an accepted line needs a new decision. When a maintainer accepts a new line, add its path and hash to the file. If its rule, value class or reason is new, add it to this section. Delete an entry that matches no file. Do not write a host value here.
 
 ## Identities that leave with a portable snapshot
 

@@ -4,7 +4,7 @@ Status: offline implementation, not a qualified runtime. `scripts/memory_modules
 
 Four modules can be enabled: `hermes`, `wiki`, `openviking`, and `agentcore`.
 The npm packages are `pi-hermes-memory` and `@zosmaai/pi-llm-wiki`.
-The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.10` and `@zosmaai/pi-llm-wiki@0.12.4`, and compared with `@zosmaai/pi-llm-wiki@0.12.5`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. Both remote modules need `consent.remoteMemoryWrites`. The default example enables none of them and emits no memory extension. The fresh wizard leaves memory modules unchecked. Loaded selections remain unchanged; storage and recall require explicit consent. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
+The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. The two npm modules are declared without a version, so the `pi install` line of the plan installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version. The source facts below were read at `pi-hermes-memory@0.9.10` and `@zosmaai/pi-llm-wiki@0.12.4`, and compared with `@zosmaai/pi-llm-wiki@0.12.5`; a newer version can change them. `openviking` is a copy of one reviewed commit inside the kit; see its section below. Enabling a module is a three-part explicit act: the selection, `consent.memoryCapture` and the `memory` choices. Both remote modules need `consent.remoteMemoryWrites`. The default example enables none of them and emits no memory extension. A fresh selection leaves memory modules unchecked. Loaded selections remain unchanged; storage and recall require explicit consent. See [INSTALL.md](../INSTALL.md#stage-5-the-private-overlay), Stage 5.
 
 ## Activation truth table
 
@@ -363,7 +363,7 @@ Its five behaviour changes are:
 - Additive mode persists the capture watermark across resume. Session creation and reads use `auto_create` and fail closed on errors.
 - The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
 
-The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.3.1`.
+The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to an exact version in `package.json`.
 
 Licence: Apache-2.0 covers upstream `examples/`; the kit carries its `examples/LICENSE` as `packages/openviking-pi/LICENSE`. The OpenViking repository root uses AGPL-3.0. The kit copies nothing from outside `examples/`.
 
@@ -376,7 +376,7 @@ Licence: Apache-2.0 covers upstream `examples/`; the kit carries its `examples/L
 | Credentials | The endpoint, the key and the identity come from `OPENVIKING_*` variables, then `~/.openviking/ovcli.conf`, then `~/.openviking/ov.conf`. `OPENVIKING_CLI_CONFIG_FILE` and `OPENVIKING_CONFIG_FILE` move the two files. | The kit writes none of them, reads none of them, and has no overlay field for an endpoint, a key or a user. `endpoints.openviking` and `env.openviking` fail validation. The user sets up the credentials outside the kit before the first start. |
 | Local state | The pending queue (`~/.openviking/pending/`), the recall ledger (`~/.openviking/pi-recall-ledger/`), the workspace registry and the logs are under `~/.openviking/`. | Not under the agent directory. Each profile of one user shares this state: the `shared_home_state` gap. |
 | Tools | The extension registers the MCP tools of the server as `openviking_*` tools after a handshake. A failed handshake does not stop the start. | Do not point the `mcp` module at the same server: the tools would appear twice. |
-| Dependency | `package.json` lists `@modelcontextprotocol/client` at `2.3.1`, with a committed lock file. `node_modules/` is not in the tree. | The `install_step_required` gap and the setup line `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only: the kit does not run it. |
+| Dependency | `package.json` lists `@modelcontextprotocol/client` at an exact version, with a committed lock file. `node_modules/` is not in the tree. | The `install_step_required` gap and the setup line `npm --prefix <kit>/packages/openviking-pi ci --ignore-scripts`. Display only: the kit does not run it. |
 | Server | The extension needs an OpenViking server with `viking://~` home alias support. | The `server_required` gap. The kit starts no server and makes no request. |
 
 A setting from an older version of the extension can exist as a `config.json` beside an installed copy. This version does not read that file. To keep a choice from it, set the overlay field when the module has one, or move the value to the `plugin.pi` section of `~/.openviking/ovcli.conf`.
@@ -474,7 +474,7 @@ The overlay carries no key. The SDK uses the AWS profile that the person config 
 The package declaration names `packages/agentcore-pi/index.ts` after OpenViking.
 The extension imports the shared core `packages/agentcore-memory-core` by a relative path. Keep the kit directory in place.
 The display-only setup line runs `npm --prefix <kit>/packages/agentcore-memory-core ci --ignore-scripts`.
-The lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1154.0`. The extension package has no dependency of its own.
+The lock file of the core installs `@aws-sdk/client-bedrock-agentcore` at the exact version of its `package.json`. The extension package has no dependency of its own.
 The readiness gaps are `install_step_required`, `aws_resource_required`, and `package_runtime_unverified`.
 No peer override, generated config file, or local memory store is added.
 

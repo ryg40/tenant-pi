@@ -15,6 +15,5 @@ The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. 
 
 - Defaults to the last ten project sessions and adds OpenViking session lookup, project-key matching, and local-log fallbacks.
 - Maps mechanical findings to checks and judgement rules to Herdr reviewer prompts, with steering guidance for both harnesses.
-- Uses slopscore traces for tool cost and `slopscore-pr` only for the pull request section.
 - Asks for acceptance in three-question rounds before creating Gitea issues with triage labels.
 - Adds an OpenKnowledge handoff through `okknow` and skill-loading instructions for both harnesses.

@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { agentDir } from "./agent-dir.ts";
 
 export interface TenantextSettings {
 	/** Append the language rules to the system prompt. */
@@ -17,8 +17,7 @@ export const DEFAULT_SETTINGS: TenantextSettings = { rules: true, guard: true, d
 export const DECISIONS_EVENT = "tenantext:decisions";
 
 export function stateDir(): string {
-	const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
-	return join(agentDir, "tenantext");
+	return join(agentDir(), "tenantext");
 }
 
 export function settingsPath(): string {

@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { dirname, join } from "node:path";
+import { agentDir } from "../../src/agent-dir.ts";
 
 export interface Settings {
   enabled: boolean;
@@ -15,7 +15,7 @@ export const defaults: Settings = {
   healthPollSeconds: 60, healthTimeoutMs: 2000, gitCacheMs: 1000, gitIdlePollSeconds: 15,
   showHealthyServices: false, showUnavailableOptionalSources: false, healthUrls: {},
 };
-export const settingsPath = () => join(getAgentDir(), "ops-footer", "settings.json");
+export const settingsPath = () => join(agentDir(), "ops-footer", "settings.json");
 export function healthUrl(value: unknown): string | undefined {
   if (typeof value !== "string" || value.length > 2048) return;
   try {

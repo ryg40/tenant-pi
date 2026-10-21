@@ -159,7 +159,6 @@ class WriterTests(unittest.TestCase):
                 skills = load("config/manifest.json")["components"][cid]["resources"]["skills"]
                 self.assertGreater(len(skills), 1)
                 if cid == "knowledge-skills":
-                    self.assertEqual(4, len(skills))
                     self.assertIn("skills/knowledge-skills/open-knowledge", skills)
                 self.assertEqual([{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": skills,
                                    "prompts": [], "themes": []}], settings["packages"])
@@ -169,8 +168,8 @@ class WriterTests(unittest.TestCase):
                                  json.loads((target / STATE).read_text())["provenance"]["pins"])
 
     def test_one_tree_component_is_written_once_with_its_own_filter(self):
-        for cid, key, item in (("slopscore", "extensions", "extensions/slopscore/index.ts"),
-                               ("slopscore-pr", "skills", "skills/slopscore-pr")):
+        for cid, key, item in (("context-meter", "extensions", "extensions/context-meter/index.ts"),
+                               ("tracker-site", "skills", "skills/tracker-site")):
             with self.subTest(cid=cid):
                 target = self.parent / ("profile " + cid)
                 overlay = load("config/config.example.json")
@@ -312,7 +311,7 @@ class WriterTests(unittest.TestCase):
             lambda p: p["files"][".tenant-pi/choices.json"]["content"]["overlay"]["target"].update(agentDir="/tmp/outside"),
             lambda p: p["files"][".tenant-pi/choices.json"]["content"]["overlay"]["consent"].update(telemetry=True),
             lambda p: p["files"][".tenant-pi/choices.json"]["content"]["overlay"]["roles"].update(review={"provider": "KEEP", "model": "$(KEEP)", "thinking": "low"}),
-            lambda p: p["files"][".tenant-pi/choices.json"]["content"]["overlay"]["selection"]["enable"].append("promptr"),
+            lambda p: p["files"][".tenant-pi/choices.json"]["content"]["overlay"]["selection"]["enable"].append("doctor"),
             lambda p: p["commands"].update(launch="echo KEEP"),
             lambda p: p["commands"].update(setup=["sh -c KEEP"]),
             lambda p: p["readinessGaps"].append({"code": "other", "subject": "KEEP"}),

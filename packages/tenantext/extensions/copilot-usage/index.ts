@@ -2,7 +2,8 @@ import { readStoredCredential, type ExtensionAPI } from "@earendil-works/pi-codi
 import { Text } from "@earendil-works/pi-tui";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { agentDir, loadCopilotSettings, type CopilotUsageSettings } from "./settings.ts";
+import { agentDir } from "../../src/agent-dir.ts";
+import { loadCopilotSettings, type CopilotUsageSettings } from "./settings.ts";
 import { COPILOT_REFRESH_EVENT, createCopilotStatus } from "./status.ts";
 
 const ENTRY_TYPE = "copilot-usage-report";

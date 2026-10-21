@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,8 +19,6 @@ const ASK_MAX_CHARS = 1_000_000;
 export const LABEL_LIMIT = 80;
 /** A pane id or an agent name in the notification has at most this many characters. */
 export const PANE_LIMIT = 64;
-/** ask.py exits with 0 and prints this line when the transcript has no new reply. The screen tail follows it. */
-export const NO_NEW_REPLY_LINE = "NO NEW REPLY in the transcript";
 /** The status of that exit 0: the pane gave no reply. */
 export const NO_NEW_REPLY_STATUS = "no new reply, read the screen";
 /** spawn.py waits up to 60 seconds for the agent and runs `pi --list-models` once; this bound covers both. */
@@ -29,31 +27,29 @@ export const SPAWN_TIMEOUT_SECONDS = 180;
 export const SPAWN_KILL_GRACE_MS = 5000;
 /** The extension keeps at most this many characters of each output stream of spawn.py. */
 const CAPTURE_LIMIT = 65536;
-const KIT_SCRIPTS = resolve(dirname(fileURLToPath(import.meta.url)), "../../skills/herdr/scripts");
+const KIT_SKILL = resolve(dirname(fileURLToPath(import.meta.url)), "../../skills/herdr");
+const KIT_SCRIPTS = join(KIT_SKILL, "scripts");
 
-/** The exit codes of ask.py of the herdr skill (SKILL.md, section A2). */
-export const EXIT_MEANING: Readonly<Record<number, string>> = {
-	0: "reply",
-	1: "error, read the stderr file",
-	2: "usage error or bad target, nothing sent",
-	3: "busy, the pane works on another turn, nothing sent",
-	4: "blocked on a question, read the screen",
-	5: "no turn started, read the screen",
-	6: "API error, the transcript holds no other reply",
-	124: "timeout, the pane still works",
-};
+/** The contract of the herdr skill (contract.json): the exit codes of ask.py and spawn.py and the marker line of ask.py. */
+interface ExitCodes { [name: string]: { code: number; meaning: string } }
+interface Contract { ask: { exit: ExitCodes; no_new_reply_line: string }; spawn: { exit: ExitCodes } }
+const skillJson = (name: string): unknown => JSON.parse(readFileSync(join(KIT_SKILL, name), "utf8"));
+const CONTRACT = skillJson("contract.json") as Contract;
+const meanings = (codes: ExitCodes): Readonly<Record<number, string>> => Object.fromEntries(Object.values(codes).map(({ code, meaning }) => [code, meaning]));
 
-/** The exit codes of spawn.py of the herdr skill (SPAWN.md, section 3). */
-export const SPAWN_EXIT_MEANING: Readonly<Record<number, string>> = {
-	1: "the start failed, spawn.py closed the new pane again",
-	2: "an input is not valid, nothing was started",
-	4: "the agent stopped at a startup question, the pane stays open",
-};
+/** The exit codes of ask.py and their meanings, from contract.json. */
+export const EXIT_MEANING = meanings(CONTRACT.ask.exit);
+/** The exit codes of spawn.py and their meanings, from contract.json. */
+export const SPAWN_EXIT_MEANING = meanings(CONTRACT.spawn.exit);
+/** ask.py exits with 0 and prints this line when the transcript has no new reply. The screen tail follows it. */
+export const NO_NEW_REPLY_LINE = CONTRACT.ask.no_new_reply_line;
 
 export const HARNESSES = ["pi", "claude"] as const;
-export const ROLES = ["coordinator", "researcher", "scout", "worker", "reviewer"] as const;
+/** The roles of roles.json of the herdr skill, in its order. */
+export const ROLES: readonly string[] = Object.keys((skillJson("roles.json") as { roles: Record<string, unknown> }).roles);
 
-interface WatchFiles { dir: string; prompt: string; stdout: string; stderr: string }
+/** `prompt` is absent for a wait-only watch: it sends no prompt. */
+interface WatchFiles { dir: string; prompt?: string; stdout: string; stderr: string }
 
 interface Watch {
 	id: string;
@@ -87,9 +83,16 @@ export interface WatchNotificationDetails {
 	truncated: boolean;
 }
 
-/** A script of the herdr skill: `HERDR_SKILL_DIR` alone when it is set, else the installed skill, else the kit copy. */
+const realOrSelf = (path: string) => { try { return realpathSync(path); } catch { return path; } };
+
+/**
+ * A script of the herdr skill: `HERDR_SKILL_DIR` alone when it is set, else the installed skill, else the kit copy.
+ * The installed skill drops out when it resolves into the kit copy, as the link of install.sh does; a real directory stays first.
+ */
 export function findSkillScript(script: string, env: NodeJS.ProcessEnv = process.env, home = homedir(), kitScripts = KIT_SCRIPTS): { path?: string; searched: string[] } {
-	const dirs = env.HERDR_SKILL_DIR ? [join(env.HERDR_SKILL_DIR, "scripts")] : [join(home, ".agents/skills/herdr/scripts"), kitScripts];
+	const installed = join(home, ".agents/skills/herdr/scripts");
+	const dirs = env.HERDR_SKILL_DIR ? [join(env.HERDR_SKILL_DIR, "scripts")]
+		: realOrSelf(installed) === realOrSelf(kitScripts) ? [kitScripts] : [installed, kitScripts];
 	const searched = dirs.map(dir => join(dir, script));
 	return { path: searched.find(file => existsSync(file)), searched };
 }
@@ -222,7 +225,7 @@ function detail(watch: Watch): string {
 	const tail = readText(watch.files.stdout).slice(-TAIL_LIMIT).trimEnd();
 	return [
 		summary(watch),
-		`prompt file: ${watch.files.prompt}`,
+		`prompt file: ${watch.files.prompt ?? "none, wait only"}`,
 		`output file: ${watch.files.stdout}`,
 		`stderr file: ${watch.files.stderr}`,
 		`output tail (last ${TAIL_LIMIT} characters):`,
@@ -364,19 +367,26 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		return timeout;
 	}
 
-	/** Start ask.py on a pane as a child process and register the watch. herdr_watch_start and herdr_spawn share it. */
-	async function launch(input: { pane: string; prompt: string; timeout: number; label?: string; ask: string; name?: string; scripts?: string }, ctx: ExtensionContext): Promise<Watch> {
+	/**
+	 * Start ask.py on a pane as a child process and register the watch. herdr_watch_start and herdr_spawn share it.
+	 * Without a prompt, ask.py runs with --wait-only: it sends nothing and prints the last reply when the pane settles.
+	 */
+	async function launch(input: { pane: string; prompt?: string; timeout: number; label?: string; ask: string; name?: string; scripts?: string }, ctx: ExtensionContext): Promise<Watch> {
 		stateDir ??= mkdtempSync(join(tmpdir(), "herdr-watch-"));
 		const id = `w${++counter}`;
 		const dir = join(stateDir, id);
 		mkdirSync(dir, { recursive: true });
-		const files: WatchFiles = { dir, prompt: join(dir, "prompt.md"), stdout: join(dir, "stdout.txt"), stderr: join(dir, "stderr.txt") };
-		writeFileSync(files.prompt, input.prompt);
+		const files: WatchFiles = { dir, stdout: join(dir, "stdout.txt"), stderr: join(dir, "stderr.txt") };
+		if (input.prompt !== undefined) {
+			files.prompt = join(dir, "prompt.md");
+			writeFileSync(files.prompt, input.prompt);
+		}
+		const send = files.prompt === undefined ? ["--wait-only"] : ["--file", files.prompt];
 		const out = openSync(files.stdout, "w"), err = openSync(files.stderr, "w");
 		let child: ChildProcess;
 		try {
 			// A process group of its own, so a stop also ends the herdr client that ask.py waits on.
-			child = spawn("python3", [input.ask, input.pane, "--file", files.prompt, "--timeout", String(input.timeout), "--max-chars", String(ASK_MAX_CHARS)],
+			child = spawn("python3", [input.ask, input.pane, ...send, "--timeout", String(input.timeout), "--max-chars", String(ASK_MAX_CHARS)],
 				{ cwd: ctx.cwd, detached: true, stdio: ["ignore", out, err] });
 		} finally {
 			closeSync(out);
@@ -407,13 +417,14 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		"Do not wait or poll: continue with other work.",
 		"The reply arrives as a <herdr-task-notification> message when the pane finishes.",
 	];
-	const fileLines = (files: WatchFiles) => [`prompt file: ${files.prompt}`, `output file: ${files.stdout}`, `stderr file: ${files.stderr}`];
+	const fileLines = (files: WatchFiles) => [`prompt file: ${files.prompt ?? "none, wait only"}`, `output file: ${files.stdout}`, `stderr file: ${files.stderr}`];
 
-	async function start(params: { pane: string; prompt?: string; prompt_file?: string; timeout_seconds?: number; label?: string }, ctx: ExtensionContext) {
+	async function start(params: { pane: string; prompt?: string; prompt_file?: string; timeout_seconds?: number; label?: string; wait_only?: boolean }, ctx: ExtensionContext) {
 		if (closed) throw new Error("The session shuts down; no new watch starts.");
 		const pane = params.pane.trim();
 		if (!pane || pane.startsWith("-")) throw new Error("pane must be a pane id or an agent name.");
-		const prompt = readPrompt(params, ctx);
+		if (params.wait_only && (params.prompt !== undefined || params.prompt_file !== undefined)) throw new Error("wait_only takes no prompt and no prompt_file.");
+		const prompt = params.wait_only ? undefined : readPrompt(params, ctx);
 		const timeout = timeoutOf(params.timeout_seconds);
 		const ask = findAskScript();
 		if (!ask.path) throw new Error(`ask.py of the herdr skill was not found. Searched: ${ask.searched.join(", ")}. Set HERDR_SKILL_DIR to the skill directory or install the herdr skill.`);
@@ -476,7 +487,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 			return fail([`The pane ${facts.pane_id} (${facts.name}) started, but the watch did not start: ${error instanceof Error ? error.message : String(error)}`,
 				"Send the task with herdr_watch_start, or close the pane."]);
 		}
-		const model = facts.model ? `${facts.model}${facts.model_source ? ` (${facts.model_source})` : ""}` : "harness default";
+		const model = facts.model ? `${facts.model}${facts.model_source ? ` (${facts.model_source})` : ""}` : "not reported";
 		const body = [
 			`Started pane ${facts.pane_id} (${facts.name}): harness ${params.harness}, role ${params.role}, model ${model}, thinking ${facts.thinking ?? "harness default"}, placement ${facts.placement ?? "unknown"}.`,
 			...watchLines(watch, timeout),
@@ -517,9 +528,11 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		return box;
 	});
 
+	// Each tool runs one at a time with the other tool calls of a batch: a prompt_file that a tool of the same batch writes is complete before a watch reads it.
 	pi.registerTool({
 		name: "herdr_spawn",
 		label: "Herdr spawn",
+		executionMode: "sequential",
 		description: "Start a task session in a new Herdr pane with spawn.py of the herdr skill, send it the task, and wait for its reply in the background. "
 			+ "The call returns when spawn.py has started the pane (about 10 to 60 seconds, at most 180 seconds), with the pane id, the agent name and a task id. "
 			+ "Then the watch runs in the background. When the pane finishes, the reply arrives as a <herdr-task-notification> message that starts a turn. "
@@ -535,8 +548,8 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		parameters: Type.Object({
 			harness: StringEnum(HARNESSES, { description: "The agent program: pi or claude" }),
 			role: StringEnum(ROLES, { description: "The role of the task session. coordinator is refused: a coordinator is a primary session." }),
-			model: Type.Optional(Type.String({ description: "pi: provider/model or a name that pi --list-models finds one time. claude: a model ID or a CLI alias. Omit it for the local default." })),
-			thinking: Type.Optional(Type.String({ description: "off, minimal, low, medium, high, xhigh or max. Omit it for the local default." })),
+			model: Type.Optional(Type.String({ description: "pi: provider/model or a name that pi --list-models finds one time. claude: a model ID or a CLI alias. Omit it only when models.json of the herdr skill names a model for the role and the harness: without a model, spawn.py starts no pane and the call returns its exit 2." })),
+			thinking: Type.Optional(Type.String({ description: "off, minimal, low, medium, high, xhigh or max. Omit it for the level of models.json or of the harness." })),
 			cwd: Type.String({ description: "Absolute working directory of the new agent" }),
 			prompt: Type.Optional(Type.String({ description: "The task text. Give this or prompt_file." })),
 			prompt_file: Type.Optional(Type.String({ description: "Path of a file with the task. Give this or prompt." })),
@@ -552,17 +565,20 @@ export default function herdrWatch(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "herdr_watch_start",
 		label: "Herdr watch start",
-		description: "Send a prompt to an agent in a Herdr pane that exists and wait for its reply in the background. Returns at once with a task id. When the pane finishes, the reply arrives as a <herdr-task-notification> message that starts a turn. Runs ask.py of the herdr skill. For a new task session, use herdr_spawn.",
+		executionMode: "sequential",
+		description: "Send a prompt to an agent in a Herdr pane that exists and wait for its reply in the background. With wait_only, send nothing and only wait for the reply of the turn that runs. Returns at once with a task id. When the pane finishes, the reply arrives as a <herdr-task-notification> message that starts a turn. Runs ask.py of the herdr skill. For a new task session, use herdr_spawn.",
 		promptSnippet: "Send a prompt to a Herdr pane and get its reply later as a task notification",
 		promptGuidelines: [
 			"Send a prompt to a pane that exists with herdr_watch_start, not with the blocking ask.py, unless the user says to wait for the reply or not to use the watch.",
 			"After herdr_spawn or herdr_watch_start, do not wait, sleep or poll for the reply. Continue with other work or end the turn; the reply arrives as a <herdr-task-notification> message.",
 			"Act on a <herdr-task-notification> by its status line: a reply, no new reply (read the screen), a pane blocked on a question, or a timeout while the pane still works.",
+			"To wait again for a pane that still works, for example after a timeout, call herdr_watch_start with wait_only true and no prompt. Never send the prompt again.",
 		],
 		parameters: Type.Object({
 			pane: Type.String({ description: "Pane id or agent name of the Herdr pane" }),
-			prompt: Type.Optional(Type.String({ description: "The prompt text. Give this or prompt_file." })),
-			prompt_file: Type.Optional(Type.String({ description: "Path of a file with the prompt. Give this or prompt." })),
+			prompt: Type.Optional(Type.String({ description: "The prompt text. Give this or prompt_file, or wait_only." })),
+			prompt_file: Type.Optional(Type.String({ description: "Path of a file with the prompt. Give this or prompt, or wait_only." })),
+			wait_only: Type.Optional(Type.Boolean({ description: "true: send no prompt; wait until the pane settles and get its last reply. Give no prompt and no prompt_file then. Default false." })),
 			timeout_seconds: Type.Optional(Type.Integer({ minimum: 1, description: `Seconds that ask.py waits for the reply. Default ${DEFAULT_TIMEOUT_SECONDS}.` })),
 			label: Type.Optional(Type.String({ description: "A short label for the notification" })),
 		}),
@@ -572,6 +588,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "herdr_watch_status",
 		label: "Herdr watch status",
+		executionMode: "sequential",
 		description: "List the Herdr pane watches of this session (id, pane, label, running or done, elapsed time, exit code), or show one watch with the tail of its output.",
 		parameters: Type.Object({
 			id: Type.Optional(Type.String({ description: "A task id from herdr_watch_start. Omit it to list all watches." })),
@@ -587,6 +604,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "herdr_watch_stop",
 		label: "Herdr watch stop",
+		executionMode: "sequential",
 		description: "Stop one Herdr pane watch: SIGTERM to its ask.py process. The pane itself keeps running; only the wait stops.",
 		parameters: Type.Object({ id: Type.String({ description: "A task id from herdr_watch_start" }) }),
 		execute: async (_id, params) => {

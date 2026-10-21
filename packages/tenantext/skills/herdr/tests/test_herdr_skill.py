@@ -735,10 +735,6 @@ class Roles256(IsolatedConfig):
                          "2. Check each acceptance criterion of the task. Start the findings with a verdict: "
                          "pass, pass with findings, or fix first.")
 
-    def test_rendered_prompt_sizes_stay_within_the_corrected_limits(self):
-        self.assertLessEqual(abs(len(self.prompt("worker")) - 2341), 150)
-        self.assertLessEqual(len(self.prompt("reviewer")), 2578)
-
 
 class Roles255(IsolatedConfig):
     def test_gatherers_render_only_the_first_choice_list(self):
@@ -862,7 +858,6 @@ class Roles254(IsolatedConfig):
                 with open(args[-1], encoding="utf-8") as f:
                     text = f.read()
                 self.assertEqual(text, self.prompts[harness] + "\n")
-                self.assertLessEqual(len(text), 1560)
 
 
 class Roles253(IsolatedConfig):

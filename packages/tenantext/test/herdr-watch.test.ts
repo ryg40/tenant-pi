@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -17,7 +17,8 @@ const GRANDCHILD_MARK = "herdr-watch-test-grandchild";
 // "gate": wait until that file exists, at most 30 seconds.
 const FAKE_ASK = `import json, os, subprocess, sys, time
 args = sys.argv[1:]
-prompt = args[args.index("--file") + 1]
+# A wait-only run has no prompt file: its spec is wait-spec.json beside this script.
+prompt = args[args.index("--file") + 1] if "--file" in args else os.path.join(os.path.dirname(os.path.abspath(__file__)), "wait-spec.json")
 with open(prompt + ".argv.json", "w") as f:
     json.dump(args, f)
 spec = json.load(open(prompt, encoding="utf-8"))
@@ -55,8 +56,11 @@ if thinking is not None and thinking not in ("off", "minimal", "low", "medium", 
     print("error: --thinking must be one of: off, minimal, low, medium, high, xhigh, max", file=sys.stderr)
     sys.exit(2)
 model, role = opt("--model"), opt("--role")
-print("model: " + (model + " (from request)" if model else "harness default"), file=sys.stderr)
-facts = {"name": "proj-" + role + "-1", "pane_id": "w7:p3", "model": model, "model_source": "request" if model else "harness default",
+if not model:
+    print("error: no model for the role " + role + " and the harness " + opt("--harness") + ". Name one with --model <name>, or add it to models.json. No pane was started.", file=sys.stderr)
+    sys.exit(2)
+print("model: " + model + " (from request)", file=sys.stderr)
+facts = {"name": "proj-" + role + "-1", "pane_id": "w7:p3", "model": model, "model_source": "request",
          "thinking": thinking, "placement": "new tab '" + role + "'"}
 if spec.get("exit") == 1:
     print("error: agent start failed and the new pane was closed: no agent", file=sys.stderr)
@@ -148,6 +152,7 @@ function fixture(t: test.TestContext) {
 test("the factory registers the tools, the command, the renderer and two handlers, and starts nothing", t => {
 	const f = fixture(t);
 	assert.deepEqual([...f.tools.keys()], ["herdr_spawn", "herdr_watch_start", "herdr_watch_status", "herdr_watch_stop"]);
+	assert.deepEqual([...f.tools.values()].map(tool => tool.executionMode), ["sequential", "sequential", "sequential", "sequential"]);
 	assert.deepEqual([...f.commands.keys()], ["herdr-watch"]);
 	assert.deepEqual([...f.renderers.keys()], [CUSTOM_TYPE]);
 	assert.deepEqual([...f.handlers.keys()].sort(), ["session_shutdown", "session_start"]);
@@ -222,10 +227,11 @@ test("exit 1, 2, 3, 5 and 6 give their status words", async t => {
 		assert.match(byExit[exit].content, new RegExp(`\\nstatus: ${EXIT_MEANING[exit]}\\nexit: ${exit}\\n`), `exit ${exit}`);
 		assert.equal(byExit[exit].details.status, EXIT_MEANING[exit]);
 	}
-	assert.deepEqual(exits.map(exit => EXIT_MEANING[exit]), [
-		"error, read the stderr file", "usage error or bad target, nothing sent", "busy, the pane works on another turn, nothing sent",
-		"no turn started, read the screen", "API error, the transcript holds no other reply",
-	]);
+	// The exit codes of ask.py and their meanings come from the contract file of the herdr skill.
+	const contract = JSON.parse(readFileSync(join(import.meta.dirname, "../skills/herdr/contract.json"), "utf8"));
+	const meaning = (code: number) => Object.values(contract.ask.exit as Record<string, { code: number; meaning: string }>).find(e => e.code === code)?.meaning;
+	assert.deepEqual(exits.map(exit => EXIT_MEANING[exit]), exits.map(meaning));
+	assert.deepEqual(Object.keys(EXIT_MEANING).map(Number), [0, 1, 2, 3, 4, 5, 6, 124]);
 	assert.match(byExit[1].content, /\nstderr \(last \d+ characters, file .*stderr\.txt\):\nerror: not inside a Herdr pane\n/);
 	assert.equal(f.notices.filter(text => text.includes("(exit 1)")).length, 1);
 });
@@ -297,6 +303,20 @@ test("the cut at the limit does not split a surrogate pair", async t => {
 	assert.equal(sent.truncated, true);
 });
 
+test("wait_only sends no prompt: ask.py gets --wait-only and no --file, and the reply arrives as usual", async t => {
+	const f = fixture(t);
+	writeFileSync(join(f.skill, "scripts/wait-spec.json"), JSON.stringify({ reply: "pane=pane-w\n--- reply ---\nthe last reply\n" }));
+	const result = await f.run("herdr_watch_start", { pane: "pane-w", wait_only: true, timeout_seconds: 9 });
+	assert.match(result.content[0].text, /^Started watch w1 on pane pane-w /);
+	assert.match(result.content[0].text, /\nprompt file: none, wait only\n/);
+	await until(() => f.messages.length === 1, "the notification");
+	assert.match(f.messages[0].message.content, /\nstatus: reply\nexit: 0\n/);
+	const argv = JSON.parse(readFileSync(join(f.skill, "scripts/wait-spec.json.argv.json"), "utf8"));
+	assert.deepEqual(argv.slice(0, 4), ["pane-w", "--wait-only", "--timeout", "9"]);
+	assert.ok(!argv.includes("--file"));
+	await assert.rejects(f.run("herdr_watch_start", { pane: "pane-w", wait_only: true, prompt: "x" }), /wait_only takes no prompt/);
+});
+
 test("prompt_file is read relative to the working directory and copied into the task directory", async t => {
 	const f = fixture(t);
 	const spec = JSON.stringify({ reply: "from the file" });
@@ -321,7 +341,7 @@ test("a missing ask.py and bad parameters give an error result", async t => {
 	assert.deepEqual(readdirSync(f.tmp), []);
 });
 
-test("findAskScript takes HERDR_SKILL_DIR alone, else the installed skill, else the kit copy", t => {
+test("findAskScript takes HERDR_SKILL_DIR alone, else the installed skill, else the kit copy; a link into the kit drops out", t => {
 	const root = realpathSync(mkdtempSync(join(tmpdir(), "herdr-watch-find-")));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const home = join(root, "home"), kit = join(root, "kit"), own = join(root, "own");
@@ -339,6 +359,13 @@ test("findAskScript takes HERDR_SKILL_DIR alone, else the installed skill, else 
 	assert.equal(findAskScript({ HERDR_SKILL_DIR: own }, home, kit).path, join(own, "scripts/ask.py"));
 	assert.deepEqual(findSkillScript("spawn.py", {}, home, kit).searched, [join(home, ".agents/skills/herdr/scripts/spawn.py"), join(kit, "spawn.py")]);
 	assert.deepEqual(findSkillScript("spawn.py", { HERDR_SKILL_DIR: own }, home, kit), { path: undefined, searched: [join(own, "scripts/spawn.py")] });
+	// A link from install.sh into the kit copy: the kit copy is the one place to look.
+	const linked = join(root, "linked-home"), skill = join(root, "kit-skill");
+	mkdirSync(join(skill, "scripts"), { recursive: true });
+	writeFileSync(join(skill, "scripts/ask.py"), "");
+	mkdirSync(join(linked, ".agents/skills"), { recursive: true });
+	symlinkSync(skill, join(linked, ".agents/skills/herdr"));
+	assert.deepEqual(findAskScript({}, linked, join(skill, "scripts")), { path: join(skill, "scripts/ask.py"), searched: [join(skill, "scripts/ask.py")] });
 });
 
 const spawnTask = (root: string, reply: object, extra: object = {}) =>
@@ -398,15 +425,25 @@ test("the unattended description keeps shell decisions in auto mode", () => {
 test("herdr_spawn passes unattended, strict and extra_args to spawn.py, and the native arguments after --", async t => {
 	const f = fixture(t);
 	const result = await f.run("herdr_spawn", spawnTask(f.root, { reply: "ok" }, {
-		harness: "claude", model: undefined, thinking: undefined, unattended: true, strict: true, extra_args: ["--allowedTools", "Bash(git log:*)"],
+		harness: "claude", model: "opus", thinking: undefined, unattended: true, strict: true, extra_args: ["--allowedTools", "Bash(git log:*)"],
 	}));
-	assert.match(result.content[0].text, /^Started pane w7:p3 \(proj-worker-1\): harness claude, role worker, model harness default, thinking harness default, placement new tab 'worker'\.\n/);
+	assert.match(result.content[0].text, /^Started pane w7:p3 \(proj-worker-1\): harness claude, role worker, model opus \(request\), thinking harness default, placement new tab 'worker'\.\n/);
 	assert.deepEqual(f.spawnCalls().map(call => call.argv), [
-		["--harness", "claude", "--role", "worker", "--cwd", f.root, "--strict", "--unattended", "--", "--allowedTools", "Bash(git log:*)"],
+		["--harness", "claude", "--role", "worker", "--model", "opus", "--cwd", f.root, "--strict", "--unattended", "--", "--allowedTools", "Bash(git log:*)"],
 	]);
 	await until(() => f.messages.length === 1, "the notification");
 	await assert.rejects(f.run("herdr_spawn", spawnTask(f.root, {}, { extra_args: ["--unattended"] })), /--unattended is an option of spawn\.py, not a native argument\. Set unattended to true\./);
 	assert.equal(f.spawnCalls().length, 1);
+});
+
+test("herdr_spawn with no model passes the exit 2 of spawn.py through and starts no watch", async t => {
+	const f = fixture(t);
+	const result = await f.run("herdr_spawn", spawnTask(f.root, { reply: "ok" }, { model: undefined }));
+	assert.equal(result.isError, true);
+	assert.match(result.content[0].text, /^spawn\.py failed: exit 2 \(an input is not valid, nothing was started\)\. No watch was started\.\n/);
+	assert.match(result.content[0].text, /\nerror: no model for the role worker and the harness pi\. Name one with --model <name>, or add it to models\.json\. No pane was started\.\n/);
+	assert.ok(!f.spawnCalls()[0].argv.includes("--model"));
+	assert.equal(f.messages.length, 0);
 });
 
 test("a failed start gives an error result with the exit code and the output tails, and starts no watch", async t => {

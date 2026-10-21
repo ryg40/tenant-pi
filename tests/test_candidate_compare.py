@@ -95,7 +95,9 @@ class CompareTests(unittest.TestCase):
                           changed[(".tenant-pi/choices.json", "/manifest/components/core/source")]["right"]))
         self.assertEqual({"value": "0.87.1"}, changed[(".tenant-pi/choices.json", "/manifest/runtime/piVersion")]["left"])
         self.assertEqual({"value": "0.87.1"}, changed[(".tenant-pi/state.json", "/provenance/piVersion")]["left"])
-        self.assertEqual({"status": "not_computable", "rule": "core_runtime_pin: manifest.runtime.piVersion"}, report["left"]["drift"])
+        # The recorded range does not hold the recorded pin, so the old choices give no plan.
+        self.assertEqual({"status": "not_computable", "rule": "tested_outside_range: manifest.runtime.piAcceptedRange"},
+                         report["left"]["drift"])
         self.assertEqual("none", report["right"]["drift"]["status"])
 
     def test_accepted_range_is_a_marker_and_older_records_still_compare(self):
@@ -171,10 +173,10 @@ class CompareTests(unittest.TestCase):
         choices["manifest"]["runtime"]["pythonRange"] = CANARY
         choices["manifest"]["runtime"]["piVersion"] = "1.0.0-" + CANARY
         choices["manifest"]["components"]["hermes"]["source"]["spec"] = "pi-hermes-memory@9.9.9-" + CANARY
-        choices["manifest"]["components"]["promptr"]["source"]["path"] = [CANARY]
+        choices["manifest"]["components"]["tracker-site"]["source"]["path"] = [CANARY]
         choices["manifest"]["components"]["mcp"]["source"]["spec"] = CANARY.lower() + "@3.1.0"
         choices["roleStatus"]["review"] = CANARY
-        choices["pendingPackages"] = [{"component": "promptr", "source": "git:https://x:" + CANARY + "@h.invalid/p.git@" + "a" * 40},
+        choices["pendingPackages"] = [{"component": "tracker-site", "source": "git:https://x:" + CANARY + "@h.invalid/p.git@" + "a" * 40},
                                       {"component": CANARY + "!", "source": CANARY}]
         choices["hidden"] = CANARY
         hostile["settings.json"]["packages"].append({"source": "git:https://t:" + CANARY + "@h.invalid/a.git@" + "b" * 40, "extensions": [CANARY]})
@@ -202,10 +204,10 @@ class CompareTests(unittest.TestCase):
         for key in (("settings.json", "/packages/1/source"), ("settings.json", "/packages/2/source"), ("settings.json", "/packages/3/source"),
                     (".tenant-pi/choices.json", "/manifest/components/core/source"), (".tenant-pi/choices.json", "/manifest/runtime/pythonRange"),
                     (".tenant-pi/choices.json", "/manifest/runtime/piVersion"), (".tenant-pi/choices.json", "/manifest/components/hermes/source"),
-                    (".tenant-pi/choices.json", "/manifest/components/promptr/source"), (".tenant-pi/choices.json", "/manifest/components/mcp/source"),
+                    (".tenant-pi/choices.json", "/manifest/components/tracker-site/source"), (".tenant-pi/choices.json", "/manifest/components/mcp/source"),
                     (".tenant-pi/choices.json", "/manifest/components/codex-accounts/source"), (".tenant-pi/choices.json", "/manifest/runtime/nodeRange"),
                     (".tenant-pi/choices.json", "/requiredRoles"), (".tenant-pi/choices.json", "/credentialNames"),
-                    (".tenant-pi/choices.json", "/roleStatus/review"), (".tenant-pi/choices.json", "/pendingPackages/promptr"),
+                    (".tenant-pi/choices.json", "/roleStatus/review"), (".tenant-pi/choices.json", "/pendingPackages/tracker-site"),
                     (".tenant-pi/state.json", "/provenance/pins/core"), (".tenant-pi/state.json", "/provenance/outputs"),
                     (".tenant-pi/state.json", "/provenance/enabled"), (".tenant-pi/choices.json", "/overlay/modelRoutes/gateway/auth")):
             self.assertEqual({"status": "unsupported_value"}, values[key], key)

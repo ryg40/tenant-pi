@@ -219,15 +219,16 @@ class BuildTests(unittest.TestCase):
             self.assertNotIn(CANARY, explainer_build.build(root))
 
     def test_public_reader_rules(self):
-        files = [explainer_build.OUT_REL, *sources()]
-        for name in files:
-            for number, line in enumerate((ROOT / name).read_text(encoding="utf-8").split("\n"), 1):
+        files = sources()
+        texts = [(explainer_build.OUT_REL, self.text), *((name, (ROOT / name).read_text(encoding="utf-8")) for name in files)]
+        for name, text in texts:
+            for number, line in enumerate(text.split("\n"), 1):
                 for rule, pattern in publish_check.PUBLIC_RULES:
                     self.assertIsNone(pattern.search(line), f"{rule}: {name}:{number}")
         self.assertEqual([], publish_check.public_findings(files))
 
     def test_files_are_published(self):
-        names = (explainer_build.OUT_REL, "scripts/explainer_build.py", "tests/test_explainer_build.py", *sources())
+        names = ("scripts/explainer_build.py", "tests/test_explainer_build.py", *sources())
         published_files = publish_check.publish_files(publish_check.inventory_files(ROOT), root=ROOT)
         for name in names:
             self.assertIn(name, published_files)
@@ -335,7 +336,7 @@ class BrowserTests(unittest.TestCase):
                 context.route(re.compile(r"^https?://"), refuse)
                 page = context.new_page()
                 page.on("pageerror", lambda error: errors.append(str(error)))
-                page.goto((ROOT / explainer_build.OUT_REL).as_uri())
+                page.set_content(explainer_build.build(ROOT))
                 self.assertEqual(len(sorted(TUTORIALS.iterdir())), page.locator("section.tutorial").count())
                 for target in page.locator("nav.toc a").evaluate_all("links => links.map((link) => link.hash.slice(1))"):
                     self.assertEqual(1, page.locator(f"#{target}").count(), target)

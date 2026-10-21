@@ -12,7 +12,7 @@ The publisher accepts --class patch or --class full. The default is patch.
 It records the class in the notes header and as `class: patch` or `class: full` in the annotated tag.
 
 - A patch release records the check-set stamp and the snapshot-range pre-push lines.
-- A patch release carries forward gates 6 to 8 from the last full tag.
+- A patch release carries forward gates 6 and 7 from the last full tag.
 - A full release records every gate, including `scripts/scan.sh all` and the clean Linux core trial.
 - Use full at each pin move or on request. A new component also needs a full release.
 
@@ -24,26 +24,35 @@ The publisher finds the last full tag in newest-first tag order.
 
 ## Combined offline check
 
-Run `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py` for the parallel unit suite, publish checks and whitespace check.
-The final line is `check: passed` only when every check succeeds.
-Use `python3 scripts/check.py --tier fast` for development feedback; it skips measured slow tests and gives no release qualification.
-A clean full run records a local Git-tree stamp. Check it with `python3 scripts/check.py --stamp-status`.
+This section is the one description of `scripts/check.py`. `python3 scripts/check.py --help` lists its selection rules and options.
+
+The everyday command is `python3 scripts/check.py --tier fast`.
+It runs the tests of the changed files: the files that differ from the merge base of `HEAD` with `origin/main` (else `main`), and the untracked files that Git does not ignore.
+A changed root script runs the root test modules that import it or name its path. A changed file in a package folder runs the suites of that package. Any other changed file runs all root test modules.
+Each run also parses the tracked JSON files and the Markdown frontmatter, runs `scripts/scan.sh tree` and runs `git diff --check`.
+Without Betterleaks on `PATH`, the scan line says `skipped`; the pre-push hook still scans each push.
+A package suite needs Node, the `node_modules` of the package and, for `packages/tenantext`, the Pi links. Without them, the check fails with one line that names the setup step of [the package documents](../packages.md).
+The fast tier skips the measured slow tests and gives no release qualification.
+
+The full check set is `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --all`: every root test module, every package suite and the checks of each run. CI runs the same command.
+The final line is `check: passed` only when every part succeeds.
+A run of everything with the default tier `full`, on a clean tree and with no skipped part, records a local Git-tree stamp. So the release host needs Betterleaks. Check the stamp with `python3 scripts/check.py --stamp-status`.
 See [offline checks and local stamps](../publishing.md#offline-checks-and-local-stamps) for the fields and matching rules.
 The publisher reads a matching stamp instead of repeating the check set.
 A missing or stale stamp triggers a full check set. Live-trial requirements remain unchanged.
+The publish rules of `scripts/publish_check.py` run when the publisher cuts a snapshot, not in this check. A new file needs no `PUBLISH` entry until the next snapshot.
 
 ## Gates
 
 | Gate | Command or evidence | Required |
 | --- | --- | --- |
-| 1. The check set (replaces gates 1 to 4) | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py` ends with `check: passed`; record the clean-tree stamp | Yes |
+| 1. The check set (replaces gates 1 to 4) | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --all` ends with `check: passed`; record the clean-tree stamp | Yes |
 | 5. Scanner | Both classes: record the snapshot-range pre-push lines at level `fail`. Full only: also run `scripts/scan.sh all` and require exit 0. | Yes |
 | 6. Clean Linux core trial | A core-only profile on a clean Linux user: INSTALL.md Stages 0 to 9, with Stage 9 checks 1, 2 and 4 recorded. Patch carries forward the last full record. | Full |
 | 7. Optional live services | Each optional module, the gateway and each MCP server: passed, failed, blocked or not run. Patch carries forward the last full record. | Report only |
-| 8. Compose seat | Record `docker compose config`, `docker compose build` and the [qualification table](compose-seat.md#qualification) check. Patch carries forward the last full record. | Report only |
 
 Gate 1 replaces the former gates 1 to 4 with one check set and one stamp record.
-Gates 5 to 8 keep their numbers.
+Gates 5 to 7 keep their numbers.
 The unit suite includes the examples, sample overlay, builder determinism tests and [documentation check](#documentation-check).
 The test `DocCheckRepoTests` of `tests/test_doc_check.py` checks the publish set documentation. A finding fails the unit tests.
 Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
@@ -52,30 +61,23 @@ Gate 1 also checks the text of `coordinator-skills` and `knowledge-skills` under
 The test `tests/test_skill_invariants.py` reads their Markdown and the label table of [the issue tracker document](../agents/issue-tracker.md).
 A finding fails the unit tests.
 
-A pin move changes two tracked files: `config/manifest.json` and the reviewed core anchor in `scripts/validate.py`.
-Use `scripts/pi_update.py` function `pin_contents` for both edits.
+A pin move changes one tracked file: `config/manifest.json`.
+The reviewed core anchor in `scripts/validate.py` holds the package name and no version.
+Use the `pin` action of `scripts/pi_update.py` for the edit.
 `runtime.piVersion` is the tested version. `runtime.piAcceptedRange` is the accepted range.
 A changed stable pin automatically sets `>=<new version> <next minor>` in the same manifest edit.
 The range therefore moves with the pin, including a move to another minor or major line.
 A same-pin call preserves a separately reviewed range. The validator requires the tested version inside the range.
-Replace `<new version>` with the approved version. Run this block from the kit root:
+Replace `<new version>` with the approved version. Run this command from the kit root:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 - <<'EOF'
-from pathlib import Path
-from scripts.pi_update import pin_contents
-
-contents = pin_contents(Path("config/manifest.json").read_text(encoding="utf-8"),
-                        Path("scripts/validate.py").read_text(encoding="utf-8"), "<new version>")
-for name, content in contents.items():
-    Path(name).write_text(content, encoding="utf-8")
-EOF
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py pin --version "<new version>"
 ```
 
-Warning: this block replaces both tracked files. Keep a copy of any uncommitted edits before you run it.
+Warning: this command replaces `config/manifest.json`. Keep a copy of any uncommitted edits before you run it.
 
-To use a separate reviewed range, pass `accepted_range="<reviewed range>"` to `pin_contents`.
-This still changes only those two files. Review the range before accepting the candidate.
+To use a separate reviewed range, run `pin --version "<new version>" --range "<reviewed range>"` instead.
+This still changes only that file. Review the range before accepting the candidate.
 Bounds use stable versions. A prerelease pin needs an explicit range with a lower stable bound before its numeric version.
 Otherwise the automatic lower bound excludes that prerelease and the editor refuses the move.
 See [the prerelease rule](../check-runtime.md#comparison).
@@ -84,7 +86,7 @@ Tests read the current pin from the manifest. Guides point to `runtime.piVersion
 Historical observations and package-specific dependency pins stay fixed; review them before qualifying a new release.
 Run the offline gates on the candidate copy before accepting the move.
 
-The `questions` component has its own pin: the exact version 2.13.9 of `@juicesharp/rpiv-ask-user-question`. It is not a version range.
+The `questions` component has its own pin: an exact version of `@juicesharp/rpiv-ask-user-question` in its `source.spec` in `config/manifest.json`. It is not a version range.
 The source of that version was not reviewed.
 `scripts/pi_update.py detect` exits 10 while the registry has a newer version.
 This continues until the maintainer of the release reviews the newer version and moves the pin.
@@ -121,15 +123,6 @@ A release note names each optional module, route and service with its result. Th
 
 Do not write "all modules work" when only the core trial ran. Do not describe a documentation review or an offline `generate` as a live installation.
 
-### Gate 8: the Compose seat
-
-- This gate is a report, like gate 7. It does not stop a snapshot. Record the `config` check, the build and the table check, each as passed, failed or not run.
-- Set `KIT_COMMIT` first: `export KIT_COMMIT="$(git rev-parse --short HEAD)"`. Run `docker compose config` from the kit root, with a `seat.env` and a `compose.env` in a private directory. It is the short offline check. Use the options of [the build and start commands](compose-seat.md#step-2-build-and-start).
-- Keep the key line of that `compose.env` empty: `docker compose config` prints each value of the file.
-- `docker compose build` needs Docker and the network. A release without it records `build: not run`.
-- The build runs the fast tier of the kit checks inside the image. A build that passes is not a trial of a container. The evidence of a container is in the trial records.
-- Read each row of the qualification table. A row is `not qualified` unless an accepted trial record covers each item of the checklist of the guide.
-
 ## Platforms that are not qualified
 
 These platforms are not qualified in this release. A guide may give an adaptation for them, but marks it unqualified.
@@ -142,8 +135,7 @@ These platforms are not qualified in this release. A guide may give an adaptatio
 | Pi inside Herdr | Not qualified | Gate 6 with Pi started in a Herdr pane, plus the `herdr` component loaded and used once. |
 | The `questions` component | Not qualified | An interactive session of a generated profile that loads the extension and shows one question dialog, plus the plain-text fallback in a session without it. |
 | A temporary Herdr session | Not qualified | A named test session that starts, shows its state, stops and is deleted, with no model request, on a host that the maintainer of the release approves. |
-| [The Compose seat](compose-seat.md), each runtime | Not qualified | A trial record for the runtime that covers each item of [the checklist of the guide](compose-seat.md#what-a-trial-must-cover). |
-| Install on a remote Linux host over SSH | Not qualified | The lines of `remote-plan` run on a disposable Linux host that the maintainer of the release approves, with the identity and ownership checks recorded. |
+| Install on a remote Linux host over SSH | Not qualified | The stages run over SSH on a disposable Linux host that the maintainer of the release approves, with the identity and ownership checks recorded. |
 
 Each run needs a record with the exact commands, the versions, and each check as passed, failed, blocked or not run. The maintainer of the release accepts the record before the status changes.
 
@@ -207,7 +199,7 @@ Full notes also hold:
 - The check-set stamp from the `publish_portable.py` output: tree hash, time, result lines, client and skipped count.
 - Gates 1, 5 and 6 with one word: passed, failed, blocked or not run. Include each gate's record.
 - The stamp's public reader result. The unit result includes the documentation check.
-- Gate 7 and gate 8 with one word for each part. These two gates have no word for the whole gate.
+- Gate 7 with one word for each part. This gate has no word for the whole gate.
 - For gate 7, one line for each optional module, route and service, as [the section of gate 7](#gate-7-optional-live-services-are-never-implied) says.
 - The changes since the previous tag, as a short list.
 - A link to the section [Platforms that are not qualified](#platforms-that-are-not-qualified) of this checklist at the tag. Write the full URL: the release entry is outside the tree.
@@ -235,7 +227,7 @@ The release entry is Markdown: each list item is one line on the release page.
 
 ### Patch notes template
 
-The publisher fills this template. Gates 6 to 8 refer to the last full tag, not the last patch tag.
+The publisher fills this template. Gates 6 and 7 refer to the last full tag, not the last patch tag.
 
 ```markdown
 # Portable release: patch
@@ -251,7 +243,7 @@ The publisher fills this template. Gates 6 to 8 refer to the last full tag, not 
 - <"No new candidate expected." or "A new candidate may be needed: <reasons>.">
 - Pi pin: <"unchanged (<version>)" or "<old> -> <new>; install the new Pi first.">
 - <one line for each changed range: accepted range, Node range, Python range>
-- <"npm ci --ignore-scripts needed in: <packages>", "npm run build needed in: packages/promptr", or "No package line needed.">
+- <"npm ci --ignore-scripts needed in: <packages>" or "No package line needed.">
 - Files that can change a generated profile: <paths and "removed: <path>" items, or none>
 - Run: `python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>`
 - A clean clone at this tag needs no test run.
@@ -267,7 +259,7 @@ The publisher fills this template. Gates 6 to 8 refer to the last full tag, not 
    - <every resultLines entry, unchanged>
 5. Scanner
    - Snapshot range: <pre-push result line, or not run (no push)>
-Gates 6-8: unchanged from <last full tag>
+Gates 6-7: unchanged from <last full tag>
 
 ## Changes since <previous tag>
 
@@ -299,7 +291,7 @@ The maintainer fills the other records. The `scan.sh all` line remains a placeho
 - <"No new candidate expected." or "A new candidate may be needed: <reasons>.">
 - Pi pin: <"unchanged (<version>)" or "<old> -> <new>; install the new Pi first.">
 - <one line for each changed range: accepted range, Node range, Python range>
-- <"npm ci --ignore-scripts needed in: <packages>", "npm run build needed in: packages/promptr", or "No package line needed.">
+- <"npm ci --ignore-scripts needed in: <packages>" or "No package line needed.">
 - Files that can change a generated profile: <paths and "removed: <path>" items, or none>
 - Run: `python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>`
 - A clean clone at this tag needs no test run.
@@ -319,7 +311,6 @@ The maintainer fills the other records. The `scan.sh all` line remains a placeho
 6. Clean Linux core trial: <passed, failed, blocked or not run> - <result line>
 7. Optional live services (one line for each, no total result)
    - <module, route or service>: <passed, failed, blocked or not run> - <result line>
-8. Compose seat (no total result): config <passed, failed or not run>, build <passed, failed or not run>, table check <passed, failed or not run>
 
 ## Changes since <previous tag>
 
@@ -340,7 +331,7 @@ Platforms that are not qualified: <full URL of docs/guides/release-checklist.md 
 
 A new tracked file under `scripts/`, `tests/` or `docs/` enters through `PUBLISH_DIRS` unless `scripts/dev-only-files.txt` excludes it.
 Package directories also have rules, with technical exclusions.
-`PUBLISH` in `scripts/publish_check.py` keeps explicit entries for root files, workflow files, `config/`, selected package files, `extensions/`, `deploy/` and the install skill.
+`PUBLISH` in `scripts/publish_check.py` keeps explicit entries for root files, workflow files, `config/`, selected package files, `extensions/` and the install skill.
 Files outside directory rules need an explicit entry after review.
 For a private copy, the optional deny list names reviewed files or directory prefixes that must not publish.
 A portable copy needs no list.

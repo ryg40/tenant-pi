@@ -6,6 +6,8 @@ Status: portable release candidate. Linux is the first target. The offline stage
 
 The published copy of the kit is a snapshot mirror: the maintainer updates it with a reviewed snapshot of the kit. The published copy takes no issues. Each snapshot has a tag of the form `portable/<yyyymmdd>-<source sha>`. A tag can have a release entry: the release page of the tag on the publication service. The release entry holds [the release notes](docs/guides/release-checklist.md#release-notes) of that snapshot: the result of each gate of the release checklist and the open gaps. A tag with no release entry has no release notes.
 
+Promptr and slopscore were removed on 2026-10-21. Their last state is in the tag `kit-legacy/20261021`. Restore with `git checkout kit-legacy/20261021 -- packages/promptr`.
+
 ## Install
 
 [INSTALL.md](INSTALL.md) is the single install flow. It gives the commands and checks, and requires approval before each change.
@@ -17,12 +19,12 @@ The flow covers inventory, requirements, the clone, Pi, packages, the overlay, g
 | --- | --- |
 | [Install](INSTALL.md) | The install stages with exact commands. Start here. |
 | [macOS on Apple silicon](docs/guides/macos.md) | Homebrew arm64 and Betterleaks binary adaptations; macOS stays not qualified. |
-| [Compose seat](docs/guides/compose-seat.md) | A Pi profile in a container that you reach over SSH, with Docker Compose or Podman; not qualified. |
 | [Explainer](EXPLAINER.md) | For a human reader, not for an update. The installation explainer covers footprints, prerequisites, 15 steps with Drill-down tables, optional components, Mac differences, components, removal and maintenance. |
-| [Architecture](docs/architecture.md) | The installed environment: terminal, selected Pi profile, runtime modules, state and optional services. Open the self-contained `docs/architecture.html` from disk. Five views include model-route alternatives, memory data flows and a searchable module catalog. The guide explains navigation and rebuilding. |
-| [Shared memory tutorials](EXPLAINER.html) | Eight beginner tutorials of the optional shared AgentCore memory: key handoff, recall, propose, review and offboarding in rendered terminal, Pi and Claude Code frames, with four example people. Open the self-contained file from disk. |
+| [Architecture](docs/architecture.md) | The installed environment: terminal, selected Pi profile, runtime modules, state and optional services. Build `docs/architecture.html` with `python3 scripts/architecture_build.py`, then open it from disk. Five views include model-route alternatives, memory data flows and a searchable module catalog. The guide explains navigation and rebuilding. |
+| Shared memory tutorials, `EXPLAINER.html` | Eight beginner tutorials of the optional shared AgentCore memory: key handoff, recall, propose, review and offboarding in rendered terminal, Pi and Claude Code frames, with four example people. Build the file with `python3 scripts/explainer_build.py`, then open it from disk. |
 | [Providers](docs/guides/providers.md) | Codex login, and llama-swap and vLLM as direct providers in `models.json` of the profile. |
 | [Modules](docs/guides/modules.md) | Each component: inputs, source, credentials, state, consent and status. |
+| [Update](UPDATE.md) | Pull the changes, run the checks, `/reload` in Pi; where the Pi version lives and how to move it. |
 | [After the install](POST_INSTALL.md) | The commands for each update and change after a base install. An update is `git pull --ff-only` and one read-only command, `python3 scripts/tenant_pi.py update`. You do not read the install text again. |
 | [Pi update checks](docs/pi-update.md) | Detect npm releases, qualify an isolated candidate, and read breaking changes. |
 | [Continuous integration](docs/publishing.md#continuous-integration) | GitHub offline checks of the published snapshot. |
@@ -45,13 +47,11 @@ An agent that installs a profile for a user reads [INSTALL.md](INSTALL.md) and `
 | `init-private` | Creates the private directory from templates. | [the private directory](docs/private-directory.md) |
 | `compare` | Redacted comparison of two profile directories. Read-only. | [candidate comparison](docs/candidate-compare.md) |
 | `inventory` | Names-only list of the resources of one profile. Read-only. | [profile inventory](docs/profile-inventory.md) |
-| `wizard` | Scans the confirmed target, opens a terminal checklist and saves only an explicitly approved private handoff. | [wizard guide](docs/guides/wizard.md) |
 | `components` | Prints the checklist of all components: as data, as a numbered list, or as a selection. Read-only. | [the CLI contract](docs/generator.md#components-the-checklist-of-the-components) |
 | `check-runtime` | Compares the installed Pi, Node and Python with the pins. | [the runtime version check](docs/check-runtime.md) |
 | `update` | After a pull: compares the plan with the candidate in use and prints a verdict with the next lines. Read-only. | [the update action](docs/update.md) |
 | `check-herdr` | Reports the `herdr` command of the host: present with its version, or missing. Installs nothing. | [Herdr and the question tool](docs/herdr-setup.md) |
 | `check-wiki-vault` | Reports the personal LLM Wiki vault of the account: present, absent, or a second vault through `WIKI_HOME`. Opens no file and writes nothing. | [an existing vault](docs/memory-modules.md#the-vault-check) |
-| `remote-plan` | Prints the SSH command lines of the remote stages as data. Runs none of them. | [Herdr and the question tool](docs/herdr-setup.md#the-remote-plan) |
 | `baseline` | Records the entry names, sizes and modification times of one directory in a new file. Opens no file of the directory. | [the directory baseline](docs/directory-baseline.md) |
 | `check-baseline` | Compares one directory with its baseline: `unchanged`, `changed` or `no_baseline`. Writes nothing. | [the directory baseline](docs/directory-baseline.md) |
 | `results` | Writes the local file `INSTALLER_KIT_RESULTS.md` at the end of an install, from the overlay, the candidates and a facts file. Without `--out-dir`, prints the text. | [the results file](docs/install-results.md) |
@@ -71,11 +71,11 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 
 - The Python 3.11+ offline validator checks versioned module sources and a local JSON overlay. Only synthetic examples are tracked.
 - Core Pi is the only enabled example component. Model routes need an explicit offline registry file. The kit imports no host defaults.
-- The sample overlay enables no memory module. The wizard leaves optional memory unchecked and asks separately for storage and recall consent. Saved selections remain unchanged. Without the consent key, nothing is captured. Hermes and LLM Wiki need selection, `consent.memoryCapture` and a `memory` block together. OpenViking needs `consent.remoteMemoryWrites` too, because it writes to a server.
-- The MCP module uses `pi-mcp-adapter` with definitions from a private input file and disables the native Pi MCP. Promptr is `unverified` with a readiness matrix: it needs a build step, and no session with a model is verified.
+- The sample overlay enables no memory module. Without the consent key, nothing is captured. Hermes and LLM Wiki need selection, `consent.memoryCapture` and a `memory` block together. OpenViking needs `consent.remoteMemoryWrites` too, because it writes to a server.
+- The MCP module uses `pi-mcp-adapter` with definitions from a private input file and disables the native Pi MCP.
 - No pi-subagents module exists. Agent fan-out uses the Herdr skill of the `herdr` component. The Herdr application is a host tool that the kit does not install.
 - The `questions` component declares the Pi question extension at an exact version. It is `unverified`, and the checklist does not mark it. See [Herdr and the question tool](docs/herdr-setup.md).
-- `packages/` holds the optional in-tree packages `tenantext`, `promptr`, `openviking-pi`, `agentcore-pi`, `agentcore-memory-core`, `agentcore-claude` and `agentcore-memory-admin`. The extensions and skills of `packages/tenantext` and `packages/promptr` are components of `config/manifest.json` with the source kind `tree`. Each extension and each skill is one component, except `coordinator-skills` and `knowledge-skills`, which each hold several skills. `openviking` (`packages/openviking-pi`) and `agentcore` (`packages/agentcore-pi`) are `tree` components too. The core, the Claude Code plugin and the registry script are not kit components. See [the in-tree packages](docs/packages.md).
+- `packages/` holds the optional in-tree packages `tenantext`, `openviking-pi`, `agentcore-pi`, `agentcore-memory-core`, `agentcore-claude` and `agentcore-memory-admin`. The extensions and skills of `packages/tenantext` are components of `config/manifest.json` with the source kind `tree`. Each extension and each skill is one component, except `coordinator-skills` and `knowledge-skills`, which each hold several skills. `openviking` (`packages/openviking-pi`) and `agentcore` (`packages/agentcore-pi`) are `tree` components too. The core, the Claude Code plugin and the registry script are not kit components. See [the in-tree packages](docs/packages.md).
 - A source pin does not prove that a clean client can use a module.
 - `scripts/publish_portable.py` publishes the reviewed publish set as a portable snapshot branch.
 - No install, capture, update or live service command exists.

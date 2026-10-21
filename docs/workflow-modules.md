@@ -1,8 +1,8 @@
-# Workflow modules: MCP adapter and Promptr
+# Workflow modules: MCP adapter
 
 Status: offline implementation, not a qualified runtime. `scripts/workflow_modules.py` is a pure module: no file, environment, subprocess, or network access. Validation, planning, and generation open no MCP server and touch no keyring. Only generation makes one read-only Git call (`git rev-parse HEAD`) in the kit directory; it records `unknown` without Git. The tests prove this with a blocked-socket, file-open-audited fixture that models absent Git and blocks every other process in a disposable HOME. The MCP module targets `pi-mcp-adapter`, not the native Pi MCP. The kit has no `pi-subagents` component. The source facts below apply to adapter version 5.4.0.
 
-One module can be enabled: `mcp` (`pi-mcp-adapter`, declared without a version; the source facts below were read at 5.4.0). `promptr` is `unverified` and has a named readiness matrix. No overlay block exists for either module; the MCP definitions come from the fixed input slot.
+One module can be enabled: `mcp` (`pi-mcp-adapter`, declared without a version; the source facts below were read at 5.4.0). No overlay block exists for the module; the MCP definitions come from the fixed input slot.
 
 ## MCP: activation
 
@@ -98,47 +98,18 @@ The manifest declares `pi-mcp-adapter` without a version, so an install takes th
 
 `docs/mcp.md` of Pi 0.99.1 and of Pi 1.3.0 says that an installed extension that registers `/mcp`, such as `pi-mcp-adapter`, replaces the built-in MCP support for sessions. The adapter changelog 5.0.0 says the same. So the adapter can win over a project `+builtin:mcp` entry, and the first row can be wrong. Not verified at runtime: no Pi start ran with the adapter.
 
-## Promptr: unverified with a readiness matrix
-
-Source: the in-tree package `packages/promptr` (`tree` source): `package.json`, `index.ts`, `scripts/install.mjs`, `README.md`, `src/extension/index.mts`.
-
-The table separates historical package loads on Pi 1.0.2 and Pi 1.0.3 from build and test results with dependencies at `runtime.piVersion` in `config/manifest.json`. No package load on the kit pin is verified. The component `promptr` and its four skill components are `unverified`. `met` applies only to the reviewed version. `open` means that the fact is a gap of the component.
-
-| Prerequisite | Fact | Status |
-| --- | --- | --- |
-| `local_package_load` | Observed with Pi 1.0.2 and Pi 1.0.3: Pi loads the built `packages/promptr` as a local path package from a generated profile. The 16 commands of the extension register, and Pi lists the four skills. | met |
-| `pi_line_build_and_tests` | `package.json` pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` at `runtime.piVersion` in `config/manifest.json`. The package tests pass, as do the build, typecheck and `npm run smoke`. `npm run smoke:installed` did not run on the kit pin. | met |
-| `build_step_required` | `packages/promptr/index.ts` re-exports `dist/src/extension/index.mjs`; `dist/` is ignored and absent in the tree. Run `npm ci --ignore-scripts` and `npm run build` in `packages/promptr` before the first start. `scripts/publish_check.py` ignores `dist/`. | open |
-| `host_module_dependency` | `dependencies` pins `@earendil-works/pi-tui` at `runtime.piVersion` in `config/manifest.json`, because the companion process (`promptr-companion-spike`) runs outside Pi and needs it. Pi 1.0.2 and Pi 1.0.3 print one warning at each start: host packages belong under `peerDependencies`. Those releases load a second copy from `packages/promptr/node_modules` for the built files. The package pins now match the kit pin. Pi declares its `pi-tui` dependency at that exact version. Not verified on the kit pin: the warning and interactive key handling, including the kitty key protocol. | open |
-| `private_renderer_adapters` | The sidebar uses private Pi renderer adapters. Observed with Pi 1.0.2: the sidebar displays. Not verified: a session with a model. | open |
-| `automatic_dispatch_path_unverified` | `requestHandoff` is called with `automatic: true`; queue sends are manual, the handoff switch is unverified. | open |
-
-Historical evidence with the 1.1.0 dependencies: the package tests passed, as did the build, typecheck and `npm run smoke`.
-Pi 1.2.0 adds fake-cursor markers to editor rows. The notebook text tests remove those markers without changing their text assertions.
-This test adjustment changes no production key handler. The kit pin move changes no installed Promptr copy.
-
-The four checked `pi-tui` key defaults at the kit pin match 1.2.0, 1.1.0 and 1.0.4. They keep `Home` and `Ctrl+A` for line start, and `End` and `Ctrl+E` for line end. `Ctrl+Home` and `Ctrl+End` scroll the transcript to its top and bottom. The file `dist/keybindings.js` is byte-equal in `pi-tui` 1.2.0 and the kit pin. Promptr documents `Home` and `End` for notebook lines and binds them directly for tracking navigation. It binds `Ctrl+E` to queue the composer and refuses that key in tracking dialogs. It has no explicit `Ctrl+A`, `Ctrl+Home` or `Ctrl+End` binding. These source checks do not prove interactive key handling.
-
-The matrix is recorded in every plan under `workflow.promptr`, whether or not Promptr is selected; `enabled` shows the selection. A plan that enables `promptr` names each open prerequisite and `kit_test_missing` under `readinessGaps`. A skill component needs `promptr` in `enable`. A fresh state is: no `<agent dir>/promptr/`, no project `.promptr/`, no tracker binding. The kit copies no queue, notebook, tracker credential, or handoff record and prints no command that sends a queued prompt.
-
-No test in this repository repeats a package load in a generated profile, so `kit_test_missing` stays.
-
-Not verified: a session with a model, a queue send, a handoff, a tracker read, the OpenKnowledge calls, the Herdr companion in a pane, and the four skills in use.
-
-The `promptr` component uses the `tree` source at `packages/promptr`; its four skills are separate components.
-
 ## Herdr skill: an optional component
 
 The Herdr skill is the selectable component `herdr` (`packages/tenantext`, `skills/herdr`, `unverified`). It loads from a generated profile only when the overlay enables it. The user-level install with `packages/tenantext/skills/herdr/install.sh` stays possible as a separate, approved option ([INSTALL.md](../INSTALL.md#stage-4a-herdr-and-the-question-tool)). The Herdr application is a host tool that the kit does not install; see [Herdr and the question tool](herdr-setup.md). Herdr-hosted and browser-hosted launch stay optional and unqualified in this release. A wider filter is a manifest and validator change with its own review.
 
 ## Coordinator skills: an optional component
 
-The component `coordinator-skills` (`packages/tenantext`, `unverified`) ships more than one skill: one directory for each below `skills/coordinator-skills/`. `config/manifest.json` names them, and [the component README](../packages/tenantext/skills/coordinator-skills/README.md) lists them. It claims one filter entry for each skill. A generated profile loads the skills only when the overlay enables the component. The user-level install with `packages/tenantext/skills/coordinator-skills/install.sh` links each skill into the Claude Code and the Pi skill directory of the user. The offline test `tests/test_skill_invariants.py` reads each shipped skill text.
+The component `coordinator-skills` (`packages/tenantext`, `unverified`) ships more than one skill: one directory for each below `skills/coordinator-skills/`. `config/manifest.json` names them; see [the component README](../packages/tenantext/skills/coordinator-skills/README.md). The validator derives one filter entry claim for each skill. A generated profile loads the skills only when the overlay enables the component. The user-level install with `packages/tenantext/skills/coordinator-skills/install.sh` links each skill into the Claude Code and the Pi skill directory of the user. The offline test `tests/test_skill_invariants.py` reads each shipped skill text.
 
 ## Knowledge skills: an optional component
 
-The component `knowledge-skills` (`packages/tenantext`, `unverified`) ships four MIT skills with one filter entry for each.
-[The component README](../packages/tenantext/skills/knowledge-skills/README.md) lists the skills, installation and external tool requirements.
+The component `knowledge-skills` (`packages/tenantext`, `unverified`) ships MIT skills with one filter entry for each.
+[The component README](../packages/tenantext/skills/knowledge-skills/README.md) gives the installation and the external tool requirements.
 A generated profile declares them only when the overlay enables the component.
 The install script links them into existing Claude Code and Pi user directories.
 Offline tests cover the skill text, temporary-home installation and profile declarations, but not a Pi load.
@@ -148,11 +119,10 @@ The kit ships the MIT `open-knowledge` skill. `ok init` also writes a project-lo
 
 | Output | Present when | Content |
 | --- | --- | --- |
-| `settings.json` `packages` | promptr | The path of `packages/promptr` with `extensions: ["index.ts"]` and one `skills` entry per enabled skill component. |
 | `settings.json` `packages` | mcp | `npm:pi-mcp-adapter` with `extensions: ["index.ts"]`. Declared after the in-tree packages and the memory packages. |
 | `settings.json` `extensions` | mcp | `["-builtin:mcp"]`. |
 | `mcp-adapter.json` | mcp | Validated `mcpServers` in name order, and the fixed `settings` block. |
-| `.tenant-pi/choices.json` `workflow` | always | `promptr` matrix with `enabled`, `status` and a status per prerequisite; `mcp` record: `enabled`, `path`, `builtinMcp`, `configMode`, and per server `transport`, `disabled`, `lifecycle`, `startupConnection`. |
+| `.tenant-pi/choices.json` `workflow` | always | `mcp` record: `enabled`, `path`, `builtinMcp`, `configMode`, and per server `transport`, `disabled`, `lifecycle`, `startupConnection`. |
 | `.tenant-pi/choices.json` `mcpDefinitions` | always | The validated input document, or `null`. Private, mode `0600`; the writer and the comparison rebuild the plan from it. |
 | `.tenant-pi/state.json` `outputs` | mcp | Lists the adapter file. |
 | Launch line | mcp | `PI_MCP_CONFIG_MODE=exclusive` precedes every other assignment. |
@@ -174,8 +144,7 @@ The module adds these readiness gaps:
 - Every accepted URL and field form.
 - Every rejection rule with a secret canary. The rules include credential fields, `!` commands, literal headers, credential-bearing arguments, and relative commands. They also include native fields, ambient top-level keys, case-variant duplicates, and duplicate JSON keys.
 - The binding between selection and the input slot.
-- The default plan with the matrix and no MCP path.
-- A plan that enables `promptr` and one skill: the package declaration, the `enabled` flag and the gaps.
+- The default plan with the record and no MCP path.
 - Rendering with a disabled entry preserved verbatim, the `extensions` entry, the launch prefix, and the gaps.
 - Module order and prefixes beside Tenantext and the wiki.
 - Guarded publication with tamper rejection for the file, the settings entry, the recorded definitions, and the record.

@@ -26,7 +26,7 @@ if __name__ == "__main__":
     sys.path.insert(0, str(ROOT / "scripts"))
 
 from check import stamp_path  # noqa: E402
-from publish_check import check, publish_files, tracked_files  # noqa: E402
+from publish_check import check, public_report, publish_files, tracked_files  # noqa: E402
 # The files that can change the bytes of a generated profile; `update` reads the same list.
 from profile_inputs import PROFILE_INPUTS  # noqa: E402
 
@@ -185,7 +185,6 @@ def release_tags(root):
 
 
 PACKAGE_LOCKS = ":(glob)packages/*/package-lock.json"
-PROMPTR_BUILD = ("packages/promptr/src", "packages/promptr/package.json", "packages/promptr/tsconfig.json")
 RANGES = (("piAcceptedRange", "Accepted range"), ("nodeRange", "Node range"), ("pythonRange", "Python range"))
 UPDATE_COMMAND = "python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>"
 
@@ -224,8 +223,6 @@ def update_block(root, previous, source):
     # A deleted lock file, also one of a removed package, needs no `npm ci`.
     packages = [path.rpartition("/")[0] for path in changed(PACKAGE_LOCKS, only="d")]
     package_lines = [f"- npm ci --ignore-scripts needed in: {', '.join(packages)}"] if packages else []
-    if changed(*PROMPTR_BUILD):
-        package_lines.append("- npm run build needed in: packages/promptr")
     lines += package_lines or ["- No package line needed."]
     return lines + [f"- Files that can change a generated profile: {', '.join(inputs) or 'none'}",
                     f"- Run: `{UPDATE_COMMAND}`",
@@ -253,14 +250,12 @@ def release_notes(root, tag, source, commit, release_class, tags, record, scan):
               *[f"   - {line}" for line in record], "5. Scanner",
               *[f"   - Snapshot range: {line}" for line in scan]]
     if release_class == "patch":
-        lines += [f"Gates 6-8: unchanged from {last_full}"]
+        lines += [f"Gates 6-7: unchanged from {last_full}"]
     else:
         lines += ["   - scan.sh all: <passed, failed, blocked or not run> - <result line with the level>",
                   "6. Clean Linux core trial: <passed, failed, blocked or not run> - <result line>",
                   "7. Optional live services (one line for each, no total result)",
-                  "   - <module, route or service>: <passed, failed, blocked or not run> - <result line>",
-                  "8. Compose seat (no total result): config <passed, failed or not run>, "
-                  "build <passed, failed or not run>, table check <passed, failed or not run>"]
+                  "   - <module, route or service>: <passed, failed, blocked or not run> - <result line>"]
     lines += ["", f"## Changes since {previous[0] if previous else '<first snapshot>'}", "",
               *[f"- {change}" for change in changes]]
     if release_class == "full":
@@ -285,7 +280,7 @@ def push_snapshot(root, command):
 
 
 def check_set(root):
-    """Reuse a matching full-run stamp, or require a successful full check set."""
+    """Reuse a matching stamp of a run of everything, or require a successful `check.py --all`."""
     command = [sys.executable, "scripts/check.py"]
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     status = subprocess.run([*command, "--stamp-status"], cwd=root, env=env,
@@ -296,27 +291,13 @@ def check_set(root):
         print("\n".join(lines), flush=True)
         return lines
     print("stamp: missing or stale; running the full check set", flush=True)
-    result = subprocess.run(command, cwd=root, env=env, text=True, capture_output=True)
+    result = subprocess.run([*command, "--all"], cwd=root, env=env, text=True, capture_output=True)
     print(result.stdout, end="", flush=True)
     if result.stderr:
         print(result.stderr, end="", file=sys.stderr)
     if result.returncode != 0 or result.stdout.splitlines()[-1:] != ["check: passed"]:
         raise SystemExit("check set failed; no snapshot built")
     return stamp_record(root)
-
-
-def check_pages(root):
-    """Compare public pages without writing them, independently of a check-set stamp."""
-    for builder, page in (("architecture_build.py", "docs/architecture.html"),
-                          ("explainer_build.py", "EXPLAINER.html")):
-        result = subprocess.run([sys.executable, f"scripts/{builder}", "--check"], cwd=root,
-                                env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"),
-                                text=True, capture_output=True)
-        if result.returncode:
-            reason = "stale" if result.returncode == 1 else "check failed"
-            detail = result.stderr.splitlines()
-            suffix = f"; {detail[0]}" if detail else ""
-            raise SystemExit(f"page {reason}: {page}{suffix}")
 
 
 def main(argv=None):
@@ -350,9 +331,11 @@ def main(argv=None):
         raise SystemExit("working tree not clean: commit or stash first; the snapshot comes from HEAD only")
     head = git("rev-parse", "HEAD")
     short = head[:7]
-    check_pages(ROOT)
     record = check_set(ROOT)
     tags_before = release_tags(ROOT)
+    # The publish rules run here, not in the everyday check: first each public reader finding, then the publish set.
+    if public_report():
+        raise SystemExit("public reader check failed; no snapshot built")
     names = check()
     print(f"check ok: publish set ({len(names)} files)")
     date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")

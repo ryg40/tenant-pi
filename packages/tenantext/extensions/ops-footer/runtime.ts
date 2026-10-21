@@ -17,7 +17,7 @@ export interface RuntimeDependencies {
   git?: (settings: Settings) => GitAdapter;
   health?: () => HealthAdapter;
 }
-const HELP = "/ops-footer [report|on|off|refresh|settings|save|layout v4|v3|v2|a|b|c|help]\nOff restores Pi's default footer, not an earlier custom footer.\nlayout switches the row composition for this session only; v4 is the default with every row below the editor, v3 puts the directory row and the bar above the editor, v2 is the bar-first footer, a, b, and c are prototype layouts.\nOnly one extension can own the footer. Disable Powerline's footer before enabling this footer.";
+const HELP = "/ops-footer [report|on|off|refresh|settings|save|layout v4|v3|help]\nOff restores Pi's default footer, not an earlier custom footer.\nlayout switches the row composition for this session only; v4 is the default with every row below the editor, v3 puts the directory row and the bar above the editor.\nOnly one extension can own the footer. Disable Powerline's footer before enabling this footer.";
 
 const TOP_WIDGET = "ops-footer-top";
 /**
@@ -309,8 +309,8 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
         else ctx.ui.notify(`Footer layout: ${layout}. Use /ops-footer layout ${layoutNames.join("|")}.`, "info");
       } else if (command === "report") {
         refreshLocal();
-        // The dropped-row line needs the painted width. It applies to the v4 and v3 layouts, which stack one row per account.
-        if (data) ctx.ui.notify(detailedReport(data, context, Date.now(), (layout === "v4" || layout === "v3") && shown ? { settings, width: shown.width } : undefined), "info");
+        // The dropped-row line needs the painted width. Both layouts stack one row per account.
+        if (data) ctx.ui.notify(detailedReport(data, context, Date.now(), shown ? { settings, width: shown.width } : undefined), "info");
       } else ctx.ui.notify(HELP, "info");
     },
   });

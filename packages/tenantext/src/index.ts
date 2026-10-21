@@ -5,7 +5,7 @@ import { buildContextReport, type PromptOptionsLike } from "./report.ts";
 import { RULES_BLOCK, RULES_VERSION, estimateTokensFromText } from "./rules.ts";
 import { DECISIONS_EVENT, ensureSettings, loadSettings, saveSettings, settingsPath, type TenantextSettings } from "./settings.ts";
 import { settingsMenu } from "./settings-menu.ts";
-import { loadSettings as loadMeterSettings } from "../extensions/context-meter/settings.ts";
+import { loadSettings as loadMeterSettings } from "./context-meter-settings.ts";
 
 const STATUS_KEY = "tenantext";
 const ENTRY_TYPE = "tenantext-note";

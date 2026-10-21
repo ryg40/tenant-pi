@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -16,11 +16,15 @@ function files(directory: string): string[] {
 	}).sort();
 }
 
-test("the Claude Code plugin ships the Herdr runtime and command without drift", () => {
+test("the Claude Code plugin ships the Herdr runtime and command without drift", (t) => {
 	const source = join(root, "..", "..", "skills", "herdr");
-	const copy = join(root, "..", "skills", "herdr");
+	// The test builds the plugin copy that it reads, so a clean clone needs no build step first.
+	const built = mkdtempSync(join(tmpdir(), "tenantext-plugin-skills-"));
+	t.after(() => rmSync(built, { recursive: true, force: true }));
+	execFileSync("python3", [join(root, "..", "build-skills.py"), built]);
+	const copy = join(built, "herdr");
 	const expected = [
-		"SKILL.md", "SPAWN.md", "LAYOUT.md", "roles.json", "resources.json",
+		"SKILL.md", "SPAWN.md", "LAYOUT.md", "contract.json", "roles.json", "resources.json",
 		"resources.local.example.json", "models.example.json", "commands/spawn_agent.md",
 		"roles/contract.md", "roles/coordinator.md", "roles/researcher.md", "roles/reviewer.md",
 		"roles/scout.md", "roles/worker.md", "scripts/_common.py", "scripts/ask.py", "scripts/close.py",

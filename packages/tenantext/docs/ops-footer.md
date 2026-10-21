@@ -4,7 +4,7 @@ The operations footer replaces Pi's footer with stable status rows. It reads loc
 
 ## Rows and priorities
 
-The footer is visual first. The prompt editor comes first. Below it sit the model row, the directory row, one full-width color bar, and quiet text rows. Each row appears only when it has something to say. This is layout v4, the default. No row sits above the editor. `/ops-footer layout v3` restores the earlier composition with the directory row and the bar above the editor; `/ops-footer layout v2` restores the bar-first v2 composition, all below the editor.
+The footer is visual first. The prompt editor comes first. Below it sit the model row, the directory row, one full-width color bar, and quiet text rows. Each row appears only when it has something to say. This is layout v4, the default. No row sits above the editor. `/ops-footer layout v3` restores the earlier composition with the directory row and the bar above the editor.
 
 All rows are the Pi footer below the editor. Layout v4 sets no widget. In layout v3 the directory row and the bar are a Pi widget above the editor (`ops-footer-top`), and the model row is the first row below the editor.
 
@@ -91,7 +91,7 @@ Example with `maximumRows` 6 and five accounts: the footer shows `Codex1`, `Code
 
 A settings file that holds `maximumRows` keeps its value. The default applies only when the key is absent. Set `maximumRows` to 8 in `~/.pi/agent/ops-footer/settings.json` to allow five quota rows.
 
-Reset times are never raw ISO text. Every window shows a relative reset, such as `↺ 2h 47m`, when the row fits. A window with a reset at least 24 hours away also shows the local absolute form: `↺ 5d 7h · Sat 10/3 · 23:35 UTC`. On an account row this applies to every window, so a healthy `7d` window shows its reset date. The one-row quota of layout `v2` adds the absolute form only for a low or exhausted window. A row that is too narrow drops the absolute form first, then the resets of the normal windows.
+Reset times are never raw ISO text. Every window shows a relative reset, such as `↺ 2h 47m`, when the row fits. A window with a reset at least 24 hours away also shows the local absolute form: `↺ 5d 7h · Sat 10/3 · 23:35 UTC`. On an account row this applies to every window, so a healthy `7d` window shows its reset date. A row that is too narrow drops the absolute form first, then the resets of the normal windows.
 
 Each row picks its own form. Candidates run from full account names with resets to short names `C1 C2`, then one window. Narrow rows prefer an alert window. Usage on the location row never displaces a quota chip.
 
@@ -105,7 +105,6 @@ In layout v3, Pi keeps widgets above the editor in the order extensions add them
 OpenViking sits on the right of the first quota row, below the bar (in layout v3: below session costs). LLM Wiki sits directly below OpenViking.
 At 100 columns or more, these rows share space with quota accounts when both columns fit.
 At narrower widths, memory gets separate right-aligned rows within `maximumRows`.
-Layouts `v2`, `a`, `b`, and `c` include memory in their shared services row instead.
 
 | Signal | Meaning |
 | --- | --- |
@@ -245,14 +244,14 @@ This extension does not replace Powerline's editor, stash, bash mode, welcome di
 | `/ops-footer refresh` | Refreshes enabled external collectors |
 | `/ops-footer settings` | Shows current settings without endpoint values; `/tenantext settings` opens the interactive editor |
 | `/ops-footer save` | Saves current display defaults |
-| `/ops-footer layout v4\|v3\|v2\|a\|b\|c` | Switches the row composition for this session only: `v4` is the default with every row below the editor, `v3` puts the directory row and the bar above the editor, `v2` is the bar-first footer, `a`, `b`, and `c` are alternate layouts available through the preview command |
+| `/ops-footer layout v4\|v3` | Switches the row composition for this session only: `v4` is the default with every row below the editor, `v3` puts the directory row and the bar above the editor. Another name, also the name of a removed layout, keeps the current layout |
 | `/ops-footer help` | Shows command help |
 
 Reports use local UI notifications. They do not create session entries or model context.
 
 ## Settings
 
-The default file is `~/.pi/agent/ops-footer/settings.json`. Pi's public `getAgentDir()` also honors `PI_CODING_AGENT_DIR` for isolated profiles. Startup fills a missing or blank file with the defaults below. It writes `settings.example.jsonc` beside it with commented option names and allowed values. Existing nonempty files and examples remain unchanged. The main settings file under `~/.pi/agent/tenantext/` follows the same rule.
+The default file is `~/.pi/agent/ops-footer/settings.json`. `PI_CODING_AGENT_DIR` changes the directory for isolated profiles, as in Pi; a leading `~` expands to the home directory. Startup fills a missing or blank file with the defaults below. It writes `settings.example.jsonc` beside it with commented option names and allowed values. Existing nonempty files and examples remain unchanged. The main settings file under `~/.pi/agent/tenantext/` follows the same rule.
 
 ```json
 {

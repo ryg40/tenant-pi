@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import slow
+from tests.support import needs_folder, slow
 import unittest.mock
 from pathlib import Path
 
@@ -357,7 +357,9 @@ class CheckTests(unittest.TestCase):
         for name in self.explicit:
             self.add(name, (ROOT / name).read_text() if name.startswith("config/") or name == ".env.example" else "clean\n")
         for name, line in publish_check.PATTERN_ALLOW:
-            self.assertIn(line, (ROOT / name).read_text().split("\n"))
+            # A kit can leave out the folder of a package; the copy holds the reviewed line anyway.
+            if (ROOT / name).is_file():
+                self.assertIn(line, (ROOT / name).read_text().split("\n"))
             self.add(name, line + "\n")
         self.add("packages/openviking-pi/shared/config-schema.mjs", "export {};\n")
         self.add(publish_check.DEV_ONLY_REL, "# private paths\n")
@@ -456,18 +458,11 @@ class CheckTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("unreviewed_file", result.stderr)
 
-    def test_tracked_file_under_a_build_output_directory_is_rejected(self):
-        publish_check.build_output_guard(TRACKED)
-        with self.assertRaisesRegex(Invalid, "^tracked_build_output: packages/promptr/dist/src/a.mjs$"):
-            publish_check.build_output_guard(TRACKED | {"packages/promptr/dist/src/a.mjs"})
-        publish_check.build_output_guard({"packages/promptr/distribution.md", "packages/tenantext/dist/a.js"})
-
+    @needs_folder("packages/openviking-pi")
     def test_vendored_openviking_package_rule(self):
         directory = "packages/openviking-pi"
         self.assertIn((directory, ("node_modules/", "LICENSE")), publish_check.PUBLISH_DIRS)
         self.assertIn(directory + "/LICENSE", publish_check.PUBLISH)
-        # `shared/` is committed source of the vendored copy, not build output.
-        self.assertFalse(any(name.startswith(directory) for name in publish_check.BUILD_DIRS))
         tracked = publish_check.tracked_files(ROOT)
         if tracked is not None:
             self.assertIn(directory + "/shared/config-schema.mjs", tracked)
@@ -489,6 +484,7 @@ class CheckTests(unittest.TestCase):
         result = self.run_check()
         self.assertIn("publish_secret_pattern: " + directory + "/shared/extra.mjs", result.stderr)
 
+    @needs_folder("packages/openviking-pi")
     def test_reviewed_lines_of_the_vendored_package_are_exact(self):
         entries = [(path, line) for path, line in publish_check.PATTERN_ALLOW if path.startswith("packages/openviking-pi/")]
         self.assertEqual(3, len(entries))
@@ -514,11 +510,6 @@ class CheckTests(unittest.TestCase):
         git(self.root, "add", "config", "README.md", ".env.example", "scripts", "packages", "docs/guide.md")
         self.add("docs/architecture-local.html.extra", "unreviewed\n")
         self.assertIn("unreviewed_file", self.run_check().stderr)
-
-    def test_untracked_promptr_build_output_is_ignored(self):
-        self.add("packages/promptr/dist/src/extension/index.mjs", "export {};\n")
-        result = self.run_check()
-        self.assertEqual(0, result.returncode, result.stderr)
 
     def test_untracked_node_modules_directory_is_ignored(self):
         self.add("packages/tenantext/node_modules/yaml/package.json", "{}\n")
@@ -585,7 +576,7 @@ class CheckTests(unittest.TestCase):
         self.add("packages/demo/index.mjs", f"// {WORD} 59\n")
         self.add("packages/demo/notes/plan.md")
         self.assertEqual(0, self.run_check(RULES, pending=("packages/",)).returncode)
-        result = self.run_check(pending=("packages/tenantext/", "packages/promptr/"))
+        result = self.run_check(pending=("packages/tenantext/",))
         self.assertNotEqual(0, result.returncode)
         self.assertEqual("publish_public_reader: packages/demo/index.mjs", result.stderr.strip())
 

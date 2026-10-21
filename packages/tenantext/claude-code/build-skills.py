@@ -7,7 +7,7 @@ import shutil
 import stat
 import sys
 
-SKILLS = ("herdr", "slopscore-pr")
+SKILLS = ("herdr",)
 EXCLUDED = {"install.sh", "tests", "__pycache__"}
 
 

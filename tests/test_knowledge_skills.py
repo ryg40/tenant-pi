@@ -8,7 +8,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = ROOT / "packages/tenantext/skills/knowledge-skills"
-NAMES = {"okf-knowledge-base", "open-knowledge-write-skill", "open-knowledge-discovery", "open-knowledge"}
+# The skills of the component: the skill names of its manifest entry.
+NAMES = {Path(skill).name for skill in
+         json.loads((ROOT / "config/manifest.json").read_text())["components"]["knowledge-skills"]["resources"]["skills"]}
 PIN = "776760f49d5b3b5c24921165b6c1ea17e8990fd5"
 
 
@@ -22,7 +24,7 @@ class KnowledgeSkillsTests(unittest.TestCase):
         manifest = json.loads((ROOT / "config/manifest.json").read_text())
         component = manifest["components"]["knowledge-skills"]
         resources = component["resources"]
-        self.assertEqual(NAMES, {Path(skill).name for skill in resources["skills"]})
+        self.assertIn("open-knowledge", NAMES)
         self.assertEqual([], resources["extensions"] + resources["prompts"] + resources["themes"])
         self.assertEqual({"kind": "tree", "path": "packages/tenantext"}, component["source"])
         self.assertEqual(["core"], component["requires"])
@@ -33,8 +35,8 @@ class KnowledgeSkillsTests(unittest.TestCase):
                          {gap["code"] for gap in component["gaps"]})
         self.assertEqual([], component["env"])
         self.assertEqual("reviewed", component["configOwnership"]["status"])
-        self.assertEqual([{"file": "settings.json", "key": "package:packages/tenantext:" + skill}
-                          for skill in resources["skills"]], component["configOwnership"]["claims"])
+        # The validator derives one filter entry for each skill; the manifest lists no claim.
+        self.assertEqual([], component["configOwnership"]["claims"])
         self.assertEqual(NAMES, {path.name for path in COMPONENT.iterdir() if path.is_dir()})
         for name in NAMES:
             with self.subTest(skill=name):

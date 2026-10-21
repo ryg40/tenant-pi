@@ -6,22 +6,12 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 const readJson = (path: string) => JSON.parse(readFileSync(new URL(path, root), "utf8"));
 
-test("suite exposes ten stable individual resources", () => {
+// `pi.extensions` is the one load list of the package; the kit manifest names one component for each entry.
+test("suite exposes each extension as an individual resource", () => {
   const manifest = readJson("package.json");
-  assert.equal(manifest.version, "1.0.0");
-  assert.deepEqual(manifest.pi.extensions, [
-    "./extensions/tenantext/index.ts",
-    "./extensions/slopscore/index.ts",
-    "./extensions/codex-accounts/index.ts",
-    "./extensions/context-meter/index.ts",
-    "./extensions/ops-footer/index.ts",
-    "./extensions/copilot-usage/index.ts",
-    "./extensions/anthropic-usage/index.ts",
-    "./extensions/doctor/index.ts",
-    "./extensions/resources/index.ts",
-    "./extensions/herdr-watch/index.ts",
-  ]);
+  assert.equal(new Set(manifest.pi.extensions).size, manifest.pi.extensions.length);
   for (const resource of manifest.pi.extensions) {
+    assert.match(resource, /^\.\/extensions\/[a-z0-9-]+\/index\.ts$/);
     assert.ok(existsSync(fileURLToPath(new URL(resource, root))), resource);
   }
   const lock = readJson("package-lock.json");

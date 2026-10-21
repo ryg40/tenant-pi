@@ -44,9 +44,11 @@ test("the plugin ships no permission rule, no settings and no other hook event",
 test("the package pins exact versions and the lock agrees", () => {
 	const pkg = json("package.json");
 	const lock = json("package-lock.json");
-	assert.deepEqual(pkg.dependencies, { "@modelcontextprotocol/server": "2.3.1", zod: "4.6.7" });
+	assert.ok(Object.keys(pkg.dependencies).includes("@modelcontextprotocol/server"));
 	assert.deepEqual(lock.packages[""].dependencies, pkg.dependencies);
-	assert.equal(lock.packages["node_modules/@modelcontextprotocol/server"].version, "2.3.1");
-	assert.equal(lock.packages["node_modules/zod"].version, "4.6.7");
+	for (const [name, version] of Object.entries(pkg.dependencies)) {
+		assert.match(version, /^\d+\.\d+\.\d+$/, name);
+		assert.equal(lock.packages[`node_modules/${name}`].version, version, name);
+	}
 	assert.equal(pkg.engines.node, ">=24.0.0 <25");
 });

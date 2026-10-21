@@ -1,5 +1,5 @@
 {
-  "comment": "Copy to ~/.config/herdr-skill/relay.json. It gives the relay worker of this machine. Leave a value out, and the harness uses its own default.",
+  "comment": "Copy to ~/.config/herdr-skill/relay.json. It gives the relay worker of this machine. The worker needs a model: from this file, from --model, or from models.json of the herdr skill. Without one, the worker does not start and relay.py exits with 71. Leave thinking out, and the harness uses its own default.",
   "harness": "pi",
   "role": "worker",
   "model": "<a model name that `pi --list-models` finds one time>",

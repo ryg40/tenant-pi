@@ -42,13 +42,6 @@ class RepositoryCase(unittest.TestCase):
             "runtime": {"piVersion": "1.2.3", "piAcceptedRange": ">=1.2.3 <1.3"}}))
         (self.root / "scripts").mkdir()
         (self.root / "docs").mkdir()
-        for builder, page in (("architecture_build.py", "docs/architecture.html"),
-                              ("explainer_build.py", "EXPLAINER.html")):
-            (self.root / page).write_text("current\n")
-            (self.root / "scripts" / builder).write_text(
-                "import sys\nfrom pathlib import Path\n"
-                "assert sys.argv[1:] == ['--check']\n"
-                f"raise SystemExit(0 if Path({page!r}).read_text() == 'current\\n' else 1)\n")
         (self.root / "keep.txt").write_text("keep\n")
         (self.root / "private").mkdir()
         (self.root / "private/draft.md").write_text("PRIVATE_CANARY\n")
@@ -129,6 +122,7 @@ class SnapshotTests(RepositoryCase):
                 mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
                 mock.patch.object(publish_portable, "check_set", return_value=["check: passed"]), \
                 mock.patch.object(publish_portable, "check", return_value=("keep.txt",)), \
+                mock.patch.object(publish_portable, "public_report", return_value=0), \
                 contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(0, publish_portable.main(["--new-root", "--no-push", "--notes",
                                                        str(self.notes)]))
@@ -241,12 +235,12 @@ class CheckSetTests(RepositoryCase):
         directory = self.root / ".git/check-stamps"
         directory.mkdir(exist_ok=True)
         stamp = {"when": "2030-01-01T00:00:00Z", "client": {"root": False}, "tests": 4,
-                 "skipped": 1, "resultLines": ["Ran 4 tests in 0.001s", "OK (skipped=1)",
-                                              "publish: passed", "public: passed", "diff: passed", "check: passed"]}
+                 "skipped": 1, "resultLines": ["select: all (--all)", "Ran 4 tests in 0.001s", "OK (skipped=1)",
+                                              "scan: passed", "diff: passed", "check: passed"]}
         (directory / tree).write_text(json.dumps(stamp))
         return tree, stamp
 
-    def invoke(self, mode, *options, push=False, default_notes=False):
+    def invoke(self, mode, *options, push=False, default_notes=False, public=0):
         import publish_portable
         (self.root / ".git/check-mode").write_text(mode)
         real_git = publish_portable.git
@@ -259,70 +253,16 @@ class CheckSetTests(RepositoryCase):
         with mock.patch.object(publish_portable, "ROOT", self.root), \
                 mock.patch.object(publish_portable, "git", side_effect=local_git), \
                 mock.patch.object(publish_portable, "check", return_value=("keep.txt",)) as direct_check, \
+                mock.patch.object(publish_portable, "public_report", return_value=public) as public_check, \
                 mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
                 contextlib.redirect_stdout(output):
             arguments = [] if push else ["--no-push"]
             if not default_notes:
                 arguments += ["--notes", str(self.notes)]
             self.assertEqual(0, publish_portable.main([*arguments, *options]))
+            public_check.assert_called_once_with()
             direct_check.assert_called_once_with()
         return output.getvalue()
-
-    def test_stale_explainer_refuses_both_classes_and_current_tree_passes(self):
-        import explainer_build
-
-        root = Path(__file__).resolve().parents[1]
-        shutil.copy2(root / "scripts/explainer_build.py", self.root / "scripts/explainer_build.py")
-        shutil.copytree(root / explainer_build.SOURCE_REL, self.root / explainer_build.SOURCE_REL)
-        targets = {html.unescape(target).partition("#")[0]
-                   for target in re.findall(r'<a href="([^"]+)"', explainer_build.build(root))}
-        for target in sorted(targets):
-            if not target or ":" in target:
-                continue
-            path = self.root / target
-            path.parent.mkdir(parents=True, exist_ok=True)
-            if not path.exists():
-                path.touch()
-        page = self.root / "EXPLAINER.html"
-        current = explainer_build.build(self.root)
-        for kind in ("patch", "full"):
-            with self.subTest(kind=kind):
-                page.write_text("stale\n")
-                git(self.root, "add", "-A")
-                git(self.root, "commit", "-qm", f"stale page for {kind}")
-                self.make_stamp()
-                before = git(self.root, "show-ref")
-                with self.assertRaises(SystemExit) as caught:
-                    self.invoke("stamp", "--class", kind)
-                self.assertEqual("page stale: EXPLAINER.html", str(caught.exception))
-                self.assertEqual(before, git(self.root, "show-ref"))
-                self.assertEqual("stale\n", page.read_text())
-                self.assertEqual("", git(self.root, "status", "--porcelain"))
-                page.write_text(current)
-                git(self.root, "commit", "-qam", f"current page for {kind}")
-                self.make_stamp()
-                self.invoke("stamp", "--class", kind, "--new-root")
-                self.assertEqual(current, page.read_text())
-                self.assertEqual("", git(self.root, "status", "--porcelain"))
-
-    def test_architecture_staleness_and_builder_errors_stop_before_snapshot(self):
-        page = self.root / "docs/architecture.html"
-        for code, detail, message in ((1, "", "page stale: docs/architecture.html"),
-                                      (2, "", "page check failed: docs/architecture.html"),
-                                      (2, "graph_rule: view\nmore detail\n",
-                                       "page check failed: docs/architecture.html; graph_rule: view")):
-            with self.subTest(code=code, detail=detail):
-                (self.root / "scripts/architecture_build.py").write_text(
-                    f"import sys\nsys.stderr.write({detail!r})\nraise SystemExit({code})\n")
-                git(self.root, "commit", "-qam", f"builder exit {code}")
-                self.make_stamp()
-                before = git(self.root, "show-ref")
-                with self.assertRaises(SystemExit) as caught:
-                    self.invoke("stamp")
-                self.assertEqual(message, str(caught.exception))
-                self.assertEqual(before, git(self.root, "show-ref"))
-                self.assertEqual("current\n", page.read_text())
-                self.assertEqual([], self.calls(), "page checks must precede the check set")
 
     def test_first_release_without_portable_tags(self):
         self.make_stamp()
@@ -330,7 +270,7 @@ class CheckSetTests(RepositoryCase):
         self.invoke("stamp")
         notes = self.notes.read_text()
         self.assertIn("## Changes since <first snapshot>", notes)
-        self.assertIn("Gates 6-8: unchanged from <no full tag recorded>", notes)
+        self.assertIn("Gates 6-7: unchanged from <no full tag recorded>", notes)
         self.assertIn("## Update\n\n- First release: no update data.\n", notes)
 
     def test_notes_inside_checkout_are_refused_before_checks_or_ref_changes(self):
@@ -361,7 +301,7 @@ class CheckSetTests(RepositoryCase):
     def test_no_stamp_runs_full_check_before_build(self):
         self.make_stamp()  # The full-check fixture leaves this stamp for the publisher to read.
         output = self.invoke("pass")
-        self.assertEqual(self.calls(), [[["--stamp-status"], "1"], [[], "1"]])
+        self.assertEqual(self.calls(), [[["--stamp-status"], "1"], [["--all"], "1"]])
         self.assertIn("check: passed", output)
         self.assertLess(output.index("check: passed"), output.index("portable commit"))
         self.assertEqual({"keep.txt": "100644"}, self.files("portable"))
@@ -373,6 +313,13 @@ class CheckSetTests(RepositoryCase):
                 with self.assertRaisesRegex(SystemExit, "check set failed; no snapshot built"):
                     self.invoke(mode)
                 self.assertEqual(before, git(self.root, "show-ref"))
+
+    def test_public_reader_finding_stops_build(self):
+        self.make_stamp()
+        before = git(self.root, "show-ref")
+        with self.assertRaisesRegex(SystemExit, "public reader check failed; no snapshot built"):
+            self.invoke("stamp", public=1)
+        self.assertEqual(before, git(self.root, "show-ref"))
 
     def test_dirty_tree_refuses_before_stamp_check(self):
         (self.root / "keep.txt").write_text("dirty\n")
@@ -443,7 +390,7 @@ class ReleaseClassTests(RepositoryCase):
                 self.assertIn(f"notes: {self.notes}", output)
                 self.assertIn(f"\nclass: {kind}\n", git(self.root, "cat-file", "-p", tag))
                 if kind == "patch":
-                    self.assertIn(f"Gates 6-8: unchanged from {self.full_tag}", notes)
+                    self.assertIn(f"Gates 6-7: unchanged from {self.full_tag}", notes)
                     self.assertIn(f"Changes since {self.patch_tag}", notes)
                     for number in (21, 22):
                         self.assertEqual(notes.count(f"- Merge change (issue {number})"), 1)
@@ -451,9 +398,9 @@ class ReleaseClassTests(RepositoryCase):
                     self.assertNotIn("6. Clean Linux", notes)
                 else:
                     for line in ("scan.sh all: <", "6. Clean Linux core trial: <", "7. Optional live services",
-                                 "8. Compose seat", "Platforms that are not qualified: <", "## Open gaps"):
+                                 "Platforms that are not qualified: <", "## Open gaps"):
                         self.assertIn(line, notes)
-                    self.assertNotIn("Gates 6-8: unchanged", notes)
+                    self.assertNotIn("Gates 6-7: unchanged", notes)
 
     def test_legacy_tag_is_last_full_and_default_class_is_patch(self):
         legacy = "portable/20290103-0000ccc"
@@ -462,7 +409,7 @@ class ReleaseClassTests(RepositoryCase):
         self.invoke("stamp")
         notes = self.notes.read_text()
         self.assertIn("# Portable release: patch", notes)
-        self.assertIn(f"Gates 6-8: unchanged from {legacy}", notes)
+        self.assertIn(f"Gates 6-7: unchanged from {legacy}", notes)
 
     def test_update_block_without_relevant_changes(self):
         self.invoke("stamp")

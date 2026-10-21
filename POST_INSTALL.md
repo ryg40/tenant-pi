@@ -35,7 +35,7 @@ Follow the verdict. `nextCommands` of the output holds each line with the real p
 
 A candidate of an earlier release has no output digests, so `update` can ask one time for a new candidate, with the reason `no_output_digests`.
 
-A clean clone at a release tag needs no test run. The GitHub workflow `.github/workflows/checks.yml` runs `python3 scripts/check.py` on Linux and macOS for each snapshot that is pushed to GitHub. The maintainer creates the release entry of a tag only after both runs pass ([continuous integration](docs/publishing.md#continuous-integration)). A clone with local changes runs `python3 scripts/check.py --tier fast`; `update` then prints that line first. A profile loads the in-tree packages from the clone by path, so a candidate loads new package code at its next start. Not verified: the effect of a pull on a running Pi session. Details: [the update action](docs/update.md).
+A clean clone at a release tag needs no test run. The GitHub workflow `.github/workflows/checks.yml` runs `python3 scripts/check.py --all` on Linux and macOS for each snapshot that is pushed to GitHub. The maintainer creates the release entry of a tag only after both runs pass ([continuous integration](docs/publishing.md#continuous-integration)). A clone with local changes runs `python3 scripts/check.py --tier fast`; `update` then prints that line first. A profile loads the in-tree packages from the clone by path, so a candidate loads new package code at its next start. Not verified: the effect of a pull on a running Pi session. Details: [the update action](docs/update.md).
 
 ## Confirm the base install
 
@@ -321,14 +321,8 @@ Warning: a removal of the wrong directory deletes `auth.json`, the sessions and 
 Details: [the provider guide](docs/guides/providers.md).
 
 - A login to a provider that Pi includes: launch the candidate and use `/login`. The login stays in that candidate.
-- A local provider (llama-swap, vLLM): the registration is `models.json` of the candidate. Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` to regenerate the supported non-secret format. See [the wizard contract](docs/guides/wizard.md#direct-providers). Unsupported Pi registration fields still need a separately reviewed manual copy.
+- A local provider (llama-swap, vLLM): the registration is `models.json` of the candidate. Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` to regenerate the supported non-secret format. See [the provider guide](docs/guides/providers.md#direct-providers). Unsupported Pi registration fields still need a separately reviewed manual copy.
 - A default model for each new candidate: enable `model-routing` and set `roles.interactive` in `<overlay>`. With `modelRoutes`, give `--registry` to `validate`, `plan` and `generate`. Then do the loop.
-
-## Update a Compose seat
-
-A Compose seat has its own update path: pull the clone, then `build` and `up -d` with the new `KIT_COMMIT`. The entrypoint generates a candidate beside the profile of the seat, and the `logs` line shows the next steps. Details: [the Compose seat guide](docs/guides/compose-seat.md#updates).
-
-Warning: never run a line with `down -v` for an update. It removes the profile and the sessions.
 
 ## Write the results file again
 

@@ -1,7 +1,7 @@
 import { getCurrentSystemPrompt } from "@earendil-works/pi-ai";
 import { convertToLlm, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createBreaker, fetchNextMove, sessionState, type NextMove } from "./next-move.ts";
-import { loadSettings, defaults } from "./settings.ts";
+import { loadSettings, defaults } from "../../src/context-meter-settings.ts";
 import { DECISIONS_EVENT, loadSettings as loadTenantextSettings } from "../../src/settings.ts";
 import { renderMeter, formatPercent } from "./render.ts";
 import { contextState, emptyEstimates, estimateSources, guidance, providerSystemTokens, snapshot, sources, textTokens, type ContextState } from "./snapshot.ts";

@@ -186,7 +186,7 @@ class RowTests(unittest.TestCase):
         names = {item["id"]: item for item in off}
         self.assertEqual(set(KNOWN) - {"core", "ops-footer", "herdr"}, set(names))
         # An entry file names its package.
-        self.assertEqual(["promptr"], names["promptr"]["extensions"])
+        self.assertEqual(["openviking-pi"], names["openviking"]["extensions"])
         self.assertEqual(["pi-hermes-memory"], names["hermes"]["extensions"])
         # An entry file in a directory of its own has the name of that directory.
         self.assertEqual(["llm-wiki"], names["wiki"]["extensions"])

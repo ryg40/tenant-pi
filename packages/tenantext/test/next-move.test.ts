@@ -9,7 +9,7 @@ import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earen
 import { askNextMove, createBreaker, fetchNextMove, MESSAGE_CHARS, nextMoveChip, question, sessionState } from "../extensions/context-meter/next-move.ts";
 import { DECISIONS_EVENT, saveSettings as saveTenantextSettings, settingsPath as tenantextSettingsPath } from "../src/settings.ts";
 import tenantext from "../src/index.ts";
-import { defaults, validateSettings } from "../extensions/context-meter/settings.ts";
+import { defaults, validateSettings } from "../src/context-meter-settings.ts";
 import { snapshot, emptyEstimates } from "../extensions/context-meter/snapshot.ts";
 import { renderMeter } from "../extensions/context-meter/render.ts";
 import { createContextMeter } from "../extensions/context-meter/service.ts";

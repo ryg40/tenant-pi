@@ -24,11 +24,6 @@ REASONS = (NOT_COMPARABLE, NO_DIGESTS, KIT_CHANGED)
 NO_DIGESTS_NOTE = "This candidate predates output digests; generate one new candidate; later updates compare exactly."
 DRIFT_NOTE = "Pi or the user changed these files after generation; they stay as they are with same_profile."
 DIGEST = re.compile(r"[0-9a-f]{64}\Z")
-# In-tree packages with a build step: the source directory and suffix of the `include` of `tsconfig.json`, the
-# directory and suffix of the compiler output, and the build inputs beside the sources. A compiler bump changes
-# `package-lock.json`.
-BUILDS = {"packages/promptr": ("src", ".mts", "dist/src", ".mjs",
-                               ("package.json", "package-lock.json", "tsconfig.json"))}
 # The `-YYYYMMDD` part of a candidate name, with an optional `-<number>`; a suggested name replaces it.
 DATED = re.compile(r"-[0-9]{8}(?:-[0-9]+)?\Z")
 MAX_SUGGESTIONS = 100
@@ -121,36 +116,9 @@ def install_status(lock, installed):
     return "current", None
 
 
-def build_status(sources, outputs, inputs, source_suffix, output_suffix):
-    """`(status, reason)` of the build: `current` when each source file has its output and the output is not older,
-    and no build input is newer than the newest output.
-
-    `sources`, `outputs` and `inputs` map a path relative to their directory to a modification time in nanoseconds.
-    `outputs` is None when the output directory is absent. `inputs` holds the build inputs that exist.
-    """
-    if outputs is None:
-        return "needed", "not_built"
-    for name, changed in sorted(sources.items()):
-        if not name.endswith(source_suffix):
-            continue
-        built = outputs.get(name[:-len(source_suffix)] + output_suffix)
-        if built is None:
-            return "needed", "output_missing"
-        if built < changed:
-            return "needed", "source_newer"
-    newest = max(outputs.values(), default=None)
-    if newest is not None and any(changed > newest for changed in inputs.values()):
-        return "needed", "input_newer"
-    return "current", None
-
-
 def install_line(directory):
     """The `npm ci` line of one package, in the form of the setup lines of the plan."""
     return "npm --prefix " + shlex.quote(directory) + " ci --ignore-scripts"
-
-
-def build_line(directory):
-    return "npm --prefix " + shlex.quote(directory) + " run build"
 
 
 def new_target(current, today, taken):

@@ -121,9 +121,29 @@ def clip(text, max_chars, head=0):
 
 
 # ---------------------------------------------------------------------------
+# The contract of the scripts (contract.json) and the roles (roles.json).
+# ---------------------------------------------------------------------------
+SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def skill_json(name):
+    """A JSON file of this skill, for example contract.json or roles.json."""
+    with open(os.path.join(SKILL_DIR, name), encoding="utf-8") as f:
+        return json.load(f)
+
+
+CONTRACT = skill_json("contract.json")
+
+
+def exit_codes(script):
+    """The exit codes of `ask` or `spawn` by name, from contract.json."""
+    return {name: entry["code"] for name, entry in CONTRACT[script]["exit"].items()}
+
+
+# ---------------------------------------------------------------------------
 # Layout and names. See LAYOUT.md.
 # ---------------------------------------------------------------------------
-ROLES = ["coordinator", "researcher", "scout", "worker", "reviewer"]
+ROLES = list(skill_json("roles.json")["roles"])
 STATE_DIR = os.environ.get("HERDR_SKILL_STATE_DIR") or os.path.join(
     os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "herdr-skill")
 NAME_MAX = 32
@@ -301,7 +321,6 @@ def ensure_layout(quiet=True):
 # ---------------------------------------------------------------------------
 # Catalog of tools, skills and processes. See resources.json.
 # ---------------------------------------------------------------------------
-SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MACHINE_CATALOG = os.environ.get("HERDR_SKILL_RESOURCES") or os.path.join(
     os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "herdr-skill", "resources.json")
 

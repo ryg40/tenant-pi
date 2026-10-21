@@ -6,7 +6,6 @@ import { MemoryTracker, vikingCounters, wikiModel, wikiStatus } from "../extensi
 import { ansiPaint, plainPaint } from "../extensions/ops-footer/paint.ts";
 import { dashboardSections, detailedReport } from "../extensions/ops-footer/render.ts";
 import { defaults } from "../extensions/ops-footer/settings.ts";
-import { layouts } from "../extensions/ops-footer/layouts/index.ts";
 import { contextStub, healthy, NOW } from "./footer-fixtures.ts";
 
 const ovStatus = "OV \u2713 \u00b7 \u21a93 \u00b7 ctx 2 \u00b7 ~900/8000 \u00b7 PRIVATE-SESSION";
@@ -113,16 +112,10 @@ test("memory rows fit every width, row budget and color mode", () => {
   assert.match(tight.above[0], /\/ops-footer report/);
 });
 
-test("legacy layouts keep memory failures and published wiki details keep known health", () => {
+test("published wiki details keep known health", () => {
   const data = fixture();
   data.integrations = [{ source: "OV", state: "error", summary: "error", checkedAt: NOW, staleAfter: 60000 },
     { source: "Wiki", state: "unknown", summary: "unknown", index: "building", checkedAt: NOW, staleAfter: 60000 }];
-  for (const name of ["a", "b", "c", "v2"] as const) {
-    const section = layouts[name](data, contextStub(), defaults, 240, plainPaint, NOW);
-    const output = [...section.above, ...section.below].join("\n");
-    assert.match(output, /OpenViking.*unavailable|OV.*unavailable/, name);
-    for (const width of [40, 80, 120]) for (const line of layouts[name](data, contextStub(), defaults, width, ansiPaint, NOW).below) assert.ok(visibleWidth(line) <= width);
-  }
   assert.match(detailedReport(data, contextStub(), NOW), /LLM Wiki.*active.*index building/);
 });
 test("session wiki models follow model selection and absent labels stay unknown", () => {

@@ -4,7 +4,7 @@ The **Summary** section's menu of visuals (pseudocode, call trees, component tre
 
 ## Kit credits
 
-The text of this skill is adapted for this kit from an upstream skill. The paragraph above is the upstream credits note, without its statement that `show-me` is absent from the upstream repository. In this kit the `show-me` skill ships in the same component, and the menu stays copied in.
+The text of this skill is adapted for this kit from an upstream skill. The paragraph above is the upstream credits note, without its statement that `show-me` is absent from the upstream repository. In this kit `show-me` ships in the same component, and the menu stays copied in.
 
 | Item | Value |
 | --- | --- |
@@ -22,4 +22,4 @@ The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. 
 - Adds exact offline check output, history scan evidence, and a list of unproved claims.
 - Extends Merge Danger with a release-gate table and publication risk guidance.
 - Routes screenshots through `pidesktop` and distinguishes them from Walkr artifact review.
-- Adds the `slopscore-pr` call and identifies Gitea Mermaid support.
+- Identifies Gitea Mermaid support.

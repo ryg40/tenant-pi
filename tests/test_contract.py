@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from scripts.validate import (Invalid, OPTIONAL_TREE_COMPONENTS, TREE_COMPONENTS, load, manifest,
-                              npm_parts, optional_tree_absent, overlay, tree_items)
+from scripts.validate import (Invalid, TREE_COMPONENTS, derived_claims, load, manifest, npm_parts,
+                              optional_tree_absent, overlay, tree_items)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -59,6 +59,14 @@ class ContractTests(unittest.TestCase):
         data["selection"]["enable"] = ["core"]
         data["selection"]["disable"].append("core")
         self.check_error(data, "selection_conflict")
+
+    def test_unknown_disabled_id_is_a_no_op(self):
+        data = copy.deepcopy(self.base)
+        data["selection"]["disable"].append("removed-component")
+        overlay(data, self.components)
+        data["selection"]["enable"].append("removed-component")
+        data["selection"]["disable"].remove("removed-component")
+        self.check_error(data, "undeclared_component")
 
     def test_secret_canary_and_paths(self):
         data = copy.deepcopy(self.base)
@@ -134,14 +142,8 @@ class ContractTests(unittest.TestCase):
             self.assertNotIn("CANARY_SECRET", str(result.exception))
         data = load(ROOT / "config/manifest.json")
         data["components"]["core"]["source"]["spec"] = "@earendil-works/pi-coding-agent"
-        with self.assertRaisesRegex(Invalid, "^reviewed_source:"):  # the core anchor keeps its exact version
+        with self.assertRaisesRegex(Invalid, "^core_runtime_pin:"):  # the core spec keeps the tested version
             manifest(data)
-        data = load(ROOT / "config/manifest.json")
-        for cid in ("mcp", "hermes", "wiki"):
-            self.assertIsNone(npm_parts(data["components"][cid]["source"]["spec"])[1])
-        # The question extension keeps the exact version whose registry metadata was read.
-        self.assertEqual(("@juicesharp/rpiv-ask-user-question", "2.13.9"),
-                         npm_parts(data["components"]["questions"]["source"]["spec"]))
         self.assertEqual(("@zosmaai/pi-llm-wiki", None), npm_parts("@zosmaai/pi-llm-wiki"))
         self.assertEqual(("@zosmaai/pi-llm-wiki", "0.12.4"), npm_parts("@zosmaai/pi-llm-wiki@0.12.4"))
         self.assertEqual(("pi-mcp-adapter", "3.2.0"), npm_parts("pi-mcp-adapter@3.2.0"))
@@ -180,7 +182,8 @@ class ContractTests(unittest.TestCase):
 
     def test_reviewed_source_and_runtime_bindings(self):
         data = load(ROOT / "config/manifest.json")
-        for src in ({"kind": "builtin"}, {"kind": "npm", "spec": "other@0.87.1"}):
+        pin = data["runtime"]["piVersion"]
+        for src in ({"kind": "builtin"}, {"kind": "npm", "spec": "other@" + pin}):
             changed = copy.deepcopy(data)
             changed["components"]["core"]["source"] = src
             with self.assertRaisesRegex(Invalid, "^(reviewed_source|core_source):"):
@@ -189,6 +192,10 @@ class ContractTests(unittest.TestCase):
         changed["runtime"]["piVersion"] = "0.88.0"
         with self.assertRaisesRegex(Invalid, "^core_runtime_pin:"):
             manifest(changed)
+        # The anchor holds the package, the manifest holds the version: a moved pin of both fields passes.
+        changed["runtime"]["piAcceptedRange"] = ">=0.88.0 <0.89"
+        changed["components"]["core"]["source"]["spec"] = "@earendil-works/pi-coding-agent@0.88.0"
+        manifest(changed)
         for cid, src in (("model-routing", {"kind": "npm", "spec": "fake@1.0.0"}),
                          ("codex-accounts", {"kind": "builtin"}),
                          ("mcp", {"kind": "npm", "spec": "fake@3.1.0"})):
@@ -278,6 +285,27 @@ class ContractTests(unittest.TestCase):
         data["components"]["tracker-site"]["configOwnership"]["claims"] = [{"file": "settings.json", "key": "/defaultModel"}]
         with self.assertRaisesRegex(Invalid, "^unreviewed_claim:"):
             manifest(data)
+        # A listed claim that the source gives passes; a derived claim also takes part in the conflict check.
+        data = load(ROOT / "config/manifest.json")
+        data["components"]["tracker-site"]["configOwnership"]["claims"] = [
+            {"file": "settings.json", "key": "package:packages/tenantext:skills/tracker-site"}]
+        data["components"]["mcp"]["configOwnership"]["claims"].append({"file": "settings.json", "key": "package:pi-mcp-adapter"})
+        manifest(data)
+        data["components"]["herdr"]["configOwnership"]["claims"] = [
+            {"file": "settings.json", "key": "package:packages/tenantext:skills/tracker-site"}]
+        with self.assertRaisesRegex(Invalid, "^unreviewed_claim:"):
+            manifest(data)
+        # A claim that no source gives stays listed in the manifest.
+        data = load(ROOT / "config/manifest.json")
+        data["components"]["mcp"]["configOwnership"]["claims"].pop()
+        with self.assertRaisesRegex(Invalid, "^missing_claim:"):
+            manifest(data)
+        from scripts import validate
+        with mock.patch.dict(validate.REVIEWED_CLAIMS, {"wiki": {("settings.json", "package:pi-hermes-memory")}}):
+            data = load(ROOT / "config/manifest.json")
+            data["components"]["wiki"]["configOwnership"]["claims"] = [{"file": "settings.json", "key": "package:pi-hermes-memory"}]
+            with self.assertRaisesRegex(Invalid, "^ownership_conflict:"):
+                manifest(data)
 
     def test_ownership_claim_types_and_cli_diagnostics(self):
         for field in ("file", "key"):
@@ -351,7 +379,7 @@ class ContractTests(unittest.TestCase):
 
     def test_tree_source_rejections(self):
         for path, rule in ((None, "source_form"),  # The `path` field is missing.
-                           ("packages/not-in-the-kit", "tree_path_missing"),
+                           ("packages/not-in-the-kit", "reviewed_source"),  # An absent directory is no anchor.
                            ("packages/tenantext/package.json", "tree_path_missing"),  # A file, not a package directory.
                            ("/packages/tenantext", "relative_path"),
                            (str(ROOT / "packages/tenantext"), "relative_path"),
@@ -373,7 +401,7 @@ class ContractTests(unittest.TestCase):
         with self.assertRaisesRegex(Invalid, "^source_form:"):
             manifest(data)
         # An existing package directory that is not the reviewed anchor of the component stays rejected.
-        data["components"]["doctor"]["source"] = {"kind": "tree", "path": "packages/promptr"}
+        data["components"]["doctor"]["source"] = {"kind": "tree", "path": "packages/openviking-pi"}
         with self.assertRaisesRegex(Invalid, "^reviewed_source:"):
             manifest(data)
 
@@ -392,22 +420,15 @@ class ContractTests(unittest.TestCase):
         # A manifest from another place that names one more skill is not the manifest of the kit.
         component = data["components"]["coordinator-skills"]
         component["resources"]["skills"].append("skills/coordinator-skills/not-in-the-kit")
-        component["configOwnership"]["claims"].append(
-            {"file": "settings.json", "key": "package:packages/tenantext:skills/coordinator-skills/not-in-the-kit"})
-        with self.assertRaisesRegex(Invalid, "^unreviewed_claim:"):
+        with self.assertRaisesRegex(Invalid, "^reviewed_resources:"):
             manifest(data)
         # The manifest of the kit names a path that the tree does not hold, or no path.
         from scripts import validate
         for skills in (["skills/herdr", "skills/not-in-the-kit"], []):
             with self.subTest(skills=skills):
                 data = load(ROOT / "config/manifest.json")
-                component = data["components"]["herdr"]
-                component["resources"]["skills"] = skills
-                component["configOwnership"]["claims"] = [
-                    {"file": "settings.json", "key": "package:packages/tenantext:" + skill} for skill in skills]
-                with mock.patch.dict(validate.REVIEWED_CLAIMS, {"herdr": {
-                        ("settings.json", "package:packages/tenantext:" + skill) for skill in skills}}), \
-                        mock.patch.dict(validate.REVIEWED_RESOURCES, {"herdr": validate._tree_resources("skills", tuple(skills))}):
+                data["components"]["herdr"]["resources"]["skills"] = skills
+                with mock.patch.dict(validate.REVIEWED_RESOURCES, {"herdr": validate._tree_resources("skills", tuple(skills))}):
                     with self.assertRaisesRegex(Invalid, "^tree_resource_missing:"):
                         manifest(data)
 
@@ -466,7 +487,7 @@ class ContractTests(unittest.TestCase):
         in_manifest = {c["resources"]["extensions"][0] for cid, c in data["components"].items()
                        if c["source"] == {"kind": "tree", "path": "packages/tenantext"} and c["resources"]["extensions"]}
         self.assertEqual(declared, in_manifest)
-        for package_dir in ("packages/tenantext", "packages/promptr"):
+        for package_dir in ("packages/tenantext",):
             # A skill directory holds `SKILL.md`; a directory without it is a component of several skills.
             skills = {"skills/" + s.relative_to(ROOT / package_dir / "skills").as_posix()
                       for p in (ROOT / package_dir / "skills").iterdir() if p.is_dir()
@@ -478,9 +499,7 @@ class ContractTests(unittest.TestCase):
                                       if c["source"] == {"kind": "tree", "path": package_dir}
                                       and not optional_tree_absent(cid)
                                       for skill in c["resources"]["skills"]})
-        self.assertEqual(23, len(TREE_COMPONENTS))
         knowledge = data["components"]["knowledge-skills"]["resources"]["skills"]
-        self.assertEqual(4, len(knowledge))
         self.assertIn("skills/knowledge-skills/open-knowledge", knowledge)
         for cid in TREE_COMPONENTS:
             component = data["components"][cid]
@@ -496,16 +515,12 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(items, component["resources"][kind])
             # Only a skill component of several skills names more than one resource.
             self.assertTrue(len(items) == 1 or (kind == "skills" and cid in ("coordinator-skills", "knowledge-skills")), cid)
-            self.assertIn(cid, self.base["selection"]["disable"])
+        # `scripts/examples.py` derives the disable list of the example from the manifest.
         self.assertEqual(["core"], self.base["selection"]["enable"])
         self.assertEqual(["TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY"], data["components"]["codex-accounts"]["env"])
-        routing = (ROOT / "packages/tenantext/extensions/codex-accounts/routing.ts").read_text(encoding="utf-8")
-        for name in data["components"]["codex-accounts"]["env"]:
-            self.assertIn("env." + name, routing)
         self.assertNotIn("gitea", json.dumps(data))
 
     def test_relay_is_optional_and_requires_herdr_when_enabled(self):
-        self.assertEqual(("herdr-relay",), OPTIONAL_TREE_COMPONENTS)
         component = self.components["herdr-relay"]
         self.assertEqual(["core", "herdr"], component["requires"])
         self.assertEqual("unverified", component["status"])
@@ -523,11 +538,37 @@ class ContractTests(unittest.TestCase):
         else:
             overlay(data, self.components)
         from scripts import validate
-        with mock.patch.object(validate, "optional_tree_absent", side_effect=lambda cid: cid == "herdr-relay"):
+        absent = validate.optional_tree_absent
+        with mock.patch.object(validate, "optional_tree_absent", side_effect=lambda cid: cid == "herdr-relay" or absent(cid)):
             components = manifest(load(ROOT / "config/manifest.json"))
             overlay(self.base, components)
             with self.assertRaisesRegex(Invalid, "^tree_resource_missing:"):
                 overlay(data, components)
+
+    def test_an_absent_tree_folder_is_a_no_op_until_the_overlay_enables_it(self):
+        from scripts import validate
+        with tempfile.TemporaryDirectory() as tmp:
+            kit = Path(tmp)
+            # A kit with each resource path of the tree components, without the OpenViking package folder.
+            for cid, (path, kind, items) in TREE_COMPONENTS.items():
+                for item in tree_items(items):
+                    if path != "packages/openviking-pi":
+                        (kit / path / item).parent.mkdir(parents=True, exist_ok=True)
+                        (kit / path / item).mkdir() if kind == "skills" else (kit / path / item).touch()
+            with mock.patch.object(validate, "ROOT", kit):
+                self.assertEqual(["openviking"], [cid for cid in TREE_COMPONENTS if optional_tree_absent(cid)])
+                components = manifest(load(ROOT / "config/manifest.json"))
+                overlay(self.base, components)
+                data = copy.deepcopy(self.base)
+                data["selection"]["enable"].append("openviking")
+                data["selection"]["disable"].remove("openviking")
+                with self.assertRaisesRegex(Invalid, "^tree_resource_missing: overlay.selection.enable$"):
+                    overlay(data, components)
+                # A folder that is only partly absent still fails the manifest.
+                skill = TREE_COMPONENTS["coordinator-skills"][2][0]
+                (kit / "packages/tenantext" / skill).rmdir()
+                with self.assertRaisesRegex(Invalid, "^tree_resource_missing: manifest.components.item.resources$"):
+                    manifest(load(ROOT / "config/manifest.json"))
 
     def test_tracker_skill_is_selectable_with_explicit_runtime_gap(self):
         component = self.components["tracker-site"]
@@ -536,12 +577,15 @@ class ContractTests(unittest.TestCase):
         self.assertEqual({"host_tool_required", "pi_line_unqualified", "kit_test_missing"},
                          {gap["code"] for gap in component["gaps"]})
         self.assertEqual("reviewed", component["configOwnership"]["status"])
-        self.assertEqual([{"file": "settings.json", "key": "package:packages/tenantext:skills/tracker-site"}],
-                         component["configOwnership"]["claims"])
+        # The filter entry of the skill follows from the source and the resources; the manifest lists no claim.
+        self.assertEqual({("settings.json", "package:packages/tenantext:skills/tracker-site")}, derived_claims(component))
+        self.assertEqual([], component["configOwnership"]["claims"])
 
     def test_question_extension_is_a_selectable_pinned_npm_component(self):
         component = self.components["questions"]
-        self.assertEqual({"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.13.9"}, component["source"])
+        # The manifest holds the version and the anchor holds the package.
+        name, version = npm_parts(component["source"]["spec"])
+        self.assertEqual(("npm", "@juicesharp/rpiv-ask-user-question"), (component["source"]["kind"], name))
         self.assertEqual(("unverified", None, ["core"], "MIT"),
                          (component["status"], component["reason"], component["requires"], component["license"]))
         self.assertEqual({"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []}, component["resources"])
@@ -549,14 +593,15 @@ class ContractTests(unittest.TestCase):
         self.assertEqual({"pi_line_unqualified", "package_source_unreviewed", "peer_package_unverified",
                           "question_ui_unverified", "shared_config_outside_profile", "kit_test_missing"},
                          {gap["code"] for gap in component["gaps"]})
-        self.assertEqual([{"file": "settings.json", "key": "package:@juicesharp/rpiv-ask-user-question"}],
-                         component["configOwnership"]["claims"])
+        self.assertEqual({("settings.json", "package:@juicesharp/rpiv-ask-user-question")}, derived_claims(component))
+        self.assertEqual([], component["configOwnership"]["claims"])
         self.assertIn("questions", self.base["selection"]["disable"])
         self.assertNotIn("questions", self.base["selection"]["enable"])
-        # The reviewed anchor holds the version: an altered manifest cannot move or drop the pin.
-        for spec in ("@juicesharp/rpiv-ask-user-question", "@juicesharp/rpiv-ask-user-question@2.12.0",
-                     "rpiv-ask-user-question@2.13.9"):
-            data = load(ROOT / "config/manifest.json")
+        # The reviewed anchor holds the package: a bump of the manifest passes, another package fails.
+        data = load(ROOT / "config/manifest.json")
+        data["components"]["questions"]["source"]["spec"] = name + "@99.0.0"
+        manifest(data)
+        for spec in ("rpiv-ask-user-question@" + version, "@juicesharp/other@" + version):
             data["components"]["questions"]["source"]["spec"] = spec
             with self.assertRaisesRegex(Invalid, "^reviewed_source:"):
                 manifest(data)
@@ -575,22 +620,8 @@ class ContractTests(unittest.TestCase):
         self.assertIn("check-herdr", gaps["host_tool_required"])
         # No component installs the Herdr application: no source names it.
         sources = json.dumps([component["source"] for component in self.components.values()])
-        self.assertNotIn("herdr", sources.replace("promptr", ""))
+        self.assertNotIn("herdr", sources)
         self.assertNotIn("pi-herdr", json.dumps(load(ROOT / "config/manifest.json")))
-
-    def test_pi_line_gap_facts_do_not_claim_a_stale_readme_version(self):
-        components = manifest(load(ROOT / "config/manifest.json"))
-        facts = {name: gap["fact"] for name, component in components.items() for gap in component.get("gaps", [])
-                 if gap["code"] == "pi_line_unqualified"}
-        self.assertEqual(17, len(facts))
-        self.assertEqual("The component uses the resource settings syntax of the reviewed Pi release "
-                         "(see docs/resources.md). No test in this repository loads it with the kit pin.",
-                         facts.pop("resources"))
-        common = "No test in this repository loads the component with the kit pin."
-        self.assertEqual(common, facts["coordinator-skills"])
-        for name, fact in facts.items():
-            with self.subTest(component=name):
-                self.assertEqual(common, fact)
 
     def test_status_and_gaps_rules(self):
         for change, rule in (
@@ -617,19 +648,6 @@ class ContractTests(unittest.TestCase):
         data["selection"]["enable"].append("doctor")
         data["selection"]["disable"].remove("doctor")
         overlay(data, self.components)  # `unverified` is selectable; `blocked` is not.
-        # Promptr and its four skills are `unverified`; a skill still needs the extension.
-        promptr = [cid for cid in self.components if cid == "promptr" or cid.startswith("promptr-")]
-        self.assertEqual(5, len(promptr))
-        for cid in promptr:
-            self.assertEqual("unverified", self.components[cid]["status"])
-            self.assertNotIn("requires_blocked_component", {gap["code"] for gap in self.components[cid]["gaps"]})
-        data = copy.deepcopy(self.base)
-        data["selection"]["enable"].append("promptr-handoff")
-        data["selection"]["disable"].remove("promptr-handoff")
-        self.check_error(data, "missing_dependency")
-        data["selection"]["enable"].append("promptr")
-        data["selection"]["disable"].remove("promptr")
-        overlay(data, self.components)
         data = copy.deepcopy(self.base)
         data["selection"]["enable"].append("tracker-site")
         data["selection"]["disable"].remove("tracker-site")

@@ -85,7 +85,7 @@ The tests and the documentation use four fake people: Alice (`alice`, owner, mai
 
 ## Dependencies
 
-The package pins `@aws-sdk/client-bedrock-agentcore` to `3.1154.0`, with a lock file. The Pi extension has no SDK dependency of its own; it uses the SDK of the core. Run:
+`package.json` pins `@aws-sdk/client-bedrock-agentcore` to an exact version, with a lock file. The Pi extension has no SDK dependency of its own; it uses the SDK of the core. Run:
 
 ```sh
 npm --prefix packages/agentcore-memory-core ci --ignore-scripts

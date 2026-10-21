@@ -11,7 +11,8 @@ Inputs
   --role         sets the tab, the focus and the access (read or write); see roles.json
   --model        pi: provider/model, or a model name that `pi --list-models` finds one time
                  claude: a model ID or an alias of the claude CLI (opus, claude-opus-5-5)
-                 absent: models.json supplies a default, else the harness chooses
+                 absent: models.json must name one for the role and the harness,
+                 else spawn.py starts no pane and exits with 2
   --thinking     off|minimal|low|medium|high|xhigh|max  (claude: low is the minimum)
                  absent: models.json supplies a level when no model is named, else the harness chooses
   --interactive  the user works in this session: no task session result format. coordinator implies it
@@ -36,9 +37,11 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-from _common import (STATE_DIR, agent_info, catalog_lines, ensure_layout, error_code, herdr,  # noqa: E402
+from _common import (STATE_DIR, agent_info, catalog_lines, ensure_layout, error_code, exit_codes, herdr,  # noqa: E402
                      live_agents, load_catalog, load_launch, make_name, mcp_servers, pane_label, panes, place_role_tab,
                      read_record, remove_record, require_herdr_env, tabs, write_record)
+
+EXIT = exit_codes("spawn")
 
 THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 CLAUDE_READ_TOOLS = ("Read Grep Glob Bash(rg:*) Bash(ls:*) Bash(cat:*) Bash(git log:*) "
@@ -50,7 +53,7 @@ CLAUDE_HERDR_TOOLS = (f"Skill Bash(python3 {HERE}/:*) Bash(herdr agent:*) "
                       "Bash(jq:*) Bash(test:*) Bash(echo:*)")
 
 
-def fail(msg, code=2):
+def fail(msg, code=EXIT["invalid"]):
     print(f"error: {msg}", file=sys.stderr)
     sys.exit(code)
 
@@ -81,9 +84,12 @@ def parse(argv):
     return opts, extra
 
 
+def models_path():
+    return os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "herdr-skill", "models.json")
+
+
 def local_models(cfg):
-    path = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
-                        "herdr-skill", "models.json")
+    path = models_path()
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -155,7 +161,7 @@ def resolve_pi_model(asked):
     try:
         out = subprocess.run(["pi", "--list-models", key], capture_output=True, text=True, timeout=60).stdout
     except (OSError, subprocess.TimeoutExpired):
-        fail("could not run `pi --list-models`", 1)
+        fail("could not run `pi --list-models`", EXIT["failed"])
     rows = [l.split()[:2] for l in out.splitlines()[1:] if len(l.split()) >= 2]
     full = [f"{p}/{m}" for p, m in rows]
     low = asked.lower()
@@ -304,7 +310,7 @@ def place(r, me, cwd):
     if role_tab is None:
         code, data, raw = herdr("tab", "create", "--workspace", ws, "--cwd", cwd, "--label", role, "--no-focus")
         if code != 0 or not data or error_code(data):
-            fail(f"could not create the tab '{role}': {raw[:300]}", 1)
+            fail(f"could not create the tab '{role}': {raw[:300]}", EXIT["failed"])
         place_role_tab(ws, data["result"]["tab"]["tab_id"], role)
         return data["result"]["root_pane"]["pane_id"], f"new tab '{role}'"
 
@@ -329,7 +335,7 @@ def place(r, me, cwd):
         direction = split_direction(rects[target]) if rects else "down"
     code, data, raw = herdr("pane", "split", "--pane", target, "--direction", direction, "--cwd", cwd, "--no-focus")
     if code != 0 or not data or error_code(data):
-        fail(f"could not split pane {target}: {raw[:300]}", 1)
+        fail(f"could not split pane {target}: {raw[:300]}", EXIT["failed"])
     return data["result"]["pane"]["pane_id"], f"split {direction} of {target} in tab '{role}'"
 
 
@@ -349,12 +355,17 @@ def main():
     require_herdr_env()
     me = ensure_layout(quiet=False) if not opts["dry_run"] else ensure_layout_readonly()
     if not me:
-        fail("could not read your pane from Herdr", 1)
+        fail("could not read your pane from Herdr", EXIT["failed"])
     name = make_name(me["workspace"], r["role"], live_agents())
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", name):
-        fail(f"could not build a valid name from the workspace label: {name}", 1)
+        fail(f"could not build a valid name from the workspace label: {name}", EXIT["failed"])
     label = pane_label(name, r["harness"], r["model"], r["thinking"])
-    args = native_args(r, cfg, opts["unattended"], name, write=not opts["dry_run"]) + extra
+    # The check of the model follows the catalog check of native_args, so a bad catalog keeps its own error.
+    args = native_args(r, cfg, opts["unattended"], name, write=bool(r["model"]) and not opts["dry_run"]) + extra
+    if not r["model"]:
+        fail(f"no model for the role {r['role']} and the harness {r['harness']}. Name one with --model <name>, "
+             f"or add roles.{r['role']}.{r['harness']}.model to {models_path()} (models.example.json shows the shape). "
+             "No pane was started.")
     shown = [x if len(x) < 100 else x[:60].replace("\n", " ") + f"... ({len(x)} chars)" for x in args]
     summary = dict(r, name=name, pane_label=label, tab=r["role"], cwd=cwd, workspace=me["workspace"])
 
@@ -378,11 +389,11 @@ def main():
         print("The agent stopped at a startup question (for example folder trust). "
               f"Read it with `herdr agent read {pane} --source visible`, show it to the user, and wait for the decision.",
               file=sys.stderr)
-        sys.exit(4)
+        sys.exit(EXIT["startup_question"])
     if code != 0 or err or not data:
         herdr("pane", "close", pane)
         remove_record(pane)
-        fail(f"agent start failed and the new pane was closed: {raw[:400]}", 1)
+        fail(f"agent start failed and the new pane was closed: {raw[:400]}", EXIT["failed"])
     a = data["result"]["agent"]
     print(json.dumps(dict(summary, pane_id=pane, placement=how, status=a.get("agent_status"),
                           transcript=(a.get("agent_session") or {}).get("value"))))

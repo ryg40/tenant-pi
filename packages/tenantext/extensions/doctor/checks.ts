@@ -1,20 +1,16 @@
 import { execFile, execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { copilotProvider, SOURCE_LABELS } from "../copilot-usage/detect.ts";
-import { agentDir, copilotSettingsPath, loadCopilotSettings } from "../copilot-usage/settings.ts";
-import { probeCopilot } from "../copilot-usage/status.ts";
-import { fetchCopilotUsage } from "../copilot-usage/usage.ts";
-import { readTokenFile, tokenFileNoLogin } from "../codex-accounts/token-file.ts";
-import { SOURCE_LABELS as ANTHROPIC_SOURCE_LABELS } from "../anthropic-usage/detect.ts";
-import { anthropicSettingsPath, loadAnthropicSettings } from "../anthropic-usage/settings.ts";
-import { probeAnthropic } from "../anthropic-usage/status.ts";
-import { fetchAnthropicUsage } from "../anthropic-usage/usage.ts";
+import { agentDir } from "../../src/agent-dir.ts";
+import { readAnthropicMeter } from "../anthropic-usage/reader.ts";
+import { readCodexMeter } from "../codex-accounts/reader.ts";
+import { readCopilotMeter } from "../copilot-usage/reader.ts";
 import { wikiEmbeddingChecks } from "./wiki.ts";
 
 /**
  * Environment checks for the tenantext suite. No Pi import: the same checks run inside Pi (`/tenantext-doctor`) and
  * from a shell (`npm run doctor`). Reports name files, providers, and sources; they never print a credential value.
+ * Each meter gives one reader (`reader.ts` in its folder). The checks call these functions, so they work when a meter extension is disabled.
  */
 export type CheckStatus = "ok" | "info" | "warn" | "fail";
 export interface Fix { description: string; apply: () => void }
@@ -92,18 +88,14 @@ export async function runChecks(options: DoctorOptions = {}): Promise<Check[]> {
 	add("git", await which("git") ? "ok" : "warn", await which("git") ? "git is on PATH." : "git is not on PATH. The footer repository row stays empty.");
 
 	// Codex accounts: the footer shows accounts with a token file (for example LiteLLM's) or a stored Pi login.
-	const codexPath = join(dir, "codex-accounts", "settings.json");
-	const configuredAccounts = (record(readJson(codexPath))?.accounts as { provider?: string; label?: string; tokenFile?: string }[] | undefined) ?? [];
+	const { path: codexPath, accounts: configuredAccounts, tokenFiles } = readCodexMeter(dir);
 	const configured = configuredAccounts.length ? configuredAccounts.map(a => a.provider) : ["openai-codex", "openai-codex-2", "openai-codex-3"];
-	const tokenFiles = configuredAccounts.filter(a => a.provider && a.tokenFile);
-	const codexProviders = [...new Set([...tokenFiles.filter(a => existsSync(a.tokenFile!)).map(a => a.provider!), ...Object.keys(auth).filter(k => /^openai-codex(?:-[1-9][0-9]*)?$/.test(k) && !tokenFiles.some(a => a.provider === k))])]
+	const codexProviders = [...new Set([...tokenFiles.filter(a => a.state !== "missing").map(a => a.provider), ...Object.keys(auth).filter(k => /^openai-codex(?:-[1-9][0-9]*)?$/.test(k) && !tokenFiles.some(a => a.provider === k))])]
 		.sort((a, b) => (a === "openai-codex" ? 1 : Number(a.split("-").at(-1))) - (b === "openai-codex" ? 1 : Number(b.split("-").at(-1))));
-	const missingTokenFiles = tokenFiles.filter(a => !existsSync(a.tokenFile!));
-	if (missingTokenFiles.length) add("codex-token-files", "warn", `Codex token files not found: ${missingTokenFiles.map(a => `${a.provider} (${a.tokenFile})`).join(", ")}. Those meters stay hidden.`);
-	const noLoginTokenFiles = tokenFiles.filter(a => existsSync(a.tokenFile!) && tokenFileNoLogin(a.tokenFile!));
-	if (noLoginTokenFiles.length) add("codex-no-login", "info", `Codex token files with no login: ${noLoginTokenFiles.map(a => `${a.provider} (${a.tokenFile})`).join(", ")}. The footer shows \`no login\` for those accounts.`);
-	const unreadableTokenFiles = tokenFiles.filter(a => existsSync(a.tokenFile!) && !readTokenFile(a.tokenFile!) && !tokenFileNoLogin(a.tokenFile!));
-	if (unreadableTokenFiles.length) add("codex-token-files", "warn", `Codex token files unreadable or expired: ${unreadableTokenFiles.map(a => `${a.provider} (${a.tokenFile})`).join(", ")}. Those meters show an error until the login owner refreshes the file.`);
+	const files = (state: string) => tokenFiles.filter(a => a.state === state).map(a => `${a.provider} (${a.tokenFile})`).join(", ");
+	if (files("missing")) add("codex-token-files", "warn", `Codex token files not found: ${files("missing")}. Those meters stay hidden.`);
+	if (files("no login")) add("codex-no-login", "info", `Codex token files with no login: ${files("no login")}. The footer shows \`no login\` for those accounts.`);
+	if (files("unreadable")) add("codex-token-files", "warn", `Codex token files unreadable or expired: ${files("unreadable")}. Those meters show an error until the login owner refreshes the file.`);
 	if (!codexProviders.length) add("codex", "info", "No Codex login or token file found. The Codex meter stays hidden. Use /login openai-codex or set tokenFile in codex-accounts settings.");
 	else {
 		const extra = codexProviders.filter(p => !configured.includes(p));
@@ -117,38 +109,26 @@ export async function runChecks(options: DoctorOptions = {}): Promise<Check[]> {
 	add("codex-gateway", "info", env.TENANTEXT_LITELLM_BASE_URL ? "Codex automatic routing: TENANTEXT_LITELLM_BASE_URL is set." : "Codex automatic routing is off (optional; set TENANTEXT_LITELLM_BASE_URL to enable).");
 
 	// Copilot: probe every local source read-only and report which one the meter will use.
-	const copilotPath = copilotSettingsPath(dir);
-	const copilot = loadCopilotSettings(copilotPath, env);
-	const provider = copilot.mode === "on" ? "mode on" : copilotProvider({ env, readPiCredential: () => readCredential("github-copilot"), readPiSettings: () => readJson(join(dir, "settings.json")) });
-	if (copilot.mode === "off") add("copilot", "info", `Copilot meter is off in ${copilotPath}.`);
-	else if (!provider) add("copilot", "info", "No Copilot provider configured in Pi. The Copilot meter stays hidden. Use /login github-copilot to add one.");
-	else {
-		const probe = await probeCopilot({ env, sources: copilot.sources, domain: copilot.domain, readPiCredential: () => readCredential("github-copilot") }, AbortSignal.timeout(20_000),
-			(c, signal) => fetchCopilotUsage(c, signal, options.fetcher));
-		const tried = probe.tried.map(t => `${SOURCE_LABELS[t.source]}: ${t.error ?? "accepted"}`).join("; ");
-		if (probe.result?.success && probe.credential) {
-			const windows = probe.result.usage.windows.map(w => `${w.label} ${Math.round(w.remainingPercent)}%`).join(", ") || "all quotas unlimited";
-			const pinned = [probe.credential.source, ...copilot.sources.filter(s => s !== probe.credential!.source)];
-			const fix = !existsSync(copilotPath) ? { description: `Write ${copilotPath} with ${probe.credential.source} first`,
-				apply: () => writeJson(copilotPath, { mode: "auto", sources: pinned, ...(probe.credential!.domain !== "github.com" ? { domain: probe.credential!.domain } : {}), pollSeconds: copilot.pollSeconds }) } : undefined;
-			add("copilot", "ok", `Copilot meter: ${SOURCE_LABELS[probe.credential.source]}${probe.result.usage.plan ? `, plan ${probe.result.usage.plan}` : ""}, ${windows}.`, fix);
-		} else if (!probe.tried.length) add("copilot", "warn", `Copilot provider configured (${provider}), but no credential was found. Use /login github-copilot.`);
-		else add("copilot", "warn", `Copilot provider configured (${provider}), but the usage endpoint refused every local credential (${tried}). The footer shows an error chip.`);
-	}
+	const copilot = await readCopilotMeter({ dir, env, readCredential: () => readCredential("github-copilot"), readPiSettings: () => readJson(join(dir, "settings.json")), fetcher: options.fetcher });
+	if (copilot.settings.mode === "off") add("copilot", "info", `Copilot meter is off in ${copilot.path}.`);
+	else if (!copilot.provider) add("copilot", "info", "No Copilot provider configured in Pi. The Copilot meter stays hidden. Use /login github-copilot to add one.");
+	else if (copilot.source) {
+		const source = copilot.source;
+		const windows = copilot.windows.map(w => `${w.label} ${Math.round(w.remainingPercent)}%`).join(", ") || "all quotas unlimited";
+		const pinned = [source.id, ...copilot.settings.sources.filter(s => s !== source.id)];
+		const fix = !existsSync(copilot.path) ? { description: `Write ${copilot.path} with ${source.id} first`,
+			apply: () => writeJson(copilot.path, { mode: "auto", sources: pinned, ...(source.domain !== "github.com" ? { domain: source.domain } : {}), pollSeconds: copilot.settings.pollSeconds }) } : undefined;
+		add("copilot", "ok", `Copilot meter: ${source.label}${copilot.plan ? `, plan ${copilot.plan}` : ""}, ${windows}.`, fix);
+	} else if (!copilot.tried.length) add("copilot", "warn", `Copilot provider configured (${copilot.provider}), but no credential was found. Use /login github-copilot.`);
+	else add("copilot", "warn", `Copilot provider configured (${copilot.provider}), but the usage endpoint refused every local credential (${copilot.tried.join("; ")}). The footer shows an error chip.`);
 	// Anthropic: probe every active local login read-only and report which one the meter uses. No refresh, no write.
-	const anthropicPath = anthropicSettingsPath(dir);
-	const anthropic = loadAnthropicSettings(anthropicPath, env);
-	if (anthropic.mode === "off") add("anthropic", "info", "The Anthropic meter is off (settings file or TENANTEXT_ANTHROPIC_USAGE).");
-	else {
-		const probe = await probeAnthropic({ env, home: options.home ?? env.HOME, sources: anthropic.sources, readClaudeFile: options.readClaudeFile,
-			readPiCredential: () => readCredential("anthropic") }, AbortSignal.timeout(20_000), (c, signal) => fetchAnthropicUsage(c, signal, options.fetcher));
-		const tried = probe.tried.map(t => `${ANTHROPIC_SOURCE_LABELS[t.source]}: ${t.error ?? "accepted"}`).join("; ");
-		if (probe.result?.success && probe.credential) {
-			const windows = probe.result.usage.windows.map(w => `${w.label} ${Math.round(w.remainingPercent)}%`).join(", ");
-			add("anthropic", "ok", `Anthropic meter: ${ANTHROPIC_SOURCE_LABELS[probe.credential.source]}${probe.credential.plan ? `, plan ${probe.credential.plan}` : ""}, ${windows}.`);
-		} else if (!probe.tried.length) add("anthropic", "info", "No active Anthropic subscription login found. The Claude meter stays hidden. Log in with Claude Code or use /login anthropic.");
-		else add("anthropic", "warn", `An Anthropic login is present, but the usage endpoint gave no reading (${tried}). ${anthropic.mode === "on" ? "The footer shows an error chip." : "The Claude meter stays hidden."}`);
-	}
+	const anthropic = await readAnthropicMeter({ dir, env, home: options.home ?? env.HOME, readCredential: () => readCredential("anthropic"), readClaudeFile: options.readClaudeFile, fetcher: options.fetcher });
+	if (anthropic.settings.mode === "off") add("anthropic", "info", "The Anthropic meter is off (settings file or TENANTEXT_ANTHROPIC_USAGE).");
+	else if (anthropic.source) {
+		const windows = anthropic.windows.map(w => `${w.label} ${Math.round(w.remainingPercent)}%`).join(", ");
+		add("anthropic", "ok", `Anthropic meter: ${anthropic.source.label}${anthropic.plan ? `, plan ${anthropic.plan}` : ""}, ${windows}.`);
+	} else if (!anthropic.tried.length) add("anthropic", "info", "No active Anthropic subscription login found. The Claude meter stays hidden. Log in with Claude Code or use /login anthropic.");
+	else add("anthropic", "warn", `An Anthropic login is present, but the usage endpoint gave no reading (${anthropic.tried.join("; ")}). ${anthropic.settings.mode === "on" ? "The footer shows an error chip." : "The Claude meter stays hidden."}`);
 	if (!await which("gh")) add("gh", "info", "GitHub CLI is not on PATH. It is one optional Copilot credential source.");
 
 	// Footer extras: every one is optional and off until configured.

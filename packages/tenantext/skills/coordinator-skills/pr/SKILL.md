@@ -42,10 +42,6 @@ Post the record with the comment operation of `docs/agents/issue-tracker.md` (se
 <optional: potential ramifications of merge>
 
 **Gate:** <release gate that the change triggers, or "none">
-
-## slopscore
-
-<left for the slopscore-pr skill>
 ```
 
 ## Sections
@@ -186,7 +182,7 @@ The reviewer reads the diff and those result lines and runs no suite.
 The coordinator merges with `--no-ff` and runs the check set once on `main`:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --all
 ```
 
 Paste its last lines, including the test count and final result, into the merge record.
@@ -219,7 +215,3 @@ Say which release gate the change triggers. The release checklist `docs/guides/r
 | A commit that can hold a secret or a host value, or a change of a deny list, an allow list or a scan rule | The scan at level `fail` on the history: `scripts/scan.sh --level fail history <base>..HEAD` |
 
 For a change of the publish set itself, of a check, of the manifest or of the install path, name each gate of the release checklist that the change can fail. Name each gate that applies, or write "none". The merge record names the gate. It does not say that the gate passed, unless the Evidence section holds its output line.
-
-### slopscore
-
-The merge record names the `## slopscore` section and leaves it empty. Do not fill it by hand. Load the slopscore-pr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. That skill fills the section of a pull request. For a merge-record comment without a pull request, put the block that the skill prints under the heading.

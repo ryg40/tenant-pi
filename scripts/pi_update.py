@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Detect, qualify and read Pi updates without changing an installed profile."""
+"""Detect, qualify and read Pi updates, and move the kit pin, without changing an installed profile."""
 import sys
 
 sys.dont_write_bytecode = True
@@ -30,13 +30,10 @@ VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?
 PRINT_OUTPUT_LIMIT = 16
 PI_KEYS = ("PATH", "HOME", "TMPDIR", "LANG", "PI_CODING_AGENT_DIR",
            "PI_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_TELEMETRY")
-OFFLINE = (("check-set", ["scripts/check.py"]),)
-PACKAGE_PY = (
-    ("packages/tenantext", ["-m", "unittest", "discover", "-s", "tracker/tests", "-t", "."]),
-    ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr/tests"]),
-    ("packages/tenantext", ["-m", "unittest", "discover", "-s", "skills/herdr-relay/tests"]),
-    ("packages/promptr/skills/watch-herdr-agents", ["scripts/test_watch.py"]),
-)
+# The check of everything: the root modules and every package suite of scripts/check.py.
+OFFLINE = (("check-set", ["scripts/check.py", "--all"]),)
+# The packages whose tests need the Pi packages of the candidate: (step name, folder).
+LINKED = (("tenantext", "tenantext"), ("openviking", "openviking-pi"))
 
 
 def version(value):
@@ -268,8 +265,8 @@ def openviking_check(steps, package, env):
                                     "node", str(probe)], timeout=90)
 
 
-def pin_contents(manifest_text, validator_text, requested, *, accepted_range=None):
-    """Move the tested pin and its accepted minor line in the same two files.
+def pin_contents(manifest_text, requested, *, accepted_range=None):
+    """The manifest text with the tested pin, the core spec and the accepted range moved.
 
     A separate reviewed range can be supplied, including for a prerelease pin.
     Without one, a changed pin starts at its stable version and ends at the next minor.
@@ -279,9 +276,6 @@ def pin_contents(manifest_text, validator_text, requested, *, accepted_range=Non
     previous = version(data["runtime"]["piVersion"])
     if data["components"]["core"]["source"]["spec"] != PACKAGE + "@" + previous:
         fail("source_pin", "pi-update.candidate")
-    old = '"core": {"kind": "npm", "spec": "' + PACKAGE + "@" + previous + '"}'
-    if validator_text.count(old) != 1:
-        fail("source_anchor", "pi-update.candidate")
     numbers = requested.split("-", 1)
     major, minor, patch = (int(part) for part in numbers[0].split("."))
     if accepted_range is None:
@@ -293,9 +287,18 @@ def pin_contents(manifest_text, validator_text, requested, *, accepted_range=Non
     data["runtime"]["piVersion"] = requested
     data["runtime"]["piAcceptedRange"] = accepted_range
     data["components"]["core"]["source"]["spec"] = PACKAGE + "@" + requested
-    return {"config/manifest.json": json.dumps(data, indent=2) + "\n",
-            "scripts/validate.py": validator_text.replace(old, old.replace(PACKAGE + "@" + previous,
-                                                                          PACKAGE + "@" + requested))}
+    return json.dumps(data, indent=2) + "\n"
+
+
+def pin(requested, accepted_range=None):
+    """Move the pin in `config/manifest.json` of this checkout; the check of the kit comes next."""
+    path = ROOT / "config/manifest.json"
+    text = path.read_text(encoding="utf-8")
+    moved = pin_contents(text, requested, accepted_range=accepted_range)
+    path.write_text(moved, encoding="utf-8")
+    runtime = json.loads(moved)["runtime"]
+    return {"action": "pin", "from": json.loads(text)["runtime"]["piVersion"], "to": runtime["piVersion"],
+            "range": runtime["piAcceptedRange"]}
 
 
 class CandidateCopyError(Exception):
@@ -337,14 +340,13 @@ def candidate_copy(run, requested, env):
         destination = candidate / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+    path = candidate / "config/manifest.json"
     try:
-        contents = pin_contents((candidate / "config/manifest.json").read_text(encoding="utf-8"),
-                                (candidate / "scripts/validate.py").read_text(encoding="utf-8"), requested)
+        content = pin_contents(path.read_text(encoding="utf-8"), requested)
     except Invalid as exc:
         # The step log names the rule of the refused pin, never the input text.
         raise CandidateCopyError(str(exc).split(":", 1)[0], 1) from None
-    for name, content in contents.items():
-        (candidate / name).write_text(content, encoding="utf-8")
+    path.write_text(content, encoding="utf-8")
     return candidate
 
 
@@ -443,22 +445,6 @@ def print_check(steps, env, generated, requested):
                      0 if passed and len(calls) == 1 and result["exactPartialReply"] and result["warningOnStderr"] else 1)
 
 
-def package_python_checks(steps, candidate):
-    """Run all package Python suites and keep their output in one qualification step."""
-    code = (
-        "import json, subprocess, sys\n"
-        "passed = True\n"
-        "for directory, args in json.loads(sys.argv[1]):\n"
-        "    print(directory + ': ' + ' '.join(args), flush=True)\n"
-        "    result = subprocess.run([sys.executable, '-B', *args], cwd=directory)\n"
-        "    print('suite: exit ' + str(result.returncode), flush=True)\n"
-        "    passed = passed and result.returncode == 0\n"
-        "print('PACKAGE_PY: ' + ('passed' if passed else 'FAILED'), flush=True)\n"
-        "sys.exit(0 if passed else 1)\n"
-    )
-    steps.command("PACKAGE_PY", [sys.executable, "-B", "-c", code, json.dumps(PACKAGE_PY)], cwd=candidate)
-
-
 def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
     version(requested)
     run, live = workspace(workdir)
@@ -478,36 +464,32 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
                           "check-runtime", "--pi", str(wrapper), "--python", sys.executable], cwd=candidate, timeout=90)
         else:
             steps.skip("check-runtime")
-        for name, args in OFFLINE:
-            steps.command(name, [sys.executable, "-B", *args], cwd=candidate)
-        package_python_checks(steps, candidate)
-        for name in ("tenantext", "promptr", "openviking"):
-            directory = "openviking-pi" if name == "openviking" else name
-            package = run / "packages" / directory
-            shutil.copytree(candidate / "packages" / directory, package,
-                            ignore=shutil.ignore_patterns("node_modules", "dist", ".git", ".local", "__pycache__"))
+        # The check of everything runs the suite of each package in the candidate copy, so each package
+        # with a lock file gets its dependencies there first.
+        linked = set()
+        names = {directory: name for name, directory in LINKED}
+        for lock in sorted((candidate / "packages").glob("*/package-lock.json")):
+            package = lock.parent
+            name = names.get(package.name, package.name)
             ready = steps.command(name + "-install", npm_command(run, "ci", "--ignore-scripts"), cwd=package)
-            linked = False
+            if package.name not in names:
+                continue
             if ready and installed:
                 try:
                     steps.record(name + "-links", link_packages(run, package))
-                    linked = True
+                    linked.add(name)
                 except (OSError, ValueError, KeyError, Invalid):
                     steps.record(name + "-links", {"error": "dependency_link_failed"}, 1)
             else:
                 steps.skip(name + "-links")
-            if name == "openviking":
-                if linked:
-                    openviking_check(steps, package, env)
-                else:
-                    steps.skip("openviking-test")
-                    steps.skip("openviking-load")
-                continue
-            for task in (("build", "test") if name == "promptr" else ("typecheck", "test")):
-                if linked:
-                    steps.command(name + "-" + task, npm_command(run, "run", task), cwd=package)
-                else:
-                    steps.skip(name + "-" + task)
+        for name, args in OFFLINE:
+            steps.command(name, [sys.executable, "-B", *args], cwd=candidate)
+        if "openviking" in linked:
+            openviking_check(steps, candidate / "packages/openviking-pi", env)
+        elif (candidate / "packages/openviking-pi").is_dir():
+            # A kit without the package folder has no OpenViking step.
+            steps.skip("openviking-test")
+            steps.skip("openviking-load")
         data = _load_input(str(candidate / "config/config.example.json"), "overlay.file")
         data["target"]["agentDir"] = str(run / "profile")
         data["selection"]["enable"] = ["core"]
@@ -588,11 +570,16 @@ def main(argv=None, *, latest=registry_latest):
     read.add_argument("--from", dest="start", required=True)
     read.add_argument("--to", dest="end", required=True)
     read.add_argument("--workdir", required=True)
+    move = actions.add_parser("pin")
+    move.add_argument("--version", required=True)
+    move.add_argument("--range")
     try:
         args = parser.parse_args(argv)
         if args.action == "detect":
             report = detect(latest=latest)
             code = 10 if report["new"] else 0
+        elif args.action == "pin":
+            report, code = pin(args.version, args.range), 0
         elif args.action == "qualify":
             report = qualify(args.version, args.workdir, strict_baseline=args.strict_baseline)
             code = 0 if report["passed"] else 1

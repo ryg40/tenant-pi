@@ -61,7 +61,7 @@ python3 $HOME/.agents/skills/herdr-relay/scripts/relay.py collect <job>   # the 
 | Item | Value |
 | --- | --- |
 | Harness, role | `pi`, `worker`. It goes in the `worker` tab; the name is `<project>-worker-<n>`. |
-| Model, thinking level | From the machine file `~/.config/herdr-skill/relay.json`. `--model` and `--thinking` replace them for a new worker. With no value, the harness uses its own default. |
+| Model, thinking level | From the machine file `~/.config/herdr-skill/relay.json`. `--model` and `--thinking` replace them for a new worker. With no model there or in `models.json` of the herdr skill, the worker does not start (exit 71), and the error of `spawn.py` names the fix. With no thinking level, the harness uses its own default. |
 | Life | One worker for each workspace. It stays open. Do not close it at the end of your task. |
 | Record | `~/.local/state/herdr-skill/relay/worker-<workspace>.json` |
 | Jobs | `~/.local/state/herdr-skill/relay/jobs/<job>/` holds `cmd.sh`, `out` and `exit` for 7 days. |

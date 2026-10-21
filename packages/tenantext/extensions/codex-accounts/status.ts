@@ -1,6 +1,6 @@
 import { readStoredCredential, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { existsSync } from "node:fs";
-import type { CodexAccountConfig } from "./config.ts";
+import type { CodexAccountConfig } from "./settings.ts";
 import { fetchCodexLimits, type CodexLimitsResult, type CodexPlan } from "./limits.ts";
 import { readTokenFile, tokenFileNoLogin } from "./token-file.ts";
 

@@ -40,7 +40,6 @@ Check the formula for your macOS version before installing. Do not infer support
 | [git](https://formulae.brew.sh/formula/git) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Clone and scan history. |
 | [python@3.12](https://formulae.brew.sh/formula/python@3.12) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Run the kit. |
 | [node@24](https://formulae.brew.sh/formula/node@24) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | Run Pi and build optional packages. |
-| [podman](https://formulae.brew.sh/formula/podman) | Native arm64 bottles: macOS 15 (Sequoia), 26 (Tahoe); none for 14 (Sonoma) | The [Compose seat](compose-seat.md) only. The scan does not use it. |
 | [Betterleaks](https://github.com/betterleaks/betterleaks/releases/tag/v1.9.0) 1.9.0 | The release has a `darwin_arm64` archive; the Homebrew cask `betterleaks/tap/betterleaks@1` installs the command `betterleaks-v1`; version output on a Mac not verified | The scanner of the scan hook. See [the scanner section](#scanner-the-betterleaks-binary). |
 | nvm with Node 24 | Not verified here; nvm is a shell version manager, not a native bottle | Optional per-user alternative to Homebrew Node; initialize nvm in `~/.zshrc`. |
 | Xcode Command Line Tools | Not verified here; Apple supplies the toolchain, not a Homebrew bottle | Compile native addons when needed. |
@@ -155,12 +154,6 @@ Only for an enabled Tenantext component:
 cd "$HOME/tenant-pi/packages/tenantext" && npm ci --ignore-scripts
 ```
 
-Only for `promptr`:
-
-```sh
-cd "$HOME/tenant-pi/packages/promptr" && npm ci --ignore-scripts && npm run build
-```
-
 The package `pi-hermes-memory` uses the native module `better-sqlite3`. Observed with `better-sqlite3` 13.0.3 and npm 11.19.0 on Linux x64: the module holds a prebuilt binary. npm runs no install script, nothing is compiled, and the module loads from that file. Not verified: a prebuilt binary for macOS. Only when no prebuilt binary fits the platform and the Node version, a build from source needs a compiler toolchain. With npm 11, npm does not start that build on its own. Observed with npm 11.19.0: the `npm warn install-scripts` line of the `wiki` install names `better-sqlite3`, and npm runs no install script. For a build from source, install the Apple toolchain when absent:
 
 ```sh
@@ -180,13 +173,13 @@ python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.conf
 Keep the extra baselines for inherited `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` as INSTALL.md specifies.
 Do not replace an existing baseline or record it after a target Pi command.
 
-Only for `mcp`, `hermes`, `wiki` or `questions`. Run only the `pi install` lines that your plan prints, with each source string as the plan prints it:
+Only for `mcp`, `hermes`, `wiki` or `questions`. Run only the `pi install` lines that your plan prints, with each source string as the plan prints it. `<version>` is the version of the `source.spec` of `questions` in `config/manifest.json`:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@<version>
 ```
 
 Only for `hermes`, `wiki` or `questions`, also, after the `pi install` lines:

@@ -1,5 +1,5 @@
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
-import type { CodexAccountConfig } from "./config.ts";
+import type { CodexAccountConfig } from "./settings.ts";
 import { parseCodexUsage, type CodexLimitWindow, type CodexPlan } from "./parse-limits.ts";
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";

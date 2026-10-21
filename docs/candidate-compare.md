@@ -210,13 +210,13 @@ Local overlay choices persist across kit updates when the schema still accepts t
 | `kit_package: overlay.ownerResources.skills` or `.prompts` | The directory is in, at or above `packages/` of the kit. Remove the entry and enable the component in `selection` instead. |
 | `inside_target: overlay.ownerResources.skills` or `.prompts` | The directory is in the target profile. Move it to a repository of its own and list that path. |
 | `blocked_component: overlay.selection.enable` | The module is not qualified at this pin. Move it to `disable`. |
-| `undeclared_component: overlay.selection` | The component was renamed or removed from the manifest. Remove it from both lists. |
+| `undeclared_component: overlay.selection` | An ID in `enable` was renamed or removed from the manifest. Remove it from `enable`. An unknown ID in `disable` is a no-op. |
 | `missing_dependency: overlay.selection.enable` | Add the required component to `enable`. |
 | `unselected_endpoint` or `unselected_env` | Remove the endpoint or environment reference of a component that is no longer enabled. |
 | `undeclared_env: overlay.env` | Use only the environment names the manifest declares for that component. |
 | `thinking: overlay.roles.entry.thinking` | Use one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. |
 | `interactive_not_first_in_cycle` | Put the interactive role's model first in `modelRoutes.cycle`. |
-| `reviewed_source` or `core_runtime_pin` on `--manifest` | The manifest override does not match the reviewed anchors. Use the kit's `config/manifest.json`. |
+| `reviewed_source` or `core_runtime_pin` on `--manifest` | The manifest override names a package that is not the reviewed anchor, or its `runtime.piVersion` is not the version of its core spec. Use the kit's `config/manifest.json`. |
 
 ## Switching profiles
 

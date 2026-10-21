@@ -50,8 +50,6 @@ SELECTABLE = ("tested", "unverified")
 PACKAGES = "packages"
 MANIFEST = "config/manifest.json"
 RESOURCE_KINDS = ("extensions", "skills", "prompts", "themes")
-# These skill directories may be omitted from a kit when their components stay disabled.
-OPTIONAL_TREE_COMPONENTS = ("herdr-relay",)
 
 
 def _tree_components():
@@ -97,39 +95,60 @@ def _tree_resources(kind, item):
     return {key: tree_items(item) if key == kind else [] for key in RESOURCE_KINDS}
 
 
-# Reviewed anchors are independent of editable manifest claims. Pins are intentionally
-# repeated here so an altered manifest cannot bless an unrelated upstream source.
+# Reviewed anchors are independent of editable manifest claims: the source kind and the package
+# of each component, so an altered manifest cannot bless an unrelated upstream source. The version
+# of an npm source lives in the manifest only, so a pin move edits one file.
 REVIEWED_SOURCES = {
-    "core": {"kind": "npm", "spec": "@earendil-works/pi-coding-agent@1.3.0"},
+    "core": {"kind": "npm", "name": "@earendil-works/pi-coding-agent"},
     "model-routing": {"kind": "builtin"},
     # A tree component has no upstream pin: its anchor is the tree of this kit. The `openviking`
     # memory module is one of them: `packages/openviking-pi` is a vendored copy.
     **{cid: {"kind": "tree", "path": path} for cid, (path, _, _) in TREE_COMPONENTS.items()},
-    "mcp": {"kind": "npm", "spec": "pi-mcp-adapter"},
-    "hermes": {"kind": "npm", "spec": "pi-hermes-memory"},
-    "wiki": {"kind": "npm", "spec": "@zosmaai/pi-llm-wiki"},
-    # The question extension keeps an exact version: its registry metadata was read at this version.
-    "questions": {"kind": "npm", "spec": "@juicesharp/rpiv-ask-user-question@2.13.9"},
+    "mcp": {"kind": "npm", "name": "pi-mcp-adapter"},
+    "hermes": {"kind": "npm", "name": "pi-hermes-memory"},
+    "wiki": {"kind": "npm", "name": "@zosmaai/pi-llm-wiki"},
+    "questions": {"kind": "npm", "name": "@juicesharp/rpiv-ask-user-question"},
 }
-# File/key claims are only for native Pi settings documented at this version.
+
+
+def reviewed_source(cid, value):
+    """True when a checked source has the reviewed kind and package of `cid`, at any version."""
+    anchor = REVIEWED_SOURCES[cid]
+    if anchor["kind"] == "npm":
+        return value is not None and value["kind"] == "npm" and npm_name(value["spec"]) == anchor["name"]
+    return value == anchor
+
+
+# The file/key claims that the manifest lists because no source gives them: native Pi settings
+# documented at this version, and the files that a module owns. `derived_claims` gives the rest.
 REVIEWED_CLAIMS = {
     "core": {("settings.json", "/defaultProjectTrust"),
              ("settings.json", "/enableInstallTelemetry"), ("settings.json", "/enableAnalytics")},
     "model-routing": {("settings.json", "/defaultProvider"), ("settings.json", "/defaultModel"),
                       ("settings.json", "/defaultThinkingLevel"), ("settings.json", "/enabledModels"),
                       ("settings.json", "/modelThinkingLevels")},
-    # A tree component owns one filter entry for each of its resource paths in the shared package
-    # declaration, never the whole entry.
-    **{cid: {("settings.json", "package:" + path + ":" + one) for one in tree_items(item)}
-       for cid, (path, _, item) in TREE_COMPONENTS.items()},
     # An empty pointer claims the whole named file (RFC 6901 root); Hermes owns its config file.
-    "hermes": {("settings.json", "package:pi-hermes-memory"), ("hermes-memory-config.json", "")},
-    "wiki": {("settings.json", "package:@zosmaai/pi-llm-wiki"), ("settings.json", "/llm-wiki")},
+    "hermes": {("hermes-memory-config.json", "")},
+    "wiki": {("settings.json", "/llm-wiki")},
     # The adapter owns its whole config file and the `extensions` list that disables `builtin:mcp`.
-    "mcp": {("settings.json", "package:pi-mcp-adapter"), ("settings.json", "/extensions"), ("mcp-adapter.json", "")},
-    # The guidance file of the extension is outside the profile and stays owned by the user.
-    "questions": {("settings.json", "package:@juicesharp/rpiv-ask-user-question")},
+    # The guidance file of the question extension is outside the profile and stays owned by the user.
+    "mcp": {("settings.json", "/extensions"), ("mcp-adapter.json", "")},
 }
+
+
+def derived_claims(component):
+    """The claims that follow from a checked source and its resources, so the manifest does not list them.
+
+    An npm source owns its package entry. A tree component owns one filter entry for each of its
+    resource paths in the shared package declaration, never the whole entry.
+    """
+    source = component["source"]
+    if source is None or source["kind"] not in ("npm", "tree"):
+        return set()
+    if source["kind"] == "npm":
+        return {("settings.json", "package:" + npm_name(source["spec"]))}
+    return {("settings.json", "package:" + source["path"] + ":" + item)
+            for items in component["resources"].values() for item in items}
 REVIEWED_RESOURCES = {
     "core": {"extensions": [], "skills": [], "prompts": [], "themes": []},
     "model-routing": {"extensions": [], "skills": [], "prompts": [], "themes": []},
@@ -377,7 +396,8 @@ def tree_path(value, at):
     target = (ROOT / value).resolve()
     if base not in target.parents:
         fail("tree_outside_packages", at)
-    if not target.is_dir():
+    # An absent package directory is a kit without that package; `optional_tree_absent` decides.
+    if (target.exists() or target.is_symlink()) and not target.is_dir():
         fail("tree_path_missing", at)
 
 
@@ -391,8 +411,13 @@ def id_list(value, at):
 
 
 def optional_tree_absent(cid):
-    """Only an entirely absent optional directory can bypass the resource presence check."""
-    if cid not in OPTIONAL_TREE_COMPONENTS:
+    """True when the kit holds no resource path of the tree component `cid`: its folder is absent.
+
+    A kit can leave out the folder of each tree component. The absent folder is a no-op until the
+    overlay enables the component; then `overlay()` fails with `tree_resource_missing`. Only an
+    entirely absent folder bypasses the resource presence check.
+    """
+    if cid not in TREE_COMPONENTS:
         return False
     path, _, items = TREE_COMPONENTS[cid]
     return all(not (ROOT / path / item).exists() and not (ROOT / path / item).is_symlink()
@@ -412,7 +437,10 @@ def manifest(data):
     components = data["components"]
     if not isinstance(components, dict) or "core" not in components:
         fail("core_required", "manifest.components")
-    if runtime["piVersion"] != npm_parts(REVIEWED_SOURCES["core"]["spec"])[1]:
+    # The tested version is the version of the core spec. A missing or other core source fails below.
+    core = components["core"].get("source") if isinstance(components["core"], dict) else None
+    if (isinstance(core, dict) and isinstance(core.get("spec"), str)
+            and runtime["piVersion"] != npm_parts(core["spec"])[1]):
         fail("core_runtime_pin", "manifest.runtime.piVersion")
     bounds = parse_range(runtime["piAcceptedRange"], "manifest.runtime.piAcceptedRange", bounded=True)
     tested = runtime["piVersion"].split("-", 1)
@@ -436,18 +464,13 @@ def manifest(data):
             fail("array", at + ".configOwnership.claims")
         if ownership["status"] == "blocked" and ownership["claims"]:
             fail("unreviewed_claim", at + ".configOwnership.claims")
-        if ownership["status"] == "reviewed" and (component["status"] not in SELECTABLE or cid not in REVIEWED_CLAIMS):
+        if ownership["status"] == "reviewed" and component["status"] not in SELECTABLE:
             fail("unreviewed_claim", at + ".configOwnership.status")
         for claim in ownership["claims"]:
             fields(claim, ("file", "key"), (), at + ".configOwnership.claims")
             for field in ("file", "key"):
                 if type(claim[field]) is not str:
                     fail("ownership_claim_type", at + ".configOwnership.claims." + field)
-            if (claim["file"], claim["key"]) not in REVIEWED_CLAIMS.get(cid, set()):
-                fail("unreviewed_claim", at + ".configOwnership.claims")
-            claims.append((claim["file"], claim["key"]))
-        if ownership["status"] == "reviewed" and set((c["file"], c["key"]) for c in ownership["claims"]) != REVIEWED_CLAIMS[cid]:
-            fail("missing_claim", at + ".configOwnership.claims")
         if not isinstance(component["env"], list):
             fail("array", at + ".env")
         for name in component["env"]:
@@ -490,7 +513,7 @@ def manifest(data):
                 if key in path_keys:
                     fail("duplicate_path_owner", at + ".source.pathKey")
                 path_keys.add(key)
-            elif component["source"] != REVIEWED_SOURCES[cid]:
+            elif not reviewed_source(cid, component["source"]):
                 fail("reviewed_source", at + ".source")
         id_list(component["requires"], at + ".requires")
         if not isinstance(component["owner"], str) or not ID.fullmatch(component["owner"]):
@@ -513,7 +536,17 @@ def manifest(data):
             if not paths or (not optional_tree_absent(cid) and
                              not all((ROOT / component["source"]["path"] / item).exists() for item in paths)):
                 fail("tree_resource_missing", at + ".resources")
-    if components["core"]["requires"] or components["core"]["source"] != REVIEWED_SOURCES["core"]:
+        # A listed claim is reviewed or derived, and each reviewed claim is listed. A derived claim
+        # may be listed too. A blocked component claims nothing.
+        listed = [(claim["file"], claim["key"]) for claim in ownership["claims"]]
+        if ownership["status"] == "reviewed":
+            derived, reviewed = derived_claims(component), REVIEWED_CLAIMS.get(cid, set())
+            if not set(listed) <= derived | reviewed:
+                fail("unreviewed_claim", at + ".configOwnership.claims")
+            if not reviewed <= set(listed):
+                fail("missing_claim", at + ".configOwnership.claims")
+            claims.extend(listed + sorted(derived - set(listed)))
+    if components["core"]["requires"] or not reviewed_source("core", components["core"]["source"]):
         fail("core_source", "manifest.components.core")
     for i, (file, key) in enumerate(claims):
         for other_file, other_key in claims[:i]:
@@ -660,7 +693,8 @@ def overlay(data, components):
     id_list(disable, "overlay.selection.disable")
     if "core" in disable or "core" not in enable or set(enable) & set(disable):
         fail("selection_conflict", "overlay.selection")
-    for cid in enable + disable:
+    # An ID in `disable` that the manifest does not have is a no-op: a removed component stays off.
+    for cid in enable:
         if cid not in components:
             fail("undeclared_component", "overlay.selection")
     for cid in enable:

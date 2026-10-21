@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { agentDir } from "../../src/agent-dir.ts";
 import { normalizeDomain, SOURCE_ORDER, type CopilotSourceId } from "./detect.ts";
 
 /**
@@ -11,11 +11,6 @@ export type CopilotMode = "auto" | "on" | "off";
 export interface CopilotUsageSettings { mode: CopilotMode; sources: CopilotSourceId[]; domain?: string; pollSeconds: number }
 export const defaults: CopilotUsageSettings = { mode: "auto", sources: [...SOURCE_ORDER], pollSeconds: 300 };
 
-/** Pi's agent directory without a Pi import, so the doctor CLI can share this module. */
-export const agentDir = (env: NodeJS.ProcessEnv = process.env): string => {
-	const dir = env.PI_CODING_AGENT_DIR;
-	return dir ? dir.replace(/^~(?=$|\/)/, homedir()) : join(homedir(), ".pi", "agent");
-};
 export const copilotSettingsPath = (dir = agentDir()): string => join(dir, "copilot-usage", "settings.json");
 
 export function parseCopilotSettings(value: unknown): CopilotUsageSettings {

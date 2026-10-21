@@ -18,16 +18,6 @@ Words used below:
 - `<private dir>`: a directory outside the clone that only the user can read, for example `~/.config/tenant-pi`. It holds the overlay, the input files, the install log and the results file.
 - `<target>`: the absolute path of the new profile directory from `target.agentDir` in the overlay.
 
-## Scan and review before changes
-
-Use [the scan-driven wizard](docs/guides/wizard.md) before any installation or persistent configuration change.
-Confirm the target and account first. Run `python3 scripts/tenant_pi.py wizard` with its required identity and output paths.
-Fresh wizard defaults select only required core items. Optional features start unchecked; saved overlay selections remain unchanged.
-Review the complete plan before saving its private handoff. Saving is not installation approval.
-The guided agent rechecks target facts, then obtains execution approval and separate approval for privileged actions.
-The stages below are reference procedures for that approved plan, not permission to install before selection.
-The deterministic numbered fallback remains available through `components`.
-
 ## Labels for a prerequisite
 
 Each prerequisite and each stage gets one of four labels. The labels are the same in [the module guide](docs/guides/modules.md).
@@ -141,7 +131,7 @@ python3 scripts/check.py --tier fast
 
 Ask which URL when the user has more than one. The clone must not be the target directory. The user must not move or delete the clone later: the generated profile points at `packages/` inside it.
 
-A clean clone of a release tag needs no test run. The GitHub workflow `.github/workflows/checks.yml` runs `python3 scripts/check.py` on Linux and macOS for each snapshot that is pushed to GitHub. The maintainer creates the release entry of a tag only after both runs pass ([continuous integration](docs/publishing.md#continuous-integration)). For a clone with local changes, the last line of the check is `check: passed`.
+A clean clone of a release tag needs no test run. The GitHub workflow `.github/workflows/checks.yml` runs `python3 scripts/check.py --all` on Linux and macOS for each snapshot that is pushed to GitHub. The maintainer creates the release entry of a tag only after both runs pass ([continuous integration](docs/publishing.md#continuous-integration)). For a clone with local changes, the last line of the check is `check: passed`.
 The tests and the kit commands work with the usual umask values 0002, 022 and 077. The error `unsafe_permissions` means that a directory on the path is writable by its group or by others and has no sticky bit. Check the directory, then remove the write bit with `chmod go-w <directory>`.
 
 Done when the clone exists, and for a clone with local changes, the checks pass.
@@ -225,13 +215,9 @@ Goal: the selected in-tree Tenantext package can load. Run this stage only after
 cd ~/tenant-pi/packages/tenantext && npm ci --ignore-scripts
 ```
 
-Observed with Pi 0.99.1: without this step Pi fails at start with `Cannot find module 'yaml'`. The kit has no test for this; see `docs/packages.md`.
-
 The step leaves `packages/tenantext/node_modules/` in the clone. `scripts/publish_check.py` ignores each `node_modules/` directory.
 
-The Promptr package needs a build when you enable `promptr`: run `npm ci --ignore-scripts` and `npm run build` in `packages/promptr`. The build leaves `packages/promptr/node_modules/` and `packages/promptr/dist/` in the clone; `scripts/publish_check.py` ignores both. When no tracker binding exists, set `GITEA_HOST`, `GITEA_OWNER` and `OPENKNOWLEDGE_ORIGIN` in the shell that starts Pi: without them Promptr shows placeholder defaults. Without `promptr` in `enable` the package needs no step.
-
-Done when `packages/tenantext/node_modules/yaml` exists.
+Done when `packages/tenantext/node_modules/` exists.
 
 ## Stage 4a: Herdr and the question tool
 
@@ -256,11 +242,10 @@ The reviewed source of the Herdr application is the open-source project `herdrde
 
 ### 1. Destination
 
-Ask: "Where do you install: on this machine, on a remote Linux host over SSH, or in a container on this machine?"
+Ask: "Where do you install: on this machine, or on a remote Linux host over SSH?"
 
 - Local: every later command runs here.
 - Remote: the user gives the SSH target, a host alias of their SSH configuration or `<user>@<host>`. Every later command of every stage runs on that host through `ssh`. The remote host is Linux. A remote install is not qualified: no trial on a disposable host is recorded.
-- Container: the profile goes into a Compose seat on this machine. Skip parts 2 to 8 of this stage and continue with Stage 4c. A Compose seat is not qualified: no trial of a container is recorded.
 
 Rules for SSH:
 
@@ -325,13 +310,7 @@ Show the account name, the home directory and these paths. Ask the user to confi
 | The Herdr configuration | `~/.config/herdr/` |
 | The shared skill directory, only with the shared install | `~/.agents/skills/herdr` |
 
-With the clone present on this machine, one action prints the SSH command lines of the remote stages. It runs none of them:
-
-```sh
-python3 <clone>/scripts/tenant_pi.py remote-plan --ssh-target '<ssh target>' --remote-user '<account>' --remote-home '<remote home>'
-```
-
-Show each line before you run it. The `identity` line fails for a wrong account, a wrong home or a system that is not Linux. A line with `"changes": true` needs a yes from the user. `docs/herdr-setup.md` lists the stages and the limits.
+Show each remote command before you run it. A command that changes the host needs a yes from the user.
 
 Stop when the account name or the home directory is not the one that the user named. A wrong identity writes into another account. After each install step, check the owner of the new path: `stat -c '%U' '<path>'` on Linux prints the account name. The row "Owner of a file" in "Local differences" has the macOS form.
 
@@ -391,11 +370,11 @@ The kit holds the skill at `packages/tenantext/skills/herdr`. Ask: "Where do you
 | Option | What it changes | Scope |
 | --- | --- | --- |
 | Profile (recommended) | `herdr` moves to `selection.enable` in the overlay (Stage 5). The generated profile loads the skill from the clone. | The one generated profile |
-| Shared install | `bash <clone>/packages/tenantext/skills/herdr/install.sh` copies the skill to `~/.agents/skills/herdr` and links it into `~/.claude/skills` and `~/.pi/agent/skills` when these directories exist. It also copies the `spawn_agent` command file into `~/.claude/commands` and `~/.pi/agent/prompts`. | Every Pi profile and Claude Code of the account |
+| Shared install | `bash <clone>/packages/tenantext/skills/herdr/install.sh` makes `~/.agents/skills/herdr` a link to the skill folder of the clone and links it into `~/.claude/skills` and `~/.pi/agent/skills` when these directories exist. It also copies the `spawn_agent` command file into `~/.claude/commands` and `~/.pi/agent/prompts`. | Every Pi profile and Claude Code of the account |
 | Both | Both changes. | Both scopes |
 | None | Nothing. | none |
 
-The shared install is a separate approval. Before it, show what exists at each of its paths. `install.sh` replaces the installed skill copy at `~/.agents/skills/herdr` with `rsync --delete`: a file that is only in the earlier copy is deleted. It overwrites an existing `spawn_agent.md` in `~/.claude/commands` and `~/.pi/agent/prompts`. It writes into the live `~/.pi/agent` when that directory exists. It leaves a `herdr` entry that is not a link in place and prints `skipped`. Run it only when the user approves these paths by name. The profile option writes none of them.
+The shared install is a separate approval. Before it, show what exists at each of its paths. `install.sh` makes `~/.agents/skills/herdr` a link to the skill folder of the clone. A real directory at that path moves to a backup name beside it, and the script prints the backup path; it deletes no file. It overwrites an existing `spawn_agent.md` in `~/.claude/commands` and `~/.pi/agent/prompts`. It writes into the live `~/.pi/agent` when that directory exists. It leaves a `herdr` entry that is not a link in place and prints `skipped`. Run it only when the user approves these paths by name. The profile option writes none of them.
 
 ### 7. The question extension
 
@@ -410,122 +389,6 @@ Ask: "Do you want structured questions in Pi?" A yes moves `questions` to `selec
 Write into `<private dir>/install-log.md`: the destination, the account, the confirmed paths, each approved and each refused item, and the result of each part. When a part fails, name the actions that are complete and the actions that are not. The user can then resume without a second run of a completed action.
 
 Done when the user answered parts 1, 2, 6 and 7, part 3 shows the right identity, and part 4 shows `present` or the user accepted `missing` as an open item.
-
-## Stage 4c: the Compose seat
-
-Goal: the five files of a Compose seat in `<private dir>`, a built image, and a seat that the user reaches over SSH. Run this stage only with the answer "container" in Stage 4a, part 1.
-
-The guided path supports the gateway route only, through the component `codex-accounts` ([modules guide](docs/guides/modules.md)). For a provider with a native login, write the private directory files by hand. Use the two env templates and the notes on the private directory in [the seat README](deploy/compose/README.md). Use the overlay rules of Stage 5. The `overlay` and `registry` keys of the plan in part 2 show the shape of these two files. The seat README permits an empty gateway key for a native login. Not verified: a native login in the seat.
-
-A Compose seat is a container, started by Compose, that holds one generated Pi profile for one user and is reached over SSH. [The Compose seat document](deploy/compose/README.md) has the facts: the image, the two env files, the gateway key, the login and the limits. [The Compose seat guide](docs/guides/compose-seat.md) has the procedure for the operator. Not verified: a start of the container, a login, and each behaviour under Podman.
-
-This machine needs Git, Python 3.11 or later, the clone of Stage 2, and Docker with Compose or Podman with a Compose provider. It does not need Node or Pi: the image holds them.
-
-### 1. The eight questions
-
-Ask each question with the question tool of your harness, the recommended answer first. Read-only commands give the defaults:
-
-```sh
-id -u; id -g; ls ~/.ssh/*.pub
-```
-
-| # | Question | Default | Rule |
-| --- | --- | --- | --- |
-| 1 | "Which account name does the seat use?" | `pi` | Lowercase letters, digits, `_` and `-`. Not `root` and not an account of the base image: `node`, `sshd`, `daemon`, `www-data`, `nobody`, `bin`, `sys`, `sync`, `games`, `man`, `lp`, `mail`, `news`, `uucp`, `proxy`, `backup`, `list`, `irc`, `_apt`. |
-| 2 | "Which UID and GID does the account have?" | The output of `id -u` and `id -g` | 1000 to 65533. A value from 500 to 999 and the GID 20 are accepted with a warning: they are the values of a macOS account. |
-| 3 | "Which SSH public key file opens the seat?" | A `.pub` file of `~/.ssh` | The absolute path of a public key file with exactly one key line. The action refuses a file with a private key. Never ask for a private key. |
-| 4 | "Which port of this machine receives the SSH connections?" | `2222` | 1024 to 65535. The seat listens on `127.0.0.1` only. |
-| 5 | "Do you want a projects directory in the seat?" | No | The absolute path of an existing directory. The seat gets it at `/projects`, with read and write access. |
-| 6 | "Which gateway URL and which key variable name?" | The name `TENANTEXT_LITELLM_API_KEY` | The URL is HTTPS, has no credential, and ends in `/v1`. Ask for the name of the variable, never for the key value. The overlay accepts only the default name. |
-| 7 | "Which components do you want?" | None more | The IDs of the checklist of Stage 5, item 2. The action adds `core`, `model-routing`, `codex-accounts` and each component that a chosen component requires. |
-| 8 | "Which model for the interactive role?" | `litellm-codex`, `codex-auto/astra`, `high` | The provider, the model and the thinking level, as three separate values. Under `litellm-codex` the model is `codex-auto/astra` (recommended), `codex-auto/sol` or `codex-auto/luna`: the gateway registers only these three. The thinking level is `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max`. The action refuses a model of another provider: the seat has the gateway route only. |
-
-The registry file, `<private dir>/registry.json`, is the list of the models and the thinking levels that the user confirms: `validate`, `plan` and `generate` refuse a role model that it does not hold, and the action writes it with the one answer of question 8.
-
-The gateway must be reachable from inside the container. A gateway on this machine has another name inside a container than `localhost`.
-
-### 2. The plan
-
-Print the plan first. This command writes nothing and runs nothing:
-
-```sh
-cd <clone> && python3 scripts/tenant_pi.py compose-plan --account pi --uid "$(id -u)" --gid "$(id -g)" \
-  --public-key "$HOME/.ssh/id_ed25519.pub" --ssh-port 2222 --gateway-url '<gateway url>' \
-  --private-dir "$HOME/.config/tenant-pi" --model codex-auto/astra [--provider litellm-codex] [--thinking high] \
-  [--projects-dir '<projects dir>'] [--enable <component id>]
-```
-
-The output is one JSON object. Show the user these parts:
-
-- `overlay`: the content of `<private dir>/overlay.json`. `target.agentDir` is `/home/<account>/.pi/profiles/main`, a path inside the container. `roles.interactive` and the one entry of `modelRoutes.cycle` hold the answer of question 8.
-- `registry`: the content of `<private dir>/registry.json`: the provider, the model and the thinking level of question 8.
-- `seatEnv` and `composeEnv`: the lines of `<private dir>/seat.env` and `<private dir>/compose.env`. The key line of `composeEnv` is empty.
-- `authorizedKeys`: the public key file and its copy in `<private dir>`.
-- `commands`: the Compose lines for `docker` and for `podman`, and the login line. A line with `"changes": true` needs a yes from the user.
-- `warnings`: read each one to the user.
-
-| Warning | Meaning |
-| --- | --- |
-| `inspect_shows_key_value` | `docker compose config`, `docker inspect` and `podman inspect` print the key value of `compose.env`. Do not run them in this session. |
-| `bind_0_0_0_0_opens_seat_to_network` | The plan binds the port to `127.0.0.1`. A change of `SEAT_BIND` to `0.0.0.0` opens the seat to the network. |
-| `gid_20_is_dialout_in_image` | In the image, the group `dialout` has the GID 20. The seat account uses that group. |
-| `uid_below_1000`, `gid_below_1000` | The value is below the usual range of a Linux user account. |
-| `mcp_input_file_required` | The seat needs `<private dir>/inputs/mcp-adapter.json` before its first start. See Stage 5, item 6. |
-
-An error is one JSON line with `rule: field`, as in Stage 5. The action refuses a model other than the three under `litellm-codex` with `unsupported_gateway_model: compose-plan.model`, and a model of another provider with `unsupported_gateway_model: overlay.modelRoutes.choice`. A rule with the field `overlay.<name>` comes from the overlay validator: the action refuses a memory module before the write with `memory_choices_required`. Leave the module out, write the files, then add the module and its choices of Stage 5, item 5, to `overlay.json` by hand and run `validate`.
-
-### 3. Write the files
-
-`<private dir>` must exist, outside the clone. When it is absent, show and run on yes:
-
-```sh
-mkdir -p -m 700 "$HOME/.config" "$HOME/.config/tenant-pi" && chmod 700 "$HOME/.config/tenant-pi"
-```
-
-Ask: "Write these five files into `<private dir>`?" On yes, run the same command with `--write` as the last option. The action creates `overlay.json`, `seat.env`, `compose.env`, `authorized_keys` and `registry.json`, each with mode 600. It refuses when one of the five exists, for example `target_exists: compose-plan.overlay.json`, and then writes none. Do not delete a file of the user to make the action pass: the user moves the file, or names another private directory.
-
-With Podman, the user sets one more value in `<private dir>/seat.env`: the comment line above `SEAT_USERNS=` gives the exact value.
-
-The entrypoint of the seat gives `<private dir>/registry.json` to `validate`, `plan` and `generate` when the file exists. Another role model and each other choice of Stage 5 are edits of `<private dir>/overlay.json` by hand, before the first start; each model of the overlay also needs its entry in `<private dir>/registry.json`. After each edit, run the syntax check and the `validate` command of Stage 5 on this machine, with `--registry <private dir>/registry.json`.
-
-### 4. The key value
-
-Tell the user: "Open `<private dir>/compose.env` in your editor. Put the gateway key between the two single quotes of the `TENANTEXT_LITELLM_API_KEY=''` line. Save the file."
-
-- The user does this step. Never ask for the value, and never read, print or copy `compose.env` after this step.
-- The file keeps mode 600. Check the mode only: `ls -l <private dir>/compose.env`.
-- The single quotes stay: Compose then keeps the value literal.
-
-### 5. Build and start
-
-Use the `display` lines of `commands` for the runtime of the user, `docker` or `podman`. Show each line and run it on yes: first `build`, then `up`. Each Compose line carries `KIT_COMMIT` and the env file option (`docker compose --env-file <file>`), also `ps`, `logs` and `down`. The lines have this form:
-
-```sh
-KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml build
-KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml up -d
-KIT_COMMIT="$(git -C <clone> rev-parse --short HEAD)" docker compose --env-file <private dir>/seat.env -f <clone>/deploy/compose/compose.yaml logs seat
-```
-
-With a projects directory, each line has a second `-f`, for `compose.projects.yaml`. The build runs the fast tier of the kit checks and installs the pinned Pi. The `logs` line shows one line for each step of the first start.
-
-Warning: `down -v` removes the home volume with the profile and the sessions, and the seat gets a new host key. The plan has no line with `-v`.
-
-### 6. Which stages the seat replaces
-
-| Stage | In a Compose seat |
-| --- | --- |
-| 3 (Pi), 4 (package dependencies) | Skip. The image build does them. |
-| 4a, parts 2 to 8 | Skip. The image holds Herdr 0.9.5. `herdr` and `questions` are answers to question 7. |
-| 5 (the overlay) | Parts 1 to 3 of this stage write the overlay. |
-| 6 (plan and generate), 7 (declared npm packages) | Skip. The entrypoint of the seat runs `check-runtime`, `validate`, `plan` and `generate` at the first start. |
-| 8 (authentication) | Part 4 of this stage: the key is in `compose.env`. |
-| 9 (first launch) | The SSH login: the `login` line of the plan, `ssh -p <port> <account>@127.0.0.1`. |
-
-The first login asks the user to accept the host key of the seat. It then opens the tmux session `seat`, in `/projects` when the projects directory is there. `pi-profile` starts Pi with the profile. Then do checks 1 to 3 of Stage 9 inside the seat. The live `~/.pi/agent` of this machine is not a part of the seat, so check 4 does not apply.
-
-Record in `<private dir>/install-log.md`: the eight answers without a key value, the files that the action wrote, each command that ran, and each result. Record a login or a check that did not run as "not run".
-
-Done when the action wrote the five files, the user confirmed that the key value is in `compose.env`, and the user saw the login or accepted it as an open item.
 
 ## Stage 5: the private overlay
 
@@ -581,10 +444,10 @@ The command prints `JSON valid`, or the line and the column of the first syntax 
 Edit `overlay.json` for the other answers of the user. A core-only profile needs none of them:
 
 1. `target.agentDir`: `--target` sets it. Change it by hand only as described above.
-2. `selection`: do "The checklist" below. The action `components` is the one source of the component list, and this file holds no copy of it. The wizard starts with core only. The legacy `components` output retains recommended marks but does not set wizard defaults. Each in-tree component is `unverified`: no test of the kit loads it with the kit pin. `promptr` needs the build step of Stage 4. Stage 4a has the questions for `herdr` and `questions`.
+2. `selection`: do "The checklist" below. The action `components` is the one source of the component list, and this file holds no copy of it. A fresh selection starts with core only. The `components` output retains recommended marks; the marks are a proposal. Each in-tree component is `unverified`: no test of the kit loads it with the kit pin. Stage 4a has the questions for `herdr` and `questions`.
 3. `roles.interactive`: the model for the session, as `provider`, `model` and `thinking`. See `docs/guides/providers.md#pure-model-route-contract`.
 4. Gateway, only when the user routes through the Tenantext gateway: `modelRoutes.gateway` is `{"auth": "env"}`; `endpoints.codex-accounts` is the gateway URL that ends in `/v1`; `env.codex-accounts` is `${TENANTEXT_LITELLM_API_KEY}`. The user exports the key themselves.
-5. `hermes`, `wiki`, `openviking`, and `agentcore` are the memory modules. The fresh wizard leaves every memory module unchecked. Saved selections retain their memory choices. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
+5. `hermes`, `wiki`, `openviking`, and `agentcore` are the memory modules. A fresh selection leaves every memory module unchecked. Saved selections retain their memory choices. Each module that is on needs `consent.memoryCapture: true` and its object in the `memory` block.
    - For `hermes` and `wiki`, selection is not consent. Ask explicitly about storage and recall before setting consent. With both modules on, the overlay gets these two keys:
 
    ```json
@@ -622,9 +485,8 @@ A core-only overlay looks like this. Its `selection` object is the output of `py
     "enable": ["core"],
     "disable": ["agentcore", "anthropic-usage", "codex-accounts", "context-meter", "coordinator-skills", "copilot-usage", "doctor", "herdr",
                 "herdr-relay", "herdr-watch", "hermes", "knowledge-skills", "mcp",
-                "model-routing", "openviking", "ops-footer", "promptr", "promptr-generate-task-prompt",
-                "promptr-handoff", "promptr-openknowledge-project-pages", "promptr-watch-herdr-agents", "questions",
-                "resources", "slopscore", "slopscore-pr", "tenantext", "tracker-site", "wiki"]
+                "model-routing", "openviking", "ops-footer", "questions",
+                "resources", "tenantext", "tracker-site", "wiki"]
   },
   "paths": {},
   "roles": {},
@@ -637,7 +499,7 @@ A core-only overlay looks like this. Its `selection` object is the output of `py
 
 ### The checklist
 
-The wizard checklist supports arrows, Space, details and scrolling. It shows every manifest component. The following numbered commands remain a manual fallback.
+The numbered commands below show every manifest component.
 
 1. Run the action. For a new overlay:
 
@@ -651,7 +513,7 @@ The wizard checklist supports arrows, Space, details and scrolling. It shows eve
    When the list marks `copilot-usage`, `anthropic-usage` or `doctor`, also print this sentence. Name only the marked components.
    "`copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider. Keep these components only when you agree to that."
    The module guide gives their mode and provider conditions.
-4. Wait for explicit selection. The wizard returns to the list with `/back` and retains answers. The numbered fallback accepts numbers; EOF is never approval.
+4. Wait for explicit selection. The numbered list accepts numbers; EOF is never approval.
 5. Turn the answer into the list of each component that is on: each marked line, plus each number that the user switched on, minus each number that the user switched off. `--select` takes that complete list, as IDs or as numbers, not only the changes. Run:
 
    ```sh
@@ -780,7 +642,7 @@ Done when `generate` prints `"filesComplete":true` and `<target>` holds `setting
 
 ## Stage 7: declared npm packages
 
-Only when `mcp`, `hermes`, `wiki` or `questions` is enabled. Fresh wizard selections do not include these modules. The plan prints one `pi install` line for each declared `npm:` source, in the order of `packages` in `settings.json`. It prints the last line, the peer override, only with `hermes`, `wiki` or `questions`.
+Only when `mcp`, `hermes`, `wiki` or `questions` is enabled. A fresh selection does not include these modules. The plan prints one `pi install` line for each declared `npm:` source, in the order of `packages` in `settings.json`. It prints the last line, the peer override, only with `hermes`, `wiki` or `questions`.
 
 Record the baseline of the live agent directory first, and with `wiki` the baseline of the vault: see the two "Before the first launch" parts of Stage 9. The first `pi install` line is the first Pi command that names `<target>`.
 
@@ -790,17 +652,17 @@ Run the lines of `commands.setupDisplayOnly` that name `<target>`, in the order 
 PI_CODING_AGENT_DIR='<target>' pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR='<target>' pi install npm:@zosmaai/pi-llm-wiki
 PI_CODING_AGENT_DIR='<target>' pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR='<target>' pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9
+PI_CODING_AGENT_DIR='<target>' pi install npm:@juicesharp/rpiv-ask-user-question@<version>
 PI_CODING_AGENT_DIR='<target>' node <clone>/scripts/patch_extension_peers.mjs
 ```
 
 - Use each source string as the plan prints it. `pi install` leaves `settings.json` unchanged only when the string is identical to the declared string. With a different string, or with a source that the profile does not declare, Pi rewrites `settings.json`, and `compare` shows the change as drift.
 - `mcp`, `hermes` and `wiki` are declared without a version. Each `pi install` line installs the newest registry version of its package; tell the user which versions it installed. The kit reviewed `pi-mcp-adapter` 5.4.0, `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5. The facts of an existing vault are from the same version of the wiki. After an install or an update of the `wiki` package, check 8 of Stage 9 is the proof for the installed version.
 - The `pi install` line of `wiki` prints an audit summary of npm. Read "The audit summary of npm" below before you run that line.
-- `questions` is declared at the exact version 2.13.9, and its line installs that version.
+- `questions` is declared at an exact version: `<version>` above is the version of its `source.spec` in `config/manifest.json`. Its line installs that version.
 - `pi update --extensions` is not a setup command. With the kit pin it does not install or change a source with an exact version. It only moves an installed source without a version to the newest registry version.
 - The last command corrects host-provided peers in the installed manifests. Run it after the `pi install` lines. The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it.
-- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. The registry manifest of `@juicesharp/rpiv-ask-user-question` 2.13.9 lists `typebox` under `peerDependencies` with the range `*`, so the script makes no change for `questions` either. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
+- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, so the first run prints nothing for `hermes` and `wiki`. The gap `peer_package_unverified` of `questions` in `config/manifest.json` names the version whose registry manifest lists `typebox` under `peerDependencies` with the range `*`. So the script makes no change for `questions` either. Keep the line for all three components: a later version of a package can list a host module under `dependencies` again.
 
 To reapply the correction after each update, `docs/host-peer-overrides.md` describes an `npmCommand` wrapper.
 
@@ -866,7 +728,7 @@ Ask which of the three the user wants. `docs/guides/providers.md` has the comple
 - Codex: a provider that Pi includes. The user runs `/login` inside Pi and selects the model with `/model`. The login is separate from the gateway key.
 - llama-swap and vLLM: ask for the base address, the exact model alias, and whether the server needs a key. Use no default. Register the provider in `<target>/models.json` after generation. A key is a `$NAME` reference to an environment variable, never a value.
 - A direct provider accepts local HTTP, a LAN address and each port. The gateway route stays HTTPS only: `docs/guides/providers.md#pure-model-route-contract`.
-- Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` for validated non-secret direct providers. The wizard guide defines the supported subset and regeneration rules.
+- Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` for validated non-secret direct providers. The provider guide defines the supported subset and regeneration rules.
 - Do not replace a `models.json` that exists, and do not copy `auth.json` between profiles.
 
 Done when the user approved and ran the two verification steps of the provider guide, or the install log says "not run" and names the provider as unverified.
@@ -1093,7 +955,7 @@ The first install ends with Stage 9. This stage is one message to the user, and 
 
 Tell the user the rule of each later change: the kit changes no profile in place. A new component gives a new candidate directory from the same overlay with another `target.agentDir`. A new kit version or a new Pi pin gives one only when the profile changes. The old candidate stays as the fallback. Auth, sessions and memory are not copied.
 
-[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. Its first section, [Get a new version of the kit](POST_INSTALL.md#get-a-new-version-of-the-kit), is `git pull --ff-only` and one read-only command, `python3 scripts/tenant_pi.py update --overlay '<overlay>' --local-dir '<private dir>'`, which prints the verdict and the next lines. Then the guide gives the loop of a change one time, and one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, a candidate comparison, the baseline, a removal, a new Pi version, a provider, and the update of a Compose seat.
+[POST_INSTALL.md](POST_INSTALL.md) is the guide for that time. The user, or an agent of the user, reads it in place of this file. Its first section, [Get a new version of the kit](POST_INSTALL.md#get-a-new-version-of-the-kit), is `git pull --ff-only` and one read-only command, `python3 scripts/tenant_pi.py update --overlay '<overlay>' --local-dir '<private dir>'`, which prints the verdict and the next lines. Then the guide gives the loop of a change one time, and one section with the commands of each task: a component, a memory module, the npm packages, an accepted difference, a candidate comparison, the baseline, a removal, a new Pi version, and a provider.
 
 ## Not in this kit
 

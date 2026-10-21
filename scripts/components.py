@@ -13,9 +13,9 @@ from scripts.validate import RESOURCE_KINDS, SELECTABLE, fail, id_list, npm_name
 
 # The one place of the recommended set. A test proves that each ID is in the manifest and that
 # the set holds each ID that one of its members requires.
-RECOMMENDED = ("core", "model-routing", "tenantext", "codex-accounts", "slopscore", "context-meter", "ops-footer",
+RECOMMENDED = ("core", "model-routing", "tenantext", "codex-accounts", "context-meter", "ops-footer",
                "copilot-usage", "anthropic-usage", "doctor", "resources", "coordinator-skills", "knowledge-skills",
-               "slopscore-pr", "wiki", "hermes")
+               "wiki", "hermes")
 # The overlay validator refuses a selection without these IDs.
 LOCKED = ("core",)
 FORMATS = ("json", "text")
@@ -186,7 +186,7 @@ def selection(components, chosen):
             fail("blocked_component", "components.select")
         enabled.append(cid)
         pending.extend(components[cid]["requires"])
-    # The order of the Compose plan: `core`, then the other IDs by name.
+    # The order of `enable`: `core`, then the other IDs by name.
     enable = [*LOCKED, *sorted(set(enabled) - set(LOCKED))]
     needs = {cid: prerequisites(cid, components[cid]) for cid in enable}
     return {"selection": {"enable": enable, "disable": sorted(set(components) - set(enable))},

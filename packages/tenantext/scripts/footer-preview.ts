@@ -1,6 +1,6 @@
 /**
- * Print every footer fixture at 160, 120, 80, and 40 columns, with color and without. Default layout v4; `--layout all` prints all six.
- * Run: node --experimental-strip-types scripts/footer-preview.ts [--plain] [--widths 160,120] [--only "healthy,pending prompt"] [--layout v4|v3|v2|a|b|c|all]
+ * Print every footer fixture at 160, 120, 80, and 40 columns, with color and without. Default layout v4; `--layout all` prints v4 and v3.
+ * Run: node --experimental-strip-types scripts/footer-preview.ts [--plain] [--widths 160,120] [--only "healthy,pending prompt"] [--layout v4|v3|all]
  * Not part of the Pi package files.
  */
 import { visibleWidth } from "@earendil-works/pi-tui";

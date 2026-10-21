@@ -32,9 +32,11 @@ HERDR_SKILL = os.environ.get("HERDR_SKILL_HOME") or os.path.expanduser("~/.agent
 HERDR_SCRIPTS = os.path.join(HERDR_SKILL, "scripts")
 sys.path.insert(0, HERDR_SCRIPTS)
 try:
-    from _common import STATE_DIR, agent_info, clip, herdr, require_herdr_env, screen_tail  # noqa: E402
+    from _common import STATE_DIR, agent_info, clip, exit_codes, herdr, require_herdr_env, screen_tail  # noqa: E402
 except ImportError:
-    sys.exit(f"error: the herdr skill is not installed at {HERDR_SKILL}. Install it first.")
+    sys.exit(f"error: the herdr skill is not installed at {HERDR_SKILL}, or it is older than this relay. Install it first.")
+# The exit codes of ask.py and spawn.py come from contract.json of the herdr skill.
+ASK_EXIT, SPAWN_EXIT = exit_codes("ask"), exit_codes("spawn")
 
 RELAY_DIR = os.path.join(STATE_DIR, "relay")
 JOBS_DIR = os.path.join(RELAY_DIR, "jobs")
@@ -221,7 +223,7 @@ def ensure_worker(cfg, cwd):
                 break
             except ValueError:
                 pass
-    if p.returncode == 4 and rec:
+    if p.returncode == SPAWN_EXIT["startup_question"] and rec:
         print(f"relay: the worker {rec.get('name')} ({rec.get('pane_id')}) stopped at a startup question. "
               "Show it to the user and wait for the decision.")
         print(clip(screen_tail(rec["pane_id"], 40), 3000))
@@ -271,7 +273,7 @@ def do_run(opts, cfg):
         worker = ensure_worker(cfg, cwd)
         job_dir = new_job(cwd, command, opts["timeout"], caller)
         code, reply = ask(worker, job_dir, opts["timeout"])
-        if code == 3:  # the worker is in another turn; nothing was sent
+        if code == ASK_EXIT["busy"]:  # the worker is in another turn; nothing was sent
             remaining = max(1, opts["timeout"] - int(time.time() - start))
             herdr("agent", "wait", worker["pane_id"], "--timeout", str(remaining * 1000), timeout=remaining + 30)
             code, reply = ask(worker, job_dir, opts["timeout"])
@@ -285,14 +287,14 @@ def do_run(opts, cfg):
         print_result(job_dir, exit_code, out, worker["name"], seconds, opts["max_chars"])
         sys.exit(exit_code)
     job = os.path.basename(job_dir)
-    if code == 124:
+    if code == ASK_EXIT["timeout"]:
         print(f"relay: job={job} worker={worker['name']} TIMED OUT. The job was delivered and can still run. "
               f"Do not send it again. Later: relay.py collect {job}")
         sys.exit(EXIT_TIMEOUT)
-    if code in (3, 4):
+    if code in (ASK_EXIT["busy"], ASK_EXIT["blocked"]):
         print(f"relay: job={job} worker={worker['name']} NOT RUN. "
               + ("The worker waits on a question or an approval. Show this to the user."
-                 if code == 4 else "The worker still works on another turn."))
+                 if code == ASK_EXIT["blocked"] else "The worker still works on another turn."))
         print(reply[-3000:])
         sys.exit(EXIT_BLOCKED)
     print(f"relay: job={job} worker={worker['name']} NOT RUN. The worker ended its turn with no result file. "

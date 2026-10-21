@@ -78,7 +78,7 @@ the helper command, not the token. The desktop browser and
 `mcp-researcher.json` path are also optional machine settings, as in
 `resources.local.example.json`.
 
-The source of truth is `roles.json`, `roles/<role>.md` and `resources.json` in this directory. A role sets no model.
+The source of truth is `roles.json`, `roles/<role>.md` and `resources.json` in this directory. A role sets no model. `contract.json` holds the exit codes of `ask.py` and `spawn.py` for the programs that start them.
 
 | Session | Tab | Result format | Close after |
 | --- | --- | --- | --- |
@@ -86,7 +86,8 @@ The source of truth is `roles.json`, `roles/<role>.md` and `resources.json` in t
 | task session | The tab of the role | `FINAL_COMPRESSED_CONTEXT` block | Yes, unless the user says "leave open" or "HITL" |
 
 Optional `~/.config/herdr-skill/models.json` has the shape `{"roles":{"<role>":{"<harness>":{"model":"<name>","thinking":"<level>"}}}}`.
-Each key is optional; `XDG_CONFIG_HOME` replaces `~/.config` when set. The order is request, file, harness default.
+Each key is optional; `XDG_CONFIG_HOME` replaces `~/.config` when set. The order is request, then file.
+With no model from either, `spawn.py` starts no pane and exits with 2. With no thinking level from either, the harness chooses.
 A named model skips the file; a requested thinking level wins. The launch harness selects its entry.
 The skill ships no model choice. Invalid files stop the launch with their path and reason.
 
@@ -108,13 +109,13 @@ coordinator handoff, and in a session without the tool.
 python3 $S/spawn.py --harness pi --role researcher --model example-model --thinking medium --cwd "$PWD" --dry-run   # shows the resolved values
 python3 $S/spawn.py --harness pi --role researcher --model example-model --thinking medium --cwd "$PWD"
 python3 $S/spawn.py --harness claude --role coordinator --model claude-opus-5-5 --thinking medium --cwd "$PWD"
-python3 $S/spawn.py --harness pi --role scout --cwd "$PWD"                                                # local file or default model of pi
+python3 $S/spawn.py --harness pi --role scout --cwd "$PWD"                                                # model from the local file, else exit 2
 ```
 
 The output is one JSON line with `name`, `model`, `model_source` and `thinking`.
-`model_source` is `request`, `models.json` or `harness default`, including with `--dry-run`.
+`model_source` is `request` or `models.json`, including with `--dry-run`.
 A live launch also reports `pane_id` and `placement`; a dry run reports `command` instead.
-Standard error reports `model: <name> (from models.json)`, `model: <name> (from request)` or `model: harness default`.
+Standard error reports `model: <name> (from models.json)` or `model: <name> (from request)`.
 The name is the handle for `ask.py` and `close.py`. Tell the user
 the name, harness, role, model and thinking level.
 
@@ -130,7 +131,7 @@ To hand your work to the next coordinator session:
 | Exit | Meaning | What to do |
 | --- | --- | --- |
 | 0 | The agent is ready | Go to step 4. |
-| 2 | An input is not valid | Read the message. Correct the input. |
+| 2 | An input is not valid, for example no model from the request or `models.json`. Nothing was started | Read the message. Correct the input: for a missing model, ask the user for one. |
 | 4 | The agent stopped at a startup question, for example folder trust | `herdr agent read <pane-id> --source visible`. Show the question to the user. Wait for the decision. |
 | 1 | The start failed. The new pane is closed again | Read the error. |
 

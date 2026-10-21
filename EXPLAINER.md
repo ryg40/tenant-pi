@@ -62,7 +62,7 @@ private directory                  kit clone
        +--> Pi runtime <-- reads and writes the generated profile
 ```
 
-[docs/architecture.html](docs/architecture.html) shows this diagram as an interactive page, with drill-down, search and a guided tour.
+`docs/architecture.html` shows this diagram as an interactive page, with drill-down, search and a guided tour. Build it with `python3 scripts/architecture_build.py`.
 
 A **core-only** profile is Pi with no optional module. This procedure installs a core-only profile.
 The **target** is its new directory, `~/.pi/profiles/main` in the examples.
@@ -95,7 +95,6 @@ Linux is the first target. The kit steps have offline tests; see the status in [
 | Component | Files that it adds | Packages or services that it needs |
 | --- | --- | --- |
 | Tenantext extensions | Filtered package entries in `settings.json`; dependencies under the clone's `packages/tenantext/node_modules/`. | The in-tree package and its npm dependencies; a gateway for `codex-accounts`. |
-| Promptr | A package entry; build output in the clone; profile `promptr/` and project `.promptr/` state. | The in-tree package, npm dependencies and a build. |
 | MCP adapter | `mcp-adapter.json` in the target; input definitions in private `inputs/`; runtime caches and spilled output. | `pi-mcp-adapter`, selected servers and the operating-system keyring for tokens. |
 | Hermes | `hermes-memory-config.json` in the target; runtime `pi-hermes-memory/` and memory files. | `pi-hermes-memory` with the native module `better-sqlite3`; a compiler toolchain only when no prebuilt binary fits the platform. |
 | LLM Wiki | Settings in the profile; a vault under `~/.llm-wiki/` or a selected wiki home. | `@zosmaai/pi-llm-wiki`. |
@@ -112,7 +111,7 @@ Optional components stay off until you select them. See [Optional components](#o
 | --- | --- | --- | --- |
 | Node with npm | `>=24.0.0 <25` | `config/manifest.json`, `runtime.nodeRange` | Step 1 prints both versions. Example: Node `24.21.0`, npm `11.19.0`. |
 | Python | `>=3.11` | `config/manifest.json`, `runtime.pythonRange` | Step 1 prints the version. The kit uses the standard library only. |
-| Pi | Tested pin `1.1.0`; accepted range `>=1.1.0 <1.2` | `config/manifest.json`, `runtime.piVersion` and `runtime.piAcceptedRange` | Step 3 checks the version without using the live profile. Step 10 installs the pin when needed. |
+| Pi | The tested pin and the accepted range | `config/manifest.json`, `runtime.piVersion` and `runtime.piAcceptedRange` | Step 3 checks the version without using the live profile. Step 10 installs the pin when needed. |
 | Git | Any current version for the clone | [Setup guide](INSTALL.md#stage-0-inventory) | Step 1 prints the version. Scanning has separate requirements in [secret handling](docs/secret-handling.md#scanner). |
 
 `<pin>` means `runtime.piVersion` in `config/manifest.json`, the tested Pi version.
@@ -285,15 +284,18 @@ PYTHONDONTWRITEBYTECODE=1 python3 scripts/publish_check.py
 You see this output, after the lines of `git clone`:
 
 ```text
-----------------------------------------------------------------------
-Ran <count> tests in <seconds>s
-
-OK (skipped=<n>)
+select: 0 changed files since <commit>; 0 test modules; packages: none
+unittest: no module selected
+json: passed
+frontmatter: passed
+scan: passed
+diff: passed
+check: passed
 publish set valid: <count> files, <count> explicit (not a release approval)
 ```
 
-The last test line starts with `OK`; a skipped-test count is expected and depends on the client.
-Record the skipped count from the current check result, not from a previous client run.
+A clean clone has no changed file, so the fast check runs no test module; CI ran the full check set for the snapshot. Without Betterleaks, the scan line says `skipped`.
+The last line of the check is `check: passed`. `python3 scripts/check.py --help` lists what a check of changed files runs.
 
 Run each later command of this document from the clone directory.
 
@@ -313,7 +315,7 @@ Warning: do not move or delete the clone after step 9. A profile with an in-tree
 | Command | Script | What it does |
 | --- | --- | --- |
 | `git clone` | Git | Copies the repository into `~/tenant-pi`. |
-| `python3 scripts/check.py --tier fast` | `scripts/check.py`, each `tests/test_*.py` | Runs the unit tests of the kit in parallel, without the tests marked slow, and the publish checks. `tests/test_doc_check.py` also runs the documentation check of `scripts/doc_check.py`. |
+| `python3 scripts/check.py --tier fast` | `scripts/check.py`, the selected `tests/test_*.py` | Runs the tests of the changed files in parallel, without the tests marked slow, and the JSON, frontmatter, scan and whitespace checks. `tests/test_doc_check.py` also runs the documentation check of `scripts/doc_check.py`. |
 | `python3 scripts/publish_check.py` | `check()` in `scripts/publish_check.py` | Proves that each file of the clone is in a reviewed list. |
 
 `check()` does these things, in this order:
@@ -348,7 +350,7 @@ The parts of the clone that the install uses:
 | `config/private/` | Four templates for the private directory. |
 | `scripts/tenant_pi.py` | The command line of the kit. Each action of this document starts here. |
 | `scripts/` | The modules behind the actions; see [the scripts](#scripts). |
-| `packages/tenantext`, `packages/promptr`, `packages/openviking-pi` | The in-tree optional modules. A core-only profile does not use them. |
+| `packages/tenantext`, `packages/openviking-pi` | The in-tree optional modules. A core-only profile does not use them. |
 | `tests/`, `docs/` | The unit tests and the reference documents. |
 
 #### Output
@@ -709,12 +711,12 @@ In `scripts/tenant_pi.py`, `main()` does this for `validate`, `plan` and `genera
 
 1. `_load_input()` reads `config/manifest.json` and the overlay through the bounded loader. The loader accepts a regular file of 1 MiB maximum, with UTF-8 text, unique keys and 64 nesting levels maximum. It follows no symbolic link.
 2. `prepare()` of `scripts/profile_plan.py` builds the **plan** in memory. It first calls `manifest()` and `overlay()` of `scripts/validate.py`.
-3. `manifest()` compares the manifest with fixed reviewed values: `REVIEWED_SOURCES`, `REVIEWED_CLAIMS` and `REVIEWED_RESOURCES`. A changed pin in the manifest alone does not pass. For source kind `tree`, the script instead reads component values from the kit's `config/manifest.json`. `manifest()` checks each resource path against the tree.
+3. `manifest()` compares the manifest with fixed reviewed values: `REVIEWED_SOURCES`, `REVIEWED_CLAIMS` and `REVIEWED_RESOURCES`. `REVIEWED_SOURCES` holds the source kind and the package of each component, and no version. A changed version in the manifest passes; another package does not. `derived_claims()` gives the claims that follow from a source and its resources: the package entry of an npm source, and one filter entry for each resource path of a tree source. The manifest lists only the claims of `REVIEWED_CLAIMS`, which no source gives. For source kind `tree`, the script instead reads component values from the kit's `config/manifest.json`. `manifest()` checks each resource path against the tree.
 4. `overlay()` checks each key of the overlay: the form, the selection rules, each path, each role, each reference.
 5. `_outside_kit()` refuses a target in the clone.
 6. A target equal to `SAMPLE_TARGET` gives `sample_target`.
 7. `_outside_pi_agent()` refuses a target that is `~/.pi/agent` or is under it, with `under_pi_agent`. `_home()` reads `HOME` for this rule. The target and the directory each count as written and with their symbolic links resolved.
-8. `_outside_wiki_vault()` refuses a target that is `~/.llm-wiki` or is under it, with `under_wiki_vault`. With `WIKI_HOME` set, the rule also covers `<WIKI_HOME>/.llm-wiki`. With `memory.wiki.wikiHome` in the overlay, the rule also covers `<wikiHome>/.llm-wiki`. The same rule refuses a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory. `baseline` and `init-private` read no overlay, so they know the first two vaults only.
+8. `_outside_wiki_vault()` refuses a target that is `~/.llm-wiki` or is under it, with `under_wiki_vault`. With `WIKI_HOME` set, the rule also covers `<WIKI_HOME>/.llm-wiki`. With `memory.wiki.wikiHome` in the overlay, the rule also covers `<wikiHome>/.llm-wiki`. The same rule refuses a launcher file, a results directory or a results target, a baseline file and a private directory. `baseline` and `init-private` read no overlay, so they know the first two vaults only.
 
 With `--launcher`, `plan` and `generate` apply the launcher rules of step 8 between items 6 and 7.
 
@@ -841,7 +843,7 @@ The shortened output leaves out seven keys. In a core-only plan they are empty o
 | `routeStatus` | each role `unset` | The state of each model role. |
 | `routeSetup` | `[]` | Setup facts of a model route. |
 | `memory` | `null` | The record of a memory module. |
-| `workflow` | `mcp` and `promptr`, each with `"enabled": false` | The record of the two workflow modules. It is there also when both are off. |
+| `workflow` | `mcp` with `"enabled": false` | The record of the MCP workflow module. It is there also when the module is off. |
 | `ownerPackages`, `ownerResources`, `unmanaged` | empty | Lists from the optional overlay keys. |
 
 #### The plan without a runtime report
@@ -1138,7 +1140,7 @@ You see `set` or `unset`.
 
 #### Not touched
 
-- The kit reads no credential file or credential value. Its path guards and vault check read `HOME` and `WIKI_HOME`, including the guards of `compose-plan --write`. `plan` also tests known provider key names for presence. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable). `check-runtime` and `check-herdr` pass the caller's environment to their child processes.
+- The kit reads no credential file or credential value. Its path guards and vault check read `HOME` and `WIKI_HOME`. `plan` also tests known provider key names for presence. See [the warning](docs/profile-plan.md#the-warning-for-a-provider-key-variable). `check-runtime` and `check-herdr` pass the caller's environment to their child processes.
 - `check-runtime` reads `PATH` to find the tools, and `TMPDIR` (or `TEMP` or `TMP`) for its temporary directory. It passes the whole environment of the shell to the three `--version` processes, with `PI_CODING_AGENT_DIR` replaced for Pi. So a provider key that the shell exports reaches these three processes.
 - `generate` and `results` each make one read-only Git call. Git inherits the shell environment, except `GIT_CEILING_DIRECTORIES`, which stops repository discovery at the kit root. The kit's Python logic does not inspect the environment values that it passes to Git. Python copies those values when it starts Git.
 - `auth.json` of the live profile. The kit copies no login from one profile to another, so the new profile starts with no login.
@@ -1522,12 +1524,6 @@ The usage and doctor extensions can read login state outside the target; see the
 `codex-accounts` needs an HTTPS gateway, model evidence and an environment-key reference. Its login route is `blocked`.
 Model routing can also add `defaultProvider`, `defaultModel` and `defaultThinkingLevel` without an extension.
 
-### Promptr
-
-Status: `unverified`. Promptr adds its in-tree package entry and keeps runtime state in profile `promptr/` and project `.promptr/`.
-It needs npm dependencies and a build in `packages/promptr`. The clone does not ship its `dist/` build output.
-Each Promptr skill needs `promptr`. Its OpenKnowledge and Herdr skills also need those external tools.
-
 ### MCP adapter
 
 Status: manifest `tested`, runtime `unverified`. MCP means Model Context Protocol, a protocol for tools and services.
@@ -1538,7 +1534,7 @@ The launcher sets `PI_MCP_CONFIG_MODE=exclusive`. Tokens can use the operating-s
 ### Hermes memory
 
 Status: manifest `tested`, runtime `unverified`. Hermes adds `hermes-memory-config.json`, then runtime memory files under the profile.
-Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together. The fresh wizard leaves `hermes` unchecked. Selection and storage consent are separate decisions.
+Select `hermes`, set `consent.memoryCapture: true` and supply `memory.hermes` together. The checklist of the install flow leaves `hermes` unmarked. Selection and storage consent are separate decisions.
 It needs `pi-hermes-memory`, which uses the native module `better-sqlite3`. A compiler toolchain is necessary only when no prebuilt binary fits the platform and the Node version.
 `backgroundReview: true` also needs `roles.memory` and permits independent model calls.
 
@@ -1547,7 +1543,7 @@ It needs `pi-hermes-memory`, which uses the native module `better-sqlite3`. A co
 Status: manifest `tested`, runtime `unverified`. LLM Wiki adds profile settings and can keep its vault outside the target.
 Select `wiki`, set `consent.memoryCapture: true` and supply `memory.wiki` together. The checklist of the install flow marks `wiki`; the consent key is written only when you keep the mark.
 It needs `@zosmaai/pi-llm-wiki`. A selected wiki home adds `WIKI_HOME` to the launch line. With no selected wiki home, the launch line removes an inherited `WIKI_HOME`, and the vault is `~/.llm-wiki/`.
-An existing vault is used as it is, and `check-wiki-vault` reports it. The kit refuses a target, a launcher file, a results directory or a results target, a baseline file, a private directory and a Compose directory that is a vault or is below one, with `under_wiki_vault`.
+An existing vault is used as it is, and `check-wiki-vault` reports it. The kit refuses a target, a launcher file, a results directory or a results target, a baseline file and a private directory that is a vault or is below one, with `under_wiki_vault`.
 INSTALL.md gives the peer-override step for both Hermes and LLM Wiki.
 These npm modules have reviewed versions, but their declarations do not pin the registry version installed by Pi.
 
@@ -1573,7 +1569,7 @@ The summary order is Goal, Open, Next, Important. Completed actions use past ten
 The log keeps its Markdown labels and tables. Not verified: live terminal rendering of the chat tables.
 When it is on, a coordinator session also adds one entry to a human session log in OpenKnowledge through the `okknow` command.
 Its state file is in the configuration directory of the user. Not verified: the command in a live session, and a write to a live knowledge base.
-Herdr, `slopscore-pr` and `tracker-site` are separate selectable skills. Their external state can stay outside the profile.
+Herdr and `tracker-site` are separate selectable skills. Their external state can stay outside the profile.
 
 ### Herdr and the question tool
 
@@ -1582,7 +1578,6 @@ The `herdr` component adds the Herdr skill of `packages/tenantext` to one profil
 `check-herdr` reports the `herdr` command: `present` with the version, `missing` or `unparsed`.
 The `questions` component adds the npm package `@juicesharp/rpiv-ask-user-question` at an exact version. It gives Pi the `ask_user_question` tool.
 The plan then prints a `pi install` line with the source of the package, and the peer override line. Without the tool, a skill asks in plain text.
-`remote-plan` prints the SSH command lines for an install on a remote Linux host. It runs none of them.
 Not verified: a Pi session that loads either component, the question dialog, a Herdr session, and a remote install.
 See [Herdr and the question tool](docs/herdr-setup.md) for each result and each limit.
 
@@ -1596,7 +1591,7 @@ A bottle is a prebuilt Homebrew package.
 | --- | --- |
 | All steps | macOS uses zsh. Put every `PATH` or variable line in `~/.zshrc`, never `~/.bashrc`. Run `exec zsh` to reload it. Use the kitty window's zsh to run Git hooks and the launcher. |
 | Prerequisites | Use native `arm64` tools and the Homebrew prefix `/opt/homebrew`. The guide does not require Rosetta. |
-| Prerequisites | `git`, `python@3.12` and `node@24` have arm64 bottles for macOS 15 (Sequoia) and 26 (Tahoe), not 14 (Sonoma). The Compose seat also needs `podman`, with the same bottles. |
+| Prerequisites | `git`, `python@3.12` and `node@24` have arm64 bottles for macOS 15 (Sequoia) and 26 (Tahoe), not 14 (Sonoma). |
 | Prerequisites | The scan needs the Betterleaks 1.9.0 binary: the `darwin_arm64` archive with its pinned checksum, or the Homebrew cask `betterleaks/tap/betterleaks@1`. The version output on a Mac remains unverified. |
 | 1, 3, 10 | Select Node 24 and Python 3.11 or later. The guide selects `python@3.12`; check both version and `arm64` architecture. |
 | 4 to 9 | Use the expanded macOS home path in JSON. Keep the target outside the clone, private directory and live profile. |
@@ -1643,9 +1638,9 @@ A bottle is a prebuilt Homebrew package.
  The kit refuses a target in it. baseline and check-baseline show a change of it.
 ```
 
-[docs/architecture.html](docs/architecture.html) shows this structure, each component of the manifest and its files as interactive diagrams.
+`docs/architecture.html` shows this structure, each component of the manifest and its files as interactive diagrams. Build it with `python3 scripts/architecture_build.py`.
 
-[EXPLAINER.html](EXPLAINER.html) shows the optional shared AgentCore memory as eight beginner tutorials, with rendered terminal frames and four example people.
+`EXPLAINER.html` (build it with `python3 scripts/explainer_build.py`) shows the optional shared AgentCore memory as eight beginner tutorials, with rendered terminal frames and four example people.
 
 | Component | Where | Who writes it | What it is |
 | --- | --- | --- | --- |
@@ -1682,7 +1677,6 @@ The reasons for this structure:
 | `scripts/launcher.py` | The launcher file. |
 | `scripts/check_runtime.py` | The three version processes of `check-runtime`, and the one of `check-herdr`. |
 | `scripts/wiki_vault.py` | The `lstat` calls of `check-wiki-vault`. |
-| `scripts/remote_plan.py` | The SSH command lines of `remote-plan`, as data. |
 | `scripts/baseline.py` | The scan and the comparison of `baseline` and `check-baseline`. |
 | `scripts/model_routes.py` | Adds model routes to the plan. |
 | `scripts/memory_modules.py` | Adds memory configuration to the plan. |
@@ -1916,7 +1910,6 @@ Not verified:
 | [The module guide](docs/guides/modules.md) | Each component. |
 | [The candidate update guide](POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate) | A new kit version: regenerate, compare, switch. |
 | [The privacy guide](docs/guides/privacy.md) | What the kit separates and what it does not. |
-| [The Compose seat guide](docs/guides/compose-seat.md) | The Compose seat: the same profile in a container that you reach over SSH. Not verified: a start of that container. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [The CLI contract](docs/generator.md) | Each action, each input rule. |
 | [The private directory](docs/private-directory.md), [the plan](docs/profile-plan.md), [the launcher file](docs/launcher.md), [the runtime check](docs/check-runtime.md), [the directory baseline](docs/directory-baseline.md) | The reference of one action each. |

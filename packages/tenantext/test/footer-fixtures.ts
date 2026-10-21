@@ -1,6 +1,6 @@
 import type { NextMove } from "../extensions/context-meter/next-move.ts";
 import { contextState, snapshot, type ContextState } from "../extensions/context-meter/snapshot.ts";
-import { defaults as meterDefaults } from "../extensions/context-meter/settings.ts";
+import { defaults as meterDefaults } from "../src/context-meter-settings.ts";
 import type { ContextService, DashboardSnapshot, IntegrationSnapshot, LimitsSnapshot } from "../extensions/ops-footer/types.ts";
 
 /** Shared footer fixtures for tests and the preview script. Times are fixed so output is stable. */

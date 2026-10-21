@@ -18,8 +18,7 @@
   "ok_service": "your OpenKnowledge service",
   "wiki_vault": "~/.llm-wiki/",
   "mcp_servers": "the MCP servers that you define",
-  "herdr_bin": "the herdr command on PATH",
-  "seat_address": "ssh -p <port> <account>@<host>"
+  "herdr_bin": "the herdr command on PATH"
  },
  "kinds": {
   "input": {
@@ -58,10 +57,6 @@
    "label": "Tenantext extension",
    "color": "#4dd0e1"
   },
-  "comp-promptr": {
-   "label": "Promptr",
-   "color": "#f78c6b"
-  },
   "comp-memory": {
    "label": "Memory module",
    "color": "#b39dff"
@@ -77,10 +72,6 @@
   "comp-skills": {
    "label": "Skill set",
    "color": "#7fdc8f"
-  },
-  "comp-deploy": {
-   "label": "Deploy",
-   "color": "#5fa8ff"
   },
   "file": {
    "label": "File",
@@ -240,7 +231,7 @@
      "label": "Working project",
      "sub": "Files, shell and trusted settings",
      "kind": "file",
-     "summary": "Core tools read and edit files and run shell commands with account permissions. A trusted project can add resource and settings overrides. Optional Promptr also writes project .promptr/ state.",
+     "summary": "Core tools read and edit files and run shell commands with account permissions. A trusted project can add resource and settings overrides.",
      "doc": "docs/workflow-modules.md",
      "drill": "profile"
     },
@@ -254,7 +245,6 @@
      "doc": "docs/packages.md",
      "files": [
       "packages/tenantext/package.json",
-      "packages/promptr/package.json",
       "packages/openviking-pi/package.json",
       "packages/agentcore-memory-core/package.json",
       "packages/agentcore-claude/package.json",
@@ -556,17 +546,6 @@
      "cols": 1,
      "tone": "profile",
      "gapY": 80
-    },
-    {
-     "id": "p-deploy",
-     "label": "Optional deployment form",
-     "sub": "Not part of a normal host install",
-     "x": 40,
-     "y": 800,
-     "nodeW": 870,
-     "cols": 1,
-     "tone": "release",
-     "gapY": 22
     }
    ],
    "nodes": [
@@ -664,9 +643,9 @@
      "id": "p-project",
      "group": "p-files",
      "label": "Project files and settings",
-     "sub": "Working directory; .pi/; .promptr/",
+     "sub": "Working directory; .pi/",
      "kind": "file",
-     "summary": "Pi tools can read and write the project. Trusted .pi/settings.json can add settings and resources. Optional Promptr stores project state in .promptr/ and profile state under promptr/.",
+     "summary": "Pi tools can read and write the project. Trusted .pi/settings.json can add settings and resources.",
      "doc": "docs/workflow-modules.md"
     },
     {
@@ -681,28 +660,6 @@
       "{{wiki_vault}}",
       "{{live}}"
      ]
-    },
-    {
-     "id": "compose-seat",
-     "group": "p-deploy",
-     "label": "Compose seat (optional)",
-     "sub": "Container account reached over SSH",
-     "kind": "comp-deploy",
-     "summary": "An alternative deployment form: one generated profile in a container, reached over SSH. {{seat_address}} is an example, not evidence of a completed trial. The guided seat path uses a gateway. A normal host install needs no container. Not qualified.",
-     "tags": [
-      "not qualified",
-      "deploy"
-     ],
-     "files": [
-      "deploy/compose/Dockerfile",
-      "deploy/compose/compose.yaml",
-      "deploy/compose/entrypoint.sh",
-      "deploy/compose/sshd_config",
-      "deploy/compose/profile.sh",
-      "deploy/compose/README.md"
-     ],
-     "doc": "docs/guides/compose-seat.md",
-     "drill": "overview"
     }
    ],
    "edges": [
@@ -887,7 +844,7 @@
      "id": "r-knowledge",
      "group": "r-clients",
      "label": "Knowledge and workflow skills",
-     "sub": "Optional Promptr / skill modules",
+     "sub": "Optional skill modules",
      "kind": "comp-skills",
      "summary": "Selected knowledge and workflow tools can use OpenKnowledge and a Gitea tracker. A skill file does not install its tools or services. Requests carry the task or page content needed for that operation.",
      "doc": "docs/packages.md"
@@ -1423,16 +1380,6 @@
      "nodeW": 320
     },
     {
-     "id": "g-c-promptr",
-     "label": "Promptr",
-     "sub": "packages/promptr",
-     "x": 820,
-     "y": 50,
-     "cols": 1,
-     "nodeW": 320,
-     "tone": "private"
-    },
-    {
      "id": "g-c-memory",
      "label": "Memory",
      "sub": "consent needed",
@@ -1535,20 +1482,6 @@
      ]
     },
     {
-     "id": "slopscore",
-     "component": "slopscore",
-     "group": "g-c-tenantext",
-     "label": "slopscore",
-     "kind": "comp-tenantext",
-     "summary": "A spend readout by model, role and tool.",
-     "inputs": "none",
-     "consent": "none",
-     "doc": "docs/guides/modules.md",
-     "tags": [
-      "optional; not a detected selection"
-     ]
-    },
-    {
      "id": "context-meter",
      "component": "context-meter",
      "group": "g-c-tenantext",
@@ -1628,80 +1561,6 @@
      "inputs": "none",
      "consent": "none",
      "doc": "docs/resources.md",
-     "tags": [
-      "optional; not a detected selection"
-     ]
-    },
-    {
-     "id": "promptr",
-     "component": "promptr",
-     "group": "g-c-promptr",
-     "label": "promptr",
-     "kind": "comp-promptr",
-     "summary": "The Promptr extension. It needs npm ci and npm run build in packages/promptr before the first start. It keeps state in the profile and in the project.",
-     "inputs": "npm ci --ignore-scripts and npm run build in packages/promptr",
-     "consent": "none",
-     "files": [
-      "packages/promptr/README.md",
-      "packages/promptr/package.json"
-     ],
-     "doc": "docs/packages.md",
-     "tags": [
-      "optional; not a detected selection"
-     ]
-    },
-    {
-     "id": "promptr-generate-task-prompt",
-     "component": "promptr-generate-task-prompt",
-     "group": "g-c-promptr",
-     "label": "generate-task-prompt",
-     "kind": "comp-promptr",
-     "summary": "A Promptr skill that writes a task prompt from a packet.",
-     "inputs": "promptr",
-     "consent": "none",
-     "doc": "docs/packages.md",
-     "tags": [
-      "optional; not a detected selection"
-     ]
-    },
-    {
-     "id": "promptr-handoff",
-     "component": "promptr-handoff",
-     "group": "g-c-promptr",
-     "label": "handoff",
-     "kind": "comp-promptr",
-     "summary": "A Promptr skill that writes a handoff file from evidence.",
-     "inputs": "promptr",
-     "consent": "none",
-     "doc": "docs/packages.md",
-     "tags": [
-      "optional; not a detected selection"
-     ]
-    },
-    {
-     "id": "promptr-openknowledge-project-pages",
-     "component": "promptr-openknowledge-project-pages",
-     "group": "g-c-promptr",
-     "label": "openknowledge-project-pages",
-     "kind": "comp-promptr",
-     "summary": "A Promptr skill that reads and writes shared project pages through the OpenKnowledge API.",
-     "inputs": "promptr, an OpenKnowledge service",
-     "consent": "none",
-     "doc": "docs/packages.md",
-     "tags": [
-      "optional; not a detected selection"
-     ]
-    },
-    {
-     "id": "promptr-watch-herdr-agents",
-     "component": "promptr-watch-herdr-agents",
-     "group": "g-c-promptr",
-     "label": "watch-herdr-agents",
-     "kind": "comp-promptr",
-     "summary": "A Promptr skill that watches Herdr agent panes. It needs the herdr command.",
-     "inputs": "promptr, the herdr tool",
-     "consent": "none",
-     "doc": "docs/packages.md",
      "tags": [
       "optional; not a detected selection"
      ]
@@ -1799,20 +1658,6 @@
      "files": [
       "packages/tenantext/skills/knowledge-skills/README.md"
      ],
-     "doc": "docs/guides/modules.md",
-     "tags": [
-      "optional; not a detected selection"
-     ]
-    },
-    {
-     "id": "slopscore-pr",
-     "component": "slopscore-pr",
-     "group": "g-c-skills",
-     "label": "slopscore-pr",
-     "kind": "comp-skills",
-     "summary": "A skill that puts the slopscore block into a pull request.",
-     "inputs": "the host tools of the skill",
-     "consent": "none",
      "doc": "docs/guides/modules.md",
      "tags": [
       "optional; not a detected selection"
@@ -1926,34 +1771,6 @@
      "detailOnly": true
     },
     {
-     "from": "promptr-generate-task-prompt",
-     "to": "promptr",
-     "label": "requires",
-     "style": "requires",
-     "detailOnly": true
-    },
-    {
-     "from": "promptr-handoff",
-     "to": "promptr",
-     "label": "requires",
-     "style": "requires",
-     "detailOnly": true
-    },
-    {
-     "from": "promptr-openknowledge-project-pages",
-     "to": "promptr",
-     "label": "requires",
-     "style": "requires",
-     "detailOnly": true
-    },
-    {
-     "from": "promptr-watch-herdr-agents",
-     "to": "promptr",
-     "label": "requires",
-     "style": "requires",
-     "detailOnly": true
-    },
-    {
      "from": "model-routing",
      "to": "codex-accounts",
      "label": "the gateway route needs it",
@@ -2040,12 +1857,6 @@
    "node": "m-agentcore",
    "title": "Know each data recipient",
    "text": "Remote recall sends prompts to the chosen memory service. AgentCore has no capture path; its propose tool writes only a confirmed text. Recalled text can then reach the model provider."
-  },
-  {
-   "view": "profile",
-   "node": "compose-seat",
-   "title": "A seat is optional",
-   "text": "A Compose seat changes where the account and profile run. It is not a required layer of a host installation and remains unqualified."
   },
   {
    "view": "components",

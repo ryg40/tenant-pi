@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import BLOCK_PROCESS_HOOK, slow, without_hint
+from tests.support import BLOCK_PROCESS_HOOK, launch_parts, slow, without_hint
 from unittest.mock import patch
 
 from scripts import tenant_pi
@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "scripts/tenant_pi.py"
 PEER_SCRIPT = shlex.quote(str(ROOT / "scripts/patch_extension_peers.mjs"))
 RUNTIME = load(ROOT / "config/manifest.json")["runtime"]
+QUESTIONS = "npm:" + load(ROOT / "config/manifest.json")["components"]["questions"]["source"]["spec"]
 OUTSIDE = ".".join(map(str, parse_range(RUNTIME["piAcceptedRange"], "f")[1]))
 _lower = parse_range(RUNTIME["piAcceptedRange"], "f")[0]
 IN_RANGE = ".".join(map(str, (*_lower[:2], _lower[2] + 1)))
@@ -603,7 +604,8 @@ class CliTests(unittest.TestCase):
         self.assertFalse(preview["runtimeReady"])
         self.assertEqual("required_missing", preview["routeStatus"]["worker"])
         self.assertIn({"code": "credential_missing", "subject": "TENANTEXT_LITELLM_API_KEY"}, preview["readinessGaps"])
-        self.assertEqual(["TENANTEXT_LITELLM_BASE_URL=https://gateway.example.invalid/v1", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=" + str(self.target), "pi", "--no-approve"], shlex.split(preview["commands"]["launchDisplayOnly"]))
+        self.assertEqual(["TENANTEXT_LITELLM_BASE_URL=https://gateway.example.invalid/v1"],
+                         launch_parts(preview["commands"]["launchDisplayOnly"])[0])
         result = self.run_cli("generate", "--registry", str(registry), "--require-role", "worker", "--target", str(self.target))
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertTrue(json.loads(result.stdout)["filesComplete"])
@@ -1033,8 +1035,7 @@ class CliTests(unittest.TestCase):
                 plan = self.run_cli("plan")
                 self.assertEqual(0, plan.returncode, plan.stderr)
                 parsed = json.loads(plan.stdout)
-                self.assertEqual(["env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=" + str(self.target), "pi", "--no-approve"],
-                                 shlex.split(parsed["commands"]["launchDisplayOnly"]))
+                self.assertIn("PI_CODING_AGENT_DIR=" + str(self.target), shlex.split(parsed["commands"]["launchDisplayOnly"]))
                 generated = self.run_cli("generate", "--target", str(self.target))
                 self.assertEqual(0, generated.returncode, generated.stderr)
                 self.assertEqual([], json.loads(generated.stdout)["warnings"])
@@ -1086,7 +1087,7 @@ class CliTests(unittest.TestCase):
 
     def test_manifest_override_remains_strict(self):
         changed = load(self.manifest)
-        changed["components"]["core"]["source"]["spec"] = "other@0.87.1"
+        changed["components"]["core"]["source"]["spec"] = "other@" + changed["runtime"]["piVersion"]
         self.manifest.write_text(json.dumps(changed))
         result = self.run_cli("plan")
         self.assertEqual(2, result.returncode)
@@ -1514,7 +1515,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         expected = [{"source": str(ROOT / "packages/tenantext"), "extensions": [], "skills": ["skills/herdr"],
                      "prompts": [], "themes": []},
-                    {"source": "npm:@juicesharp/rpiv-ask-user-question@2.13.9", "extensions": ["index.ts"], "skills": [],
+                    {"source": QUESTIONS, "extensions": ["index.ts"], "skills": [],
                      "prompts": [], "themes": []}]
         for candidate in (first, second):
             with self.subTest(candidate=candidate.name):

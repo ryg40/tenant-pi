@@ -1,7 +1,8 @@
 import { readStoredCredential, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { existsSync } from "node:fs";
-import { codexAccountsSettingsPath, loadCodexAccountsSettings, type CodexAccountConfig } from "./config.ts";
+import { codexAccountsSettingsPath, loadCodexAccountsSettings } from "./config.ts";
+import type { CodexAccountConfig } from "./settings.ts";
 import { type CodexLimitsResult, type CodexPlan } from "./limits.ts";
 import { collectLimitsFor, createCodexStatus, NO_LOGIN_ERROR } from "./status.ts";
 import { registerGateway } from "./routing.ts";

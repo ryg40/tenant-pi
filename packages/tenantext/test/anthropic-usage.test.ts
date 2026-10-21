@@ -7,7 +7,6 @@ import { ANTHROPIC_STATUS_EVENT, CACHED_READING_MS, createAnthropicStatus, type 
 import { ANTHROPIC_USAGE_URL, fetchAnthropicUsage, parseAnthropicUsage, resetDate } from "../extensions/anthropic-usage/usage.ts";
 import { runChecks } from "../extensions/doctor/checks.ts";
 import { anthropicStatus, codexStatus, copilotStatus, freshness } from "../extensions/ops-footer/adapters.ts";
-import { layouts } from "../extensions/ops-footer/layouts/index.ts";
 import { dashboardRows, detailedReport, droppedQuotaAccounts } from "../extensions/ops-footer/render.ts";
 import { ansiPaint } from "../extensions/ops-footer/paint.ts";
 import { quotaLifetimeFloor } from "../extensions/ops-footer/runtime.ts";
@@ -238,12 +237,6 @@ test("three Codex accounts render in order, a no-login account says no login, an
 	assert.match(report, /^Codex3: no login$/m);
 	assert.match(report, /^ANTHROPIC: ok; .*\nsource:claude-code; plan:max\nClaude: ok; 5h 72% resets 2026-09-22T10:12:00\.123Z/m);
 	assert.ok(report.indexOf("ANTHROPIC") < report.indexOf("COPILOT"));
-	// The other layouts keep the same order and wording.
-	for (const name of ["v2", "a", "b", "c"] as const) {
-		const text = layouts[name](data, contextStub(), all, 200, undefined, NOW).below.map(stripTerminalSequences).join("\n");
-		assert.ok(text.indexOf("C3") < text.indexOf("CL") || text.indexOf("Codex3") < text.indexOf("Claude"), name);
-		assert.match(text, /no login/, name);
-	}
 });
 
 test("the Codex route and the stale mark never go to the Claude row or to a no-login row", () => {

@@ -1,7 +1,7 @@
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 import type { OAuthCredentials } from "@earendil-works/pi-ai/oauth";
 import { builtinProviders } from "@earendil-works/pi-ai/providers/all";
-import { PRIMARY_CODEX_PROVIDER } from "./config.ts";
+import { PRIMARY_CODEX_PROVIDER } from "./settings.ts";
 
 const foundCodexProvider = builtinProviders().find(({ id }) => id === PRIMARY_CODEX_PROVIDER);
 const foundCodexOAuth = foundCodexProvider?.auth.oauth;

@@ -1,11 +1,10 @@
 # tenantext
 
-Tenantext provides Pi extensions, skills and a Claude Code plugin. **slopscore** measures model effort and Git provenance from local traces and repository history. See [slopscore](#slopscore) for the scoring rules and commands.
+Tenantext provides Pi extensions, skills and a Claude Code plugin.
 
-Ten Pi extensions form the installable suite. Each extension can also load alone. A Claude Code plugin lives under `claude-code/`.
+The Pi extensions that `pi.extensions` of `package.json` lists form the installable suite. Each extension can also load alone. A Claude Code plugin lives under `claude-code/`.
 
 - **tenantext**: Simplified English output rules, a startup guard, and a context report.
-- **slopscore**: Trace-based spend, model effort, Git provenance, PR reports, and OKF checks.
 - **codex-accounts**: Isolated Codex OAuth accounts, subscription limits, and optional LiteLLM automatic routing.
 - **context-meter**: Full-width context-source visualization, transition guidance, and system-prompt warnings.
 - **ops-footer**: A multi-row session dashboard with context, quotas, Git worktrees, and integration health.
@@ -62,7 +61,6 @@ The suite loads these stable resources:
 | Extension | Resource path |
 | --- | --- |
 | tenantext | `extensions/tenantext/index.ts` |
-| slopscore | `extensions/slopscore/index.ts` |
 | codex-accounts | `extensions/codex-accounts/index.ts` |
 | context-meter | `extensions/context-meter/index.ts` |
 | ops-footer | `extensions/ops-footer/index.ts` |
@@ -71,7 +69,6 @@ The suite loads these stable resources:
 | doctor | `extensions/doctor/index.ts` |
 | resources | `extensions/resources/index.ts` |
 | herdr-watch | `extensions/herdr-watch/index.ts` |
-| slopscore-pr skill | `skills/slopscore-pr/SKILL.md` |
 | herdr skill | `skills/herdr/SKILL.md` |
 | coordinator skills (the table in [skills/coordinator-skills/README.md](skills/coordinator-skills/README.md)) | `skills/coordinator-skills/<skill>/SKILL.md` |
 | knowledge skills (the table in [skills/knowledge-skills/README.md](skills/knowledge-skills/README.md)) | `skills/knowledge-skills/<skill>/SKILL.md` |
@@ -432,7 +429,7 @@ Not verified: writing through the OpenKnowledge project API. The adapter only de
 
 ## Claude Code plugin
 
-`claude-code/` holds a Claude Code plugin that ships `herdr` and `slopscore-pr` and applies the same rule block. Claude Code has no per-turn system prompt hook, so the delivery differs:
+`claude-code/` holds a Claude Code plugin that ships `herdr` and applies the same rule block. Claude Code has no per-turn system prompt hook, so the delivery differs:
 
 | Pi extension | Claude Code plugin |
 | --- | --- |
@@ -452,7 +449,7 @@ Before loading the plugin, build them from `packages/tenantext/skills/` with Pyt
 python3 packages/tenantext/claude-code/build-skills.py
 ```
 
-The script copies `herdr` and `slopscore-pr`, preserves file modes, and omits `install.sh`, `tests/`, `__pycache__/` and `*.pyc`.
+The script copies `herdr`, preserves file modes, and omits `install.sh`, `tests/`, `__pycache__/` and `*.pyc`.
 An optional directory argument selects another output directory.
 The script refuses unexpected destination entries and links before writing any files.
 It can replace files at generated output paths, but it deletes nothing.
@@ -482,90 +479,6 @@ Files:
 | `claude-code/scripts/ste.mjs` | Backs `/ste` |
 | `claude-code/scripts/rules.mjs` | Copy of `src/rules.ts`. A test asserts the two blocks are identical |
 
-## slopscore
-
-The effort-report extension in this package lives under `slopscore/`. See the [Effort Score rubric](slopscore/effort-score.md) for all seven criteria. It reads harness traces and reports spend by model, role and tool, weighted by a model tier table. It never calls a model. It answers the Effort Score question "which models did the work, at what thinking level, and how much of the spend went to them" from evidence instead of self-report.
-
-Sources:
-
-| Harness | Trace | Cost |
-| --- | --- | --- |
-| Pi | `~/.pi/agent/sessions/**/*.jsonl`, including `sessions/subagent/` child sessions. Role from `session_info.name` (`subagent-reviewer-…` becomes `subagent:reviewer`). Thinking from `thinking_level_change` | From the trace: pi records cost per assistant message |
-| Claude Code | `~/.claude/projects/<project>/<session>.jsonl` plus `<session>/subagents/agent-*.jsonl`. Role from the parent's `Agent` tool call description. Effort from each entry | Priced from Anthropic list prices, then scaled per model so the session total equals the harness's own `cost-state` entry |
-
-Model tiers. Models are a commodity; only the tier moves the score.
-
-| Tier | Weight | Models |
-| --- | ---: | --- |
-| T1 frontier top | 1.00 | Fable 5.1, Mythos |
-| T2 frontier | 0.90 | `gpt-6-astra`, Opus 5, Opus 4.8 |
-| T3 frontier commodity | 0.80 | `gpt-5.6-sol`, `gpt-6.1-sol`, Kimi K3, GLM 5.3, Muse Spark 1.3, `gpt-5.6-luna`, `gpt-6-luna`, Sonnet 5. Interchangeable |
-| T4 lesser | 0.45 | `gpt-5.6-terra`, `gpt-6-terra`, Haiku, Sonnet 4.x, Opus 4.x, Qwen 3.6 27B and 35B, Gemini, and other mid models |
-| T5 small local | 0.30 | Qwen3 8B fp16 and other 8B class. Valid for researcher or reviewer with proper context |
-| unknown | 0.40 | Anything unmatched. Add a pattern to the config |
-
-Thinking factors: max and xhigh 1.0, high 0.95, medium 0.85, low 0.7, minimal or off 0.6, unknown 0.9.
-
-Effort share = Σ spend × tier weight × thinking factor, divided by Σ spend. Model points = effort share × 20, the "Coordinator model" criterion of the Effort Score. Override any tier, price or factor in `~/.pi/agent/slopscore/tiers.json` (or `SLOPSCORE_CONFIG`). The default patterns hold model ids only; to score a nickname of your setup, add it as a pattern to the `tiers` list of that file, which replaces the default list.
-
-Commands:
-
-| Where | Command | Scope |
-| --- | --- | --- |
-| Pi | `/slopscore` | This session |
-| Pi | `/slopscore project [days]` | Pi sessions started in this directory, default 30 days |
-| Pi | `/slopscore all [days]` | All pi sessions, default 7 days |
-| Pi | `/slopscore claude [days]` | Claude Code transcripts, default 7 days |
-| Pi | `/slopscore pr [--base REF] [--no-spend] [--json]` | The PR block for this branch, see below |
-| Pi | `/slopscore pr --add-trailers [--yes] [--force]` | Propose `Co-Authored-By` trailers per branch commit; `--yes` rebases, never pushes |
-| Pi | `/slopscore okf [--repo PATH] [--json]` | The context bundle table and the failing concepts |
-| Pi | `/slopscore config` | Config path and tier table |
-| Claude Code | `/slopscore [--days N] [--pi\|--claude] [--cwd PATH]` | Both harnesses, default 7 days |
-| Claude Code | `/slopscore pr ...`, `/slopscore okf ...` | Same flags as Pi, same output |
-| Shell | `node --experimental-strip-types slopscore/src/cli.ts --days 7 [--json]` | Both harnesses |
-| Shell | `node --experimental-strip-types slopscore/src/cli.ts --repo PATH` | Adds the git provenance of PATH: planning artifacts, history, iterations by model, one-shot flag |
-| Shell | `node --experimental-strip-types slopscore/src/cli.ts pr ...` | The PR block, same flags as Pi |
-| Shell | `node --experimental-strip-types slopscore/src/cli.ts okf [--repo PATH]` | The context bundle table, same as Pi |
-
-Ledger: after each pi agent run, the extension writes a per-session summary to `~/.pi/agent/slopscore/sessions/<id>.json` (models, calls, cost, weighted cost, points). No model call, no network.
-
-Report sections: totals with effort share and points; by model with tier, thinking levels, tokens and spend; by role with the main model per role and whether a reviewer role ran; by tool, where a turn's cost is split evenly across the tools it called.
-
-Provenance (`--repo`): reads `git log` and scores three Effort Score criteria, 50 points, plus the context bundle criterion, 10 points. Planning artifacts (15): `docs/plan/map.md`, `spec.md`, `tickets/`, `decisions.md`, 3.75 each when committed before the first code commit, half after. History (15): five or more commits, ticket references in messages, fix and review commits, three or more active days. Iterations (20): 3 points per code commit after the first ship times the tier weight of the model in its `Co-Authored-By` trailer. One-shot flag: no history, one commit, or all commits inside 12 hours on one day. Flagged repos are capped at 39 (F), or 59 (D) when a spec is kept and a T1 or T2 model signed the commits.
-
-### The PR block
-
-`slopscore pr` applies the same rubric to a pull request. It reads the sessions started in this repository since the branch point (the merge base of `upstream/HEAD`, `origin/HEAD`, `origin/main` or `main`, or `--base REF`) and the provenance of the commits on the branch, and prints one block under 40 lines:
-
-```markdown
-## slopscore
-
-| Scope | Sessions | Calls | Spend | Effort share | Model points |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| branch feature/x vs origin/main, 3 commits, 2 days | 4 | 61 | $7.20 | 88% | 18 / 20 |
-
-| Role | Main model | Top thinking | Share |
-| --- | --- | --- | ---: |
-| main | example-model | high | 74% |
-| subagent:reviewer | example-review-model | xhigh | 26% |
-
-**Provenance:** 3 code commits; 3 commits with model Co-Authored-By provenance; tickets #12; 2 fix or review commits.
-**Flags:** none
-**Bundle:** 12 concepts, 100% kept current on this branch
-
-_Generated by slopscore-pr on 2030-01-19. Traces stay on the contributor's machine._
-```
-
-Sessions count when their first model call is at or after the merge-base commit time and their cwd is the repository or a subdirectory. Up to six role rows, sorted by share; the rest fold into `other`. `--no-spend` prints `n/a` for spend and keeps effort share and model points. Flags are `no local traces`, `N commits without a model trailer` and `tiers.json differs from defaults`. Without traces the block keeps the provenance half and one line, `No local traces for this branch.`. The block carries totals and names only: no path, session id or token count.
-
-`slopscore pr --add-trailers` prints a per-commit table of existing or proposed `Co-Authored-By: <model> <noreply@provider>` trailers, proposed from the main-role model with the most spend between the previous commit and this one. `--yes` rebases and adds them; it refuses a branch that is on a remote without `--force`, prints the `git push --force-with-lease` line and never pushes.
-
-The `slopscore-pr` skill in [`skills/slopscore-pr/SKILL.md`](skills/slopscore-pr/SKILL.md) runs the command, offers the trailers, and fills the `## slopscore` section of the open PR through `gh` or the Gitea API. The PR templates under `.gitea/` and `.github/` carry that section. Pi install: `ln -s "$PWD/skills/slopscore-pr" ~/.pi/agent/skills/slopscore-pr`. The Claude Code plugin skills under `claude-code/skills/` are generated by `claude-code/build-skills.py` from the package sources.
-
-Context bundle (`--repo`, 10 points): a repository earns points for keeping an [Open Knowledge Format](docs/okf/README.md) bundle in step with the code. A bundle is any directory whose `index.md` declares `okf_version`. Present and conformant earns 3 and a current `log.md` earns 2. Up to 5 points follow the share of code-commit days that also touched the bundle that day or the next. Each stale concept subtracts 1. A bundle written once and abandoned scores near zero. The checker reads committed git objects only. `slopscore okf` prints the table alone and names every failing concept.
-
-Layout: `slopscore/src/tiers.ts` (tiers, prices, config), `pi-trace.ts`, `claude-trace.ts`, `provenance.ts` (git), `branch.ts` (branch point), `pr.ts` (the PR block), `trailers.ts` (`--add-trailers`), `report.ts`, `cli.ts`, `index.ts` (pi extension). Tests in `slopscore/test/`.
-
 ## Develop
 
 From the kit root, install dependencies and link the three optional Pi peers as described in [package tests](../../docs/packages.md#tests).
@@ -589,7 +502,6 @@ Layout:
 | `src/report.ts` | Context report builder, pure |
 | `src/settings.ts` | Settings defaults, load and save for `tenantext/settings.json` |
 | `test/` | Unit tests for tenantext, codex-accounts, and Claude Code hooks |
-| `slopscore/` | Spend, model effort, Git provenance, PR reports, and OKF checks |
 | `skills/` | Pi skill resources included with the suite |
 | `tracker/` | Restart brief parser, renderer, refresh pipeline, tests and fixtures |
 | `claude-code/` | Claude Code plugin, see above |
@@ -636,7 +548,7 @@ Install at user level for Pi or Claude Code without the plugin:
 skills/herdr/install.sh
 ```
 
-The installer copies the skill to `~/.agents/skills/herdr`, links it into `~/.claude/skills/` and `~/.pi/agent/skills/`, and installs the `/spawn_agent` command. Pi can find the skill in more than one place; its user directory has priority, so Pi loads the installed copy. The tools and skills of the roles are a catalog in `skills/herdr/resources.json`. Each entry has an ordered list of locations; the launch uses the first one that is present and leaves out an entry that is absent. A machine file at `~/.config/herdr-skill/resources.json` adds or replaces entries for one machine; `resources.local.example.json` shows the format. No entry is required: an entry that is absent does not stop a launch.
+The installer makes `~/.agents/skills/herdr` a link to `skills/herdr` of the checkout, links it into `~/.claude/skills/` and `~/.pi/agent/skills/`, and installs the `/spawn_agent` command. A real directory at `~/.agents/skills/herdr` moves to a backup name beside it first. A pull of the checkout updates the installed skill at once. Pi can find the skill in more than one place; its user directory has priority, so Pi loads the linked folder. The tools and skills of the roles are a catalog in `skills/herdr/resources.json`. Each entry has an ordered list of locations; the launch uses the first one that is present and leaves out an entry that is absent. A machine file at `~/.config/herdr-skill/resources.json` adds or replaces entries for one machine; `resources.local.example.json` shows the format. No entry is required: an entry that is absent does not stop a launch.
 
 Tests need no Herdr server:
 

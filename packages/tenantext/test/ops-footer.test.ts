@@ -26,9 +26,6 @@ const settings = { ...defaults, healthUrls: {} };
 const plain = (rows: string[]) => rows.map(stripTerminalSequences);
 const render = (data: DashboardSnapshot, context: ContextService, width: number, paint = plainPaint, extra: Partial<typeof settings> = {}) =>
   dashboardRows(data, context, { ...settings, ...extra }, width, paint, NOW);
-/** Layout v2, for assertions about its row positions. */
-const v2 = (data: DashboardSnapshot, context: ContextService, width: number, paint = plainPaint, extra: Partial<typeof settings> = {}) =>
-  layouts.v2(data, context, { ...settings, ...extra }, width, paint, NOW).below;
 /** v3 shows the location row above the bar from 40 columns up. */
 const barIndex = (width: number) => width >= 40 ? 1 : 0;
 
@@ -54,7 +51,7 @@ test("every fixture stays inside every width with color on and off, and never wr
   }
 });
 test("layout v4 is the default name and puts every row below the editor: model, directory, bar, Codex1, Codex2", () => {
-  assert.deepEqual(layoutNames, ["v4", "v3", "v2", "a", "b", "c"]); assert.equal(defaultLayout, "v4");
+  assert.deepEqual(layoutNames, ["v4", "v3"]); assert.equal(defaultLayout, "v4");
   const { above, below } = layouts.v4(healthy(), contextStub(), settings, 138, plainPaint, NOW);
   assert.deepEqual(above, [], "no row above the editor");
   assert.equal(below.length, 5);
@@ -117,13 +114,7 @@ test("healthy state: directory and bar above the editor, then model and quota ro
     assert.match(rows[4], /^Codex2 \[5h 60%\] ↺ 35m +\[7d 60%\].*  ◂ routed$/, "the routed account's row carries the route mark");
     if (width >= 120) assert.match(rows[2], /↑72\.5k ↓5\.8k R228k \$0\.478$/, "usage right-aligned at 120 columns or more");
     else assert.ok(!rows[2].includes("↑"), "no usage below 120 columns");
-    const rowsV2 = v2(healthy(), contextStub(), width);
-    assert.equal(rowsV2.length, 3);
-    assert.match(rowsV2[1], /^tenantext main\s+.*gpt-5\.6-sol · (high · )?idle · 27m$/);
-    assert.match(rowsV2[2], /^Codex1 .*Codex2 .*→ codex2$/);
   }
-  const wide = v2(healthy(), contextStub(), 138);
-  assert.match(wide[1], /↑72\.5k ↓5\.8k R228k \$0\.478  openai-codex\/gpt-5\.6-sol · high · idle · 27m$/);
   const medium = render(healthy(), contextStub(), 100);
   assert.ok(!medium[2].includes("↑") && !medium[2].includes("openai-codex/") === false, "80–119 drops usage but keeps the provider prefix");
   assert.match(render(healthy(), contextStub(), 79)[2], /^gpt-5\.6-sol · high/, "below 80 the model stands alone");
@@ -213,7 +204,6 @@ test("narrow widths keep the bar, branch, state, and alert glyphs", () => {
   assert.deepEqual(render(healthy(), contextStub(), 0), []);
   const budget = render(healthy(), contextStub(), 40, plainPaint, { maximumRows: 4 });
   assert.equal(budget.length, 4, "model row, bar, location, first quota row");
-  assert.equal(v2(healthy(), contextStub(), 40, plainPaint, { maximumRows: 4 }).length, 3);
 });
 test("the directory name leads the location row in bold; branch, worktrees, and path recede", () => {
   const data = healthy(); data.git.worktrees = 8;
@@ -229,7 +219,6 @@ test("Git facts use words, hide zeros, and show the cwd and worktrees only when 
   Object.assign(data.git, { staged: 2, unstaged: 4, untracked: 1, ahead: 3, behind: 2, worktrees: 3 });
   assert.match(render(data, contextStub(), 160)[0], /^tenantext main · 2 staged · 4 modified · 1 untracked · ahead 3 · behind 2 · 3 worktrees · pwd \/home\/dev\/tenantext/);
   assert.match(render(data, contextStub(), 40)[0], /pwd \/home\/dev\/tenantext/);
-  assert.match(v2(data, contextStub(), 40)[1], /^main · 7 changed/);
   const color = render(data, contextStub(), 160, ansiPaint)[0];
   assert.ok(color.includes("\x1b[38;2;138;180;255m2 staged"), "changes paint accent");
   assert.equal(cwdLabel("/home/dev/tenantext", "/home/dev/tenantext", "/home/dev/tenantext"), undefined);
@@ -243,7 +232,6 @@ test("Git facts use words, hide zeros, and show the cwd and worktrees only when 
   assert.match(render(data, contextStub(), 120)[0], /git ✗ timeout/);
   const home = healthy(); home.session.remote = true; home.session.session = "review";
   assert.match(render(home, contextStub(), 200)[0], /idle · 27m · review · @devbox$/);
-  assert.match(v2(home, contextStub(), 200)[1], /idle · 27m · review · @devbox$/);
 });
 test("top row shows the opening directory without Git and the current directory after moving", () => {
   const data = healthy();
@@ -264,7 +252,6 @@ test("agent states are words with glyphs; queued shows only when pending", () =>
   for (const [state, text] of [["working", "working"], ["compacting", "compacting"], ["waiting", "⌨ input needed"], ["failed", "✗ model error"], ["idle", "idle"]] as const) {
     data.session.state = state;
     assert.match(render(data, contextStub(), 120)[0], new RegExp(text));
-    assert.match(v2(data, contextStub(), 120)[1], new RegExp(text));
   }
   data.session.state = "working"; data.session.pending = true;
   assert.match(render(data, contextStub(), 120)[0], /working · queued/);
@@ -282,12 +269,6 @@ test("accounts keep identity order; low quota changes styling but never order", 
   const rows = render(data, contextStub(), 160);
   assert.match(rows[3], /^Codex1 \[5h 99%\]  ◂ routed$/, "the route marks Codex1, not the last row");
   assert.match(rows[4], /^Codex2 \[✗ 5h 0%\] ↺ 2h 46m +\[week 60%\]$/, "a reset under 24 hours stays relative");
-  assert.match(v2(data, contextStub(), 160)[2], /Codex2 \[✗ 5h 0%\] ↺ 2h 46m · \w{3} \d{1,2}\/\d{1,2} · \d{2}:\d{2} \S+ \[week 60%\]  → codex1$/);
-  const color = v2(data, contextStub(), 160, ansiPaint)[2];
-  assert.ok(color.indexOf("Codex1") < color.indexOf("Codex2"));
-  const chips = color.split("  ");
-  assert.notEqual(chips[0].replace(/\d+%/, ""), chips[1].replace(/\d+%/, ""));
-  assert.ok(color.includes("\x1b[38;2;255;122;122m ✗ 5h 0%"), "exhausted text stays bright even with no fill");
   const normal = quotaChip({ name: "5h", percent: 80, level: "normal" }, ansiPaint);
   assert.ok(normal.includes("70;118;136") && !normal.includes("196;64;64"));
   const v3color = render(data, contextStub(), 160, ansiPaint).slice(3, 5).join("\n");
@@ -319,13 +300,10 @@ test("reset times are relative or friendly absolute, never ISO, in any timezone"
   const weekly = healthy(); weekly.limits!.accounts[0].windows = [{ name: "7d", percent: 81, unavailable: false, resetsAt: NOW + 4 * 24 * HOUR + 18 * HOUR }];
   assert.match(render(weekly, contextStub(), 120)[3], /^Codex1 \[7d 81%\] ↺ 4d 18h · \w{3} \d{1,2}\/\d{1,2} · \d{2}:\d{2} \S+/, "a normal window with a far reset adds the absolute form on a stacked row");
   assert.match(render(weekly, contextStub(), 40)[3], /\[7d 81%\] ↺ 4d 18h$/, "a narrow stacked row keeps the relative reset of a normal window");
-  assert.ok(!v2(weekly, contextStub(), 200)[2].includes("4d 18h · "), "the one-row v2 quota keeps a normal reset relative");
   const stale = healthy(); stale.limits!.checkedAt = NOW - 10 * 60_000;
   assert.match(render(stale, contextStub(), 120)[4], /◂ routed  stale$/);
-  assert.match(v2(stale, contextStub(), 120)[2], /stale$/);
   const error = healthy(); error.limits = limits({ accounts: [{ label: "Codex1", order: 1, state: "error", windows: [] }], route: { state: "error" } });
   assert.match(render(error, contextStub(), 120)[3], /^Codex1 ✗ error  route ✗$/);
-  assert.match(v2(error, contextStub(), 120)[2], /^Codex1 ✗ error  route ✗$/);
   const empty = healthy(); empty.limits!.accounts[0] = { label: "Codex1", order: 1, state: "unknown", windows: [] };
   const emptyRows = render(empty, contextStub(), 120);
   assert.ok(!emptyRows.includes(""), "an account without windows or error takes no row");
@@ -373,11 +351,6 @@ test("row budget keeps model, bar, and location, prefers alert rows, and points 
   const data = healthy();
   data.limits!.accounts[1].windows[0].percent = 2;
   data.integrations = [integration("OV", { state: "error" })];
-  const rows = v2(data, contextStub(), 120, plainPaint, { maximumRows: 3 });
-  assert.equal(rows.length, 3);
-  assert.match(rows[1], /\/ops-footer report$/); assert.match(rows[2], /^OV ✗ unavailable$/);
-  const four = v2(data, contextStub(), 120, plainPaint, { maximumRows: 4 });
-  assert.equal(four.length, 4); assert.ok(!four[1].includes("report")); assert.match(four[2], /Codex2/); assert.match(four[3], /^OV/);
   const three = render(data, contextStub(), 120, plainPaint, { maximumRows: 3 });
   assert.equal(three.length, 3);
   assert.match(three[0], /\/ops-footer report$/, "v3 keeps model, bar, and directory; the hint stays on the upper row");
@@ -630,7 +603,7 @@ test("runtime: a new session uses layout v4 with no row above the editor; layout
   h.ctx.thinkingLevel = "low"; await h.emit("thinking_level_select");
   const v4 = h.component.render(200).map(stripTerminalSequences);
   assert.match(v4[0], /^p\/m · low/, "model row first"); assert.match(v4[1], /^pwd \/tmp\s+idle/, "directory row second"); assert.equal(visibleWidth(v4[2]), 200, "bar third");
-  await h.command("layout"); assert.match(h.notices.at(-1)!, /^Footer layout: v4\. Use \/ops-footer layout v4\|v3\|v2\|a\|b\|c\.$/);
+  await h.command("layout"); assert.match(h.notices.at(-1)!, /^Footer layout: v4\. Use \/ops-footer layout v4\|v3\.$/);
   await h.command("layout v3"); assert.ok(h.top, "v3 shows the widget above the editor"); assert.equal(h.widgetSets, 1);
   // The earlier `assert.equal(h.top, undefined)` narrows the type of the getter; the widget exists now.
   const above = ((h as any).top.render(200) as string[]).map(stripTerminalSequences), below = h.component.render(200).map(stripTerminalSequences);
@@ -638,7 +611,6 @@ test("runtime: a new session uses layout v4 with no row above the editor; layout
   assert.equal(below[0], v4[0], "v3 keeps the model row first below the editor");
   await h.command("layout v4"); assert.equal(h.top, undefined, "v4 removes the rows above the editor");
   assert.deepEqual(h.component.render(200).map(stripTerminalSequences), v4);
-  for (const name of ["v2", "a", "b", "c"]) { await h.command(`layout ${name}`); assert.equal(h.top, undefined, `${name} has no widget above the editor`); }
   await h.command("layout v4"); assert.equal(h.widgetSets, 1, "only v3 sets the widget");
   await h.command("off"); assert.equal(h.lastFooter, undefined); assert.equal(h.top, undefined); assert.equal(h.ownership.at(-1), false);
   await h.command("on"); assert.equal(h.ownership.at(-1), true); assert.equal(h.top, undefined, "on in v4 sets no widget"); assert.equal(h.widgetSets, 1);
@@ -651,8 +623,7 @@ test("runtime: a new session uses layout v4 with no row above the editor; layout
   const rows = h.footer(200).split("\n"); assert.equal(rows.length, 4); assert.match(rows[3], /^Codex1 .*  \+1( |$)/);
   await h.command("report"); assert.match(h.notices.at(-1)!, /^Quota rows not shown: Codex2\. The row budget is maximumRows:4/m);
   await h.command("layout v3"); h.footer(200); await h.command("report"); assert.match(h.notices.at(-1)!, /^Quota rows not shown: Codex2\./m);
-  await h.command("layout v2"); h.footer(200); await h.command("report"); assert.doesNotMatch(h.notices.at(-1)!, /Quota rows not shown/);
-  await h.command("help"); assert.match(h.notices.at(-1)!, /layout v4\|v3\|v2\|a\|b\|c\|help/);
+  await h.command("help"); assert.match(h.notices.at(-1)!, /layout v4\|v3\|help/);
   await h.emit("session_shutdown"); assert.equal(h.top, undefined);
 });
 test("runtime report uses only published MCP state and secret-free bus data", async () => {
@@ -1012,4 +983,18 @@ test("Codex adapter allowlists plans and duration labels; slot names never imply
   assert.deepEqual(snapshot.accounts[1].windows.map(w => w.name), ["30d", "90m", "window", "window"]);
   assert.ok(!JSON.stringify(snapshot).includes("SECRET"));
   assert.ok(!("plan" in snapshot.accounts[0]));
+});
+test("a saved footer setting that names a removed layout gives the default layout and no error", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ops-removed-layout-"));
+  const path = join(dir, "settings.json");
+  await writeFile(path, JSON.stringify({ layout: "v2", maximumRows: 4 }));
+  const saved = await loadLocalSettings(path);
+  assert.equal(saved.maximumRows, 4); assert.ok(!("layout" in saved), "the parser drops the layout key");
+  const h = harness(); h.install(true, saved); await h.emit("session_start");
+  assert.equal(h.top, undefined, "v4 puts no row above the editor");
+  assert.match(h.footer(200), /^p\/m · high\npwd \/tmp\s+idle/, "the v4 rows: model first, then the directory");
+  await h.command("layout v2");
+  assert.deepEqual(h.notices, ["Footer layout: v4. Use /ops-footer layout v4|v3."], "a removed name keeps v4 with a hint");
+  await h.emit("session_shutdown");
+  await rm(dir, { recursive: true, force: true });
 });

@@ -315,7 +315,7 @@ def prepare(manifest_data, overlay_data, *, registry=None, required_roles=(), cr
                "credentialNames": sorted(credential_names), "routes": route,
                "roleStatus": role_status, "pendingPackages": pending_packages,
                "memory": {"activation": memory["activation"], "setup": memory["setup"]} if memory else None,
-               "workflow": workflow_record(components, mcp, "promptr" in enabled), "mcpDefinitions": copy.deepcopy(mcp_definitions)}
+               "workflow": workflow_record(components, mcp), "mcpDefinitions": copy.deepcopy(mcp_definitions)}
     if models_definitions is not None:
         choices["modelsDefinitions"] = copy.deepcopy(models_definitions)
         files["models.json"] = {"mode": "0600", "content": copy.deepcopy(models_definitions)}

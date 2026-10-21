@@ -83,7 +83,7 @@ class OwnerPackageTests(unittest.TestCase):
         self.error([PLAIN, {"source": PLAIN, "skills": []}], "duplicate_source", "overlay.ownerPackages.item.source")
 
     def test_kit_declared_package_path_is_a_duplicate_package(self):
-        for path in ("packages/tenantext", "packages/promptr"):
+        for path in ("packages/tenantext",):
             # Enabled or not: the kit owns its package directories.
             self.error([str(ROOT / path)], "duplicate_package", "overlay.ownerPackages.item.source")
             self.error([{"source": str(ROOT / path), "skills": []}], "duplicate_package", "overlay.ownerPackages.item.source")
@@ -127,7 +127,7 @@ class OwnerPackageTests(unittest.TestCase):
         self.overlay["selection"]["enable"].append("questions")
         plan = prepare(self.manifest, self.overlay)
         agent = "PI_CODING_AGENT_DIR=" + self.overlay["target"]["agentDir"]
-        self.assertEqual([agent + " pi install npm:@juicesharp/rpiv-ask-user-question@2.13.9",
+        self.assertEqual([agent + " pi install npm:" + self.manifest["components"]["questions"]["source"]["spec"],
                           agent + " node " + PEER_SCRIPT], plan["commands"]["setup"][1:])
         self.assertEqual([FILTERED, PLAIN, {"source": "/srv/only source"}],
                          plan["files"]["settings.json"]["content"]["packages"][2:])

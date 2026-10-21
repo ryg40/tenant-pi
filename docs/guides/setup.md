@@ -8,7 +8,6 @@
 - [Install Pi](../../INSTALL.md#stage-3-install-pi)
 - [Package dependencies](../../INSTALL.md#stage-4-package-dependencies)
 - [Herdr and the question tool](../../INSTALL.md#stage-4a-herdr-and-the-question-tool)
-- [The Compose seat](../../INSTALL.md#stage-4c-the-compose-seat)
 - [The private overlay](../../INSTALL.md#stage-5-the-private-overlay)
 - [Plan and generate](../../INSTALL.md#stage-6-plan-and-generate)
 - [Declared npm packages](../../INSTALL.md#stage-7-declared-npm-packages)

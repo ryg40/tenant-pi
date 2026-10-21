@@ -1,49 +1,25 @@
 # In-tree packages
 
-`packages/tenantext` and `packages/promptr` hold the sources of the two optional Pi packages. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. `packages/agentcore-pi` holds the AgentCore Memory extension for Pi on the shared memory core: recall before each typed prompt and the confirmed propose tool `agentcore_propose`; it is the optional `agentcore` memory module. `packages/agentcore-memory-core` holds the shared memory core for several people: the contract, its implementation and the review CLI. `packages/agentcore-claude` holds the Claude Code plugin of the shared memory: a recall hook and an MCP server with the propose and review tools. `packages/agentcore-memory-admin` holds the registry script of the shared memory, an owner tool.
+`packages/tenantext` holds the source of the optional Pi package. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. `packages/agentcore-pi` holds the AgentCore Memory extension for Pi on the shared memory core: recall before each typed prompt and the confirmed propose tool `agentcore_propose`; it is the optional `agentcore` memory module. `packages/agentcore-memory-core` holds the shared memory core for several people: the contract, its implementation and the review CLI. `packages/agentcore-claude` holds the Claude Code plugin of the shared memory: a recall hook and an MCP server with the propose and review tools. `packages/agentcore-memory-admin` holds the registry script of the shared memory, an owner tool.
 Each package has its own license metadata, tests and documentation.
 
-Tenantext and Promptr pin `@types/node` to `24.19.2` for their Node `>=24.0.0 <25` requirement.
+Tenantext pins `@types/node` in `packages/tenantext/package.json` to a version of the Node line of its Node `>=24.0.0 <25` requirement.
 
 ## Kit components
 
 Each extension and each skill of the packages is one component in `config/manifest.json`. The components `coordinator-skills` and `knowledge-skills` each hold several skills, with one filter entry for each. The source kind is `tree`: `{"kind": "tree", "path": "packages/<name>"}`. The example overlay enables none of them. Observed with Pi 0.99.1: a profile with the extension and skill components tested on that version starts and loads the extensions after `npm ci --ignore-scripts` in `packages/tenantext`; without that step the load fails on the missing `yaml` module. Not verified: the same on the kit pin in `config/manifest.json`, key `runtime.piVersion`, or on a clean client. This observation does not cover `resources`. Not verified: a profile with `resources` starts and loads the extension.
 
-| Component | Path | Filter | Requires | Status | Gaps |
-| --- | --- | --- | --- | --- | --- |
-| `tenantext` | `packages/tenantext` | `extensions/tenantext/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `kit_test_missing` |
-| `codex-accounts` | `packages/tenantext` | `extensions/codex-accounts/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `gateway_upstream_unverified`, `kit_test_missing` |
-| `slopscore` | `packages/tenantext` | `extensions/slopscore/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `kit_test_missing` |
-| `context-meter` | `packages/tenantext` | `extensions/context-meter/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `kit_test_missing` |
-| `ops-footer` | `packages/tenantext` | `extensions/ops-footer/index.ts` | `core`, `context-meter` | `unverified` | `pi_line_unqualified`, `sibling_extension_imports`, `kit_test_missing` |
-| `copilot-usage` | `packages/tenantext` | `extensions/copilot-usage/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `kit_test_missing` |
-| `anthropic-usage` | `packages/tenantext` | `extensions/anthropic-usage/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `usage_endpoint_unverified`, `kit_test_missing` |
-| `doctor` | `packages/tenantext` | `extensions/doctor/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `sibling_extension_imports`, `kit_test_missing` |
-| `resources` | `packages/tenantext` | `extensions/resources/index.ts` | `core` | `unverified` | `pi_line_unqualified`, `kit_test_missing` |
-| `herdr` | `packages/tenantext` | `skills/herdr` | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
-| `herdr-relay` | `packages/tenantext` | `skills/herdr-relay` | `core`, `herdr` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
-| `herdr-watch` | `packages/tenantext` | `extensions/herdr-watch/index.ts` | `core`, `herdr` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
-| `coordinator-skills` | `packages/tenantext` | Each skill directory below `skills/coordinator-skills/`. `config/manifest.json` names them; [the component README](../packages/tenantext/skills/coordinator-skills/README.md) lists them | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
-| `knowledge-skills` | `packages/tenantext` | Each skill directory below `skills/knowledge-skills/`. [The component README](../packages/tenantext/skills/knowledge-skills/README.md) lists them | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
-| `slopscore-pr` | `packages/tenantext` | `skills/slopscore-pr` | `core` | `unverified` | `pi_line_unqualified`, `host_tool_required`, `kit_test_missing` |
-| `tracker-site` | `packages/tenantext` | `skills/tracker-site` | `core` | `unverified` | `host_tool_required` (Git on `PATH`; Python 3.11 or later is checked), `pi_line_unqualified`, `kit_test_missing` |
-| `promptr` | `packages/promptr` | `index.ts` | `core` | `unverified` | `build_step_required`, `host_module_dependency`, `placeholder_defaults`, `private_renderer_adapters`, `automatic_dispatch_path_unverified`, `kit_test_missing` |
-| `promptr-generate-task-prompt` | `packages/promptr` | `skills/promptr-generate-task-prompt` | `core`, `promptr` | `unverified` | `skill_use_unverified`, `kit_test_missing` |
-| `promptr-handoff` | `packages/promptr` | `skills/promptr-handoff` | `core`, `promptr` | `unverified` | `skill_use_unverified`, `kit_test_missing` |
-| `promptr-openknowledge-project-pages` | `packages/promptr` | `skills/openknowledge-project-pages` | `core`, `promptr` | `unverified` | `host_service_required`, `skill_use_unverified`, `kit_test_missing` |
-| `promptr-watch-herdr-agents` | `packages/promptr` | `skills/watch-herdr-agents` | `core`, `promptr` | `unverified` | `host_tool_required`, `skill_use_unverified`, `kit_test_missing` |
-| `openviking` | `packages/openviking-pi` | Local-file source `index.ts`, not a directory filter | `core` | `unverified` | `install_step_required`, `server_required`, `package_runtime_unverified`, `capture_cost_unmeasured` |
-| `agentcore` | `packages/agentcore-pi` | Local-file source `index.ts` | `core` | `unverified` | `install_step_required`, `aws_resource_required`, `package_runtime_unverified` |
+`config/manifest.json` holds the path, the filter, the requirements, the status and the gaps of each component, and each folder under `packages/` holds the code of one package.
 
 Facts for a selection:
 
 - The `components` action prints one line for each component of the manifest, with the names of its extensions and skills, its required IDs and its prerequisites. See [the CLI contract](generator.md#components-the-checklist-of-the-components).
-- `herdr-relay` is optional and disabled by default. No component requires it. Enable `herdr` too when you select it. A kit without the relay directory remains valid while the relay stays disabled. Enabling an absent relay fails with `tree_resource_missing`.
+- `herdr-relay` is optional and disabled by default. No component requires it. Enable `herdr` too when you select it. A kit without the relay directory remains valid while the relay stays disabled, as for the folder of each `tree` component. Enabling an absent relay fails with `tree_resource_missing`.
 - `herdr-watch` adds the tools `herdr_spawn`, `herdr_watch_start`, `herdr_watch_status` and `herdr_watch_stop`, and the command `/herdr-watch`. `herdr_spawn` starts a task session with `spawn.py` of the herdr skill and watches it. A watch runs `ask.py` of the herdr skill in the background, and the reply of the pane arrives as a task notification. In Pi with the component, the watch is the default way to start a task session and to prompt a pane. The `herdr` command, Python 3 and the herdr skill scripts are host tools that the kit does not install. See [the extension document](../packages/tenantext/docs/herdr-watch.md). Not verified: a load of the component with the kit pin, and a live session with a Herdr pane.
 - An `unverified` component can be enabled. The plan lists each of its gaps as a readiness gap with the component ID as the subject.
 - `openviking` is a memory module: it also needs `consent.memoryCapture`, `consent.remoteMemoryWrites` and a `memory.openviking` block. Its local-file package declaration names `packages/openviking-pi/index.ts` and comes after the other in-tree packages. See [the memory modules](memory-modules.md).
 - `herdr` holds the skill only. The Herdr application is a host tool: the kit does not install it, and the `check-herdr` action reports the `herdr` command. See [Herdr and the question tool](herdr-setup.md).
-- `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question@2.13.9` with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
+- `questions` is not an in-tree package. Its source is the npm package `@juicesharp/rpiv-ask-user-question` at the exact version of its `source.spec` in `config/manifest.json`, with the filter `index.ts`. It requires `core` and is `unverified`. Its gaps are `pi_line_unqualified`, `package_source_unreviewed`, `peer_package_unverified`, `question_ui_unverified`, `shared_config_outside_profile` and `kit_test_missing`. The example overlay disables it.
 - A `blocked` component cannot be enabled. The validator fails with `blocked_component`.
 - A generated profile declares each package one time in `settings.packages`. The `source` is the absolute package directory path, except OpenViking and AgentCore, whose sources are their `index.ts` files. For a directory source, each enabled component adds its own `extensions` or `skills` filter entry. An empty directory filter loads nothing of that kind.
 - The profile depends on the location of the kit. If you move the kit, generate a new profile.
@@ -69,7 +45,7 @@ Tenantext is a Pi extension suite with a Claude Code plugin under `claude-code/`
 | Item | Value |
 | --- | --- |
 | Source | `packages/tenantext` |
-| Claude Code plugin | `claude-code/`; `build-skills.py` builds `herdr` and `slopscore-pr` from the package source skills |
+| Claude Code plugin | `claude-code/`; `build-skills.py` builds `herdr` from the package source skill |
 | License | MIT, `packages/tenantext/LICENSE`; third-party notices in `packages/tenantext/THIRD_PARTY_NOTICES.md` and `packages/tenantext/licenses/` |
 | Node | `>=24.0.0 <25` (`engines` in `packages/tenantext/package.json`) |
 
@@ -78,8 +54,6 @@ Tenantext is a Pi extension suite with a Claude Code plugin under `claude-code/`
 `PUBLISH_DIRS` in `scripts/publish_check.py` publishes tracked package files except installed dependencies and build output.
 A maintainer can keep reviewed private-copy exclusions in an optional list; see [publishing](publishing.md#adding-a-file-to-the-portable-set).
 The list and the excluded files are absent from a portable copy. No list is necessary there.
-
-The two pull request templates `.gitea/PULL_REQUEST_TEMPLATE.md` and `.github/PULL_REQUEST_TEMPLATE.md` are published: `slopscore/test/docs.test.ts` reads both, and the package test suite must pass in a portable clone.
 
 `docs/publishing.md` describes the rule format.
 
@@ -105,6 +79,8 @@ ln -sfn "$G/pi-coding-agent/node_modules/@earendil-works/pi-ai" node_modules/@ea
 ln -sfn "$G/pi-coding-agent/node_modules/@earendil-works/pi-tui" node_modules/@earendil-works/pi-tui
 ```
 
+`python3 scripts/check.py` runs these suites when a file of the package changes, and `--all` runs them always. Without the dependencies or the links, it fails with a line that points to this step.
+
 A host can have more than one global Node modules directory, with a different Pi version in each. The links decide which Pi the tests use, so read the version of the linked package before a run:
 
 ```sh
@@ -116,53 +92,6 @@ Two tests need Pi `1.0.1` or later, because they compare the project MCP overrid
 A Pi from `npm install --prefix <dir>` without `--global` has the three packages side by side in `<dir>/node_modules/@earendil-works`. Link each one from there.
 
 `scripts/publish_check.py` ignores each `node_modules/` directory, so `packages/tenantext/node_modules/` can stay. A tracked file under `node_modules/` fails the check with `tracked_in_node_modules`.
-
-## Promptr (`packages/promptr/`)
-
-Promptr is a Pi extension: a prompt queue, progress checkpoints, staged handoffs and tracker views.
-
-| Item | Value |
-| --- | --- |
-| Source | `packages/promptr` |
-| License | MIT, `packages/promptr/LICENSE`; declared in `packages/promptr/package.json`. |
-| Skills | `packages/promptr/skills/`: `promptr-generate-task-prompt`, `promptr-handoff`, `openknowledge-project-pages` and `watch-herdr-agents` |
-| Publish rule | `("packages/promptr", ("node_modules/", "dist/", "LICENSE"))`; `packages/promptr/LICENSE` is explicit in `PUBLISH`. |
-| Pi version | The package pins `@earendil-works/pi-tui` and `@earendil-works/pi-coding-agent` to `runtime.piVersion` in `config/manifest.json`. The package tests pass, as do the build, typecheck and `npm run smoke`. Not verified on the kit pin: `npm run smoke:installed`, a package load in Pi, or a session with a model. |
-
-### Build and test
-
-Node `>=24.0.0 <25` is necessary.
-
-```sh
-cd packages/promptr
-npm ci --ignore-scripts
-npm run build
-npm test
-npm run typecheck
-```
-
-`node_modules/` and `dist/` are not tracked. `scripts/publish_check.py` ignores `node_modules/` and `packages/promptr/dist/`, and fails when a file under one of them is tracked.
-
-Warning: `npm run install:local` and `npm run doctor` read or change the Pi directory of the host. Do not run them as a repository check. `npm run smoke:installed` installs into a new directory under the temporary directory and starts `pi` there without a prompt.
-
-A generated profile loads `packages/promptr` by its path, so the build must be in the clone: run `npm ci --ignore-scripts` and `npm run build` there before the first start. Pi 1.0.2 and Pi 1.0.3 print one warning at each start, because `@earendil-works/pi-tui` is under `dependencies`. The companion process needs that copy. For the built files, Pi also loads that second copy of `pi-tui` (verified on 1.0.2). Both copies were 1.0.2 then. The package now matches `runtime.piVersion` in `config/manifest.json`. Pi declares its `pi-tui` dependency at that exact version.
-The version-specific evidence is in [the Promptr matrix](workflow-modules.md#promptr-unverified-with-a-readiness-matrix). Not verified: interactive key handling on the kit pin.
-The kit pin move does not change an installed Promptr copy or resolve its dependency drift. A live reinstall needs separate approval.
-
-### Placeholder defaults
-
-Four defaults in `src/` are placeholders. Three have an override by environment variable, so set the value for your host:
-
-| Setting | Placeholder default |
-| --- | --- |
-| `GITEA_HOST` | `https://git.example.com` |
-| `GITEA_OWNER` | `owner` |
-| `OPENKNOWLEDGE_ORIGIN` | `https://openknowledge.example.com`. The fallback origin in `src/doctor/doctor.mts` (line 198) has the same value. |
-| `LEGACY_ISSUE_REPO` (`src/project/workstreams.mts`, line 129) | Host `https://git.example.com` and owner `owner`. No override, and none is necessary: the constant is the fallback of an issue input without a repository, and no code outside the tests creates an issue input (`src/briefing/overview.mts` gives `buildRoutingIndex` an empty list). A test in `test/project/workstreams.test.mjs` holds this fact. |
-
-The tracker dialog of `/promptr-tracker init` shows `GITEA_OWNER` as the default owner for the Gitea provider (`providerDefaultOwner` in `src/tracking/binding.mts`). Without `GITEA_OWNER` it shows `owner`. Edit this value in the dialog. If you accept `owner`, the dialog binds a repository that does not exist.
-
-`scripts/preview-sidebar.sh` looks for a Tenantext checkout beside the repository, then in `$PROMPTR_STACK_DIR/tenantext` when `PROMPTR_STACK_DIR` is set.
 
 ## AgentCore Memory extension (`packages/agentcore-pi`)
 
@@ -177,10 +106,9 @@ See [the memory guide](memory-modules.md#agentcore-memory), [the security docume
 | Source | Own code at `packages/agentcore-pi/index.ts`, loaded after OpenViking as a local-file source. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependency | None of its own. It imports the core `packages/agentcore-memory-core` by a relative path; the lock file of the core installs `@aws-sdk/client-bedrock-agentcore` `3.1154.0`. |
+| Dependency | None of its own. It imports the core `packages/agentcore-memory-core` by a relative path; the lock file of the core installs `@aws-sdk/client-bedrock-agentcore`. |
 | Configuration | The person config file. The launch line names it in process-local `AGENTCORE_MEMORY_CONFIG_FILE` and removes an inherited `AGENTCORE_MEMORY_CONFIG`. No credential is rendered. |
 | Credentials | The AWS profile that the person config names, else the default AWS SDK credential chain. |
-| Publish rule | `("packages/agentcore-pi", ("node_modules/",))`. |
 | Capture | None. The capture switch of the prototype is removed. |
 
 After approval, install the dependencies of the core from the kit root:
@@ -210,10 +138,9 @@ The design and its security review are in [the shared memory security document](
 | Source | `packages/agentcore-memory-core`, own code. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependency | `@aws-sdk/client-bedrock-agentcore` `3.1154.0`, with a lock file. The Pi extension and the Claude Code plugin get the SDK through the core. |
+| Dependency | `@aws-sdk/client-bedrock-agentcore` at the exact version of `package.json`, with a lock file. The Pi extension and the Claude Code plugin get the SDK through the core. |
 | AWS actions | `RetrieveMemoryRecords`, `ListMemoryRecords`, `BatchCreateMemoryRecords` and `BatchUpdateMemoryRecords`. No delete action. |
 | Tests | `npm --prefix packages/agentcore-memory-core ci --ignore-scripts`, then `node --test packages/agentcore-memory-core/tests/`. No AWS credential, no network. |
-| Publish rule | `("packages/agentcore-memory-core", ("node_modules/",))`. |
 
 Not verified: the core against a live store, until the live proof after the four implementation tickets.
 
@@ -227,11 +154,10 @@ The package README is `packages/agentcore-claude/README.md`. The security review
 | Source | `packages/agentcore-claude`, own code. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependencies | `@modelcontextprotocol/server` `2.3.1` and `zod` `4.6.7`, pinned with a lock file. The core package brings `@aws-sdk/client-bedrock-agentcore`. |
+| Dependencies | `@modelcontextprotocol/server` and `zod` at the exact versions of `package.json`, with a lock file. The core package brings `@aws-sdk/client-bedrock-agentcore`. |
 | Core | Imported by the relative path `../agentcore-memory-core/src/index.mjs`. The plugin works only when Claude Code loads it in place, for example with `--plugin-dir`. |
 | Confirmation | The permission dialog of Claude Code. The three write tools carry `anthropic/requiresUserInteraction`. The plugin ships no permission allow entry. |
 | Kill switch | `AGENTCORE_MEMORY_DISABLE=1`. |
-| Publish rule | `("packages/agentcore-claude", ("node_modules/",))`. |
 
 Install the core and the plugin from the kit root, then load the plugin for one session:
 
@@ -260,11 +186,10 @@ The design and its security review are in [the shared memory security document](
 | Source | `packages/agentcore-memory-admin`, own code. The script is `bin/registry.mjs`. |
 | License | The repository MIT license covers this code. |
 | Node | `>=24.0.0 <25`. |
-| Dependency | `@aws-sdk/client-iam`, `@aws-sdk/client-sts` and `@aws-sdk/client-bedrock-agentcore`, each `3.1154.0`, pinned with a lock file. |
+| Dependency | `@aws-sdk/client-iam`, `@aws-sdk/client-sts` and `@aws-sdk/client-bedrock-agentcore` at the exact versions of `package.json`, with a lock file. |
 | Core | Imported by the relative path `../../agentcore-memory-core/src/index.mjs`: the id rule, the namespace builder, the registry validation, the three scope functions and the person config. The script adds field names to a refusal and two registry rules (a duplicate PIN, a project without a maintainer). |
 | Registry | The tracked `registry.example.json` holds the four example people only. The private registry stays outside every repository. |
 | Credentials | The admin profile with `--apply --profile <admin>`; a dry run without `--profile` makes no AWS call. |
-| Publish rule | `("packages/agentcore-memory-admin", ("node_modules/",))`. |
 
 Install the dependencies and run the tests from the kit root:
 
@@ -287,9 +212,8 @@ A vendored copy of the OpenViking memory extension for Pi. It sends session turn
 | Upstream base | `b20f192e` (`b20f192e61393e10fc9945306edf69fc25a58abe`), the merge base with upstream. The fork commit is not a commit of the public `volcengine/OpenViking` repository. |
 | License | Apache-2.0 covers upstream `examples/`; its `examples/LICENSE` is vendored as `packages/openviking-pi/LICENSE`. The OpenViking repository root uses AGPL-3.0. |
 | Node | `>=24.0.0` (`engines` in `packages/openviking-pi/package.json`); the kit range is narrower |
-| Dependency | `@modelcontextprotocol/client` `2.3.1`, from the committed `package-lock.json` |
+| Dependency | `@modelcontextprotocol/client` at the exact version of `package.json`, from the committed `package-lock.json` |
 | `shared/` | Committed source: the output of `examples/memory-plugin-shared/sync.mjs` at the same commit. It is not build output, and no rule of `scripts/publish_check.py` treats it as build output. |
-| Publish rule | `("packages/openviking-pi", ("node_modules/", "LICENSE"))`; `packages/openviking-pi/LICENSE` is explicit in `PUBLISH`. |
 | Kit module | `openviking`; fields, consent, outputs and the refresh steps are in [the memory modules](memory-modules.md#openviking-what-the-vendored-source-does) |
 
 The fork edits 14 files relative to `examples/pi-coding-agent-extension/`:
@@ -317,7 +241,7 @@ Its five behaviour changes are:
 - Additive mode persists the capture watermark across resume. Session creation and reads use `auto_create` and fail closed on errors.
 - The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
 
-The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to `2.3.1`.
+The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to an exact version in `package.json`.
 
 The [package banner](../packages/openviking-pi/README.md) separates these fork changes from kit changes, the vendored licence, and generated shared files.
 The kit also guards user-only recall for Pi 1.2.0 and carries lifecycle tests, updated handshake fixtures, and a local recall-test helper.

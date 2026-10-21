@@ -1,18 +1,10 @@
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { agentDir } from "../../src/agent-dir.ts";
 import { DEFAULT_CODEX_ACCOUNTS, validateCodexAccounts, type CodexAccountsSettings } from "./settings.ts";
 
-export {
-	DEFAULT_CODEX_ACCOUNTS,
-	PRIMARY_CODEX_PROVIDER,
-	validateCodexAccounts,
-	type CodexAccountConfig,
-	type CodexAccountsSettings,
-} from "./settings.ts";
-
-export function codexAccountsSettingsPath(): string {
-	return join(getAgentDir(), "codex-accounts", "settings.json");
+export function codexAccountsSettingsPath(dir = agentDir()): string {
+	return join(dir, "codex-accounts", "settings.json");
 }
 
 export function loadCodexAccountsSettings(path = codexAccountsSettingsPath()): CodexAccountsSettings {

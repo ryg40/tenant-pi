@@ -30,20 +30,7 @@ _Avoid_: Manual test, smoke test
 A temporary Linux user created for one trial and removed after it; it holds no credential beyond the scoped key of that trial.
 _Avoid_: Test user, service account
 
-**Compose seat**:
-A container, started by Compose, that holds one generated Pi profile for one user and is reached over SSH.
-_Avoid_: Pi seat, container profile, sandbox
-
 **Refusal rules**:
 The shared location restrictions that protect the kit, live profile and personal wiki vaults.
 See the [refusal-rules table](docs/private-directory.md#refusal-rules).
 
-**Seam**:
-The versioned contract between the wizard and the setup code of one kit.
-The wizard keeps the terminal, the approval and the save; the kit gives its catalog, questions, scan and plan.
-_Avoid_: Plugin API, hook
-
-**Adapter**:
-The setup code of one kit behind the seam: its catalog rows, questions, scan and plan, in one Python file.
-`tenant-pi` is the default adapter.
-_Avoid_: Plugin, driver

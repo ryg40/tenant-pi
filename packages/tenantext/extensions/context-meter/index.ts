@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, wrapTextWithAnsi } from "@earendil-works/pi-tui";
 import { createContextMeter } from "./service.ts";
-import { defaults, loadSettings, saveSettings } from "./settings.ts";
+import { defaults, loadSettings, saveSettings } from "../../src/context-meter-settings.ts";
 
 export const OWNERSHIP = "tenantext:ops-footer:ownership";
 export const QUERY = "tenantext:ops-footer:query";

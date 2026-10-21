@@ -21,13 +21,21 @@ COMPONENT = ROOT / "packages/tenantext/skills/coordinator-skills"
 KNOWLEDGE_COMPONENT = ROOT / "packages/tenantext/skills/knowledge-skills"
 TRACKER = ROOT / "docs/agents/issue-tracker.md"
 # Kit skills outside the component that a skill text can load.
-REQUIRED_KIT_SKILLS = ("herdr", "slopscore-pr", "tracker-site")
+REQUIRED_KIT_SKILLS = ("herdr", "tracker-site")
 OPTIONAL_KIT_SKILLS = ("herdr-relay",)
 # The completion marker is a protocol identifier, not prose. Only this exact line in
 # the Herdr result contract is exempt from the wording rule, in the kit and plugin.
 PROTOCOL_LINES = {("herdr", "roles/contract.md"): {"Marker: SUBAGENT_COMPLETE"}}
+
+
+def user_only_skills(component=COMPONENT):
+    """The skills of the component that only the user starts: `disable-model-invocation: true` in `SKILL.md`."""
+    return tuple(sorted(path.parent.name for path in Path(component).glob("*/SKILL.md")
+                        if "\ndisable-model-invocation: true\n" in path.read_text(encoding="utf-8").split("---", 2)[1]))
+
+
 # Skills that only the user starts. No other text refers to one as a skill to load.
-USER_ONLY_SKILLS = ("grill-me", "to-spec", "to-tickets", "wayfinder", "retro", "get-status", "dummies")
+USER_ONLY_SKILLS = user_only_skills()
 
 # A sentence that forbids the word is a finding too: a shipped text says "a Herdr pane".
 SUBAGENT = re.compile(r"sub[-\s]?agent|background agent", re.IGNORECASE)
@@ -50,7 +58,8 @@ PARENT_LABEL = re.compile(r"wayfinder:parent:(?:<map>|\d+)")
 SKILL_REF = re.compile(r"\bload\s+the\s+(\S+)\s+skill\b", re.IGNORECASE)
 SKILL_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*|<name>")
 SKILL_REF_CLAUSE = ": the Skill tool in Claude Code, a read of its SKILL.md in Pi."
-USER_ONLY_REF = re.compile(r"\bthe\s+`?(" + "|".join(USER_ONLY_SKILLS) + r")`?\s+skill\b", re.IGNORECASE)
+USER_ONLY_REF = re.compile(r"\bthe\s+`?(" + "|".join(map(re.escape, USER_ONLY_SKILLS)) + r")`?\s+skill\b"
+                           if USER_ONLY_SKILLS else r"(?!)", re.IGNORECASE)
 # Rules for the text of a skill that also apply to the tracker document. The rule `tracker_cli`
 # applies to a skill text only: the tracker document names the forbidden commands in its own rule.
 TEXT_RULES = (("subagent_wording", SUBAGENT), ("skill_tool_call", SKILL_TOOL), ("dash", DASH),
@@ -301,7 +310,7 @@ class SkillInvariantTests(unittest.TestCase):
                                 capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
         expected = {}
-        for name in ("herdr", "slopscore-pr"):
+        for name in ("herdr",):
             for path in (COMPONENT.parent / name).rglob("*"):
                 relative = path.relative_to(COMPONENT.parent)
                 if {"install.sh", "tests", "__pycache__"}.intersection(relative.parts) or path.suffix == ".pyc":
@@ -312,13 +321,13 @@ class SkillInvariantTests(unittest.TestCase):
                   for path in destination.rglob("*") if path.is_file()}
         self.assertTrue(expected)
         self.assertEqual(expected, actual)
-        self.assertEqual({"herdr", "slopscore-pr"}, {path.name for path in destination.iterdir()})
+        self.assertEqual({"herdr"}, {path.name for path in destination.iterdir()})
 
     def test_plugin_skill_build_excludes_artifacts_and_replaces_only_output_paths(self):
         build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
         with tempfile.TemporaryDirectory() as temp:
             source, destination = Path(temp) / "source", Path(temp) / "output"
-            for name in ("herdr", "slopscore-pr"):
+            for name in ("herdr",):
                 skill = source / name
                 skill.mkdir(parents=True)
                 (skill / "SKILL.md").write_text("first\n")
@@ -327,26 +336,26 @@ class SkillInvariantTests(unittest.TestCase):
                     path = skill / excluded
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text("excluded\n")
-            self.assertEqual(2, build(source, destination))
-            self.assertEqual({Path("herdr/SKILL.md"), Path("slopscore-pr/SKILL.md")},
+            self.assertEqual(1, build(source, destination))
+            self.assertEqual({Path("herdr/SKILL.md")},
                              {path.relative_to(destination) for path in destination.rglob("*") if path.is_file()})
             (source / "herdr/SKILL.md").write_text("second\n")
-            self.assertEqual(2, build(source, destination))
+            self.assertEqual(1, build(source, destination))
             self.assertEqual("second\n", (destination / "herdr/SKILL.md").read_text())
             self.assertEqual(0o751, stat.S_IMODE((destination / "herdr/SKILL.md").stat().st_mode))
             (source / "herdr/SKILL.md").write_text("third\n")
-            (destination / "slopscore-pr/user.md").write_text("keep\n")
+            (destination / "herdr/user.md").write_text("keep\n")
             with self.assertRaisesRegex(ValueError, "unexpected entry"):
                 build(source, destination)
             self.assertEqual("second\n", (destination / "herdr/SKILL.md").read_text())
-            self.assertEqual("keep\n", (destination / "slopscore-pr/user.md").read_text())
+            self.assertEqual("keep\n", (destination / "herdr/user.md").read_text())
 
     def test_plugin_skill_rebuild_preserves_python_byproducts(self):
         build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
         with tempfile.TemporaryDirectory() as temp:
             destination = Path(temp) / "output"
             count = build(COMPONENT.parent, destination)
-            byproducts = [destination / name / relative for name in ("herdr", "slopscore-pr")
+            byproducts = [destination / name / relative for name in ("herdr",)
                           for relative in ("__pycache__/x.pyc", "x.pyc", "scripts/__pycache__/x.pyc", "scripts/x.pyc")]
             for path in byproducts:
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -405,7 +414,7 @@ class SkillInvariantTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "source"
-            for name in ("herdr", "slopscore-pr"):
+            for name in ("herdr",):
                 (source / name).mkdir(parents=True)
                 (source / name / "SKILL.md").write_text("source\n")
             alias = root / "alias"
@@ -414,7 +423,7 @@ class SkillInvariantTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "overlaps the source skills"):
                 build(source, destination)
             self.assertFalse((source / "herdr/output").exists())
-            for name in ("herdr", "slopscore-pr"):
+            for name in ("herdr",):
                 self.assertEqual("source\n", (source / name / "SKILL.md").read_text())
 
     def test_plugin_skill_build_reports_a_file_in_the_parent_chain(self):
@@ -438,7 +447,7 @@ class SkillInvariantTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root / "source"
-            for name in ("herdr", "slopscore-pr"):
+            for name in ("herdr",):
                 (source / name).mkdir(parents=True)
                 (source / name / "SKILL.md").write_text("source\n")
             outside = root / "outside"

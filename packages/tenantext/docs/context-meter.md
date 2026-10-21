@@ -100,7 +100,7 @@ RPC mode uses a UI notification. Print and JSON modes do not create a widget or 
 
 ## Settings
 
-Pi's `getAgentDir()` determines the settings directory. `PI_CODING_AGENT_DIR` overrides its default, `~/.pi/agent`.
+`PI_CODING_AGENT_DIR` overrides the default settings directory, `~/.pi/agent`, as in Pi. A leading `~` expands to the home directory.
 
 The default settings file is `~/.pi/agent/context-meter/settings.json`:
 

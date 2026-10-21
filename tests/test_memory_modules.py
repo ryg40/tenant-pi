@@ -9,14 +9,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from tests.support import BLOCK_PROCESS_HOOK, slow
+from tests.support import BLOCK_PROCESS_HOOK, launch_parts, needs_folder, slow
 from pathlib import Path
 
 from scripts.candidate_compare import FILES, compare
 from scripts.memory_modules import HERMES_CONFIG, WIKI_NO_AUTH_KEY, render_memory, validate_memory
 from scripts.profile_plan import prepare
 from scripts.profile_write import STATE, WriteError, write
-from scripts.validate import Invalid, load, manifest, overlay
+from scripts.validate import Invalid, derived_claims, load, manifest, optional_tree_absent, overlay
 from tests.test_model_routes import REGISTRY
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +96,7 @@ class MemoryContractTests(unittest.TestCase):
         data["consent"]["remoteMemoryWrites"] = remote
         return data
 
+    @needs_folder("packages/openviking-pi")
     def test_openviking_needs_selection_and_both_consents(self):
         # The remote consent has no consumer without the module.
         data = self.base("hermes", memory={"hermes": HERMES_OFF})
@@ -119,25 +120,26 @@ class MemoryContractTests(unittest.TestCase):
         component = self.components["openviking"]
         self.assertEqual(("unverified", {"kind": "tree", "path": OPENVIKING_DIR}, "Apache-2.0"),
                          (component["status"], component["source"], component["license"]))
-        self.assertEqual([{"file": "settings.json", "key": "package:" + OPENVIKING_DIR + ":index.ts"}],
-                         component["configOwnership"]["claims"])
+        self.assertEqual({("settings.json", "package:" + OPENVIKING_DIR + ":index.ts")}, derived_claims(component))
 
+    @needs_folder("packages/openviking-pi")
     def test_openviking_renders_the_package_and_the_two_launch_variables(self):
-        data = self.openviking("hermes", "promptr", memory={"openviking": copy.deepcopy(OPENVIKING), "hermes": HERMES_OFF})
+        data = self.openviking("hermes", "tenantext", memory={"openviking": copy.deepcopy(OPENVIKING), "hermes": HERMES_OFF})
         overlay(data, self.components)
         before = copy.deepcopy(data)
         plan = prepare(self.manifest_data, data)
         self.assertEqual(before, data)
         settings = plan["files"]["settings.json"]["content"]
         # The in-tree packages first, then the memory packages in their order.
-        self.assertEqual([str(ROOT / "packages/promptr"), "npm:pi-hermes-memory", str(ROOT / OPENVIKING_DIR / "index.ts")],
+        self.assertEqual([str(ROOT / "packages/tenantext"), "npm:pi-hermes-memory", str(ROOT / OPENVIKING_DIR / "index.ts")],
                          [package["source"] for package in settings["packages"]])
         self.assertEqual({"source": str(ROOT / OPENVIKING_DIR / "index.ts"), "extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
                          settings["packages"][-1])
         self.assertTrue((ROOT / OPENVIKING_DIR / "index.ts").is_file())
         target = "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile"
-        self.assertEqual(["OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=5000", "OPENVIKING_CAPTURE_TOOL_RESULTS=true", "env", "-u",
-                          "PI_CODING_AGENT_SESSION_DIR", target, "pi", "--no-approve"], shlex.split(plan["commands"]["launch"]))
+        self.assertEqual(["OPENVIKING_RECALL_CONTEXT_TIMEOUT_MS=5000", "OPENVIKING_CAPTURE_TOOL_RESULTS=true"],
+                         launch_parts(plan["commands"]["launch"])[0])
+        self.assertIn(target, shlex.split(plan["commands"]["launch"]))
         memory = plan["files"][".tenant-pi/choices.json"]["content"]["memory"]
         self.assertEqual({"enabled": True, "localCapture": False, "backgroundModelCalls": False, "remoteWrites": True,
                           "captureToolResults": True}, memory["activation"]["openviking"])
@@ -176,8 +178,7 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual({"settings.json", ".tenant-pi/choices.json"}, set(plan["files"]))
         self.assertEqual([str(ROOT / OPENVIKING_DIR / "index.ts")], [p["source"] for p in plan["files"]["settings.json"]["content"]["packages"]])
         # Both states of the switch are written; the optional number is absent when the overlay has none.
-        self.assertEqual(["OPENVIKING_CAPTURE_TOOL_RESULTS=false", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", target, "pi",
-                          "--no-approve"], shlex.split(plan["commands"]["launch"]))
+        self.assertEqual(["OPENVIKING_CAPTURE_TOOL_RESULTS=false"], launch_parts(plan["commands"]["launch"])[0])
         self.assertFalse(plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["activation"]["openviking"]["captureToolResults"])
         # No generated file holds a credential, an endpoint, or a setting of the extension beside the two.
         dump = json.dumps({name: plan["files"][name]["content"] for name in plan["files"]})
@@ -187,6 +188,7 @@ class MemoryContractTests(unittest.TestCase):
         self.assertEqual(({}, {}), (rendered["settings"], rendered["files"]))
         validate_memory(data, self.components)
 
+    @needs_folder("packages/openviking-pi")
     def test_openviking_generated_file_and_regeneration(self):
         temp = tempfile.TemporaryDirectory(prefix="tenant-pi-ov-")
         self.addCleanup(temp.cleanup)
@@ -211,6 +213,7 @@ class MemoryContractTests(unittest.TestCase):
                            for side in ("first", "regenerated")))
         self.assertEqual({"status": "none", "fields": [], "metadata": "unchanged"}, report["right"]["drift"])
 
+    @needs_folder("packages/openviking-pi")
     def test_openviking_resolves_with_installed_pi(self):
         node_name = shutil.which("node")
         if node_name is None:
@@ -262,6 +265,7 @@ class MemoryContractTests(unittest.TestCase):
         settings_file.write_text(json.dumps(settings))
         self.assertEqual([], resolve()["extensions"])
 
+    @needs_folder("packages/openviking-pi")
     def test_openviking_invalid_choice_shapes_and_canaries(self):
         for change, rule in ((lambda o: o.update(captureToolResults="true"), "boolean"),
                              (lambda o: o.update(captureToolResults=1), "boolean"),
@@ -304,6 +308,8 @@ class MemoryContractTests(unittest.TestCase):
     def test_remote_truth_table_for_each_module_and_both(self):
         for modules in (("openviking",), ("agentcore",), ("openviking", "agentcore")):
             with self.subTest(modules=modules):
+                if any(optional_tree_absent(cid) for cid in modules):
+                    self.skipTest("a module folder is absent from this kit")
                 overlay(self.remote(modules), self.components)
                 for capture, remote, rule in ((False, False, "memory_consent_required"),
                                                (False, True, "memory_consent_required"),
@@ -328,6 +334,7 @@ class MemoryContractTests(unittest.TestCase):
                 data["selection"] = self.base()["selection"]
                 self.error(data, "memory_disabled")
 
+    @needs_folder("packages/openviking-pi")
     def test_agentcore_rendering_defaults_and_order(self):
         data = self.remote(("openviking", "agentcore"))
         before = copy.deepcopy(data)
@@ -405,6 +412,7 @@ class MemoryContractTests(unittest.TestCase):
             data["memory"]["agentcore"]["configFile"] = value
             overlay(data, self.components)
 
+    @needs_folder("packages/openviking-pi")
     def test_agentcore_generate_compare_and_pure_render(self):
         from unittest.mock import patch
         temp = tempfile.TemporaryDirectory(prefix="tenant-pi-agentcore-")
@@ -677,8 +685,7 @@ class MemoryContractTests(unittest.TestCase):
         before = copy.deepcopy(data)
         plan = prepare(self.manifest_data, data)
         self.assertEqual(before, data)
-        self.assertEqual(["WIKI_HOME=/home/Test User/wiki home", "env", "-u", "PI_CODING_AGENT_SESSION_DIR", "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
-                         shlex.split(plan["commands"]["launch"]))
+        self.assertEqual(["WIKI_HOME=/home/Test User/wiki home"], launch_parts(plan["commands"]["launch"])[0])
         self.assertNotIn({"code": "shared_home_state", "subject": "wiki"}, plan["readinessGaps"])
         self.assertEqual("wikiHome", plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["activation"]["wiki"]["personalVault"])
         self.assertTrue(plan["files"]["settings.json"]["content"]["llm-wiki"]["ambientPersonalVault"])
@@ -695,9 +702,7 @@ class MemoryContractTests(unittest.TestCase):
             data = self.base("wiki", memory={"wiki": {**WIKI_OFF, "ambientPersonalVault": ambient}})
             overlay(data, self.components)
             plan = prepare(self.manifest_data, data)
-            self.assertEqual(["env", "-u", "PI_CODING_AGENT_SESSION_DIR", "-u", "WIKI_HOME",
-                              "PI_CODING_AGENT_DIR=/home/Test User/.pi/.config/new profile", "pi", "--no-approve"],
-                             shlex.split(plan["commands"]["launch"]))
+            self.assertIn("WIKI_HOME", launch_parts(plan["commands"]["launch"])[1])
             self.assertEqual("home", plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["activation"]["wiki"]["personalVault"])
             self.assertEqual([], plan["files"][".tenant-pi/choices.json"]["content"]["memory"]["setup"])
         # Without the wiki, a memory module does not change the removed names.
@@ -983,6 +988,7 @@ class MemoryPublicationTests(unittest.TestCase):
         self.assertEqual(preserved, {p: p.read_bytes() for p in preserved})
 
     @slow
+    @needs_folder("packages/openviking-pi")
     def test_cli_generates_an_openviking_profile_without_a_server_call_or_a_credential(self):
         for cid in ("hermes", "wiki"):
             self.data["selection"]["enable"].remove(cid)

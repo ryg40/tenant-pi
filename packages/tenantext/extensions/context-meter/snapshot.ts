@@ -1,5 +1,5 @@
 import type { NextMove } from "./next-move.ts";
-import type { Settings } from "./settings.ts";
+import type { Settings } from "../../src/context-meter-settings.ts";
 
 export const sources = ["sys", "prompt", "assistant", "think", "tools"] as const;
 export type Source = typeof sources[number];

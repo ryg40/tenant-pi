@@ -1,7 +1,7 @@
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { contextBar, labels } from "./bar.ts";
 import { nextMoveChip, type NextMove } from "./next-move.ts";
-import type { Settings } from "./settings.ts";
+import type { Settings } from "../../src/context-meter-settings.ts";
 import { contextState, guidance, type Snapshot } from "./snapshot.ts";
 
 export { labels, palette } from "./bar.ts";

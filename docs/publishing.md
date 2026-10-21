@@ -15,7 +15,7 @@ python3 scripts/publish_portable.py --no-push  # build and tag locally, inspect 
 What it does, in order:
 
 1. Refuses a dirty working tree. The snapshot comes from the committed `HEAD`, never from unsaved edits.
-2. Checks public page currency, then calls `python3 scripts/check.py --stamp-status`. For a matching stamp, the publisher prints its tree, time, client, skipped count and result lines. Otherwise, it runs the full `python3 scripts/check.py` check set. A failure stops before the snapshot build. It then calls the publish check directly to validate the snapshot file list.
+2. Calls `python3 scripts/check.py --stamp-status`. For a matching stamp, the publisher prints its tree, time, client, skipped count and result lines. Otherwise, it runs the full check set, `python3 scripts/check.py --all`. A failure stops before the snapshot build. It then runs the public reader report (`publish_check.py --public`) and the publish check. A finding of either stops before the snapshot build.
 3. Builds a Git tree from `HEAD` that contains only the files in `PUBLISH` and in the `PUBLISH_DIRS` rules in `scripts/publish_check.py`, through a temporary index. The working tree is not touched.
 4. Builds the snapshot commit and annotated tag objects. The commit uses the previous snapshot as parent, unless `--new-root` is set. Their message carries the update block of the release notes, so that a client reads it with `git log -1` or through the `update` action of `scripts/tenant_pi.py`.
 5. Updates the branch and creates `portable/<yyyymmdd>-<source sha>` in one Git transaction. A tag collision or changed branch value moves neither ref.
@@ -28,42 +28,9 @@ A reader of the published copy can run the same checks.
 
 ## Offline checks and local stamps
 
-Run the combined offline check from the repository root:
+[The combined offline check](guides/release-checklist.md#combined-offline-check) describes `scripts/check.py`. `python3 scripts/check.py --help` lists its selection rules and options.
 
-```sh
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py
-python3 scripts/check.py --tier fast
-python3 scripts/check.py --stamp-status
-```
-
-The full tier runs one unittest process per test module, then the publish check, the public reader check and `git diff --check`.
-Without `.git`, both tiers run the unit, publish and public checks and print `diff: skipped (not a Git work tree)`.
-Both tiers also print `stamp: not written (not a Git work tree)` and write no stamp.
-The unit suite already includes the examples, sample overlay, documentation and builder determinism tests, but not page currency checks.
-The worker pool starts with `os.cpu_count()`, or one worker when that value is unavailable.
-It uses the smaller CPU affinity count or cgroup CPU quota when available, with at least one worker.
-A fractional CPU quota rounds up to a whole worker.
-Use `python3 scripts/check.py --jobs 4` to set the pool explicitly.
-Each unittest process has a timeout of 900 seconds. Use `--shard-timeout SECONDS` to change it.
-A timeout fails the run and prints the module name and timeout to standard error.
-The combined unit result prints `Ran N tests` and `OK (skipped=K)`, or `FAILED`.
-Each other check prints one result line. The final line is `check: passed` or `check: FAILED`.
-A failed check gives exit code 1. Failure details go to standard error.
-The GitHub workflow uses this command.
-
-The fast tier skips tests marked with `slow` in `tests/support.py`.
-These markers identify tests measured at 0.3 seconds or more; they do not remove tests from the full tier.
-For a sequential fast run, use:
-
-```sh
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --tier fast --jobs 1
-```
-
-`check.py` defaults to the full tier and sets the selected tier explicitly for its children.
-It sets `PYTHONDONTWRITEBYTECODE=1` for each child process.
-A fast run is feedback for development, not release qualification.
-
-A successful full run on a clean tree writes `.git/check-stamps/<tree sha>` as JSON.
+A successful run of everything (`--all`, tier `full`, no skipped part) on a clean tree writes `.git/check-stamps/<tree sha>` as JSON.
 The tree must be clean before and after the checks, and its hash must stay unchanged.
 The hash comes from `git rev-parse HEAD^{tree}`.
 All worktrees of one clone share the stamp directory in the common Git metadata directory.
@@ -71,8 +38,8 @@ The fields are `checkSetVersion`, `python`, `client`, `skipped`, `tests`, `resul
 The client records root status, Docker command availability and the Node version when available.
 Docker availability does not prove that a daemon is running.
 The stamp stays local and is never pushed.
-Dirty trees, failed runs and fast runs write no stamp.
-A fast run does not remove an existing full-run stamp.
+Dirty trees, failed runs, fast runs, runs without `--all` and runs with a skipped part write no stamp.
+Such a run does not remove an existing stamp.
 A stamp path or write failure prints `stamp: not written (...)`.
 A missing stamp does not fail the checks: a successful run still ends with `check: passed` and exits 0.
 
@@ -89,13 +56,6 @@ Before the next build, publish that snapshot or delete its local `portable/*` ta
 Local unpublished tags count as previous releases and can shorten the next changes list.
 Both publisher runs reuse the stamp while the tree, check-set version, Python version and client details still match.
 If a stamp is missing or stale, the publisher runs the full check set again.
-
-## Public pages
-
-Both release classes compare the public pages before the check set and before any snapshot ref changes.
-The publisher runs `python3 scripts/architecture_build.py --check` and `python3 scripts/explainer_build.py --check` without writing pages.
-A stale page stops publication with one line, such as `page stale: EXPLAINER.html`.
-Regenerate the page with its builder and commit it before publishing.
 
 ## Options
 
@@ -136,11 +96,11 @@ There is no remote-message guard: snapshot messages and identities are configura
 
 ## Adding a file to the portable set
 
-`PUBLISH_DIRS` in `scripts/publish_check.py` publishes tracked files under `scripts/`, `tests/` and `docs/`, including `docs/explainer/`.
-A new file under those directories enters automatically unless `scripts/dev-only-files.txt` excludes it.
+`PUBLISH` (exact paths) and `PUBLISH_DIRS` (directory rules) in `scripts/publish_check.py` select the publish set.
+A new file under a directory rule enters automatically unless `scripts/dev-only-files.txt` excludes it.
+A file outside the directory rules needs an exact path in `PUBLISH` after review, before the next snapshot. The publisher checks the set when it cuts a snapshot; the everyday check does not.
 Review each new file before committing it. The pre-commit host-value scan and the [public reader rules](#public-reader-rules) still apply.
 The publish check scans each selected file for private-key and token patterns and rejects an `.env.example` with values.
-Files outside directory rules need an exact path in `PUBLISH` after review.
 The kit's `.okf/` bundle exists only in the development repository; the deny list excludes it from snapshots.
 
 For your private copy, use `scripts/dev-only-files.txt` as the optional deny list after reviewing each exclusion.
@@ -181,7 +141,7 @@ PUBLISH_DIRS = (
 - A rule publishes every tracked file under the directory, except the excludes.
 - An exclude is a path relative to the directory. A name that ends with `/` excludes a directory. Other names exclude one exact file.
 - Keep technical exclusions in the directory rule. Put private-copy file and directory names only in the optional exclusion list.
-- An untracked file under the directory fails the check with `unreviewed_file`.
+- An untracked file under the directory fails the publish check with `unreviewed_file`.
 - The inventory ignores four directory names at any depth: `.local`, `.git`, `__pycache__` and `node_modules`.
 - The inventory excludes the untracked local architecture page and values file. Tracking either file fails with `tracked_local_file`.
 - A tracked file under a `node_modules` directory fails the check with `tracked_in_node_modules`.
@@ -228,7 +188,7 @@ Limits of the rules:
 
 ## In-tree components and the publish set
 
-The components with the source kind `tree` in `config/manifest.json` point at `packages/tenantext` and `packages/promptr`. The `PUBLISH_DIRS` rules publish these directories, so each `tree` path exists in a portable snapshot. `scripts/validate.py` fails with `tree_path_missing` when a path is absent. If you add a `tree` component for a new package, add the `PUBLISH_DIRS` rule in the same change. The manifest holds no repository URL for these components.
+The components with the source kind `tree` in `config/manifest.json` point at directories under `packages/`. The `PUBLISH_DIRS` rules publish these directories, so each `tree` path exists in a portable snapshot. A kit can leave out the folder of a `tree` component: the validator accepts the absent folder while the overlay does not enable the component, and fails with `tree_resource_missing` when it does. A `tree` path that is a file fails with `tree_path_missing`. If you add a `tree` component for a new package, add the `PUBLISH_DIRS` rule in the same change. The manifest holds no repository URL for these components.
 
 ## Limits
 
@@ -241,15 +201,15 @@ The components with the source kind `tree` in `config/manifest.json` point at `p
 Continuous integration (CI) runs checks after a change.
 The GitHub workflow checks the published snapshot after a push. It never publishes a snapshot or proposes a Pi update.
 The maintainer creates the release entry of a tag only after both jobs of the run on its snapshot pass. A failed job stops the release entry ([publish steps](guides/release-checklist.md#publish-steps)).
-The full `check.py` stamp on development `main` records the check of that tree.
-The development remote runs no CI; the stamp of `check.py` on `main` is the check of `main`. A GitHub run does not replace the stamp on development `main`.
+The stamp of `check.py --all` on development `main` records the check of that tree.
+The development remote runs no CI; that stamp is the check of `main`. A GitHub run does not replace the stamp on development `main`.
 
 ### GitHub workflow
 
-`.github/workflows/checks.yml` runs `python3 scripts/check.py` on each push and pull request.
+`.github/workflows/checks.yml` runs `python3 scripts/check.py --all`, the full check set, on each push and pull request.
 It has no branch filter: each branch that holds the file can start a run.
-The command runs the full offline unit suite, the publish check, the public reader check and `git diff --check`.
-It installs no package and makes no model request. The jobs upload no artifact.
+Before the check, each job installs Node from the `engines` field of `packages/tenantext/package.json`, runs `npm ci --ignore-scripts` in each package with a `test` script, and installs Pi at `runtime.piVersion` of `config/manifest.json` under `$RUNNER_TEMP` with the links of [the package tests](packages.md#tests).
+It installs no Betterleaks, so the scan line says `skipped`. It makes no model request. The jobs upload no artifact.
 
 The job `offline` uses a matrix, so GitHub runs it as two jobs with the same steps. `setup-python` sets the Python version of each job.
 The `ubuntu-latest` job uses Python 3.11, the lowest version that the kit supports. The `macos-15` job (Apple silicon) uses Python 3.12, the version of the [macOS guide](guides/macos.md).
@@ -262,6 +222,7 @@ Checkout does not keep its token in Git configuration. The workflow references n
 | --- | --- | --- |
 | `checkout` | `3d3c42e5aac5ba805825da76410c181273ba90b1` | `v7.0.1` |
 | `setup-python` | `5fda3b95a4ea91299a34e894583c3862153e4b97` | `v7.0.0` |
+| `setup-node` | `949feb2413d6458794dcd2491c4babbbce0c15c1` | `v7.1.0` |
 
 Not verified offline: the hash-to-tag mapping or execution on a GitHub runner.
 
@@ -288,8 +249,8 @@ Alternatively, remove `.github/workflows/checks.yml` from each branch where you 
 ### Evidence and limits
 
 `tests/test_ci_workflows.py` parses the workflow as JSON-form YAML and rejects duplicate keys.
-It checks the command path, action pins, triggers, permissions, credential handling, the two platforms and Python setup.
-It requires the workflow to call `check.py`.
+It checks the action pins, triggers, permissions, credential handling, the two platforms and Python setup.
+It requires the workflow to run `python3 scripts/check.py --all` and to hold no copy of the Pi pin.
 These offline tests do not prove that a GitHub runner executes the workflow or qualify a real Pi version.
 
 Pi pin moves follow the [manual pin move guide](guides/pin-move-release.md).

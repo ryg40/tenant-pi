@@ -32,7 +32,7 @@ export function contextRow(ctx: ContextState, view: View, width: number, paint: 
 /**
  * Quota chip groups from verbose to terse: full account names with resets, full names, short names, only the low windows, then bare alerts.
  * A reset at least a day away shows its date: for a low window in every row, for a normal window only in a stacked row.
- * Accounts stay in identity order at every level. Shared by the v2 and v3 quota rows.
+ * Accounts stay in identity order at every level.
  */
 export function quotaCandidates(quota: QuotaView, paint: Paint, aged: Aged, now: number, stacked = false): { candidates: (Candidate | undefined)[]; compact?: Candidate; alert: boolean } {
   const alert = quota.alerts.length > 0;
@@ -372,10 +372,7 @@ export function detailedReport(data: DashboardSnapshot, context: ContextService,
     contextReport,
   ].filter(Boolean).join("\n");
 }
-export type Layout = typeof dashboardRows;
 export type SectionLayout = typeof dashboardSections;
-/** A single-list layout (v2 and the prototypes a, b, c) renders every row below the editor. */
-export const belowOnly = (layout: Layout): SectionLayout => (...args) => ({ above: [], below: layout(...args) });
 /** Width and version cache plus alert decay. The decay map is the only state; row composition stays pure. `layout` selects the row composer; the runtime passes the session layout. */
 export class FooterRenderer {
   private cache?: { width: number; version: number; sections: Sections };

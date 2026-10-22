@@ -14,14 +14,12 @@ import unittest
 from tests.support import slow
 from unittest.mock import patch
 
-from scripts import tenant_pi
-from scripts.check_runtime import (HERDR_STATUSES, MAX_TOKEN, STATUSES, TIMEOUT, check, check_herdr, in_range, matches,
-                                   parse_range, parse_version)
-from scripts.profile_plan import runtime_report
+from scripts import check_runtime
+from scripts.check_runtime import MAX_TOKEN, STATUSES, TIMEOUT, check, in_range, matches, parse_range, parse_version
 from scripts.validate import Invalid, load
 
 ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "scripts/tenant_pi.py"
+CLI = ROOT / "scripts/check_runtime.py"
 RUNTIME = load(ROOT / "config/manifest.json")["runtime"]
 PIN = RUNTIME["piVersion"]
 PI_RANGE = RUNTIME["piAcceptedRange"]
@@ -164,20 +162,6 @@ class CheckTests(unittest.TestCase):
         self.assertEqual([], self.calls)
         self.assertEqual(set(STATUSES), {"match", "untested_in_range", "mismatch", "missing", "unparsed"})
 
-    def test_each_report_is_a_valid_runtime_report_for_plan_and_generate(self):
-        outputs = ({}, {"/bin/pi": Done(b"0.99.2\n"), "/bin/node": Done(b"v22.22.3\n"), "/bin/python3": Done(b"Python 3.10.14\n")},
-                   {"/bin/pi": Done((PIN + "-beta.1\n").encode()), "/bin/node": Done(b"v24.0.0-rc.1\n"), "/bin/python3": Done(b"Python 3.14.0rc1\n")},
-                   {"/bin/pi": Done((CANARY + "\n").encode()), "/bin/node": Done(b"v24.21.0\n", returncode=3),
-                    "/bin/python3": subprocess.TimeoutExpired(["x"], TIMEOUT)},
-                   {"/bin/pi": FileNotFoundError(), "/bin/node": PermissionError(), "/bin/python3": OSError(8, "format")})
-        for output in outputs:
-            self.output = {**self.output, **output}
-            report = self.check()
-            # The CLI prints the report as JSON; `plan` and `generate` read it back from a file.
-            self.assertEqual(report, runtime_report(json.loads(json.dumps(report)), RUNTIME))
-        absent = self.check(which=lambda name: None)
-        self.assertEqual({"missing"}, {entry["status"] for entry in runtime_report(absent, RUNTIME).values()})
-
     def test_prerelease_pi_is_a_mismatch_and_stderr_is_read_when_stdout_is_empty(self):
         self.output["/bin/pi"] = Done((PIN + "-beta.1\n").encode())
         self.output["/bin/python3"] = Done(b"", b"Python 3.12.1\n")
@@ -204,7 +188,6 @@ class CheckTests(unittest.TestCase):
                 report = self.check()
                 self.assertEqual({"installed": installed, "required": PIN, "status": status, **PI_FIELDS}, report["pi"])
                 self.assertEqual(status != "mismatch", matches(report))
-                self.assertIs(report, runtime_report(report, RUNTIME))
 
     def test_lower_bound_prerelease_is_a_mismatch(self):
         self.output["/bin/node"] = Done(b"v24.0.0-rc.1\n")
@@ -293,44 +276,6 @@ class CheckTests(unittest.TestCase):
         self.assertFalse(os.path.lexists(seen[0]))
 
 
-class HerdrCheckTests(unittest.TestCase):
-    """The pure Herdr decision with an injected runner; no process starts here."""
-
-    def check(self, output, path=None, which=lambda name: "/bin/" + name):
-        self.calls = []
-
-        def run(argv, **options):
-            self.calls.append((argv, options))
-            if isinstance(output, BaseException):
-                raise output
-            return output
-        return check_herdr(path, run=run, which=which, environ={"PATH": "/bin"})
-
-    def test_present_runs_one_fixed_command_without_a_shell(self):
-        self.assertEqual({"herdr": {"installed": "0.9.3", "status": "present"}}, self.check(Done(b"herdr 0.9.3\n")))
-        self.assertEqual([["/bin/herdr", "--version"]], [argv for argv, _ in self.calls])
-        options = self.calls[0][1]
-        self.assertEqual((TIMEOUT, False, False, subprocess.DEVNULL, {"PATH": "/bin"}),
-                         (options["timeout"], options["shell"], options["check"], options["stdin"], options["env"]))
-        self.assertEqual(("present", "missing", "unparsed"), HERDR_STATUSES)
-
-    def test_missing_starts_no_process(self):
-        self.assertEqual({"herdr": {"installed": None, "status": "missing"}}, self.check(Done(), which=lambda name: None))
-        self.assertEqual([], self.calls)
-        self.assertEqual("missing", self.check(FileNotFoundError())["herdr"]["status"])
-
-    def test_other_output_is_unparsed_and_not_echoed(self):
-        for output in (Done(CANARY.encode()), Done(b"herdr 0.9.3 " + CANARY.encode()), Done(b"herdr 0.9.3\n", returncode=3),
-                       subprocess.TimeoutExpired("herdr", TIMEOUT), Done(b"")):
-            report = self.check(output)
-            self.assertEqual({"herdr": {"installed": None, "status": "unparsed"}}, report)
-
-    def test_explicit_path_replaces_the_lookup(self):
-        report = self.check(Done(b"herdr 0.9.3\n"), path="/opt/tools/herdr", which=lambda name: self.fail("lookup"))
-        self.assertEqual("present", report["herdr"]["status"])
-        self.assertEqual([["/opt/tools/herdr", "--version"]], [argv for argv, _ in self.calls])
-
-
 class CliTests(unittest.TestCase):
     """The real action with fake executables on PATH, an audit hook, and a disposable HOME."""
 
@@ -388,7 +333,7 @@ class CliTests(unittest.TestCase):
             self.fake(name, body)
 
     def run_cli(self, *extra):
-        return subprocess.run([sys.executable, str(CLI), "check-runtime", *extra], cwd=self.base, env=self.env,
+        return subprocess.run([sys.executable, str(CLI), *extra], cwd=self.base, env=self.env,
                               text=True, capture_output=True, check=False)
 
     def spawned(self):
@@ -532,12 +477,12 @@ class CliTests(unittest.TestCase):
         try:
             with patch("scripts.check_runtime.shutil.rmtree", refuse), patch.dict(os.environ, {"TMPDIR": str(self.tmp)}), \
                     patch("tempfile.tempdir", None), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = tenant_pi.main(["check-runtime", "--pi", paths["pi"], "--node", paths["node"], "--python", paths["python3"]])
+                code = check_runtime.main(["--pi", paths["pi"], "--node", paths["node"], "--python", paths["python3"]])
         finally:
             for path in made:
                 shutil.rmtree(path, ignore_errors=True)
         self.assertEqual((2, ""), (code, out.getvalue()))
-        self.assertEqual({"error": "cleanup_failed: check-runtime.tmpdir", "candidate_created": False}, json.loads(err.getvalue()))
+        self.assertEqual({"error": "cleanup_failed: check-runtime.tmpdir"}, json.loads(err.getvalue()))
         self.assertEqual(1, len(made))
         self.assertEqual(str(self.tmp), os.path.dirname(made[0]))
 
@@ -546,74 +491,13 @@ class CliTests(unittest.TestCase):
         self.tools()
         for extra, error in ((("--pi", "bin/pi"), "absolute_path: check-runtime.pi"),
                              (("--node", "../" + CANARY), "absolute_path: check-runtime.node"),
-                             (("--python", "/usr/../bin/python3"), "absolute_path: check-runtime.python"),
-                             (("--manifest", str(self.base / "absent.json")), "input_missing: manifest.file")):
+                             (("--python", "/usr/../bin/python3"), "absolute_path: check-runtime.python")):
             result = self.run_cli(*extra)
             self.assertEqual((2, ""), (result.returncode, result.stdout))
-            self.assertEqual({"error": error, "candidate_created": False}, json.loads(result.stderr))
+            self.assertEqual({"error": error}, json.loads(result.stderr))
             self.assertNotIn(CANARY, result.stderr)
-        changed = load(ROOT / "config/manifest.json")
-        changed["runtime"]["nodeRange"] = ">=20"
-        manifest = self.base / "manifest.json"
-        manifest.write_text(json.dumps(changed))
-        result = self.run_cli("--manifest", str(manifest))
-        self.assertEqual("runtime_range: manifest.runtime", json.loads(result.stderr)["error"])
-        link = self.base / "link.json"
-        link.symlink_to(ROOT / "config/manifest.json")
-        result = self.run_cli("--manifest", str(link))
-        self.assertEqual((2, ""), (result.returncode, result.stdout))
-        # The bounded loader names a final-component symlink `input_not_regular`.
-        self.assertEqual({"error": "input_not_regular: manifest.file", "candidate_created": False}, json.loads(result.stderr))
         self.check_no_other_process([])
         self.assertEqual([], os.listdir(self.tmp))
-
-
-class HerdrCliTests(unittest.TestCase):
-    """The real `check-herdr` action with a fake `herdr` on PATH, an audit hook, and a disposable HOME."""
-
-    setUp = CliTests.setUp
-    fake = CliTests.fake
-    spawned = CliTests.spawned
-    check_no_other_process = CliTests.check_no_other_process
-
-    def run_cli(self, *extra):
-        return subprocess.run([sys.executable, str(CLI), "check-herdr", *extra], cwd=self.base, env=self.env,
-                              text=True, capture_output=True, check=False)
-
-    def test_present_exits_zero_and_starts_one_process(self):
-        # The fake records each argument: a call other than `--version` would show here.
-        self.fake("herdr", "printf '%s\\n' \"$@\" >> '" + str(self.base / "herdr-args") + "'\necho 'herdr 0.9.3'")
-        result = self.run_cli()
-        self.assertEqual((0, ""), (result.returncode, result.stderr))
-        self.assertEqual({"herdr": {"installed": "0.9.3", "status": "present"}}, json.loads(result.stdout))
-        self.assertEqual("--version\n", (self.base / "herdr-args").read_text())
-        self.check_no_other_process([self.bin / "herdr"])
-        self.assertEqual([], os.listdir(self.tmp))
-
-    def test_missing_exits_one_and_starts_no_process(self):
-        result = self.run_cli()
-        self.assertEqual((1, ""), (result.returncode, result.stderr))
-        self.assertEqual({"herdr": {"installed": None, "status": "missing"}}, json.loads(result.stdout))
-        self.check_no_other_process([])
-
-    def test_unparsed_exits_one_and_echoes_no_output(self):
-        self.fake("herdr", "echo " + CANARY)
-        result = self.run_cli()
-        self.assertEqual((1, ""), (result.returncode, result.stderr))
-        self.assertEqual({"herdr": {"installed": None, "status": "unparsed"}}, json.loads(result.stdout))
-        self.assertNotIn(CANARY, result.stdout)
-
-    def test_explicit_path_with_a_space_replaces_the_lookup(self):
-        self.fake("herdr", "echo 'herdr 0.1.0'")
-        other = self.base / "other bin"
-        other.mkdir()
-        path = self.fake("herdr", "echo 'herdr 0.9.3'", other)
-        result = self.run_cli("--herdr", str(path))
-        self.assertEqual((0, "0.9.3"), (result.returncode, json.loads(result.stdout)["herdr"]["installed"]))
-        self.check_no_other_process([path])
-        result = self.run_cli("--herdr", "relative/herdr")
-        self.assertEqual(2, result.returncode)
-        self.assertEqual("absolute_path: check-herdr.herdr", json.loads(result.stderr)["error"])
 
 
 if __name__ == "__main__":

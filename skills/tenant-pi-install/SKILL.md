@@ -1,34 +1,28 @@
 ---
 name: tenant-pi-install
-description: Guide an agent through installing a separate Pi profile with the tenant-pi kit. Use when a user asks to set up, install, migrate, or rebuild a Pi profile, update the kit to a new release, add an optional module, or add Codex, llama-swap or vLLM. Ask questions and follow INSTALL.md; use POST_INSTALL.md after a base install.
+description: Guide an agent through installing the tenant-pi kit into a Pi profile directory of the user. Use when a user asks to set up or install a Pi profile with the kit, update the kit to a new release, add an optional module, or add Codex, llama-swap or vLLM. Ask questions and follow INSTALL.md; use POST_INSTALL.md after the install.
 ---
 
-# Install a Pi profile with the tenant-pi kit
+# Install the tenant-pi kit into a Pi profile
 
-Read [INSTALL.md](../../INSTALL.md) first. It holds the stage order, commands, approval rules and checks. This is a question list, not a second install flow.
+Read [INSTALL.md](../../INSTALL.md) first. It holds the order, the commands and the checks. This is a question list, not a second install flow.
 
-Use your question tool, or plain text during bootstrap. Offer two to four concrete options, with the recommended option first. Ask before each change. Name credentials by environment variable, never by value.
+Use your question tool, or plain text during bootstrap. Offer two to four concrete options, with the recommended option first. Ask before each change to the machine: an install, a new directory, a link. Name credentials by environment variable, never by value. Never write into `~/.pi/agent`.
 
 ## Questions
 
-- "Do you already run Pi here?" Follow [inventory](../../INSTALL.md#stage-0-inventory); keep the existing profile unchanged.
-- "Which Node do you want Pi to use?" Follow [requirements](../../INSTALL.md#stage-1-requirements) when several installs exist.
-- "Which remote do you want to clone from?" Ask only when unclear; follow [clone and check](../../INSTALL.md#stage-2-clone-and-check-the-kit).
-- "Install Pi globally with this Node, or do you manage global npm packages another way?" Follow [the Pi decision](../../INSTALL.md#stage-3-install-pi).
-- "Install on this machine, or on a remote Linux host over SSH?" Confirm before changes. Follow [destination, account and paths](../../INSTALL.md#stage-4a-herdr-and-the-question-tool).
-- "Where do you want the Herdr skill?" "Structured questions in Pi?" Follow [Herdr and the question tool](../../INSTALL.md#stage-4a-herdr-and-the-question-tool).
-- "Where should the new profile live?" Follow [the private overlay](../../INSTALL.md#stage-5-the-private-overlay).
-- "Which components do you want?" Use [the checklist](../../INSTALL.md#the-checklist). Review the full plan before changes.
-- Ask explicitly about memory storage and recall consent. With wiki, follow [the vault check](../../INSTALL.md#the-llm-wiki-vault).
-- "MCP servers through the adapter?" Follow [the overlay choices](../../INSTALL.md#stage-5-the-private-overlay).
-- "Generate now into `<target>`?" Follow [plan and generate](../../INSTALL.md#stage-6-plan-and-generate).
-- Ask before the selected [package dependencies](../../INSTALL.md#stage-4-package-dependencies) and [declared npm packages](../../INSTALL.md#stage-7-declared-npm-packages).
-- "Native provider or the Tenantext gateway?" "How will the key reach the Pi process?" Follow [authentication](../../INSTALL.md#stage-8-authentication).
-- "Which providers do you want in this profile?" Follow [direct providers](../../INSTALL.md#direct-providers-codex-llama-swap-and-vllm).
-- "Does a Pi run in your live profile now?" Follow [first launch and checks](../../INSTALL.md#stage-9-first-launch-and-checks).
+- "Which Node do you want Pi to use?" Ask when several installs exist. Follow [the prerequisites](../../INSTALL.md#prerequisites).
+- "Install Pi globally with this Node, or under your own npm prefix?" Follow [the prerequisites](../../INSTALL.md#prerequisites).
+- "Which remote do you want to clone from?" Ask only when unclear. Follow [the clone](../../INSTALL.md#clone).
+- "Upgrade an existing profile, or create a new alternate profile?" List the directories in `~/.pi/profiles` for an upgrade.
+- "Which existing name?" or "What new name?" The name selects `~/.pi/profiles/<name>` and its alias. An inherited directory is only a suggestion. Follow [install.sh](../../INSTALL.md#run-installsh).
+- "Configure Bash, Zsh, or neither?" Show the alias, launcher and startup file before approval. Zsh respects `ZDOTDIR`. Ask separately before replacing a conflicting alias, function or command; `--yes` alone does not approve it.
+- "Link the skills of the kit into Claude Code?" `install.sh` links them when `~/.claude` exists.
+- "Which optional modules do you want?" Ask about memory storage and recall before a memory module. Follow [the optional modules](../../INSTALL.md#optional-modules).
+- "Native provider, the Tenantext gateway, or a direct provider?" "How will the key reach the Pi process?" Follow [the first start](../../INSTALL.md#first-start).
 
-At completion or an earlier stop, follow [the results file](../../INSTALL.md#the-results-file). Record checks that did not run as "not run". End with the full path of the results file, or the next step when the clone does not exist.
+Use `--upgrade` or `--new`, `--shell`, `--with` and `--yes` for non-interactive runs. Review proposed settings changes; preserve legacy package filters. An upgrade keeps the directory and adds missing files. Shell setup follows profile success and backs up the startup file before replacing its managed block.
 
-For a new kit release, run `python3 scripts/tenant_pi.py update` and follow its verdict: see [Get a new version of the kit](../../POST_INSTALL.md#get-a-new-version-of-the-kit).
+Record each check that did not run as "not run". End with the profile name, path, alias, startup file and command to load the alias.
 
-For later changes, follow [updates](../../INSTALL.md#stage-10-updates) and [POST_INSTALL.md](../../POST_INSTALL.md). The kit changes no profile in place.
+For a new kit release, follow [UPDATE.md](../../UPDATE.md). For later changes, follow [POST_INSTALL.md](../../POST_INSTALL.md).

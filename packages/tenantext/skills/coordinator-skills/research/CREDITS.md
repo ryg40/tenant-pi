@@ -16,4 +16,4 @@ The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. 
 - Uses a new Herdr researcher pane and its reply as the result channel for each ticket.
 - Selects the model and thinking level from the request or Herdr local defaults; requires a web search tool.
 - Adds the OpenViking, OpenKnowledge through `okknow`, and Pi LLM-WIKI knowledge read order.
-- Records findings in Gitea ticket comments or linked OpenKnowledge pages, rather than repository Markdown files.
+- Records findings in ticket comments or linked OpenKnowledge pages, rather than repository Markdown files.

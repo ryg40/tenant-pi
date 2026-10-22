@@ -72,7 +72,7 @@ class RuleTests(unittest.TestCase):
         self.assertEqual(publish_check.PUBLISH, publish_check.publish_files(TRACKED, (), root=self.empty_root))
 
     def test_new_document_enters_by_directory_rule(self):
-        name = "docs/explainer/new-guide.md"
+        name = "docs/extra/new-guide.md"
         path = self.empty_root / name
         path.parent.mkdir(parents=True)
         path.write_text("# New guide\n")
@@ -84,7 +84,7 @@ class RuleTests(unittest.TestCase):
         self.assertEqual({name}, publish_check.rule_files(tracked)[0])
 
     def test_new_document_leaves_when_denied(self):
-        name = "docs/explainer/new-guide.md"
+        name = "docs/extra/new-guide.md"
         path = self.empty_root / name
         path.parent.mkdir(parents=True)
         path.write_text("# Private guide\n")
@@ -100,16 +100,16 @@ class RuleTests(unittest.TestCase):
         self.assertFalse(publish_check.excluded_files(published, publish_check.private_excludes(self.empty_root)))
 
     def test_frozen_bundle_stays_out_even_if_a_rule_selects_it(self):
-        name = ".okf/log.md"
+        name = "frozen/log.md"
         path = self.empty_root / name
         path.parent.mkdir()
         path.write_text("# Frozen log\n")
         deny = self.empty_root / publish_check.DEV_ONLY_REL
         deny.parent.mkdir()
-        deny.write_text(".okf/\n")
+        deny.write_text("frozen/\n")
         tracked = {name, publish_check.DEV_ONLY_REL}
         self.assertNotIn(name, publish_check.rule_files(tracked)[0])
-        rules = publish_check.PUBLISH_DIRS + ((".okf", ()),)
+        rules = publish_check.PUBLISH_DIRS + (("frozen", ()),)
         self.assertNotIn(name, publish_check.publish_files(tracked, rules, root=self.empty_root))
 
     def test_optional_private_list_exact_prefix_missing_and_source_ref(self):
@@ -350,7 +350,8 @@ class CheckTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="tenant-pi-rules-test-")
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / "copy"
-        self.explicit = ("README.md", "config/manifest.json", "config/config.example.json", ".env.example")
+        self.explicit = ("README.md", "config/manifest.json", "config/settings.example.json",
+                         "config/models.example.json", ".env.example")
         self.add("docs/guide.md", "clean\n")
         self.rules = publish_check.PUBLISH_DIRS
         self.pending = publish_check.PUBLIC_PENDING

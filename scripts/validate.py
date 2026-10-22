@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Offline, read-only validation of tenant-pi v1 source and local-choice JSON.
+"""Offline, read-only validation of the kit manifest, and the shared input rules of the kit scripts.
 
-Run directly, this checks structure only: it follows symlinks and sets no input size limit.
-Use `scripts/tenant_pi.py validate` for the bounded, no-follow input loader.
+Run directly, this checks `config/manifest.json`, or the file of `--manifest`, and prints `valid`.
 """
 import argparse
 import errno
@@ -11,9 +10,7 @@ import os
 import re
 import stat
 import sys
-import unicodedata
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 if __name__ == "__main__":
@@ -22,7 +19,6 @@ if __name__ == "__main__":
 
 ID = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*\Z")
 ENV = re.compile(r"[A-Z][A-Z0-9_]*\Z")
-HEX = re.compile(r"[0-9a-f]{40}\Z")
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
 # The shared range grammar uses stable bounds; omitted numbers are zero.
 RANGE = re.compile(r">=(\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?(?: <(\d{1,9})(?:\.(\d{1,9}))?(?:\.(\d{1,9}))?)?\Z")
@@ -30,6 +26,15 @@ RANGE = re.compile(r">=(\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?(?: <(\d{1,9})(?:\.(\
 # `latest`, and every other form are rejected. Without a version the package follows the
 # registry at install time; `pi update` moves it.
 NPM = re.compile(r"(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*(?:@(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?)?\Z")
+SCHEMA_VERSION = 2
+# `unverified` has no test in this repository yet; its `gaps` name what no test proves.
+STATUSES = ("tested", "unverified")
+PACKAGES = "packages"
+MANIFEST = "config/manifest.json"
+RESOURCE_KINDS = ("extensions", "skills", "prompts", "themes")
+GAP_CODE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*\Z")
+# Character bound of each name in the `hint` of a refusal.
+HINT_MAX = 200
 
 
 def npm_parts(spec):
@@ -42,24 +47,16 @@ def npm_parts(spec):
 
 def npm_name(spec):
     return npm_parts(spec)[0]
-REF = re.compile(r"\$\{[A-Z][A-Z0-9_]*\}\Z")
-ROLE_NAMES = ("interactive", "review", "worker", "research", "memory")
-MEMORY = frozenset(("hermes", "wiki", "openviking", "agentcore"))
-# Selectable states. `unverified` has no test in this repository yet; its `gaps` enter every plan.
-SELECTABLE = ("tested", "unverified")
-PACKAGES = "packages"
-MANIFEST = "config/manifest.json"
-RESOURCE_KINDS = ("extensions", "skills", "prompts", "themes")
 
 
 def _tree_components():
-    """The in-tree optional modules of the kit manifest, in manifest order.
+    """The in-tree modules of the kit manifest, in manifest order.
 
     Component ID -> (package directory, resource kind, resource paths). A component is in the
-    table when its source kind is `tree`. One component per extension and per skill; the package
-    directory is the Pi package root. A skill component with more than one skill directory names
-    more than one resource path. An unreadable manifest gives an empty table and its cause (the
-    exception class and message): `manifest()` then fails with `reviewed_components` and the cause.
+    table when its source kind is `tree`. The package directory is the Pi package root. A skill
+    component with more than one skill directory names more than one resource path. An unreadable
+    manifest gives an empty table and its cause (the exception class and message): `manifest()`
+    then fails with `reviewed_components` and the cause.
     """
     try:
         components = json.loads((ROOT / MANIFEST).read_text(encoding="utf-8"))["components"]
@@ -79,10 +76,9 @@ def _tree_components():
         return {}, f"{type(exc).__name__}: {exc}"
 
 
-# The kit manifest is the one source of the tree components and of their resource paths. This
-# table is the copy of the kit that a manifest from another place (a generated profile) is
-# compared with. `manifest()` checks each resource path against the tree. The cause is None when
-# the kit manifest is readable; it is about the kit file, never about the checked input.
+# The kit manifest is the one source of the tree components and of their resource paths.
+# `manifest()` checks each resource path against the tree. The cause is None when the kit
+# manifest is readable; it is about the kit file, never about the checked input.
 TREE_COMPONENTS, TREE_COMPONENTS_CAUSE = _tree_components()
 
 
@@ -91,11 +87,7 @@ def tree_items(item):
     return [item] if isinstance(item, str) else list(item)
 
 
-def _tree_resources(kind, item):
-    return {key: tree_items(item) if key == kind else [] for key in RESOURCE_KINDS}
-
-
-# Reviewed anchors are independent of editable manifest claims: the source kind and the package
+# Reviewed anchors are independent of editable manifest entries: the source kind and the package
 # of each component, so an altered manifest cannot bless an unrelated upstream source. The version
 # of an npm source lives in the manifest only, so a pin move edits one file.
 REVIEWED_SOURCES = {
@@ -115,69 +107,8 @@ def reviewed_source(cid, value):
     """True when a checked source has the reviewed kind and package of `cid`, at any version."""
     anchor = REVIEWED_SOURCES[cid]
     if anchor["kind"] == "npm":
-        return value is not None and value["kind"] == "npm" and npm_name(value["spec"]) == anchor["name"]
+        return value["kind"] == "npm" and npm_name(value["spec"]) == anchor["name"]
     return value == anchor
-
-
-# The file/key claims that the manifest lists because no source gives them: native Pi settings
-# documented at this version, and the files that a module owns. `derived_claims` gives the rest.
-REVIEWED_CLAIMS = {
-    "core": {("settings.json", "/defaultProjectTrust"),
-             ("settings.json", "/enableInstallTelemetry"), ("settings.json", "/enableAnalytics")},
-    "model-routing": {("settings.json", "/defaultProvider"), ("settings.json", "/defaultModel"),
-                      ("settings.json", "/defaultThinkingLevel"), ("settings.json", "/enabledModels"),
-                      ("settings.json", "/modelThinkingLevels")},
-    # An empty pointer claims the whole named file (RFC 6901 root); Hermes owns its config file.
-    "hermes": {("hermes-memory-config.json", "")},
-    "wiki": {("settings.json", "/llm-wiki")},
-    # The adapter owns its whole config file and the `extensions` list that disables `builtin:mcp`.
-    # The guidance file of the question extension is outside the profile and stays owned by the user.
-    "mcp": {("settings.json", "/extensions"), ("mcp-adapter.json", "")},
-}
-
-
-def derived_claims(component):
-    """The claims that follow from a checked source and its resources, so the manifest does not list them.
-
-    An npm source owns its package entry. A tree component owns one filter entry for each of its
-    resource paths in the shared package declaration, never the whole entry.
-    """
-    source = component["source"]
-    if source is None or source["kind"] not in ("npm", "tree"):
-        return set()
-    if source["kind"] == "npm":
-        return {("settings.json", "package:" + npm_name(source["spec"]))}
-    return {("settings.json", "package:" + source["path"] + ":" + item)
-            for items in component["resources"].values() for item in items}
-REVIEWED_RESOURCES = {
-    "core": {"extensions": [], "skills": [], "prompts": [], "themes": []},
-    "model-routing": {"extensions": [], "skills": [], "prompts": [], "themes": []},
-    **{cid: _tree_resources(kind, item) for cid, (_, kind, item) in TREE_COMPONENTS.items()},
-    "hermes": {"extensions": ["src/index.ts"], "skills": [], "prompts": [], "themes": []},
-    # The wiki package also declares skills, prompts, and an MCP server; only the extension loads.
-    "wiki": {"extensions": ["extensions/llm-wiki/index.ts"], "skills": [], "prompts": [], "themes": []},
-    "mcp": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
-    "questions": {"extensions": ["index.ts"], "skills": [], "prompts": [], "themes": []},
-}
-# The gateway keys of `overlay.endpoints` and `overlay.env` moved with the component split.
-MOVED_KEYS = {"tenantext": "codex-accounts"}
-GAP_CODE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*\Z")
-INPUT_FILES = {"modelsFile": "inputs/models.json", "mcpFile": "inputs/mcp-adapter.json"}
-# Resource kinds an owner package entry may filter; `themes` stays outside the overlay contract.
-OWNER_FILTERS = ("extensions", "skills", "prompts")
-# The whole pointer grammar of `overlay.unmanaged`: no wildcard, no escape, no empty segment.
-POINTER = re.compile(r"/[A-Za-z0-9_.:@-]+(?:/[A-Za-z0-9_.:@-]+)*\Z")
-REASON_MAX = 200
-# Character bound of each name in the `hint` of a refusal.
-HINT_MAX = 200
-# Item bound of `overlay.unmanaged`: `plan`, `generate` and `compare` echo the whole list.
-UNMANAGED_MAX = 200
-# Resource kinds of `overlay.ownerResources`, in render order, and the bounds of one list.
-OWNER_RESOURCES = ("skills", "prompts")
-MAX_OWNER_RESOURCES = 64
-MAX_OWNER_RESOURCE_PATH = 1024
-# The fake `target.agentDir` of the tracked example. The structure rules accept it; the CLI refuses it.
-SAMPLE_TARGET = "/home/EXAMPLE_USER/new-agent"
 
 
 class Invalid(ValueError):
@@ -290,7 +221,7 @@ def parse(data, field, number=None):
     except UnicodeError:
         fail("input_encoding", field)
     except json.JSONDecodeError as exc:
-        # The parser message can include a fragment of the private input; the place is two integers.
+        # The parser message can include a fragment of the input; the place is two integers.
         fail("invalid_json", field, exc.lineno, exc.colno)
     except RecursionError:
         fail("input_too_deep", field)
@@ -348,40 +279,14 @@ def absolute(value, at):
         fail("absolute_path", at)
 
 
-def url(value, at):
-    if not isinstance(value, str):
-        fail("credential_free_https_url", at)
-    try:
-        p = urlsplit(value)
-        # Restrict URL bytes before any later command could interpret them as shell text.
-        # Decoding twice also rejects encoded percent signs that hide another escape.
-        decoded = unquote(unquote(value))
-        if (not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::443)?(?:/[A-Za-z0-9._~/-]*)?", value)
-                or not re.fullmatch(r"https://[A-Za-z0-9.-]+(?::443)?(?:/[A-Za-z0-9._~/-]*)?", decoded)
-                or p.scheme != "https" or not p.hostname or p.username is not None or p.password is not None
-                or p.query or p.fragment or p.port not in (None, 443) or "@" in p.netloc):
-            fail("credential_free_https_url", at)
-    except ValueError:
-        fail("credential_free_https_url", at)
-
-
 def source(value, at):
-    fields(value, ("kind",), ("spec", "url", "commit", "subdir", "pathKey", "path"), at)
+    fields(value, ("kind",), ("spec", "path"), at)
     kind = value["kind"]
-    forms = {"npm": ("kind", "spec"), "git": ("kind", "url", "commit", "subdir"),
-             "local": ("kind", "pathKey"), "builtin": ("kind",), "tree": ("kind", "path")}
+    forms = {"npm": ("kind", "spec"), "builtin": ("kind",), "tree": ("kind", "path")}
     if not isinstance(kind, str) or kind not in forms or set(value) != set(forms[kind]):
         fail("source_form", at)
     if kind == "npm" and (not isinstance(value["spec"], str) or not NPM.fullmatch(value["spec"])):
         fail("exact_npm_pin", at + ".spec")
-    if kind == "git":
-        url(value["url"], at + ".url")
-        if not isinstance(value["commit"], str) or not HEX.fullmatch(value["commit"]):
-            fail("full_commit", at + ".commit")
-        if value["subdir"] != "":
-            relative(value["subdir"], at + ".subdir")
-    if kind == "local":
-        identifier(value["pathKey"], at + ".pathKey")
     if kind == "tree":
         tree_path(value["path"], at + ".path")
 
@@ -413,9 +318,8 @@ def id_list(value, at):
 def optional_tree_absent(cid):
     """True when the kit holds no resource path of the tree component `cid`: its folder is absent.
 
-    A kit can leave out the folder of each tree component. The absent folder is a no-op until the
-    overlay enables the component; then `overlay()` fails with `tree_resource_missing`. Only an
-    entirely absent folder bypasses the resource presence check.
+    A kit can leave out the folder of each tree component. Only an entirely absent folder
+    bypasses the resource presence check of `manifest()`.
     """
     if cid not in TREE_COMPONENTS:
         return False
@@ -426,7 +330,7 @@ def optional_tree_absent(cid):
 
 def manifest(data):
     fields(data, ("schemaVersion", "runtime", "components"), (), "manifest")
-    if type(data["schemaVersion"]) is not int or data["schemaVersion"] != 1:
+    if type(data["schemaVersion"]) is not int or data["schemaVersion"] != SCHEMA_VERSION:
         fail("schema_version", "manifest.schemaVersion")
     runtime = data["runtime"]
     fields(runtime, ("piVersion", "piAcceptedRange", "nodeRange", "pythonRange"), (), "manifest.runtime")
@@ -449,28 +353,10 @@ def manifest(data):
     if set(components) != set(REVIEWED_SOURCES):
         fail("reviewed_components", "manifest.components" if TREE_COMPONENTS_CAUSE is None else
              f"manifest.components (kit manifest {MANIFEST} not read: {TREE_COMPONENTS_CAUSE})")
-    claims = []
-    path_keys = set()
     for cid, component in components.items():
         identifier(cid, "manifest.components ID")
         at = "manifest.components.item"
-        fields(component, ("source", "status", "reason", "requires", "owner", "license", "resources", "env", "configOwnership"), ("gaps",), at)
-        ownership = component["configOwnership"]
-        fields(ownership, ("claims", "status", "boundary"), (), at + ".configOwnership")
-        text(ownership["boundary"], at + ".configOwnership.boundary")
-        if ownership["status"] not in ("reviewed", "blocked") or type(ownership["status"]) is not str:
-            fail("ownership_status", at + ".configOwnership.status")
-        if type(ownership["claims"]) is not list:
-            fail("array", at + ".configOwnership.claims")
-        if ownership["status"] == "blocked" and ownership["claims"]:
-            fail("unreviewed_claim", at + ".configOwnership.claims")
-        if ownership["status"] == "reviewed" and component["status"] not in SELECTABLE:
-            fail("unreviewed_claim", at + ".configOwnership.status")
-        for claim in ownership["claims"]:
-            fields(claim, ("file", "key"), (), at + ".configOwnership.claims")
-            for field in ("file", "key"):
-                if type(claim[field]) is not str:
-                    fail("ownership_claim_type", at + ".configOwnership.claims." + field)
+        fields(component, ("source", "status", "requires", "owner", "license", "resources", "env"), ("gaps",), at)
         if not isinstance(component["env"], list):
             fail("array", at + ".env")
         for name in component["env"]:
@@ -478,14 +364,8 @@ def manifest(data):
                 fail("env_name", at + ".env")
         if len(set(component["env"])) != len(component["env"]):
             fail("duplicate_env", at + ".env")
-        if not isinstance(component["status"], str) or component["status"] not in SELECTABLE + ("blocked",):
+        if not isinstance(component["status"], str) or component["status"] not in STATUSES:
             fail("status", at + ".status")
-        if component["status"] == "blocked":
-            text(component["reason"], at + ".reason")
-        elif component["reason"] is not None:
-            fail("status_reason", at + ".reason")
-        if component["status"] in SELECTABLE and ownership["status"] != "reviewed":
-            fail("ownership_blocked", at + ".configOwnership.status")
         gaps = component.get("gaps", [])
         if type(gaps) is not list:
             fail("array", at + ".gaps")
@@ -497,30 +377,19 @@ def manifest(data):
         if len({gap["code"] for gap in gaps}) != len(gaps):
             fail("duplicate_gap", at + ".gaps")
         # `tested` needs a test in this repository and no open gap; `unverified` must name its gaps.
-        if (component["status"] == "tested") == bool(gaps) and component["status"] != "blocked":
+        if (component["status"] == "tested") == bool(gaps):
             fail("status_gaps", at + ".gaps")
-        if cid in TREE_COMPONENTS and (component["status"] == "tested" or not gaps):
+        if cid in TREE_COMPONENTS and component["status"] == "tested":
             fail("status_gaps", at + ".status")
-        if component["source"] is None:
-            if component["status"] != "blocked":
-                fail("missing_pin", at + ".source")
-        else:
-            source(component["source"], at + ".source")
-            if component["source"]["kind"] == "local":
-                if component["status"] != "blocked":
-                    fail("local_only", at + ".source")
-                key = component["source"]["pathKey"]
-                if key in path_keys:
-                    fail("duplicate_path_owner", at + ".source.pathKey")
-                path_keys.add(key)
-            elif not reviewed_source(cid, component["source"]):
-                fail("reviewed_source", at + ".source")
+        source(component["source"], at + ".source")
+        if not reviewed_source(cid, component["source"]):
+            fail("reviewed_source", at + ".source")
         id_list(component["requires"], at + ".requires")
         if not isinstance(component["owner"], str) or not ID.fullmatch(component["owner"]):
             fail("owner", at + ".owner")
         text(component["license"], at + ".license")
         resources = component["resources"]
-        fields(resources, ("extensions", "skills", "prompts", "themes"), (), at + ".resources")
+        fields(resources, RESOURCE_KINDS, (), at + ".resources")
         for key, items in resources.items():
             if not isinstance(items, list):
                 fail("array", at + ".resources." + key)
@@ -528,32 +397,14 @@ def manifest(data):
                 relative(item, at + ".resources." + key)
             if len(set(items)) != len(items):
                 fail("duplicate_resource", at + ".resources." + key)
-        if cid in REVIEWED_RESOURCES and resources != REVIEWED_RESOURCES[cid]:
-            fail("reviewed_resources", at + ".resources")
-        if component["source"] is not None and component["source"]["kind"] == "tree":
+        if component["source"]["kind"] == "tree":
             # The manifest names the resource paths; the tree of the kit holds each of them.
             paths = [item for items in resources.values() for item in items]
             if not paths or (not optional_tree_absent(cid) and
                              not all((ROOT / component["source"]["path"] / item).exists() for item in paths)):
                 fail("tree_resource_missing", at + ".resources")
-        # A listed claim is reviewed or derived, and each reviewed claim is listed. A derived claim
-        # may be listed too. A blocked component claims nothing.
-        listed = [(claim["file"], claim["key"]) for claim in ownership["claims"]]
-        if ownership["status"] == "reviewed":
-            derived, reviewed = derived_claims(component), REVIEWED_CLAIMS.get(cid, set())
-            if not set(listed) <= derived | reviewed:
-                fail("unreviewed_claim", at + ".configOwnership.claims")
-            if not reviewed <= set(listed):
-                fail("missing_claim", at + ".configOwnership.claims")
-            claims.extend(listed + sorted(derived - set(listed)))
-    if components["core"]["requires"] or not reviewed_source("core", components["core"]["source"]):
+    if components["core"]["requires"]:
         fail("core_source", "manifest.components.core")
-    for i, (file, key) in enumerate(claims):
-        for other_file, other_key in claims[:i]:
-            if file == other_file and (key == other_key or key == "" or other_key == "" or
-                    (key.startswith("/") and other_key.startswith("/") and
-                     (key.startswith(other_key + "/") or other_key.startswith(key + "/")))):
-                fail("ownership_conflict", "manifest.components.configOwnership.claims")
     visiting, done = set(), set()
 
     def visit(cid):
@@ -574,239 +425,16 @@ def manifest(data):
     return components
 
 
-def package_filter(value, at):
-    """One filter entry: a relative POSIX path, or a Pi `!pattern` exclusion; never a `..` segment."""
-    if not isinstance(value, str):
-        fail("package_filter", at)
-    exclusion = value.startswith("!")
-    allowed = r"[A-Za-z0-9_. *?-]+" if exclusion else r"[A-Za-z0-9_. -]+"
-    # Pi reads a leading `+` or `-` as a force-include or force-exclude directive, not as a path.
-    if value[:1] in ("+", "-"):
-        fail("package_filter", at)
-    for segment in (value[1:] if exclusion else value).split("/"):
-        if segment in (".", "..") or not re.fullmatch(allowed, segment) or segment != segment.strip(" "):
-            fail("package_filter", at)
-
-
-def owner_packages(data, components):
-    """Optional `overlay.ownerPackages`: repo-owned local package paths. No path is opened or resolved."""
-    items = data["ownerPackages"]
-    if not isinstance(items, list):
-        fail("array", "overlay.ownerPackages")
-    # Every package directory the kit can declare itself, enabled or not.
-    declared = {str(ROOT / component["source"]["path"]) for component in components.values()
-                if component["source"] is not None and component["source"]["kind"] == "tree"}
-    seen = set()
-    for item in items:
-        at = "overlay.ownerPackages.item"
-        if not isinstance(item, str):
-            fields(item, ("source",), OWNER_FILTERS, at)
-            for key in OWNER_FILTERS:
-                if key not in item:
-                    continue
-                if not isinstance(item[key], list) or len(set(map(repr, item[key]))) != len(item[key]):
-                    fail("package_filter", at + "." + key)
-                for entry in item[key]:
-                    package_filter(entry, at + "." + key)
-        source = item if isinstance(item, str) else item["source"]
-        absolute(source, at + ".source")
-        if source in seen:
-            fail("duplicate_source", at + ".source")
-        seen.add(source)
-        if source in declared:
-            fail("duplicate_package", at + ".source")
-
-
-def unmanaged(items):
-    """Optional `overlay.unmanaged`: accepted `settings.json` differences. No pointer is resolved."""
-    if not isinstance(items, list):
-        fail("array", "overlay.unmanaged")
-    if len(items) > UNMANAGED_MAX:
-        fail("unmanaged_count", "overlay.unmanaged")
-    seen = set()
-    for item in items:
-        at = "overlay.unmanaged.item"
-        fields(item, ("key", "reason"), (), at)
-        key, reason = item["key"], item["reason"]
-        if not isinstance(key, str) or not POINTER.fullmatch(key):
-            fail("pointer", at + ".key")
-        if not isinstance(reason, str) or not reason.strip():
-            fail("reason_required", at + ".reason")
-        if len(reason) > REASON_MAX:
-            fail("reason_length", at + ".reason")
-        # Category Cc: the C0 range, DEL and the C1 range. The reason is echoed by `plan` and `compare`.
-        if any(unicodedata.category(c) == "Cc" for c in reason):
-            fail("reason_control_character", at + ".reason")
-        if key in seen:
-            fail("duplicate_pointer", at + ".key")
-        seen.add(key)
-
-
-def owner_resources(data):
-    """Optional `overlay.ownerResources`: owner skill and prompt directories. No path is opened or resolved."""
-    value = data["ownerResources"]
-    fields(value, (), OWNER_RESOURCES, "overlay.ownerResources")
-    target = data["target"]["agentDir"]
-    kit = str(ROOT / PACKAGES)
-    for kind in OWNER_RESOURCES:
-        if kind not in value:
-            continue
-        at = "overlay.ownerResources." + kind
-        items = value[kind]
-        if not isinstance(items, list):
-            fail("array", at)
-        if len(items) > MAX_OWNER_RESOURCES:
-            fail("resource_count", at)
-        seen = set()
-        for item in items:
-            # Pi trims an entry before it resolves the path: `/ ` is `/` and `/a/ ` is `/a/`.
-            if isinstance(item, str) and (item != item.strip() or any(
-                    segment and not segment.strip() for segment in item.split("/"))):
-                fail("resource_whitespace", at)
-            # Pi reads a leading `!`, `+` or `-` as a filter directive, not as a path.
-            if isinstance(item, str) and item[:1] in ("!", "+", "-"):
-                fail("resource_directive", at)
-            absolute(item, at)
-            if len(item) > MAX_OWNER_RESOURCE_PATH:
-                fail("resource_path_length", at)
-            # The profile directory is host-only; Pi discovers its `skills/` and `prompts/` on its own.
-            if item == target or item.startswith(target + "/"):
-                fail("inside_target", at)
-            # The package directories of the kit load through `selection` only. An entry in, at or
-            # above `packages/` of the kit would load a component that is disabled or blocked.
-            if (item + "/").startswith(kit + "/") or (kit + "/").startswith(item + "/"):
-                fail("kit_package", at)
-            if item in seen:
-                fail("duplicate_resource", at)
-            seen.add(item)
-
-
-def overlay(data, components):
-    fields(data, ("schemaVersion", "target", "selection", "paths", "roles", "endpoints", "env", "inputs", "consent"), ("modelRoutes", "memory", "ownerPackages", "unmanaged", "ownerResources"), "overlay")
-    if type(data["schemaVersion"]) is not int or data["schemaVersion"] != 1:
-        fail("schema_version", "overlay.schemaVersion")
-    fields(data["target"], ("agentDir",), (), "overlay.target")
-    absolute(data["target"]["agentDir"], "overlay.target.agentDir")
-    fields(data["selection"], ("enable", "disable"), (), "overlay.selection")
-    enable, disable = (data["selection"][k] for k in ("enable", "disable"))
-    id_list(enable, "overlay.selection.enable")
-    id_list(disable, "overlay.selection.disable")
-    if "core" in disable or "core" not in enable or set(enable) & set(disable):
-        fail("selection_conflict", "overlay.selection")
-    # An ID in `disable` that the manifest does not have is a no-op: a removed component stays off.
-    for cid in enable:
-        if cid not in components:
-            fail("undeclared_component", "overlay.selection")
-    for cid in enable:
-        if components[cid]["status"] not in SELECTABLE:
-            fail("blocked_component", "overlay.selection.enable")
-        if not set(components[cid]["requires"]) <= set(enable):
-            fail("missing_dependency", "overlay.selection.enable")
-        if optional_tree_absent(cid):
-            fail("tree_resource_missing", "overlay.selection.enable")
-    paths = data["paths"]
-    if not isinstance(paths, dict):
-        fail("object", "overlay.paths")
-    for key, value in paths.items():
-        identifier(key, "overlay.paths ID")
-        absolute(value, "overlay.paths")
-    allowed_paths = {components[cid]["source"]["pathKey"] for cid in enable
-                     if components[cid]["source"] is not None and components[cid]["source"]["kind"] == "local"}
-    if not set(paths) <= allowed_paths:
-        fail("undeclared_path", "overlay.paths")
-    for cid in enable:
-        src = components[cid]["source"]
-        if src and src["kind"] == "local" and src["pathKey"] not in paths:
-            fail("missing_local_path", "overlay.paths")
-    if "ownerPackages" in data:
-        owner_packages(data, components)
-    if "unmanaged" in data:
-        unmanaged(data["unmanaged"])
-    if "ownerResources" in data:
-        owner_resources(data)
-    roles = data["roles"]
-    fields(roles, (), ROLE_NAMES, "overlay.roles")
-    for name, role in roles.items():
-        if role is None:
-            continue
-        at = "overlay.roles.entry"
-        fields(role, ("provider", "model", "thinking"), ("route",) if "modelRoutes" in data else (), at)
-        for key in ("provider", "model"):
-            text(role[key], at + "." + key)
-            if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9._/:-]*", role[key]):
-                fail("role_id", at + "." + key)
-        if type(role["thinking"]) is not str or role["thinking"] not in ("off", "minimal", "low", "medium", "high", "xhigh", "max"):
-            fail("thinking", at + ".thinking")
-    endpoints = data["endpoints"]
-    if not isinstance(endpoints, dict):
-        fail("object", "overlay.endpoints")
-    for section in ("endpoints", "env"):
-        for old, new in MOVED_KEYS.items():
-            if isinstance(data[section], dict) and old in data[section]:
-                fail("moved_key", "overlay." + section + "." + old + " is now overlay." + section + "." + new)
-    for key, value in endpoints.items():
-        identifier(key, "overlay.endpoints ID")
-        if key not in enable or key == "core":
-            fail("unselected_endpoint", "overlay.endpoints")
-        url(value, "overlay.endpoints")
-    env = data["env"]
-    if not isinstance(env, dict):
-        fail("object", "overlay.env")
-    for key, value in env.items():
-        identifier(key, "overlay.env ID")
-        if key not in enable or key == "core":
-            fail("unselected_env", "overlay.env")
-        if not isinstance(value, str) or not REF.fullmatch(value):
-            fail("env_reference", "overlay.env")
-        if value[2:-1] not in components[key]["env"]:
-            fail("undeclared_env", "overlay.env")
-    if "modelRoutes" in data:
-        from scripts.model_routes import validate_choices
-        validate_choices(data)
-    inputs = data["inputs"]
-    fields(inputs, ("modelsFile", "mcpFile"), (), "overlay.inputs")
-    for key, value in inputs.items():
-        if value is not None:
-            relative(value, "overlay.inputs." + key)
-            if value != INPUT_FILES[key]:
-                fail("input_allowlist", "overlay.inputs." + key)
-    if inputs["mcpFile"] is not None and "mcp" not in enable:
-        fail("unselected_input", "overlay.inputs.mcpFile")
-    if inputs["mcpFile"] is None and "mcp" in enable:
-        fail("mcp_input_required", "overlay.inputs.mcpFile")
-    fields(data["consent"], ("memoryCapture", "remoteMemoryWrites", "telemetry"), ("embeddingTextTransfer",), "overlay.consent")
-    if any(type(v) is not bool for v in data["consent"].values()):
-        fail("boolean", "overlay.consent")
-    memory = data.get("memory")
-    wiki = memory.get("wiki") if type(memory) is dict else None
-    embedding = wiki.get("embedding") if type(wiki) is dict else None
-    embedding_consent = data["consent"].get("embeddingTextTransfer", False)
-    if embedding_consent and ("wiki" not in enable or embedding is None):
-        fail("embedding_consent_unused", "overlay.consent.embeddingTextTransfer")
-    if embedding is not None and not embedding_consent:
-        fail("embedding_consent_missing", "overlay.consent.embeddingTextTransfer")
-    if (data["consent"]["memoryCapture"] or data["consent"]["remoteMemoryWrites"]) and not (set(enable) & MEMORY):
-        fail("memory_disabled", "overlay.consent")
-    if data["consent"]["remoteMemoryWrites"] and not {"openviking", "agentcore"} & set(enable):
-        fail("remote_memory_disabled", "overlay.consent.remoteMemoryWrites")
-    if "memory" in data or set(enable) & MEMORY:
-        from scripts.memory_modules import validate_memory
-        validate_memory(data, components)
-
-
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, default=ROOT / "config/manifest.json")
-    parser.add_argument("--overlay", type=Path, required=True)
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser.add_argument("--manifest", type=Path, default=ROOT / MANIFEST)
     args = parser.parse_args()
     try:
-        overlay(load(args.overlay), manifest(load(args.manifest)))
+        manifest(load(args.manifest))
     except Invalid as exc:
         parser.exit(2, str(exc) + "".join(f" {key}={value}" for key, value in place(exc).items()) + "\n")
-    print("valid: structural contract only; no package or runtime qualification")
+    print("valid: structural contract of the manifest only; no package or runtime qualification")
 
 
 if __name__ == "__main__":
-    # Route validation imports this module by package name; keep one Invalid class.
-    sys.modules["scripts.validate"] = sys.modules[__name__]
     main()

@@ -96,10 +96,11 @@ elif args[0] == "--test":
     if (control / "fail-test").exists():
         sys.exit(7)
 else:
-    assert pathlib.Path(args[0]).name == "openviking-load.mjs"
+    probe = pathlib.Path(args[0]).name
+    assert probe in ("openviking-load.mjs", "profile-load.mjs")
     assert set(os.environ) - set(OWN_NAMES) == set(PI_KEYS)
     assert "/prefix/node_modules/" in pathlib.Path(args[0]).read_text()
-    if (control / "fail-openviking-load").exists():
+    if (control / ("fail-" + probe.removesuffix(".mjs"))).exists():
         sys.exit(6)
 with (pathlib.Path(os.environ["HOME"]) / "node-env.jsonl").open("a") as out:
     out.write(json.dumps({"args": args, "env": dict(os.environ)}) + "\\n")
@@ -124,7 +125,7 @@ class UpdateTests(unittest.TestCase):
         (self.bin / "npm").chmod(0o700)
         # An old `python3` comes first on the allow list, as `/usr/bin/python3` does on macOS.
         # check-runtime tests the Python of the qualification instead.
-        (self.bin / "python3").write_text("#!/bin/sh\necho 'Python 3.9.6'\n")
+        (self.bin / "python3").write_text("#!/bin/sh\nif [ \"$1\" = --version ]; then echo 'Python 3.9.6'; else exec " + sys.executable + " \"$@\"; fi\n")
         (self.bin / "python3").chmod(0o700)
         # check-runtime does not need the caller's Node version.
         (self.bin / "node").write_text("#!" + sys.executable + "\nPI_KEYS = " + repr(update.PI_KEYS)
@@ -140,13 +141,15 @@ class UpdateTests(unittest.TestCase):
         candidate = run / "kit"
         candidate.mkdir()
         contents = {"config/manifest.json": update.pin_contents((ROOT / "config/manifest.json").read_text(), requested),
-                    "config/config.example.json": (ROOT / "config/config.example.json").read_text()}
+                    **{name: (ROOT / name).read_text() for name in ("install.sh", "config/settings.example.json",
+                                                                    "config/models.example.json",
+                                                                    "packages/tenantext/package.json")}}
         for name, text in contents.items():
             path = candidate / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
         for name in ("tenantext", "openviking-pi", "agentcore-pi"):
-            (candidate / "packages" / name).mkdir(parents=True)
+            (candidate / "packages" / name).mkdir(parents=True, exist_ok=True)
             (candidate / "packages" / name / "package-lock.json").write_text("{}\n")
         tests = candidate / "packages/openviking-pi/tests"
         tests.mkdir()
@@ -160,7 +163,8 @@ class UpdateTests(unittest.TestCase):
         if stderr_log:
             stderr_log.write_text("")
         failures = {"install": ("fail-install", 9), "openviking-install": ("fail-openviking-install", 8),
-                    "openviking-load": ("fail-openviking-load", 6)}
+                    "openviking-load": ("fail-openviking-load", 6), "kit-install": ("fail-kit-install", 5),
+                    "profile-load": ("fail-profile-load", 6)}
         if name.endswith("-test") and (self.bin / "fail-test").exists():
             return 7
         marker, code = failures.get(name, ("absent-marker", 0))
@@ -176,10 +180,10 @@ class UpdateTests(unittest.TestCase):
                 path = run / "prefix/node_modules/@earendil-works" / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.touch()
-        elif name == "generate":
-            (run / "profile").mkdir()
+        elif name == "kit-install":
+            (run / "home/.pi/profiles/qualify").mkdir(parents=True)
         elif name in ("print-mode", "print-length"):
-            models = json.loads((run / "profile/models.json").read_text())
+            models = json.loads((run / "home/.pi/profiles/qualify/models.json").read_text())
             from urllib.parse import urlsplit
             url = urlsplit(models["providers"]["local-test"]["baseUrl"])
             connection = http.client.HTTPConnection(url.hostname, url.port, timeout=5)
@@ -320,7 +324,7 @@ class UpdateTests(unittest.TestCase):
         self.assertNotIn("install", steps)
 
     @slow
-    def test_synthetic_pin_reaches_validation_plan_provenance_and_runtime(self):
+    def test_synthetic_pin_reaches_validation_install_and_runtime(self):
         requested = "9.9.9"
         agent = self.base / "empty-agent"
         agent.mkdir()
@@ -332,34 +336,26 @@ class UpdateTests(unittest.TestCase):
         (candidate / names[0]).write_text(update.pin_contents((candidate / names[0]).read_text(), requested),
                                           encoding="utf-8")
 
-        def run(*args):
-            result = subprocess.run([sys.executable, "-B", *args], cwd=candidate, env=env,
+        def run(*args, command=(sys.executable, "-B"), **extra):
+            result = subprocess.run([*command, *args], cwd=candidate, env={**env, **extra},
                                     stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
             self.assertEqual((0, ""), (result.returncode, result.stderr), result.stdout + result.stderr)
             return result.stdout
 
         self.assertEqual("accepted\n", run("-c", 'from scripts.validate import load, manifest; '
                          'manifest(load("config/manifest.json")); print("accepted")'))
-        target = self.base / "profile"
-        overlay = json.loads((candidate / "config/config.example.json").read_text())
-        overlay["target"]["agentDir"] = str(target)
-        overlay_file = self.base / "overlay.json"
-        overlay_file.write_text(json.dumps(overlay), encoding="utf-8")
-        cli = str(candidate / "scripts/tenant_pi.py")
-        plan = json.loads(run(cli, "plan", "--overlay", str(overlay_file)))
         self.assertEqual(">=9.9.9 <9.10", json.loads((candidate / "config/manifest.json").read_text())["runtime"]["piAcceptedRange"])
-        self.assertEqual("9.9.9", plan["commands"]["piInstall"]["required"])
-        self.assertEqual("npm install --global -- @earendil-works/pi-coding-agent@9.9.9",
-                         plan["commands"]["piInstall"]["command"])
-        generated = json.loads(run(cli, "generate", "--overlay", str(overlay_file), "--target", str(target)))
-        self.assertTrue(generated["filesComplete"])
-        provenance = json.loads((target / ".tenant-pi/state.json").read_text())["provenance"]
-        self.assertEqual("9.9.9", provenance["piVersion"])
-        self.assertEqual("npm:@earendil-works/pi-coding-agent@9.9.9", provenance["pins"]["core"])
+        (self.bin / "pi").write_text("#!/bin/sh\nexit 0\n")
+        (self.bin / "pi").chmod(0o700)
+        profile = self.home / ".pi/profiles/qualify"
+        run(str(candidate / "install.sh"), "--new", "qualify", "--shell", "none", "--with", "none", "--yes", command=("/bin/sh",))
+        spec = MANIFEST["components"]["questions"]["source"]["spec"]
+        self.assertEqual([str(candidate / "packages/tenantext"), "npm:" + spec],
+                         json.loads((profile / "settings.json").read_text())["packages"])
         fake_pi = self.bin / "pi"
         fake_pi.write_text("#!" + sys.executable + "\nVERSION = " + repr(requested) + "\n" + FAKE_PI)
         fake_pi.chmod(0o700)
-        runtime = json.loads(run(cli, "check-runtime", "--pi", str(fake_pi),
+        runtime = json.loads(run(str(candidate / "scripts/check_runtime.py"), "--pi", str(fake_pi),
                                  "--node", str(self.bin / "node"), "--python", sys.executable))
         self.assertEqual({"installed": "9.9.9", "required": "9.9.9", "status": "match",
                           "tested": "9.9.9", "acceptedRange": ">=9.9.9 <9.10"}, runtime["pi"])
@@ -422,8 +418,17 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue(all("--ignore-scripts" in call for call in calls if "ci" in call or "install" in call))
         self.assertTrue(all("--global" not in call for call in calls))
         steps = {row["name"]: row for row in report["steps"]}
-        for name in ("openviking-install", "openviking-links", "openviking-test", "openviking-load"):
+        for name in ("openviking-install", "openviking-links", "openviking-test", "openviking-load",
+                     "kit-install", "profile-load"):
             self.assertEqual(steps[name]["exitCode"], 0)
+        # The install of the run wrote the core templates and linked no skill: the home of the run has no ~/.claude.
+        self.assertEqual({"settings.json", "models.json"}, {path.name for path in (run / "home/.pi/profiles/qualify").iterdir()})
+        self.assertEqual(str(run / "kit/packages/tenantext"),
+                         json.loads((run / "home/.pi/profiles/qualify/settings.json").read_text())["packages"][0])
+        self.assertFalse((run / "home/.claude").exists())
+        probe = (run / "profile-load.mjs").read_text()
+        for extension in json.loads((ROOT / "packages/tenantext/package.json").read_text())["pi"]["extensions"]:
+            self.assertIn(json.dumps(os.path.normpath(run / "kit/packages/tenantext" / extension)), probe)
         nodes = [json.loads(line) for line in (run / "home/node-env.jsonl").read_text().splitlines()]
         for row in nodes:
             self.assertNotIn("synthetic-canary", json.dumps(row))
@@ -464,8 +469,7 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue(report["passed"], report)
         self.assertFalse(any(row["name"].startswith("pages-") for row in report["steps"]))
         for _, command, _, _ in self.recorded:
-            self.assertFalse(any("architecture_build.py" in str(arg) or "explainer_build.py" in str(arg)
-                                 for arg in command))
+            self.assertFalse(any("architecture_build.py" in str(arg) for arg in command))
 
     def test_baseline_drift_is_informational_unless_strict(self):
         real_scan = update._dir_state
@@ -520,7 +524,8 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(codes["install"], 9)
         self.assertEqual(codes["check-runtime"], 125)
         self.assertEqual(codes["offline-fixture"], 0)
-        self.assertEqual(codes["generate"], 0)
+        self.assertEqual(codes["kit-install"], 0)
+        self.assertEqual(codes["profile-load"], 125)
         self.assertEqual(codes["print-mode"], 125)
         for name in ("openviking-links", "openviking-test", "openviking-load"):
             self.assertEqual(codes[name], 125)
@@ -535,6 +540,30 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(codes["openviking-test"], 7)
         self.assertEqual(codes["openviking-load"], 0)
         self.assertEqual(codes["print-response"], 0)
+
+    def test_failed_kit_install_skips_the_profile_checks(self):
+        (self.bin / "fail-kit-install").touch()
+        report = self.qualify()
+        self.assertFalse(report["passed"])
+        codes = {step["name"]: step["exitCode"] for step in report["steps"]}
+        self.assertEqual(codes["kit-install"], 5)
+        for name in ("profile-load", "print-mode", "print-response"):
+            self.assertEqual(codes[name], 125)
+        self.assertEqual(codes["openviking-load"], 0)
+        self.assertEqual(codes["baseline-compare"], 0)
+
+    def test_failed_profile_load_fails_qualification_and_keeps_print_checks(self):
+        (self.bin / "fail-profile-load").touch()
+        report = self.qualify()
+        self.assertFalse(report["passed"])
+        codes = {step["name"]: step["exitCode"] for step in report["steps"]}
+        self.assertEqual(codes["profile-load"], 6)
+        self.assertEqual(codes["print-response"], 0)
+        install = next(row for row in self.recorded if row[0] == "kit-install")
+        self.assertEqual(["/bin/sh", str(Path(report["workdir"]) / "kit/install.sh"),
+                          "--new", "qualify", "--shell", "none", "--with", "none", "--yes"], install[1])
+        self.assertEqual(str(Path(report["workdir"]) / "prefix/node_modules/.bin"), install[3]["PATH"].split(os.pathsep)[0])
+        self.assertEqual(str(Path(report["workdir"]) / "home"), install[3]["HOME"])
 
     def test_failed_openviking_install_skips_only_its_dependent_checks(self):
         (self.bin / "fail-openviking-install").touch()
@@ -571,17 +600,17 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(codes["print-length-response"], 1)
         self.assertEqual(codes["baseline-compare"], 0)
 
-    def print_steps(self, requested="1.2.0", transform=lambda script: script, generated=True):
+    def print_steps(self, requested="1.2.0", transform=lambda script: script, profile_ready=True):
         run, _ = update.workspace(str(self.work))
         env = update.environment(run)
         steps = update.Steps(run, env)
         self.assertTrue(update.install(steps, requested))
         binary = run / "prefix/node_modules/.bin/pi"
         binary.write_text(transform(binary.read_text()))
-        (run / "profile").mkdir()
+        (run / "home/.pi/profiles/qualify").mkdir(parents=True)
         endpoint = update.endpoint
         with patch.object(update, "endpoint", side_effect=lambda **options: endpoint(poll_interval=0.005, **options)):
-            update.print_check(steps, env, generated, requested)
+            update.print_check(steps, env, profile_ready, requested)
         return run, {row["name"]: row for row in steps.rows}
 
     def test_length_print_contract_preserves_stdout_stderr_and_one_request(self):
@@ -626,7 +655,7 @@ class UpdateTests(unittest.TestCase):
                                  {"contract": "not_applicable_before_1.2.0"})
 
     def test_length_print_check_skips_failed_prerequisites(self):
-        _, steps = self.print_steps(generated=False)
+        _, steps = self.print_steps(profile_ready=False)
         for name in ("print-mode", "print-response", "print-length", "print-length-response"):
             self.assertEqual(steps[name]["exitCode"], 125)
 

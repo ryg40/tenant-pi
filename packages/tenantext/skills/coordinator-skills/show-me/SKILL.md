@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 Help the user understand the current topic of conversation visually. Skip the preamble and keep prose brief. Pick the smallest view that makes the key point clear.
 
-The text forms and Mermaid work in conversation and in a Gitea issue comment. Gitea renders Mermaid in comments. The `pr` skill carries the same menu for a merge record. Load the pr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi.
+The text forms and Mermaid work in conversation and in an issue comment. The tracker renders Mermaid in comments (see `docs/agents/issue-tracker.md`). The `pr` skill carries the same menu for a merge record. Load the pr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi.
 
 - Show logic or an algorithm as pseudocode:
 

@@ -11,7 +11,7 @@ The extension only reads. It never refreshes a token and never writes a credenti
 | The payload shape of the usage endpoint (`five_hour`, `seven_day`, `seven_day_opus`, `seven_day_sonnet`, each with `utilization` and `resets_at`) | Observed in a live response of the endpoint. Not verified again through this extension |
 | Parsing, detection, the footer row, the report and the doctor check | Verified with fixture tests. The tests use an injected fetch and injected file readers |
 | A live request from this extension inside Pi | Not verified |
-| The extension loads in a generated profile of the kit | Not verified |
+| The extension loads in a profile of the kit | The `profile-load` step of the kit qualification loads it, with no session. Not verified in a session |
 | The Pi `anthropic` OAuth login as a source | Not verified live. The tests use a fixture credential |
 | The Claude Code login on macOS | Not verified. Claude Code can keep the login in the macOS keychain. Then the file does not exist and this source is absent |
 | The set of `subscriptionType` values | Not verified. The allow-list holds `free`, `pro`, `max`, `team` and `enterprise` |

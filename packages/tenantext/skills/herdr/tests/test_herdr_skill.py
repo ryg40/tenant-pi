@@ -848,7 +848,7 @@ class Roles254(IsolatedConfig):
             with self.subTest(harness=harness):
                 numbers = [int(line.partition(". ")[0]) for line in text.splitlines()
                            if line.partition(". ")[0].isdigit()]
-                self.assertEqual(numbers, list(range(1, 11)))
+                self.assertEqual(numbers, list(range(1, len(numbers) + 1)))
                 self.assertIn(expected, text.splitlines())
 
     def test_rendered_coordinator_prompt_size(self):

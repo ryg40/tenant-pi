@@ -30,6 +30,7 @@ Prints one JSON line. Exit codes: 0 ready | 2 bad input
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -152,16 +153,44 @@ def resolve(opts, cfg):
             "web": role["web"], "focus": role["focus"]}
 
 
+def pi_executable():
+    executable = load_launch({}).get("pi_executable", "pi")
+    if executable != "pi" and (not os.path.isabs(executable)
+                              or any(ord(c) < 32 or ord(c) == 127 for c in executable)
+                              or not os.path.isfile(executable) or not os.access(executable, os.X_OK)):
+        fail("launch.pi_executable must be an absolute executable file path")
+    return executable
+
+
+def prepare_pi_launcher(pane, executable):
+    if executable == "pi":
+        return
+    code, data, raw = herdr("pane", "process-info", "--pane", pane)
+    try:
+        processes = data["result"]["process_info"]["foreground_processes"]
+        supported = len(processes) == 1 and processes[0]["name"] in ("bash", "zsh", "sh", "dash", "ksh")
+    except (TypeError, KeyError):
+        supported = False
+    if code != 0 or not supported:
+        raise RuntimeError("custom Pi launcher requires a new pane at a POSIX shell prompt")
+    # Herdr keeps its Pi lifecycle detection; only this new shell gets the wrapper.
+    command = f'pi() {{ {shlex.quote(executable)} "$@"; }}'
+    code, data, raw = herdr("pane", "run", pane, command)
+    if code != 0 or error_code(data):
+        raise RuntimeError("could not configure the custom Pi launcher in the new pane")
+
+
 def resolve_pi_model(asked):
     """Accept provider/model, a model ID, or the last part of a model ID.
 
     The list of pi is the authority. No model name is stored in this skill.
     """
     key = asked.split("/")[-1]
+    executable = pi_executable()
     try:
-        out = subprocess.run(["pi", "--list-models", key], capture_output=True, text=True, timeout=60).stdout
+        out = subprocess.run([executable, "--list-models", key], capture_output=True, text=True, timeout=60).stdout
     except (OSError, subprocess.TimeoutExpired):
-        fail("could not run `pi --list-models`", EXIT["failed"])
+        fail(f"could not run `{executable} --list-models`", EXIT["failed"])
     rows = [l.split()[:2] for l in out.splitlines()[1:] if len(l.split()) >= 2]
     full = [f"{p}/{m}" for p, m in rows]
     low = asked.lower()
@@ -366,12 +395,14 @@ def main():
         fail(f"no model for the role {r['role']} and the harness {r['harness']}. Name one with --model <name>, "
              f"or add roles.{r['role']}.{r['harness']}.model to {models_path()} (models.example.json shows the shape). "
              "No pane was started.")
+    executable = pi_executable() if r["harness"] == "pi" else r["harness"]
     shown = [x if len(x) < 100 else x[:60].replace("\n", " ") + f"... ({len(x)} chars)" for x in args]
-    summary = dict(r, name=name, pane_label=label, tab=r["role"], cwd=cwd, workspace=me["workspace"])
+    summary = dict(r, name=name, pane_label=label, tab=r["role"], cwd=cwd, workspace=me["workspace"],
+                   executable=executable)
 
     print(model_message(r), file=sys.stderr)
     if opts["dry_run"]:
-        print(json.dumps(dict(summary, dry_run=True, command=[r["harness"]] + shown)))
+        print(json.dumps(dict(summary, dry_run=True, command=[executable] + shown)))
         return
 
     pane, how = place(r, me, cwd)
@@ -380,6 +411,15 @@ def main():
                             workspace_id=me["workspace_id"], created_at_epoch=time.time()))
 
     time.sleep(1)  # let the shell reach its prompt
+    if r["harness"] == "pi":
+        try:
+            prepare_pi_launcher(pane, executable)
+        except RuntimeError as exc:
+            herdr("pane", "close", pane)
+            remove_record(pane)
+            fail(str(exc), EXIT["failed"])
+        if executable != "pi":
+            time.sleep(1)  # let the shell consume its local wrapper before readiness checking
     code, data, raw = herdr("agent", "start", name, "--kind", r["harness"], "--pane", pane,
                             "--timeout", str(int(opts["start_timeout"]) * 1000), "--", *args,
                             timeout=int(opts["start_timeout"]) + 30)

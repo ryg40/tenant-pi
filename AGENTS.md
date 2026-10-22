@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Issues live in the development repository on Gitea. It is the `origin` remote of a development checkout. A snapshot clone from GitHub has no issue tracker. See [the issue tracker document](docs/agents/issue-tracker.md).
+Issues live in the development repository on the issue tracker. The tracker document names the product and the API base. A snapshot clone from GitHub has no issue tracker. See [the issue tracker document](docs/agents/issue-tracker.md).
 
 ### Triage labels
 
@@ -14,4 +14,4 @@ Issues live in the development repository on Gitea. It is the `origin` remote of
 
 One glossary for the repository. See [the glossary](GLOSSARY.md).
 
-The kit's `.okf/` bundle exists only in the development repository as a frozen record. Snapshots omit it. Tickets do not update its log.
+The kit has no `.okf/` bundle. The tag `kit-legacy/20261021` keeps the old frozen record.

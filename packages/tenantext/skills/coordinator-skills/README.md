@@ -8,7 +8,7 @@ The separate [knowledge-skills component](../knowledge-skills/README.md) ships O
 
 ## Install
 
-For one generated profile, enable the component `coordinator-skills` in the overlay. The profile then loads each skill of the component.
+The core install of the kit loads each skill of the component in the profile, and `install.sh` of the kit links each skill into `~/.claude/skills/`.
 
 For every session of a user, run the install script:
 
@@ -24,7 +24,7 @@ packages/tenantext/skills/coordinator-skills/install.sh
 
 Start a new session, or run `/reload` in Pi, to load the skills.
 
-`grilling`, `to-spec` and `to-tickets` on Pi use the tool `ask_user_question` of the extension `@juicesharp/rpiv-ask-user-question`. Its guidance file is `~/.config/rpiv-ask-user-question/config.json`. The kit component `questions` declares the extension as a package of a generated profile. The kit does not write that file. Without the tool, the skill asks in plain text.
+`grilling`, `to-spec` and `to-tickets` on Pi use the tool `ask_user_question` of the extension `@juicesharp/rpiv-ask-user-question`. Its guidance file is `~/.config/rpiv-ask-user-question/config.json`. The settings template of the kit declares the extension. The kit does not write that file. Without the tool, the skill asks in plain text.
 
 `to-spec` and `to-tickets` publish through the tracker contract `docs/agents/issue-tracker.md` of the repository. They need the token that the contract names.
 

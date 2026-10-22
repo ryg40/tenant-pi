@@ -34,9 +34,6 @@ class KnowledgeSkillsTests(unittest.TestCase):
         self.assertEqual({"host_tool_required", "pi_line_unqualified", "kit_test_missing"},
                          {gap["code"] for gap in component["gaps"]})
         self.assertEqual([], component["env"])
-        self.assertEqual("reviewed", component["configOwnership"]["status"])
-        # The validator derives one filter entry for each skill; the manifest lists no claim.
-        self.assertEqual([], component["configOwnership"]["claims"])
         self.assertEqual(NAMES, {path.name for path in COMPONENT.iterdir() if path.is_dir()})
         for name in NAMES:
             with self.subTest(skill=name):

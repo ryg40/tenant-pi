@@ -1,12 +1,12 @@
-# Issue tracker: Gitea
+# Issue tracker: Forgejo
 
-Issues live in the development repository on Gitea. An agent works them through the Gitea API. This document is the contract for each skill that creates, reads or changes an issue.
+Issues live in the development repository on Forgejo. An agent works them through the Forgejo API, which has the form of the Gitea API. This document is the contract for each skill that creates, reads or changes an issue. It is the only file of the kit that names the tracker product. A repository with another tracker replaces this one file.
 
 ## Where issues live
 
 | Place | Role |
 | --- | --- |
-| The development repository on Gitea | The only issue tracker. It is the `origin` remote of a development checkout. |
+| The development repository on Forgejo | The only issue tracker. It is the `origin` remote of a development checkout. |
 | The GitHub repository | A publish mirror. It has no issues. |
 
 A snapshot clone from GitHub has `origin` set to GitHub. Such a clone has no issue tracker. An agent in such a clone reports that. It does not open an issue on GitHub.
@@ -17,29 +17,37 @@ Rules:
 - No `gh issue`, `gh pr`, `gh api`, `gh repo` or `glab` command applies to this repository.
 - `gh release create` and `gh release view` apply only to the release entry of a snapshot tag. See [the release checklist](../guides/release-checklist.md#release-notes). Only the maintainer of the release runs `gh release create`.
 - Do not write a local ticket file. There is no `.scratch/` directory and no snapshot directory of issues in the kit.
-- When a skill says "publish to the issue tracker", create a Gitea issue with the operations below.
+- When a skill says "publish to the issue tracker", create an issue with the operations below.
 
 ## Authentication
 
-The token is in the environment variable `GITEA_TOKEN`. Send it in the header `Authorization: token $GITEA_TOKEN`.
+The token is in the environment variable `GITEA_TOKEN`. Forgejo accepts the Gitea token header, so the name of the variable stays. Send it in the header `Authorization: token $GITEA_TOKEN`.
 
 - Do not print the token. Do not write it into a file, an issue or a commit message.
 - If `GITEA_TOKEN` is not set, stop and report it. Do not look for a token in another place.
 - `GET /user` gives the account of the token. Its `login` is the account for a claim.
 
-In a development checkout, read the server and the repository from the remote:
+The API base of the repository comes from the environment variable `TRACKER_API`, for example `https://forgejo.example.com/api/v1/repos/<owner>/<repo>`. Set these shell variables for the examples of this document:
+
+```sh
+API="${TRACKER_API:-$(git config --get tracker.api)}"
+OWNER="${API%/*}"; OWNER="${OWNER##*/}"
+REPO="${API##*/}"
+```
+
+Without `TRACKER_API`, read the Git setting `tracker.api` of the checkout. It holds the same value and stays out of the tracked files:
+
+```sh
+API="$(git config --get tracker.api)"
+```
+
+Without both, read the server and the repository from the remote:
 
 ```sh
 git remote get-url origin
 ```
 
-The URL has the form `<server>/{owner}/{repo}.git`. Set these shell variables for the examples of this document:
-
-```sh
-OWNER="<owner>"
-REPO="<repo>"
-API="<server>/api/v1/repos/$OWNER/$REPO"
-```
+Use the fallback only when the URL has the form `https://<server>/{owner}/{repo}.git`. Then set `API="https://<server>/api/v1/repos/$OWNER/$REPO"`. An SSH remote or an SSH alias (for example `forgejo:{owner}/{repo}.git`) does not name the web server: stop and report that neither `TRACKER_API` nor `tracker.api` is set.
 
 Each path below is relative to `/api/v1` of that server. `{index}` is the number of an issue.
 
@@ -79,7 +87,7 @@ curl -fsS -H "Authorization: token $GITEA_TOKEN" "$API/issues?state=open&type=is
 curl -fsS -H "Authorization: token $GITEA_TOKEN" "$API/issues?state=open&type=issues&labels=ready-for-agent&limit=50&page=1"
 ```
 
-The `labels` parameter takes label names, separated by commas. With more than one name, this Gitea version returns the issues that carry all of the names. A name that does not exist is ignored, so the result then holds every open issue. Thus confirm that each name exists, and check the `labels` field of each result on the client.
+The `labels` parameter takes label names, separated by commas. With more than one name, this tracker version returns the issues that carry all of the names. A name that does not exist is ignored, so the result then holds every open issue. Thus confirm that each name exists, and check the `labels` field of each result on the client.
 
 Comment:
 
@@ -142,7 +150,7 @@ Rules:
 ### Map and children
 
 - The map is one issue with the label `wayfinder:map`.
-- Gitea has no sub-issues. A child ticket carries the label `wayfinder:parent:<map>`, where `<map>` is the number of the map.
+- The tracker has no sub-issues. A child ticket carries the label `wayfinder:parent:<map>`, where `<map>` is the number of the map.
 - For a new map, create the label `wayfinder:parent:<map>` first. Then publish the children.
 - A scratch run deletes each label that it created, with `DELETE /repos/{owner}/{repo}/labels/{id}`.
 - A child carries one ticket-type label when it has a type: `wayfinder:research`, `wayfinder:prototype` or `wayfinder:grilling`.
@@ -166,7 +174,7 @@ Change the map body with `PATCH /repos/{owner}/{repo}/issues/{index}` and the fi
 
 ### Native dependencies
 
-Blocking relations are native Gitea dependencies. Do not replace them with prose in an issue body.
+Blocking relations are native tracker dependencies (`/issues/{index}/dependencies`). Do not replace them with prose in an issue body.
 
 | Operation | Method and path | Body |
 | --- | --- | --- |
@@ -231,7 +239,11 @@ Read the issue first. If it has an assignee, do not claim it. Do not claim a tic
 2. Close the ticket with `PATCH` and the `state` value `closed`.
 3. Add one line for the ticket to "Decisions so far" in the map body.
 
-Gitea refuses to close an issue while a blocker of it is open. The response is HTTP 412. Thus close the blockers first. A dry run closes the child before the map, or removes the dependency first.
+The tracker refuses to close an issue while a blocker of it is open. The response is HTTP 412. Thus close the blockers first. A dry run closes the child before the map, or removes the dependency first.
+
+## Rendering
+
+The tracker renders Mermaid code blocks in issue comments and in a pull request body.
 
 ## Publication safety
 

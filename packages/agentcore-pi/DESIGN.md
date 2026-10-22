@@ -8,9 +8,8 @@ The core is injectable. Tests replace it without a socket, a credential or an SD
 No factory-time process, timer, credential read, or network request is needed. The core creates its client on the first call.
 The runtime owns no memory files and replaces no OpenViking or LLM Wiki hook.
 
-The pure Python module renders `AGENTCORE_MEMORY_CONFIG_FILE` on the launch line and removes an inherited `AGENTCORE_MEMORY_CONFIG`.
-It does not read the config file, environment values, credential files, or AWS state.
-Old overlays without `agentcore` remain valid and keep it off. Old overlays with the prototype fields fail with one static rule.
+The start line of Pi sets `AGENTCORE_MEMORY_CONFIG_FILE` and removes an inherited `AGENTCORE_MEMORY_CONFIG`; see the memory guide of the kit, `docs/memory-modules.md`.
+The kit does not read the config file, environment values, credential files, or AWS state.
 
 ## Recall
 
@@ -63,4 +62,4 @@ A crash can leave a lock. The owner must confirm no sender remains before removi
 Namespace moves and reduced part counts stop for owner review. The prototype never deletes remote records.
 The script sends no expiry field. Updates assume the original records still have no expiry.
 
-Not verified: a live recall or propose, IAM enforcement on a live resource, and the Pi load of the relative core import in a generated profile.
+Not verified: a live recall or propose, IAM enforcement on a live resource, and the Pi load of the relative core import in a profile of the kit.

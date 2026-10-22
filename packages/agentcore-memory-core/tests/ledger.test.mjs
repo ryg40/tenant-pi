@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFileLedger, defaultLedgerPath } from "../src/index.mjs";
 import { scratch } from "./helpers.mjs";
@@ -11,6 +11,8 @@ const entry = (action, proposalRecordId = "rec-chen") => ({
   text: "Chen proposes a fact", metadata: { actorId: "chen" }, targetNamespace: "/project/example-site/shared/",
 });
 const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
+// A qualification copy of the kit has no .git, so the package is then outside any work tree.
+const inWorkTree = (dir) => existsSync(join(dir, ".git")) || (dirname(dir) !== dir && inWorkTree(dirname(dir)));
 
 test("the ledger appends JSON Lines with file mode 0600 in a new directory of mode 0700", async () => {
   const home = scratch("ledger");
@@ -55,8 +57,10 @@ test("a ledger path in the current Git work tree or in the package work tree is 
   writeFileSync(join(worktree, ".git"), "gitdir: elsewhere\n");
   await assert.rejects(createFileLedger(join(worktree, "ledger.jsonl"), { cwd: worktree }).append(entry("approve")),
     { code: "ledger" });
-  await assert.rejects(createFileLedger(join(PACKAGE, "tests", "ledger.jsonl"), { cwd: home }).append(entry("approve")),
-    { code: "ledger" });
+  if (inWorkTree(PACKAGE)) {
+    await assert.rejects(createFileLedger(join(PACKAGE, "tests", "ledger.jsonl"), { cwd: home }).append(entry("approve")),
+      { code: "ledger" });
+  }
   // A symbolic link into the work tree is resolved first.
   symlinkSync(repo, join(home, "link"));
   await assert.rejects(createFileLedger(join(home, "link", "ledger.jsonl"), { cwd: repo }).append(entry("approve")),

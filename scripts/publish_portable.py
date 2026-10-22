@@ -3,9 +3,9 @@
 
 You can keep private notes in your source copy and publish only reviewed files.
 This command takes the publish set from committed HEAD (never the working tree),
-chains it onto the previous snapshot (or starts a new history with `--new-root`),
-tags it, and pushes it to your chosen remote. It writes draft release notes to a
-new system temporary file, or to the path given by `--notes`.
+chains it onto the previous snapshot, tags it, and pushes it to your chosen remote.
+It writes draft release notes to a new system temporary file, or to the path given
+by `--notes`. There is no option to replace or restart the public history.
 
 The snapshot commit and the tag carry a neutral identity and no signature, so that the
 Git identity and the signing key of the publishing host do not leave with a snapshot.
@@ -27,8 +27,6 @@ if __name__ == "__main__":
 
 from check import stamp_path  # noqa: E402
 from publish_check import check, public_report, publish_files, tracked_files  # noqa: E402
-# The files that can change the bytes of a generated profile; `update` reads the same list.
-from profile_inputs import PROFILE_INPUTS  # noqa: E402
 
 DEFAULT_NAME = "tenant-pi portable"
 DEFAULT_EMAIL = "portable@tenant-pi.invalid"
@@ -77,14 +75,13 @@ def check_snapshot_branch(root, branch):
         raise SystemExit("snapshot branch is checked out in a worktree")
 
 
-def snapshot(root, paths, source_ref, branch, *, message, identity=None, new_root=False, tag=None):
+def snapshot(root, paths, source_ref, branch, *, message, identity=None, tag=None):
     """Write a commit on `branch` whose tree is exactly `paths` as they are in `source_ref`.
 
     Returns (commit, tree, changed). Uses a temporary index; the working tree is untouched.
     With `tag`, the branch and annotated tag refs update in one transaction, or neither updates.
     The commit carries `identity` (default: `resolve_identity()`) and no signature.
-    With `new_root` the commit has no parent, also when its tree equals the previous snapshot:
-    `branch` starts a new history, and no earlier snapshot is an ancestor of it.
+    The commit always has the previous snapshot as parent: the public history only moves forward.
     """
     identity = resolve_identity() if identity is None else identity
     check_snapshot_branch(root, branch)
@@ -103,9 +100,9 @@ def snapshot(root, paths, source_ref, branch, *, message, identity=None, new_roo
             git("update-index", "--add", "--cacheinfo", f"{mode},{blob},{path}", root=root, env=env)
         tree = git("write-tree", root=root, env=env)
     parent = git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}", root=root, check_call=False)
-    if parent and not new_root and git("rev-parse", f"{parent}^{{tree}}", root=root) == tree:
+    if parent and git("rev-parse", f"{parent}^{{tree}}", root=root) == tree:
         return parent, tree, False
-    args = ["commit-tree", tree, "-m", message] + (["-p", parent] if parent and not new_root else [])
+    args = ["commit-tree", tree, "-m", message] + (["-p", parent] if parent else [])
     commit = git(*NO_SIGNATURE, *args, root=root, env=identity_env(identity))
     # Create objects first, then publish both refs atomically with an expected old branch value.
     tag_update = ""
@@ -121,7 +118,7 @@ def snapshot(root, paths, source_ref, branch, *, message, identity=None, new_roo
     return commit, tree, True
 
 
-def push_command(remote, branch, remote_branch, tags=(), *, force=False):
+def push_command(remote, branch, remote_branch, tags=()):
     """Arguments of the push: the branch ref and each tag ref of this snapshot by name, no other ref.
 
     The portable push rule permits explicit refs only, so the command has no option that follows tags.
@@ -130,8 +127,6 @@ def push_command(remote, branch, remote_branch, tags=(), *, force=False):
     """
     command = ["push", remote, f"refs/heads/{branch}:refs/heads/{remote_branch}"]
     command.extend(f"refs/tags/{tag}:refs/tags/{tag}" for tag in tags)
-    if force:
-        command.append("--force-with-lease")
     return command
 
 
@@ -186,15 +181,17 @@ def release_tags(root):
 
 PACKAGE_LOCKS = ":(glob)packages/*/package-lock.json"
 RANGES = (("piAcceptedRange", "Accepted range"), ("nodeRange", "Node range"), ("pythonRange", "Python range"))
-UPDATE_COMMAND = "python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>"
+# The templates of install.sh. A profile keeps the copy that it got at its install, so a change
+# of a template does not reach it.
+TEMPLATES = ("config/settings.example.json", "config/models.example.json")
+UPDATE_COMMAND = "git pull"
 
 
 def update_block(root, previous, source):
     """Lines for a client that moves from the `previous` release record (or None) to `source`.
 
     The first line is the heading without a Markdown mark. The other lines hold facts of the two
-    source commits and fixed sentences only, never a merge subject. Only `update` on the client knows
-    the overlay, so the candidate line says "may".
+    source commits and fixed sentences only, never a merge subject.
     """
     if previous is None:
         return ["Update", "- First release: no update data."]
@@ -208,14 +205,9 @@ def update_block(root, previous, source):
 
     old, new = (json.loads(git("show", f"{ref}:config/manifest.json", root=root))["runtime"]
                 for ref in (old_source, source))
-    inputs = changed(*PROFILE_INPUTS, only="d")
-    inputs += [f"removed: {path}" for path in changed(*PROFILE_INPUTS, only="D")]
+    templates = changed(*TEMPLATES)
     pin_moved = old["piVersion"] != new["piVersion"]
-    reasons = [reason for flag, reason in ((pin_moved, "the Pi pin moved"),
-                                           (inputs, "a file that can change a generated profile changed")) if flag]
     lines = [f"Update from {previous[0]}",
-             f"- A new candidate may be needed: {' and '.join(reasons)}." if reasons
-             else "- No new candidate expected.",
              f"- Pi pin: {old['piVersion']} -> {new['piVersion']}; install the new Pi first." if pin_moved
              else f"- Pi pin: unchanged ({new['piVersion']})"]
     lines += [f"- {label} (runtime.{key}): {old.get(key, 'none')} -> {new.get(key, 'none')}"
@@ -224,8 +216,9 @@ def update_block(root, previous, source):
     packages = [path.rpartition("/")[0] for path in changed(PACKAGE_LOCKS, only="d")]
     package_lines = [f"- npm ci --ignore-scripts needed in: {', '.join(packages)}"] if packages else []
     lines += package_lines or ["- No package line needed."]
-    return lines + [f"- Files that can change a generated profile: {', '.join(inputs) or 'none'}",
-                    f"- Run: `{UPDATE_COMMAND}`",
+    return lines + [f"- Install templates changed: {', '.join(templates)}; a profile keeps its own copy."
+                    if templates else "- Install templates: unchanged.",
+                    f"- Run: `{UPDATE_COMMAND}`, then `/reload` in Pi.",
                     "- A clean clone at this tag needs no test run."]
 
 
@@ -309,18 +302,12 @@ def main(argv=None):
     parser.add_argument("--class", dest="release_class", choices=("patch", "full"), default="patch",
                         help="release class (default: patch)")
     parser.add_argument("--notes", type=Path, help="notes output path (default: a new system temporary file)")
-    parser.add_argument("--force", action="store_true",
-                        help="replace the remote branch, including an existing snapshot chain; uses --force-with-lease")
-    parser.add_argument("--new-root", action="store_true",
-                        help="start a new history: the snapshot commit has no parent; needs --no-push")
     parser.add_argument("--identity-name", default=None,
                         help=f"name on the snapshot commit and the tag (default: {NAME_VARIABLE} or '{DEFAULT_NAME}')")
     parser.add_argument("--identity-email", default=None,
                         help=f"e-mail on the snapshot commit and the tag (default: {EMAIL_VARIABLE} or '{DEFAULT_EMAIL}')")
     args = parser.parse_args(argv)
     identity = resolve_identity(args.identity_name, args.identity_email)
-    if args.new_root and not args.no_push:
-        raise SystemExit("--new-root needs --no-push: the push of a new history is a separate, manual step")
 
     if args.notes is not None:
         notes_path = args.notes.absolute()
@@ -344,13 +331,9 @@ def main(argv=None):
     message = (f"Portable snapshot of {short} ({date})\n\nclass: {args.release_class}\n\n{block}\n\n"
                f"Exactly the reviewed publish set from scripts/publish_check.py at\n"
                f"source commit {head}. Only reviewed files are included.\n")
-    previous = git("rev-parse", "--verify", "--quiet", f"refs/heads/{args.branch}^{{commit}}", check_call=False)
     tag = f"portable/{date.replace('-', '')}-{short}"
     commit, tree, changed = snapshot(ROOT, publish_files(publish_tracked(ROOT, head), root=ROOT, ref=head),
-                                     head, args.branch, message=message, identity=identity,
-                                     new_root=args.new_root, tag=tag)
-    if args.new_root and previous:
-        print(f"new root: {args.branch} was {previous}; earlier local tags and other refs stay unchanged")
+                                     head, args.branch, message=message, identity=identity, tag=tag)
     if changed:
         print(f"portable commit {commit[:7]} (tree {tree[:7]}), tag {tag}")
     else:
@@ -378,7 +361,7 @@ def main(argv=None):
         args.notes = Path(path)
     args.notes.write_text(notes, encoding="utf-8")
     if not args.no_push:
-        push = push_command(args.remote, args.branch, args.remote_branch, tags, force=args.force)
+        push = push_command(args.remote, args.branch, args.remote_branch, tags)
         result, scan = push_snapshot(ROOT, push)
         args.notes.write_text(release_notes(ROOT, tag, head, commit, args.release_class, tags_before, record, scan),
                               encoding="utf-8")

@@ -18,22 +18,20 @@ This package has no dependency of its own. Run the dependency step of the core f
 npm --prefix packages/agentcore-memory-core ci --ignore-scripts
 ```
 
-The generated profile loads `packages/agentcore-pi/index.ts` as a local-file package source.
+The `pi install` line of the module (`INSTALL.md` of the kit) declares `packages/agentcore-pi/index.ts` as a local-file package source.
 `index.ts` imports `../agentcore-memory-core/src/index.mjs` by its relative path. Keep the kit directory in place.
 `node_modules/` stays untracked and excluded from publication.
 
 ## Configuration
 
-The private overlay supplies `memory.agentcore.configFile`: the absolute path of the person config file.
+The start line of Pi passes the absolute path of the person config file in the process-local `AGENTCORE_MEMORY_CONFIG_FILE`.
 With [one memory for each stage](../../docs/memory-modules.md#one-memory-for-each-stage), it is the file of one stage.
-Both `consent.memoryCapture` and `consent.remoteMemoryWrites` must be true.
-The launch line passes the path in the process-local `AGENTCORE_MEMORY_CONFIG_FILE`.
-It removes an inherited `AGENTCORE_MEMORY_CONFIG`, which the core would read before the file.
+The start line removes an inherited `AGENTCORE_MEMORY_CONFIG` with `env -u`, because the core reads it before the file; see [start and setup](../../docs/memory-modules.md#start-and-setup).
 The kit never opens the file. The registry script of the owner renders it. It holds no key.
 
 | Variable | Effect |
 | --- | --- |
-| `AGENTCORE_MEMORY_CONFIG_FILE` | The person config file. The launch line sets it. |
+| `AGENTCORE_MEMORY_CONFIG_FILE` | The person config file. The start line of Pi sets it. |
 | `AGENTCORE_MEMORY_DISABLE=1` | The kill switch. The extension registers no hook and no tool. |
 | `AGENTCORE_PROJECT` | Overrides the project of the working directory. A value outside the memberships gives recall without a project. A config without `remotes` and `directories` finds a project only through it: see [one memory for each stage](../../docs/memory-modules.md#one-memory-for-each-stage). |
 
@@ -86,4 +84,4 @@ In round 0 a confirmed proposal outside the policy also ended with `aws_denied`,
 In round 1 a person key got `AccessDeniedException` on the private and the proposals namespaces of another person.
 Without a project, propose ended with `project_none` and made no AWS call (round 0).
 
-Not verified: clean-client installation, or a generated Pi session using this package. The live proof started Pi with its own launch values.
+Not verified: clean-client installation, or a Pi session of a kit profile using this package. The live proof started Pi with its own launch values.

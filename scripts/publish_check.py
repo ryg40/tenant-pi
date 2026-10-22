@@ -9,7 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from validate import ROOT, TREE_COMPONENTS, Invalid, load, manifest, overlay, fail, tree_items
+from validate import ROOT, TREE_COMPONENTS, Invalid, load, manifest, fail, tree_items
 from examples import render
 
 # Required paths outside the script, test and documentation directory rules.
@@ -30,24 +30,20 @@ PUBLISH = (
     "INSTALL.md",
     "POST_INSTALL.md",
     "UPDATE.md",
-    "EXPLAINER.md",
+    "install.sh",
     "config/manifest.json",
-    "config/config.example.json",
+    "config/settings.example.json",
+    "config/models.example.json",
     "extensions/peer-override-reminder.ts",
     "skills/tenant-pi-install/SKILL.md",
     "config/memory-candidates.example.md",
     ".gitleaks.toml",
-    "config/private/registry.json",
-    "config/private/install-log.md",
-    "config/private/accepted-drift.md",
-    "config/private/gitignore",
     "AGENTS.md",
     "GLOSSARY.md",
 )
 # Exact local artifacts, never part of the portable inventory or a tracked source tree. The pages are
-# built on demand with `scripts/architecture_build.py` and `scripts/explainer_build.py`.
-LOCAL_FILES = ("docs/architecture-local.html", "docs/architecture/local-values.json", "docs/architecture.html",
-               "EXPLAINER.html")
+# built on demand with `scripts/architecture_build.py`.
+LOCAL_FILES = ("docs/architecture-local.html", "docs/architecture/local-values.json", "docs/architecture.html")
 
 # Directory rules: (directory, technical excludes relative to that directory).
 # Private-copy exclusions belong in the optional list, not in published source text.
@@ -371,8 +367,9 @@ def check(root=None, files=None):
         fail("unreviewed_file", "\n".join(["repository inventory", *sorted(actual - reviewed),
                                            *(f"missing: {name}" for name in sorted(reviewed - actual))]))
     data = load(root / "config/manifest.json")
-    components = manifest(data)
-    overlay(load(root / "config/config.example.json"), components)
+    manifest(data)
+    for name in ("config/settings.example.json", "config/models.example.json"):
+        load(root / name)
     for source, expected in render(data).items():
         path = root / source.relative_to(ROOT)
         if path.read_text(encoding="utf-8") != expected:

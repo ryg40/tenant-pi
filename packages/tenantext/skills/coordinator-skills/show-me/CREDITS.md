@@ -14,6 +14,6 @@ The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. 
 
 ## Changes from the pinned upstream commit
 
-- Adds Gitea comment support and a call to the `pr` skill for merge-record visuals.
+- Adds comment support and a call to the `pr` skill for merge-record visuals.
 - Replaces local browser opening with Walkr artifact publication or `pidesktop` review, and returns the artifact slug.
 - Replaces the long dash in the HTML guidance with a colon.

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
-// The setup lines of the kit plan (`scripts/profile_plan.py`) depend on three rules of the Pi package manager.
+// The core install of the kit and its `pi install` lines (INSTALL.md) depend on three rules of the Pi package manager.
 // These tests read the rules from the linked Pi, so a pin move finds a change. They use no network: `npmCommand`
 // is a stub that records its arguments and installs nothing.
 const EXACT = "npm:@scope/exact-kit@1.2.3";

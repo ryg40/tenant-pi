@@ -7,7 +7,7 @@ disable-model-invocation: true
 Synthesize the current conversation and codebase understanding into a spec at the confirmed level.
 Read `docs/agents/planning-levels.md` for the level, horizon, evidence and safety floor.
 
-The issue tracker is Gitea. `docs/agents/issue-tracker.md` is the contract for each tracker operation and for the label vocabulary (section "Labels"). Read it before you publish. If the checkout has no issue tracker, stop and report it.
+`docs/agents/issue-tracker.md` names the issue tracker and is the contract for each tracker operation and for the label vocabulary (section "Labels"). Read it before you publish. If the checkout has no issue tracker, stop and report it.
 
 ## Before you write
 
@@ -28,7 +28,7 @@ Read the knowledge sources in this order:
 
 Check with the user that these seams match their expectations. Use the question tool: `AskUserQuestion` in Claude Code, `ask_user_question` in Pi. Ask at most three questions per round, with the recommended option first. With no question tool, ask in plain text with no emoji. The forms are in the section "How to ask, by harness" of `grilling`. Load the grilling skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi.
 
-4. Write the spec with the level-scaled template below. Record later slices under Further Notes. Start the title with `Spec:`. Publish it as one Gitea issue through `docs/agents/issue-tracker.md`, sections "Generic operations", "Labels" and "Publication safety". Apply `ready-for-agent` to mark the spec ready for `to-tickets`. `to-tickets` removes that label from the spec after it publishes the tickets. The tracker frontier excludes `Spec:` titles. When a map exists, apply `wayfinder:parent:<map>` and refer to the map with a named link. Keep the spec on the tracker.
+4. Write the spec with the level-scaled template below. Record later slices under Further Notes. Start the title with `Spec:`. Publish it as one issue through `docs/agents/issue-tracker.md`, sections "Generic operations", "Labels" and "Publication safety". Apply `ready-for-agent` to mark the spec ready for `to-tickets`. `to-tickets` removes that label from the spec after it publishes the tickets. The tracker frontier excludes `Spec:` titles. When a map exists, apply `wayfinder:parent:<map>` and refer to the map with a named link. Keep the spec on the tracker.
 
 The spec can enter the public docs. Then its body follows the public-text rule: no owner or account name, no private domain or URL, no machine path (`~/...` is acceptable), no dated host observation and no private issue number.
 

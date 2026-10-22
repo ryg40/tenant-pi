@@ -2,7 +2,7 @@
 
 Scope: Apple silicon (arm64). macOS stays **Not qualified**.
 This is an adaptation of [INSTALL.md](../../INSTALL.md), not a second procedure.
-Follow its stages in order. Use the differences here at the named stage.
+Follow its steps in order. Use the differences here at the named step.
 
 No live stage or module is `ready`. Use the setup labels:
 
@@ -10,7 +10,7 @@ No live stage or module is `ready`. Use the setup labels:
 | --- | --- |
 | `unverified` | The instructions have no accepted live macOS trial. |
 | `blocked` | A required tool, version or service is missing. |
-| `skipped` | You did not select the module or run the step. |
+| `skipped` | You did not install the module or run the step. |
 
 An offline check that passes is recorded as passed, not as platform qualification.
 
@@ -20,12 +20,11 @@ macOS uses zsh as its login shell; put all PATH and variable lines in `~/.zshrc`
 
 An update needs no macOS adaptation: run [Get a new version of the kit](../../POST_INSTALL.md#get-a-new-version-of-the-kit) in zsh.
 
-Read [inventory](../../INSTALL.md#stage-0-inventory), including the live-profile and environment checks.
-The examples keep the kit at `~/tenant-pi` and the private directory at `~/.config/tenant-pi`.
+The examples keep the kit at `~/tenant-pi` and the profile at `~/.pi/profiles/main`.
 Use `"$HOME/..."` in commands. In JSON, use the expanded absolute path, not `~` or `$HOME`.
 A kit path under `/tmp` or `$TMPDIR` must be the resolved `/private/...` form; the tests handle this on their own.
 
-The kit Node range is `>=24.0.0 <25`. Python must be 3.11 or later; this adaptation selects `python@3.12`.
+The kit Node and Python ranges are `runtime.nodeRange` and `runtime.pythonRange` in `config/manifest.json`. This adaptation selects `node@24` and `python@3.12`.
 Use a native terminal and the [Apple silicon Homebrew prefix](https://docs.brew.sh/Installation), `/opt/homebrew`.
 Rosetta is not needed for the native tools listed here.
 
@@ -43,56 +42,17 @@ Check the formula for your macOS version before installing. Do not infer support
 | [Betterleaks](https://github.com/betterleaks/betterleaks/releases/tag/v1.9.0) 1.9.0 | The release has a `darwin_arm64` archive; the Homebrew cask `betterleaks/tap/betterleaks@1` installs the command `betterleaks-v1`; version output on a Mac not verified | The scanner of the scan hook. See [the scanner section](#scanner-the-betterleaks-binary). |
 | nvm with Node 24 | Not verified here; nvm is a shell version manager, not a native bottle | Optional per-user alternative to Homebrew Node; initialize nvm in `~/.zshrc`. |
 | Xcode Command Line Tools | Not verified here; Apple supplies the toolchain, not a Homebrew bottle | Compile native addons when needed. |
-| Pi and the selected npm packages | Not verified on arm64; npm packages, not Homebrew bottles | Install only the selected modules. |
+| Pi and the npm modules | Not verified on arm64; npm packages, not Homebrew bottles | Install only the modules that you want. |
 
-## Obtain the sources
+## Prerequisites
 
-Follow [INSTALL.md](../../INSTALL.md#stage-2-clone-and-check-the-kit) without changing its checks.
-If Git or Python is missing, install only those bootstrap tools first:
-
-```sh
-brew install git python@3.12
-export PATH="/opt/homebrew/opt/python@3.12/libexec/bin:/opt/homebrew/bin:$PATH"
-python3 --version
-git --version
-```
-
-The Python path makes `python3` select this formula rather than the system Python.
-Use Homebrew's installation instructions first if `brew` is missing.
-Use the dependency adaptations below with the install stages.
-
-## Edit the local choices
-
-Follow [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay), including `init-private` and the absent target requirement.
-Its `"$HOME/..."` commands also apply on macOS.
-For a manual JSON edit, use your expanded macOS home path instead of the `/home/EXAMPLE_USER` example.
-Keep the target outside the kit, the private directory and the live profile.
-
-## Validate
-
-Run [INSTALL.md](../../INSTALL.md#validate) unchanged. Stop on a validation error.
-
-## Plan
-
-Run [INSTALL.md](../../INSTALL.md#stage-6-plan-and-generate) unchanged, including the runtime report and the launcher path.
-Read each readiness gap. A version match does not prove a macOS launch.
-
-## Generate
-
-Run [INSTALL.md](../../INSTALL.md#stage-6-plan-and-generate) unchanged.
-Keep `--launcher "$HOME/.config/tenant-pi/launch-main.sh"` and the separate target.
-The generated runtime stays `unverified`.
-
-## Install the dependencies by hand
-
-Follow INSTALL.md stages [1](../../INSTALL.md#stage-1-requirements), [3](../../INSTALL.md#stage-3-install-pi), [4](../../INSTALL.md#stage-4-package-dependencies) and [7](../../INSTALL.md#stage-7-declared-npm-packages).
-The kit installs nothing. Run only the commands for the modules you select.
+Follow [the prerequisites](../../INSTALL.md#prerequisites) with the adaptations below.
 
 Warning: installation commands change the machine. Review each command before running it.
 
 ### Node and Python
 
-Git and Python may already be present from the source prerequisites. Select Homebrew Node 24:
+Select Homebrew Node 24, Git and Python:
 
 ```sh
 brew install git python@3.12 node@24
@@ -103,6 +63,8 @@ file "$(command -v node)"
 node -p 'process.arch'
 ```
 
+Use Homebrew's installation instructions first if `brew` is missing.
+The Python path makes `python3` select this formula rather than the system Python.
 Node must report a 24.x version. The `file` output should show `arm64`; `process.arch` must print `arm64`.
 If `file` reports a symbolic link, inspect its target with `file -L "$(command -v node)"`.
 Stop on `x86_64` or `x64`; correct the terminal and tool paths rather than adding Rosetta.
@@ -123,36 +85,30 @@ When `nvm` is already a command in your zsh, run the third line only.
 The kit never edits a shell startup file. Make one of two choices:
 
 - Option one: run the first line without `PROFILE=/dev/null`. The nvm install script then adds the nvm lines to `~/.zshrc`, never `~/.bashrc`. Run `touch ~/.zshrc` first when the file is absent. Run `exec zsh` after the install to reload the file.
-- Option two: keep `PROFILE=/dev/null`. The script prints `Profile not found` and edits no file. Run `. "$HOME/.nvm/nvm.sh"` in each zsh that runs a kit command or the launcher.
-
-The launcher runs `pi` from the `PATH` of the zsh that starts it. With option two, run the `. "$HOME/.nvm/nvm.sh"` line before the launcher too.
+- Option two: keep `PROFILE=/dev/null`. The script prints `Profile not found` and edits no file. Run `. "$HOME/.nvm/nvm.sh"` in each zsh that runs a kit command or starts Pi.
 
 Repeat the Node version and architecture checks after selecting it.
 Not verified: this nvm route on macOS with the kit.
 
-### Pi and module dependencies
+### Pi
 
-Keep the Pi decision rules of [INSTALL.md](../../INSTALL.md#stage-3-install-pi).
-Skip installation for `match` or `untested_in_range`; record the untested-version gap.
-For `missing`, check the npm prefix first. For `mismatch` or `unparsed`, make INSTALL.md's explicit decision.
-
-```sh
-# Run from the kit root, only after the install decision.
-cd "$HOME/tenant-pi"
-pin="$(python3 -c 'import json; print(json.load(open("config/manifest.json"))["runtime"]["piVersion"])')" && \
-  npm install --global -- @earendil-works/pi-coding-agent@"${pin:?}"
-```
+Install Pi with the line of [the prerequisites](../../INSTALL.md#prerequisites), from the kit root `"$HOME/tenant-pi"`.
 
 Warning: a global install replaces the `pi` command for every profile of the user.
 
-Use INSTALL.md's user-owned prefix alternative if the global prefix is not writable or replacement is not wanted.
+Use the user-owned prefix of INSTALL.md if the global prefix is not writable or replacement is not wanted.
 Do not run npm with `sudo` to work around that check.
+Then run `python3 scripts/check_runtime.py`.
 
-Only for an enabled Tenantext component:
+## Clone and install.sh
 
-```sh
-cd "$HOME/tenant-pi/packages/tenantext" && npm ci --ignore-scripts
-```
+Follow [the clone](../../INSTALL.md#clone) and [install.sh](../../INSTALL.md#run-installsh) unchanged.
+`install.sh` is a POSIX `sh` script; macOS runs it with its `/bin/sh`.
+It resolves `/tmp` and `/var` links on its own, so a profile under `/tmp` is checked in its `/private/...` form.
+
+## Optional modules
+
+Follow [the optional modules](../../INSTALL.md#optional-modules) unchanged. Run only the lines of the modules that you want.
 
 The package `pi-hermes-memory` uses the native module `better-sqlite3`. Observed with `better-sqlite3` 13.0.3 and npm 11.19.0 on Linux x64: the module holds a prebuilt binary. npm runs no install script, nothing is compiled, and the module loads from that file. Not verified: a prebuilt binary for macOS. Only when no prebuilt binary fits the platform and the Node version, a build from source needs a compiler toolchain. With npm 11, npm does not start that build on its own. Observed with npm 11.19.0: the `npm warn install-scripts` line of the `wiki` install names `better-sqlite3`, and npm runs no install script. For a build from source, install the Apple toolchain when absent:
 
@@ -162,106 +118,22 @@ xcode-select --install
 
 Not verified: the native addon build with this toolchain and Node 24 on macOS.
 
-Before the first Pi command that names the target, record [the baseline](../../INSTALL.md#stage-9-first-launch-and-checks).
-Run from the kit root:
-
-```sh
-cd "$HOME/tenant-pi"
-python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out "$HOME/.config/tenant-pi/live-baseline.json"
-```
-
-Keep the extra baselines for inherited `PI_CODING_AGENT_DIR` and `PI_CODING_AGENT_SESSION_DIR` as INSTALL.md specifies.
-Do not replace an existing baseline or record it after a target Pi command.
-
-Only for `mcp`, `hermes`, `wiki` or `questions`. Run only the `pi install` lines that your plan prints, with each source string as the plan prints it. `<version>` is the version of the `source.spec` of `questions` in `config/manifest.json`:
-
-```sh
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@juicesharp/rpiv-ask-user-question@<version>
-```
-
-Only for `hermes`, `wiki` or `questions`, also, after the `pi install` lines:
-
-```sh
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
-```
-
-The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it. With `wiki`, read [the audit summary of npm](../../INSTALL.md#the-audit-summary-of-npm) before the `pi install` line.
-
 Warning: do not run `npm audit fix` in the profile.
-
-Keep INSTALL.md's declared-package version caveats and compare the profile after native Pi operations.
-Regenerate the runtime report and run `plan` again after changing Node or Pi.
-The runtime stays `unverified`. A dependency step that you omit is `skipped`.
 
 ### Scanner: the Betterleaks binary
 
 The scan hook uses [scripts/scan.sh](../../scripts/scan.sh); see [secret handling](../secret-handling.md#scanner).
-The script runs only the Betterleaks binary. It needs the version output `1.9.0` or `v1.9.0`.
+The script runs only the Betterleaks binary at the version that it pins.
 The scan starts no container and no virtual machine.
 
 Choose one of two routes: the release archive or the Homebrew cask. Run each step in zsh.
 
 #### Route 1: the release archive
 
-1. Make an empty directory and go into it.
+Follow [Install Betterleaks](../secret-handling.md#install-betterleaks) with its macOS differences: the `darwin_arm64` archive, `shasum -a 256 -c` and no check of the extracted binary. Then use these differences in zsh:
 
-   ```sh
-   cd "$(mktemp -d)"
-   ```
-
-   `pwd` must print the new directory.
-
-2. Download the `darwin_arm64` archive.
-
-   ```sh
-   curl -fsSLO https://github.com/betterleaks/betterleaks/releases/download/v1.9.0/betterleaks_1.9.0_darwin_arm64.tar.gz
-   ```
-
-   The command must end with exit code 0.
-
-3. Check the archive against the pinned line.
-
-   ```sh
-   echo '83dd7eaab13d44a1e8e347a17064cdef153a1478db473276d41b38d55613d3f2  betterleaks_1.9.0_darwin_arm64.tar.gz' | shasum -a 256 -c
-   ```
-
-   The command must print `betterleaks_1.9.0_darwin_arm64.tar.gz: OK`. Stop at any other output.
-
-4. Extract the binary.
-
-   ```sh
-   tar -xzf betterleaks_1.9.0_darwin_arm64.tar.gz betterleaks
-   ```
-
-   The command extracts only the binary. The checksum of the archive covers it.
-
-5. Install the binary into a directory of your own.
-
-   ```sh
-   mkdir -p "$HOME/.local/bin"
-   install -m 755 betterleaks "$HOME/.local/bin/betterleaks"
-   ```
-
-   `ls -l "$HOME/.local/bin/betterleaks"` must show the file with mode `-rwxr-xr-x`.
-
-6. Put the directory on `PATH`. Add this line to `~/.zshrc`:
-
-   ```sh
-   export PATH="$HOME/.local/bin:$PATH"
-   ```
-
-   Run `exec zsh`. Then `command -v betterleaks` must print the path of step 5.
-
-7. Check the version.
-
-   ```sh
-   betterleaks version
-   ```
-
-   The command must print `1.9.0`.
+- Install the binary into a directory of your own: `mkdir -p "$HOME/.local/bin"`, then `install -m 755 betterleaks "$HOME/.local/bin/betterleaks"`.
+- Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc`, and run `exec zsh`. Then `command -v betterleaks` must print the path of the binary.
 
 Not verified: the output of `betterleaks version` on a Mac. Not verified: macOS Gatekeeper accepts the binary without a prompt.
 
@@ -303,41 +175,34 @@ cd "$HOME/tenant-pi"
 scripts/scan.sh --level fail tree
 ```
 
-The command must end with exit code 0. Exit code 2 with `no Betterleaks binary` or `need 1.9.0` shows a missing binary or another version.
+The command must end with exit code 0. Exit code 2 shows a missing binary or another version.
 Keep `PATH` or `BETTERLEAKS_BIN` in the zsh that runs Git hooks. In kitty on macOS, this is the zsh of the window.
 Not verified: a complete scan-hook run on macOS.
 A failure leaves the scan `blocked`; do not skip the hook.
 
-## Authenticate
+## First start
 
-Follow [INSTALL.md](../../INSTALL.md#stage-8-authentication) unchanged.
-Keep credentials out of the overlay. Check variable names in the same shell that runs the launcher.
-In kitty on macOS, this is the zsh of the window.
-Label: `skipped` until you run this stage.
-
-## Launch
-
-Follow [INSTALL.md](../../INSTALL.md#stage-9-first-launch-and-checks), including every baseline not already recorded before dependency installation.
-Keep the generated launcher file unchanged:
+Follow [the first start](../../INSTALL.md#first-start) unchanged:
 
 ```sh
-"$HOME/.config/tenant-pi/launch-main.sh"
+env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi
 ```
 
-It selects `PI_CODING_AGENT_DIR` for one process and removes the inherited session directory.
-Do not replace it with a bare `pi` command.
+Export a gateway key in the same zsh that starts Pi. In kitty on macOS, this is the zsh of the window.
+An app started from Finder or the Dock does not see the variables of `~/.zshrc`; start Pi from a terminal.
+To keep the start line, add an alias line to `~/.zshrc` yourself.
 
 ## Test
 
-Follow [INSTALL.md](../../INSTALL.md#stage-9-first-launch-and-checks), including the explicit model choice and each baseline comparison.
+Follow the check of [the first start](../../INSTALL.md#first-start), including the explicit model choice.
 Record checks as passed, failed, blocked or not run. A skipped command is not evidence.
-Not verified: a complete macOS run of these stages.
+Not verified: a complete macOS run of these steps.
 
 ## Evidence that would change the status
 
 The [release checklist](release-checklist.md#platforms-that-are-not-qualified) requires Gate 6 on a clean macOS user with Homebrew or nvm Node.
 It also requires the tests and publish check on that machine.
 Record exact commands, versions, and each check as passed, failed, blocked or not run.
-Record the model reply separately and keep the live-profile baseline comparison.
+Record the model reply separately.
 The release maintainer must accept the record before macOS changes from **Not qualified**.
 Bottle listings and this documentation review do not change that status.

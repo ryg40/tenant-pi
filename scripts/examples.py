@@ -1,30 +1,18 @@
 #!/usr/bin/env python3
-"""Render portable examples from the strict manifest and synthetic v1 defaults."""
+"""Render the portable `.env.example` from the strict manifest: the environment names of the components."""
 import argparse
-import json
 from pathlib import Path
 
-from validate import ROOT, SAMPLE_TARGET, Invalid, load, manifest
+from validate import ROOT, Invalid, load, manifest
 
 
 def render(data):
     components = manifest(data)
-    overlay = {
-        "schemaVersion": 1,
-        "target": {"agentDir": SAMPLE_TARGET},
-        "selection": {"enable": ["core"], "disable": sorted(set(components) - {"core"})},
-        "paths": {}, "roles": {}, "endpoints": {}, "env": {},
-        "inputs": {"modelsFile": None, "mcpFile": None},
-        "consent": {"memoryCapture": False, "remoteMemoryWrites": False, "telemetry": False},
-    }
-    from validate import overlay as validate_overlay
-    validate_overlay(overlay, components)
-    config = json.dumps(overlay, indent=2) + "\n"
     names = sorted({name for component in components.values() for name in component["env"]})
     env = "# Synthetic names only; tenant-pi does not source this file.\n"
     env += "# Set values outside the repository after local review.\n"
     env += "".join(f"{name}=\n" for name in names)
-    return {ROOT / "config/config.example.json": config, ROOT / ".env.example": env}
+    return {ROOT / ".env.example": env}
 
 
 def main():

@@ -4,7 +4,7 @@ The Agent Toolkit for AWS (`aws/agent-toolkit-for-aws`, Apache-2.0) gives a codi
 
 ## What the toolkit is
 
-- A plugin marketplace. The plugin `aws-core` holds 25 skills, one PreToolUse hook and one MCP server entry `aws-mcp`. The other plugins are `aws-agents`, `aws-data-analytics`, `aws-agents-for-devsecops` and `aws-startup-advisor`.
+- A plugin marketplace. The plugin `aws-core` holds skills, a PreToolUse hook and the MCP server entry `aws-mcp`. The other plugins are `aws-agents`, `aws-data-analytics`, `aws-agents-for-devsecops` and `aws-startup-advisor`.
 - The skills are directories with a `SKILL.md`, below `plugins/aws-core/skills/`. Pi and Claude Code read the same form.
 - The hook `secret-safety.py` blocks a direct read of an AWS Secrets Manager secret value. It uses only the Python standard library.
 - The `aws-mcp` entry runs `uvx mcp-proxy-for-aws-cli==1.7.0 https://aws-mcp.us-east-1.api.aws/mcp --skip-auth`. The proxy then sends unsigned requests.
@@ -40,19 +40,17 @@ claude mcp list
 
 ## Pi profile of the kit
 
-Two parts of the kit carry the toolkit into a generated profile.
+The kit writes nothing for the toolkit. Two edits of the profile carry it, with `<profile>` as the directory of `PI_CODING_AGENT_DIR`. Back up both files first.
 
-1. The skills: add the skills directory of the pinned copy to [`ownerResources`](../owner-extensions.md#owner-skill-and-prompt-directories-in-the-overlay) in the overlay. The path is absolute.
+1. The skills: add the skills directory of the pinned copy to the `skills` array of `<profile>/settings.json`. The path is absolute. Pi then lists the skills of the plugin.
 
    ```json
    {
-     "ownerResources": {
-       "skills": ["/home/EXAMPLE_USER/.local/share/agent-toolkit-for-aws/plugins/aws-core/skills"]
-     }
+     "skills": ["/home/EXAMPLE_USER/.local/share/agent-toolkit-for-aws/plugins/aws-core/skills"]
    }
    ```
 
-2. The MCP server: enable the `mcp` component and put the `aws-mcp` entry into `inputs/mcp-adapter.json` of the private directory. See [workflow modules](../workflow-modules.md) for the input slot.
+2. The MCP server: install the `mcp` module with its line of [the optional modules](../../INSTALL.md#optional-modules), then add the `aws-mcp` entry to `<profile>/mcp-adapter.json`. `/mcp-adapter status` then lists the server.
 
    ```json
    {
@@ -62,19 +60,14 @@ Two parts of the kit carry the toolkit into a generated profile.
    }
    ```
 
-The entry uses the HTTPS endpoint directly, with no proxy and no credential. The kit refuses a `command` that is not an absolute path, so the `uvx` form of the plugin does not pass. A signed setup needs the proxy as an absolute command, for example after `uv tool install mcp-proxy-for-aws-cli==1.7.0`. Not verified: the signed proxy form in a kit profile.
+The entry uses the HTTPS endpoint directly, with no proxy and no credential. A signed setup needs the proxy as a command, for example after `uv tool install mcp-proxy-for-aws-cli==1.7.0`. Not verified: the signed proxy form in a Pi profile.
 
 The kit does not load the hook of the plugin in Pi. Pi has no PreToolUse hook of that form.
 
 ## Live Pi of a user
 
-The kit does not change the live profile. For a user-level setup by hand:
-
-1. Add the skills directory of the pinned copy to the `skills` array of `~/.pi/agent/settings.json`. Pi then lists the 25 skills.
-2. Add the `aws-mcp` entry above to `~/.pi/agent/mcp-adapter.json`. `/mcp-adapter status` then lists the server.
-
-Back up both files first.
+The kit does not change the live profile. For `~/.pi/agent`, make the same two edits by hand.
 
 ## Checks
 
-`tests/test_aws_agent_toolkit.py` validates the two JSON examples of this guide with the overlay validator and the MCP validator of the kit. Not verified: a Pi start of a generated profile with the toolkit.
+Not verified: a Pi start of a profile with the toolkit.

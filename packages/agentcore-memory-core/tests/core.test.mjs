@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { createCore, normalizeRemote, requestIdentifier } from "../src/index.mjs";
@@ -17,6 +18,45 @@ test("remote normalization drops the scheme, the user, .git, a trailing slash an
   assert.equal(normalizeRemote("https://git.example.com/Example/Site"), "git.example.com/Example/Site");
   assert.equal(normalizeRemote("ssh://git@git.example.com:2222/example/site.git"), "git.example.com:2222/example/site");
   for (const form of ["", "   ", "/local/path", "https://git.example.com/", null]) assert.equal(normalizeRemote(form), null);
+});
+
+test("remote normalization trims boundary slashes and one .git suffix without changing the path", () => {
+  const cases = [
+    ["/example//Site.git///", "example//Site"],
+    ["example/Site///.git///", "example/Site"],
+    ["example/Site.git.git/", "example/Site.git"],
+    ["example/Site.GIT/", "example/Site.GIT"],
+    ["example/.git/Site/", "example/.git/Site"],
+    ["example/Site", "example/Site"],
+    ["///", null],
+    ["///.git///", null],
+  ];
+  for (const prefix of ["https://GIT.EXAMPLE.COM/", "git@GIT.EXAMPLE.COM:"]) {
+    for (const [path, expected] of cases) {
+      assert.equal(normalizeRemote(prefix + path), expected === null ? null : `git.example.com/${expected}`);
+    }
+  }
+});
+
+test("remote normalization handles long slash runs without blocking", () => {
+  // A child-process timeout can stop a synchronous regex stall; a test timer cannot.
+  const moduleUrl = new URL("../src/index.mjs", import.meta.url).href;
+  execFileSync(process.execPath, ["--input-type=module", "--eval", `
+    import assert from "node:assert/strict";
+    import { normalizeRemote } from ${JSON.stringify(moduleUrl)};
+    const slashes = "/".repeat(250_000);
+    for (const prefix of ["https://git.example.com/", "git@git.example.com:"]) {
+      for (const [path, expected] of [
+        ["example" + slashes + "Site.git///", "example" + slashes + "Site"],
+        ["example" + slashes + ".git///", "example"],
+        [slashes + "Site.git" + slashes, "Site"],
+        [slashes + ".git" + slashes, null],
+      ]) {
+        const invalid = expected === null || (prefix.endsWith(":") && path.startsWith("//"));
+        assert.equal(normalizeRemote(prefix + path), invalid ? null : "git.example.com/" + expected);
+      }
+    }
+  `], { timeout: 5000, stdio: "pipe" });
 });
 
 test("resolveProject: AGENTCORE_PROJECT first, refused outside the memberships", async () => {

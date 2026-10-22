@@ -77,86 +77,42 @@ class SnapshotTests(RepositoryCase):
         self.assertEqual("edited but uncommitted", git(self.root, "show", "portable:keep.txt"))
         self.assertEqual("first", git(self.root, "log", "-1", "--format=%s", "main^"))
 
-    def test_new_root_starts_a_history_without_the_earlier_snapshots(self):
-        first, tree, _ = snapshot(self.root, ("keep.txt", "script.sh"), "HEAD", "portable", message="one")
-        # The same tree: the chain makes no commit, a new root makes one with no parent.
-        root, tree2, changed = snapshot(self.root, ("keep.txt", "script.sh"), "HEAD", "portable", message="root",
-                                        new_root=True)
-        self.assertEqual((tree, True), (tree2, changed))
-        self.assertNotEqual(first, root)
-        self.assertEqual(root, git(self.root, "rev-parse", "portable"))
-        self.assertEqual("1", git(self.root, "rev-list", "--count", "portable"))
-        self.assertEqual(root, git(self.root, "log", "-1", "--format=%H %P", "portable"))
-        self.assertNotIn(first, git(self.root, "rev-list", "portable").split())
-        # The next snapshot chains onto the new root.
+    def test_tag_collision_moves_no_ref_on_the_next_snapshot(self):
+        tag = "portable/20300101-abcdef0"
+        snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="first", tag=tag)
         (self.root / "keep.txt").write_text("next\n")
         git(self.root, "commit", "-q", "-am", "second")
-        after, _, _ = snapshot(self.root, ("keep.txt", "script.sh"), "HEAD", "portable", message="two")
-        self.assertEqual(root, git(self.root, "rev-parse", f"{after}^"))
-        # On a branch with no snapshot a new root is the first commit.
-        only, _, changed = snapshot(self.root, ("keep.txt",), "HEAD", "portable-other", message="x", new_root=True)
-        self.assertTrue(changed)
-        self.assertEqual(only, git(self.root, "log", "-1", "--format=%H %P", "portable-other"))
-
-    def test_tag_collision_moves_no_ref_on_second_new_root(self):
-        tag = "portable/20300101-abcdef0"
-        snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="first", new_root=True, tag=tag)
         before = git(self.root, "show-ref")
         with self.assertRaises(SystemExit):
-            snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="second", new_root=True, tag=tag)
+            snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="second", tag=tag)
         self.assertEqual(before, git(self.root, "show-ref"))
         self.assertEqual("", git(self.root, "status", "--porcelain"))
 
-    def test_second_new_root_command_leaves_all_refs_unchanged(self):
-        import publish_portable
-        import contextlib
-        import io
-        real_git = publish_portable.git
-
-        def local_git(*args, **kwargs):
-            kwargs.setdefault("root", self.root)
-            return real_git(*args, **kwargs)
-
-        with mock.patch.object(publish_portable, "ROOT", self.root), \
-                mock.patch.object(publish_portable, "git", side_effect=local_git), \
-                mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
-                mock.patch.object(publish_portable, "check_set", return_value=["check: passed"]), \
-                mock.patch.object(publish_portable, "check", return_value=("keep.txt",)), \
-                mock.patch.object(publish_portable, "public_report", return_value=0), \
-                contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(0, publish_portable.main(["--new-root", "--no-push", "--notes",
-                                                       str(self.notes)]))
-            before = git(self.root, "show-ref")
-            with self.assertRaises(SystemExit):
-                publish_portable.main(["--new-root", "--no-push"])
-            self.assertEqual(before, git(self.root, "show-ref"))
-
-    def test_both_modes_refuse_non_snapshot_and_checked_out_branches(self):
+    def test_snapshot_refuses_non_snapshot_and_checked_out_branches(self):
         for branch in ("main", "topic/demo", "portablelookalike"):
             if branch != "main":
                 git(self.root, "branch", branch, "HEAD")
             before = git(self.root, "show-ref")
-            for new_root in (False, True):
-                with self.subTest(branch=branch, new_root=new_root):
-                    with self.assertRaisesRegex(SystemExit, "snapshot branch must be named"):
-                        snapshot(self.root, ("keep.txt",), "HEAD", branch, message="x", new_root=new_root)
-                    self.assertEqual(before, git(self.root, "show-ref"))
+            with self.subTest(branch=branch):
+                with self.assertRaisesRegex(SystemExit, "snapshot branch must be named"):
+                    snapshot(self.root, ("keep.txt",), "HEAD", branch, message="x")
+                self.assertEqual(before, git(self.root, "show-ref"))
         git(self.root, "checkout", "-q", "-b", "portable-current")
-        for new_root in (False, True):
-            with self.assertRaisesRegex(SystemExit, "checked out"):
-                snapshot(self.root, ("keep.txt",), "HEAD", "portable-current", message="x", new_root=new_root)
+        with self.assertRaisesRegex(SystemExit, "checked out"):
+            snapshot(self.root, ("keep.txt",), "HEAD", "portable-current", message="x")
         git(self.root, "checkout", "-q", "main")
         linked = self.root / "linked"
         git(self.root, "worktree", "add", "-q", "-b", "portable-linked", str(linked))
         before = git(self.root, "show-ref")
-        for new_root in (False, True):
-            with self.assertRaisesRegex(SystemExit, "checked out"):
-                snapshot(self.root, ("keep.txt",), "HEAD", "portable-linked", message="x", new_root=new_root)
+        with self.assertRaisesRegex(SystemExit, "checked out"):
+            snapshot(self.root, ("keep.txt",), "HEAD", "portable-linked", message="x")
         self.assertEqual(before, git(self.root, "show-ref"))
 
     def test_transaction_refuses_branch_race_and_leaves_tag_absent(self):
         import publish_portable
         first, _, _ = snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="first")
+        (self.root / "keep.txt").write_text("next\n")
+        git(self.root, "commit", "-q", "-am", "next")
         concurrent = git(self.root, "rev-parse", "HEAD")
         real_git = publish_portable.git
         transactions = []
@@ -169,7 +125,7 @@ class SnapshotTests(RepositoryCase):
 
         with mock.patch.object(publish_portable, "git", side_effect=race):
             with self.assertRaises(SystemExit):
-                snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="next", new_root=True,
+                snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="next",
                          tag="portable/20300101-abcdef0")
         self.assertIn(f" {first}\n", transactions[0])
         self.assertEqual(concurrent, git(self.root, "rev-parse", "portable"))
@@ -192,12 +148,18 @@ class SnapshotTests(RepositoryCase):
                 snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="x", tag="portable/test")
         self.assertEqual(before, git(self.root, "show-ref"))
 
-    def test_new_root_option_needs_no_push(self):
+    def test_no_option_replaces_or_restarts_the_history(self):
         script = Path(__file__).resolve().parents[1] / "scripts/publish_portable.py"
-        result = subprocess.run([sys.executable, str(script), "--new-root"], cwd=self.root, text=True, capture_output=True,
+        result = subprocess.run([sys.executable, str(script), "--help"], cwd=self.root, text=True, capture_output=True,
                                 env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("--new-root needs --no-push", result.stderr)
+        self.assertEqual(0, result.returncode)
+        for option in ("--force", "--new-root"):
+            self.assertNotIn(option, result.stdout)
+        for option in ("--force", "--new-root"):
+            refused = subprocess.run([sys.executable, str(script), option, "--no-push"], cwd=self.root, text=True,
+                                     capture_output=True, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+            self.assertEqual(2, refused.returncode)
+            self.assertIn("unrecognized arguments", refused.stderr)
 
     def test_missing_or_non_file_paths_stop_before_any_ref_moves(self):
         for paths in (("keep.txt", "absent.txt"), ("private",)):
@@ -374,7 +336,8 @@ class ReleaseClassTests(RepositoryCase):
                 # Separate branches still collide on the tag name, so use independent fixtures.
                 if kind == "full":
                     git(self.root, "commit", "--allow-empty", "-qm", "full qualification")
-                output = self.invoke("stamp", "--class", kind, "--new-root")
+                    git(self.root, "update-ref", "-d", "refs/heads/portable")
+                output = self.invoke("stamp", "--class", kind)
                 notes = self.notes.read_text()
                 tag = snapshot_tags(self.root, "portable")[0]
                 self.assertIn(f"# Portable release: {kind}", notes)
@@ -414,8 +377,8 @@ class ReleaseClassTests(RepositoryCase):
     def test_update_block_without_relevant_changes(self):
         self.invoke("stamp")
         notes = self.notes.read_text()
-        for line in ("- No new candidate expected.", "- Pi pin: unchanged (1.2.3)", "- No package line needed.",
-                     "- Files that can change a generated profile: none"):
+        for line in ("- Pi pin: unchanged (1.2.3)", "- No package line needed.", "- Install templates: unchanged.",
+                     "- Run: `git pull`, then `/reload` in Pi."):
             self.assertIn(f"\n{line}\n", notes)
 
     def test_update_block_names_a_changed_lock_file_and_pin(self):
@@ -428,30 +391,28 @@ class ReleaseClassTests(RepositoryCase):
         self.make_stamp()
         self.invoke("stamp")
         notes = self.notes.read_text()
-        for line in ("- A new candidate may be needed: the Pi pin moved and "
-                     "a file that can change a generated profile changed.",
-                     "- Pi pin: 1.2.3 -> 1.3.0; install the new Pi first.",
+        for line in ("- Pi pin: 1.2.3 -> 1.3.0; install the new Pi first.",
                      "- npm ci --ignore-scripts needed in: packages/demo",
-                     "- Files that can change a generated profile: config/manifest.json"):
+                     "- Install templates: unchanged."):
             self.assertIn(f"\n{line}\n", notes)
         self.assertNotIn("No package line needed", notes)
 
-    def test_update_block_skips_a_deleted_lock_file_and_names_a_removed_input(self):
+    def test_update_block_skips_a_deleted_lock_file_and_names_a_changed_template(self):
         import publish_portable
         (self.root / "packages/demo").mkdir(parents=True)
         (self.root / "packages/demo/package-lock.json").write_text("{}\n")
-        (self.root / "scripts/launcher.py").write_text("\n")
+        (self.root / "config/models.example.json").write_text('{"providers": {}}\n')
         git(self.root, "add", "-A")
-        git(self.root, "commit", "-qm", "lock and input")
+        git(self.root, "commit", "-qm", "lock and template")
         old = git(self.root, "rev-parse", "HEAD")
         (self.root / "packages/demo/package-lock.json").unlink()
-        (self.root / "scripts/launcher.py").unlink()
-        (self.root / "config/config.example.json").write_text("{}\n")
+        (self.root / "config/models.example.json").write_text('{"providers": {"demo": {}}}\n')
+        (self.root / "scripts/other.py").write_text("\n")
         git(self.root, "add", "-A")
-        git(self.root, "commit", "-qm", "no lock, no input, a sample overlay")
+        git(self.root, "commit", "-qm", "no lock, a changed template, another script")
         lines = publish_portable.update_block(self.root, ("portable/old", "patch", old), "HEAD")
         self.assertIn("- No package line needed.", lines)
-        self.assertIn("- Files that can change a generated profile: removed: scripts/launcher.py", lines)
+        self.assertIn("- Install templates changed: config/models.example.json; a profile keeps its own copy.", lines)
 
     def test_update_block_is_first_in_notes_and_in_the_tag_message(self):
         self.invoke("stamp")
@@ -461,7 +422,7 @@ class ReleaseClassTests(RepositoryCase):
         tag = snapshot_tags(self.root, "portable")[0]
         message = git(self.root, "for-each-ref", "--format=%(contents)", f"refs/tags/{tag}")
         self.assertEqual(message, git(self.root, "log", "-1", "--format=%B", "portable"))
-        self.assertIn(f"\nclass: patch\n\n{heading}\n- No new candidate expected.\n", message)
+        self.assertIn(f"\nclass: patch\n\n{heading}\n- Pi pin: unchanged (1.2.3)\n", message)
         # The block keeps the source and class lines that the next run reads.
         self.assertIn((tag, "patch", git(self.root, "rev-parse", "HEAD")[:7]), release_tags(self.root))
 
@@ -592,7 +553,7 @@ class IdentityTests(RepositoryCase):
 
     def test_atomic_snapshot_tag_has_neutral_identity_and_no_signature(self):
         commit, _, _ = snapshot(self.root, ("keep.txt",), "HEAD", "portable", message="snapshot",
-                                 new_root=True, tag="portable/20300101-abcdef0")
+                                 tag="portable/20300101-abcdef0")
         self.assertEqual(commit, git(self.root, "rev-parse", "portable/20300101-abcdef0^{commit}"))
         self.assertEqual(f"{DEFAULT_NAME}|<{DEFAULT_EMAIL}>",
                          git(self.root, "for-each-ref", "--format=%(taggername)|%(taggeremail)", "refs/tags/"))
@@ -636,15 +597,9 @@ class PushCommandTests(unittest.TestCase):
         self.assertEqual(push_command("github", "portable", "main"),
                          ["push", "github", "refs/heads/portable:refs/heads/main"])
 
-    def test_force_adds_the_lease_option_after_the_refs(self):
-        command = push_command("github", "portable", "main", ["portable/x"], force=True)
-        self.assertEqual(command[-1], "--force-with-lease")
-        self.assertEqual(len(command), 5)
-
     def test_no_form_of_the_command_follows_tags(self):
         for tags in ((), ["portable/x"], ["portable/x", "portable/y"]):
-            for force in (False, True):
-                self.assertNotIn("--follow" + "-tags", push_command("github", "portable", "main", tags, force=force))
+            self.assertNotIn("--follow" + "-tags", push_command("github", "portable", "main", tags))
 
     def test_the_script_source_has_no_follow_tags_option(self):
         source = (Path(__file__).resolve().parents[1] / "scripts" / "publish_portable.py").read_text(encoding="utf-8")

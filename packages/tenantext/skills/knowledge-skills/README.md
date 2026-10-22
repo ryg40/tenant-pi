@@ -9,9 +9,7 @@ Each folder of this directory is one skill. `resources.skills` of `knowledge-ski
 
 ## Install
 
-For one generated profile, enable `knowledge-skills` in the overlay.
-The profile declares one filter entry for each skill.
-The example overlay disables the component.
+The core install of the kit loads each skill in the profile, and `install.sh` of the kit links each skill into `~/.claude/skills/`.
 
 For user-level links, run:
 
@@ -31,7 +29,7 @@ Start a new session, or run `/reload` in Pi, to load the skills.
 ## Gaps and project runtime skill
 
 The component stays `unverified`.
-Offline tests check text, install links and generated profile declarations.
+Offline tests check text and install links.
 They do not load the component with the kit Pi pin or run a model through the skills.
 
 The OpenKnowledge MCP server and the `ok` CLI are external tools.

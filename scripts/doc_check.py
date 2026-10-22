@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """Offline, read-only check of explicit Markdown files and published docs (Python 3.11+).
 
-Rules: relative links and `#anchors` resolve; each fenced `json` block parses; each
-`tenant_pi.py <action>` and its `--flag` exist in the parser of `scripts/tenant_pi.py`;
-each parser action is named in `INSTALL.md` or a guide under `docs/guides/`. A diagnostic is
-`rule: path:line` and never holds file content. No process, no network, no write.
+Rules: relative links and `#anchors` resolve; each fenced `json` block parses; each environment
+name of `INSTALL.md`, `README.md` and a guide under `docs/guides/` is a known name. A diagnostic
+is `rule: path:line` and never holds file content. No process, no network, no write.
 """
 import sys
 
 # Direct script invocation imports project modules; never leave bytecode in the kit.
 sys.dont_write_bytecode = True
 
-import argparse
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -20,65 +18,20 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts")]
 from scripts.publish_check import (PUBLISH, PUBLISH_DIRS, DEV_ONLY_REL, absent_folders, excluded_files, explicit_files,
                                    private_excludes)
-from scripts import tenant_pi
 from scripts.validate import load, manifest
 
 GUIDES = "docs/guides/"
-# These actions exist only in a development checkout and have a private reference page.
-DEV_ONLY_ACTIONS = ("carry", "list")
 # Optional private-copy link targets. A portable copy can omit them. The list is empty.
 DEV_ONLY_TARGETS = ()
-# Flags of other programs that the guides, INSTALL.md and README.md name in a standalone code span.
-EXTERNAL_FLAGS = frozenset({
-    "--no-approve", "--extensions", "--version", "--prefix", "--ignore-scripts", "--global",
-    "--no-verify", "--no-push", "--force", "--model", "--remote", "--remote-branch",
-    "--verify-tag",
-})
-# Environment names that the launch line or the kit text uses beside the manifest names.
+# Environment names of Pi and of the kit text beside the manifest names.
 # `PI_CODING_AGENT_` is the prefix that the inventory command of the install text prints.
 LAUNCH_ENV = frozenset({"PI_CODING_AGENT_DIR", "PI_MCP_CONFIG_MODE", "WIKI_HOME", "PI_CODING_AGENT_SESSION_DIR",
                         "PI_CODING_AGENT_"})
-SHELL_LANGS = ("", "sh", "bash", "shell", "console", "text")
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})\s*([A-Za-z0-9_-]*)")
 HEADING = re.compile(r"^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$")
 SPAN = re.compile(r"(`+)(.+?)\1")
 LINK = re.compile(r"(?<!!)\[[^\]]*\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
-CLI = re.compile(r"tenant_pi\.py(?=\s|$)([^;&|>\n]*)")
-FLAG = re.compile(r"(?:(?<=\s)|(?<=\[))(--[a-z][a-z0-9-]*)")
-STANDALONE_FLAG = re.compile(r"^(--[a-z][a-z0-9-]*)(?:[ =].*)?$")
 ENV_NAME = re.compile(r"\b((?:TENANTEXT|PI|WIKI)_[A-Z0-9_]+)\b")
-
-
-class _Captured(Exception):
-    """Stops `tenant_pi.main` at `parse_args`, with the built parser."""
-
-
-def cli_tree():
-    """The global options and the options of each action of the real `tenant_pi.py` parser.
-
-    `main` builds the parser and calls `parse_args`; the patch stops it there, so no action runs.
-    """
-    captured = []
-    original = argparse.ArgumentParser.parse_args
-
-    def capture(self, *args, **kwargs):
-        captured.append(self)
-        raise _Captured
-
-    argparse.ArgumentParser.parse_args = capture
-    try:
-        tenant_pi.main([])
-    except _Captured:
-        pass
-    finally:
-        argparse.ArgumentParser.parse_args = original
-    parser = captured[0]
-    actions = {}
-    for item in parser._actions:
-        if isinstance(item, argparse._SubParsersAction):
-            for name, sub in item.choices.items():
-                actions[name] = {option for entry in sub._actions for option in entry.option_strings}
-    return {option for item in parser._actions for option in item.option_strings}, actions
 
 
 def slug(text):
@@ -164,26 +117,6 @@ def published(rel, root=ROOT, *, entries=None):
     return False
 
 
-def commands(prose, blocks):
-    """(line, text) of each code span and of each shell block line, continuations joined."""
-    for number, line in prose:
-        for match in SPAN.finditer(line):
-            yield number, match.group(2)
-    for lang, start, lines in blocks:
-        if lang not in SHELL_LANGS:
-            continue
-        pending, first = "", None
-        for number, line in lines:
-            first = number if first is None else first
-            if line.rstrip().endswith("\\"):
-                pending += line.rstrip()[:-1] + " "
-                continue
-            yield first, pending + line
-            pending, first = "", None
-        if pending:
-            yield first, pending
-
-
 def document_files(root):
     """Keep explicit Markdown and directory-selected docs without a Git subprocess."""
     names = {name for name in explicit_files(root, PUBLISH) if name.endswith(".md")}
@@ -196,11 +129,9 @@ def document_files(root):
 def check(root=ROOT, files=None):
     """Sorted unique diagnostics and counts for the Markdown files of the publish set."""
     files = document_files(root) if files is None else sorted(files)
-    top, actions = cli_tree()
-    every_flag = top.union(*actions.values())
     components = manifest(load(root / "config/manifest.json"))
     env_names = LAUNCH_ENV | {name for component in components.values() for name in component["env"]}
-    parsed, findings, guided = {}, set(), set()
+    parsed, findings = {}, set()
     # A link into the folder of a tree component that the kit leaves out is no finding.
     absent = absent_folders(root)
     counts = {"files": 0, "links": 0, "json": 0}
@@ -255,37 +186,11 @@ def check(root=ROOT, files=None):
             counts["json"] += 1
             if not json_block([line for _, line in lines]):
                 findings.add(f"json_example: {name}:{start}")
-        for number, text in commands(prose, blocks):
-            where = f"{name}:{number}"
-            for match in CLI.finditer(text):
-                rest = match.group(1)
-                word = rest.split()[0] if rest.split() else ""
-                if not word or word.startswith(("<", "[")):
-                    continue
-                if word.startswith("-"):
-                    if word not in top:
-                        findings.add(f"cli_flag: {where}")
-                    continue
-                if word not in actions:
-                    findings.add(f"cli_action: {where}")
-                    continue
-                if name.startswith(GUIDES) or name == "INSTALL.md":
-                    guided.add(word)
-                for flag in FLAG.findall(rest):
-                    if flag not in actions[word]:
-                        findings.add(f"cli_flag: {where}")
-            if strict:
-                standalone = STANDALONE_FLAG.match(text.strip())
-                if standalone and standalone.group(1) not in every_flag | EXTERNAL_FLAGS:
-                    findings.add(f"cli_flag: {where}")
         if strict:
             for number, line in prose + [item for _, _, lines in blocks for item in lines]:
                 for env in ENV_NAME.findall(line):
                     if env not in env_names:
                         findings.add(f"env_name: {name}:{number}")
-    for action in sorted(set(actions) - guided - set(DEV_ONLY_ACTIONS)):
-        findings.add(f"action_unguided: scripts/tenant_pi.py:{action}")
-    counts["actions"] = len(actions)
     return sorted(findings), counts
 
 
@@ -296,8 +201,8 @@ def main():
     if findings:
         print(f"doc check failed: {len(findings)} findings")
         return 1
-    print(f"doc check valid: {counts['files']} files, {counts['links']} links, {counts['json']} json blocks, "
-          f"{counts['actions']} actions (offline text checks only)")
+    print(f"doc check valid: {counts['files']} files, {counts['links']} links, {counts['json']} json blocks "
+          f"(offline text checks only)")
     return 0
 
 

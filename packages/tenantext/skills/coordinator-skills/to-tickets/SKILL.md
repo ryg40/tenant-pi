@@ -1,6 +1,6 @@
 ---
 name: to-tickets
-description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the Gitea issue tracker (edges as native dependencies, never a local ticket file).
+description: Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the issue tracker (edges as native dependencies, never a local ticket file).
 disable-model-invocation: true
 ---
 
@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Break a plan, spec, or conversation into a set of **tickets**: tracer-bullet vertical slices, each declaring the tickets that **block** it.
 
-The issue tracker is Gitea. `docs/agents/issue-tracker.md` is the contract for each tracker operation and for the label vocabulary (section "Labels"). Read it before you publish. If the checkout has no issue tracker, stop and report it.
+`docs/agents/issue-tracker.md` names the issue tracker and is the contract for each tracker operation and for the label vocabulary (section "Labels"). Read it before you publish. If the checkout has no issue tracker, stop and report it.
 
 ## Process
 
@@ -69,16 +69,16 @@ Ask the user. Use the question tool: `AskUserQuestion` in Claude Code, `ask_user
 
 Iterate until the user approves the breakdown.
 
-### 5. Publish the tickets to Gitea
+### 5. Publish the tickets to the issue tracker
 
-Publish only the approved tickets of the next usable deliverable as Gitea issues. Use the tracker's native blocking relationship: Gitea dependencies in pass 2. `docs/agents/issue-tracker.md` is the contract: use its sections "Generic operations", "Labels", "Wayfinding operations" and "Publication safety" for each operation. Never use a local file as the ticket. If the user requests snapshot exports, write them outside the repository, in a directory that the user names. Snapshots are optional exports, not the tracker.
+Publish only the approved tickets of the next usable deliverable as issues. Use the tracker's native blocking relationship: its dependencies in pass 2. `docs/agents/issue-tracker.md` is the contract: use its sections "Generic operations", "Labels", "Wayfinding operations" and "Publication safety" for each operation. Never use a local file as the ticket. If the user requests snapshot exports, write them outside the repository, in a directory that the user names. Snapshots are optional exports, not the tracker.
 
 Each ticket carries the parent label `wayfinder:parent:<map>`, where `<map>` is the number of the parent issue: the spec, or the map when the tickets come from a map. If the label does not exist, create it first (section "Labels"). When there is no parent issue, ask the user which spec or map is the parent before you publish. Each ticket carries the `ready-for-agent` triage label unless instructed otherwise; the tickets are agent-grabbable by construction. Do not apply a size label. Do not apply `wayfinder:task` to a new ticket.
 
 Publish in two passes (section "Native dependencies"):
 
-1. Pass 1: create one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the issue template below. "Parent" holds a named link. For Gitea, omit "Blocked by" from the body; pass 2 records the blockers as native dependencies.
-2. Pass 2: wire each blocking edge as a native Gitea dependency. Then read the blockers of each ticket back and compare each list with the approved graph. Report each difference to the user. Do not continue with a graph that differs.
+1. Pass 1: create one issue per ticket in dependency order (blockers first) so each ticket's blocking edges can reference real identifiers. Use the issue template below. "Parent" holds a named link. With native dependencies, omit "Blocked by" from the body; pass 2 records the blockers as native dependencies.
+2. Pass 2: wire each blocking edge as a native dependency of the tracker. Then read the blockers of each ticket back and compare each list with the approved graph. Report each difference to the user. Do not continue with a graph that differs.
 
 After the read-back, report the **frontier** to the user: the tickets with no open blocker. Publication does not start a worker. The coordinator claims a ticket and starts a worker pane only on the user's word. The frontier rule is the section "Frontier" of `docs/agents/issue-tracker.md`.
 

@@ -1,26 +1,33 @@
+#!/usr/bin/env python3
 """Runtime version check: three fixed `--version` processes compared with `manifest.runtime`.
 
-The only kit module that starts a process. It runs no shell, no network request, no install
-and no other command. It writes one empty temporary directory and removes it. The output
-echoes a version token only; other process output never enters a result or a diagnostic.
+It runs no shell, no network request, no install and no other command. It writes one empty
+temporary directory and removes it. The output echoes a version token only; other process
+output never enters a result or a diagnostic.
 
-`check_herdr` is the separate check of the Herdr application: one `herdr --version` process.
+Run from the kit root: `python3 scripts/check_runtime.py [--pi PATH] [--node PATH] [--python PATH]`.
+It prints one JSON object. The exit code is 0 when each tool matches (Pi may be `untested_in_range`),
+1 otherwise, and 2 for a refusal, which goes to standard error.
 """
+import argparse
+import json
 import os
+from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
-from scripts.validate import fail, in_range, parse_range
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from scripts.validate import Invalid, absolute, fail, hint_field, in_range, load, manifest, parse_range
 
 TIMEOUT = 20
 # (result key, command name on PATH, manifest.runtime field)
 TOOLS = (("pi", "pi", "piVersion"), ("node", "node", "nodeRange"), ("python", "python3", "pythonRange"))
 STATUSES = ("match", "untested_in_range", "mismatch", "missing", "unparsed")
-# The Herdr application is a host tool. It is no part of `manifest.runtime`: the kit names no required version.
-HERDR = "herdr"
-HERDR_STATUSES = ("present", "missing", "unparsed")
 # Only the first line of the output counts, and only this many bytes of it.
 MAX_OUTPUT = 256
 # The longest version token that the output echoes.
@@ -115,25 +122,32 @@ def check(runtime, paths=None, *, run=subprocess.run, which=shutil.which, enviro
     return report
 
 
-def check_herdr(path=None, *, run=subprocess.run, which=shutil.which, environ=None):
-    """Report the `herdr` command of the host: present with its version, missing, or unparsed.
-
-    `path` is an explicit absolute executable path; without one the command is looked up on PATH.
-    At most one process starts: `herdr --version`. Nothing is installed, updated, started or stopped,
-    and no Herdr session is read.
-    """
-    environ = dict(os.environ if environ is None else environ)
-    result = {"installed": None, "status": "missing"}
-    path = path or which(HERDR)
-    if path:
-        found = _probe(os.path.abspath(path), environ, run)
-        if isinstance(found, str):
-            result["status"] = found
-        else:
-            result.update(installed=found[0], status="present")
-    return {HERDR: result}
-
-
 def matches(report):
     return all(result["status"] == "match" or (key == "pi" and result["status"] == "untested_in_range")
                for key, result in report.items())
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    for key, command, _ in TOOLS:
+        parser.add_argument("--" + key, metavar="PATH",
+                            help=f"absolute path of the {command} executable (default: {command} on PATH)")
+    args = parser.parse_args(argv)
+    try:
+        paths = {key: getattr(args, key) for key, _, _ in TOOLS if getattr(args, key) is not None}
+        for key, path in paths.items():
+            absolute(path, "check-runtime." + key)
+        data = load(ROOT / "config/manifest.json")
+        manifest(data)
+        report = check(data["runtime"], paths)
+    except Invalid as exc:
+        # A refusal goes to standard error; standard output stays empty.
+        print(json.dumps({"error": str(exc), **hint_field(exc)}, sort_keys=True, ensure_ascii=True,
+                         separators=(",", ":")), file=sys.stderr)
+        return 2
+    print(json.dumps(report, sort_keys=True, ensure_ascii=True, separators=(",", ":")))
+    return 0 if matches(report) else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

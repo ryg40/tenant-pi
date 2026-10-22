@@ -35,22 +35,22 @@ No build step. Pi loads the TypeScript resource entry points directly.
 
 ## Install
 
-### Enable kit components
+### Load the package
 
 This package lives at `packages/tenantext` inside the tenant-pi kit, not in a separate repository.
-Follow the [kit installation guide](../../INSTALL.md) and [module guide](../../docs/guides/modules.md) to enable components through the kit generator.
-The generator writes one package entry with the absolute package path and filters for the selected components.
-Keep the kit checkout in place; regenerate the profile if you move it.
+The `install.sh` of the kit writes the absolute path of this folder into the `packages` list of the profile settings; see the [kit installation guide](../../INSTALL.md).
+Pi then loads each extension and each skill of the package with no copy.
+Keep the kit checkout in place; if you move it, change the path in the settings of the profile.
 
-Install the package dependencies from the kit root before loading its components:
+The extensions need no runtime dependency. The tests and the type check need the development dependencies:
 
 ```sh
 cd packages/tenantext
 npm ci --ignore-scripts
 ```
 
-Observed with Pi 0.99.1: a generated profile loads the components tested on that version after dependency installation.
-Not verified: loading all selectable components with the kit pin, or on a clean client.
+The qualification of the kit (`scripts/pi_update.py qualify`) resolves and loads each extension and skill of the package in a profile of `install.sh`, with no session.
+Not verified: a session on a clean client.
 See [package tests and qualification limits](../../docs/packages.md#tenantext-packagestenantext).
 No direct Git-subdirectory `pi install` command is verified for this kit.
 
@@ -98,13 +98,15 @@ Inside Pi, `/tenantext-doctor` runs the same checks and `/tenantext-doctor fix` 
 
 ### One extension
 
-Select the component in the kit overlay and generate a profile, as described in the [module guide](../../docs/guides/modules.md#change-a-selection).
-The generated package entry filters extensions and skills separately.
+To load only some extensions or skills, replace the path string in the `packages` list of the profile settings with an object that has filters, as in the Pi package documentation:
+
+```json
+{"source": "/path/to/tenant-pi/packages/tenantext", "extensions": ["extensions/codex-accounts/index.ts"], "skills": []}
+```
+
 Keep the full package directory: entry points can import shared files.
 Do not also register a second copy of the package in the same profile.
-
-To stop loading a component, remove it from `selection.enable`, add it to `selection.disable`, and generate a new profile.
-Saved Tenantext state remains in the previous profile.
+`/resources` inside Pi switches single resources on and off without an edit by hand.
 Tenantext uses `tenantext/settings.json` relative to the profile's Pi agent directory.
 
 ## Commands

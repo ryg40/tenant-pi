@@ -18,8 +18,8 @@ The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. 
 
 ## Changes from the pinned upstream commit
 
-- Adds Gitea merge-record comments and pull request body updates through the tracker contract.
+- Adds merge-record comments and pull request body updates through the tracker contract.
 - Adds exact offline check output, history scan evidence, and a list of unproved claims.
 - Extends Merge Danger with a release-gate table and publication risk guidance.
 - Routes screenshots through `pidesktop` and distinguishes them from Walkr artifact review.
-- Identifies Gitea Mermaid support.
+- Identifies Mermaid support.

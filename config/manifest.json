@@ -1,8 +1,8 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "runtime": {
-    "piVersion": "1.3.0",
-    "piAcceptedRange": ">=1.3.0 <1.4",
+    "piVersion": "1.4.0",
+    "piAcceptedRange": ">=1.4.0 <1.5",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
@@ -10,10 +10,9 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.3.0"
+        "spec": "@earendil-works/pi-coding-agent@1.4.0"
       },
       "status": "tested",
-      "reason": null,
       "requires": [],
       "owner": "pi",
       "license": "MIT",
@@ -23,32 +22,13 @@
         "prompts": [],
         "themes": []
       },
-      "env": [],
-      "configOwnership": {
-        "claims": [
-          {
-            "file": "settings.json",
-            "key": "/defaultProjectTrust"
-          },
-          {
-            "file": "settings.json",
-            "key": "/enableInstallTelemetry"
-          },
-          {
-            "file": "settings.json",
-            "key": "/enableAnalytics"
-          }
-        ],
-        "status": "reviewed",
-        "boundary": "Only the listed Pi settings fields"
-      }
+      "env": []
     },
     "model-routing": {
       "source": {
         "kind": "builtin"
       },
       "status": "tested",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -60,33 +40,7 @@
         "prompts": [],
         "themes": []
       },
-      "env": [],
-      "configOwnership": {
-        "claims": [
-          {
-            "file": "settings.json",
-            "key": "/defaultProvider"
-          },
-          {
-            "file": "settings.json",
-            "key": "/defaultModel"
-          },
-          {
-            "file": "settings.json",
-            "key": "/defaultThinkingLevel"
-          },
-          {
-            "file": "settings.json",
-            "key": "/enabledModels"
-          },
-          {
-            "file": "settings.json",
-            "key": "/modelThinkingLevels"
-          }
-        ],
-        "status": "reviewed",
-        "boundary": "Only the listed Pi settings fields"
-      }
+      "env": []
     },
     "tenantext": {
       "source": {
@@ -94,7 +48,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -116,14 +69,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "codex-accounts": {
       "source": {
@@ -131,7 +79,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -160,14 +107,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "context-meter": {
       "source": {
@@ -175,7 +117,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -197,14 +138,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "ops-footer": {
       "source": {
@@ -212,7 +148,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core",
         "context-meter"
@@ -239,14 +174,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "copilot-usage": {
       "source": {
@@ -254,7 +184,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -276,14 +205,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "anthropic-usage": {
       "source": {
@@ -291,7 +215,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -317,14 +240,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "doctor": {
       "source": {
@@ -332,7 +250,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -360,14 +277,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "resources": {
       "source": {
@@ -375,7 +287,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -397,14 +308,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "herdr": {
       "source": {
@@ -412,7 +318,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -434,18 +339,13 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "The skill needs the herdr CLI and Python 3 on the host; the kit does not install them. The check-herdr action reports the herdr CLI as present with its version, or as missing."
+          "fact": "The skill needs the herdr CLI and Python 3 on the host; the kit does not install them. The command herdr --version shows whether the CLI is present."
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
-      }
+      ]
     },
     "herdr-relay": {
       "source": {
@@ -453,7 +353,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core",
         "herdr"
@@ -480,14 +379,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
-      }
+      ]
     },
     "herdr-watch": {
       "source": {
@@ -495,7 +389,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core",
         "herdr"
@@ -522,14 +415,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the extension stay owned by it"
-      }
+      ]
     },
     "coordinator-skills": {
       "source": {
@@ -537,7 +425,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -578,14 +465,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry for each skill of the component in the packages/tenantext package declaration only; native settings of the skills stay owned by them"
-      }
+      ]
     },
     "knowledge-skills": {
       "source": {
@@ -593,7 +475,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -622,14 +503,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry for each skill of the component in the packages/tenantext package declaration only; native settings of the skills stay owned by them"
-      }
+      ]
     },
     "tracker-site": {
       "source": {
@@ -637,7 +513,6 @@
         "path": "packages/tenantext"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -655,7 +530,7 @@
       "gaps": [
         {
           "code": "host_tool_required",
-          "fact": "The skill runs python3 -m tracker with PYTHONPATH set to packages/tenantext. It needs Python 3.11 or later and Git on PATH, with no third-party Python package. check-runtime verifies python3 but does not check Git on the client."
+          "fact": "The skill runs python3 -m tracker with PYTHONPATH set to packages/tenantext. It needs Python 3.11 or later and Git on PATH, with no third-party Python package. scripts/check_runtime.py verifies python3 but does not check Git on the client."
         },
         {
           "code": "pi_line_unqualified",
@@ -663,14 +538,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One filter entry of the packages/tenantext package declaration only; native settings of the skill stay owned by it"
-      }
+      ]
     },
     "mcp": {
       "source": {
@@ -678,7 +548,6 @@
         "spec": "pi-mcp-adapter"
       },
       "status": "tested",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -692,21 +561,7 @@
         "prompts": [],
         "themes": []
       },
-      "env": [],
-      "configOwnership": {
-        "claims": [
-          {
-            "file": "settings.json",
-            "key": "/extensions"
-          },
-          {
-            "file": "mcp-adapter.json",
-            "key": ""
-          }
-        ],
-        "status": "reviewed",
-        "boundary": "Pi package declaration, the extensions list entry that disables builtin:mcp, and the whole adapter config file"
-      }
+      "env": []
     },
     "questions": {
       "source": {
@@ -714,7 +569,6 @@
         "spec": "@juicesharp/rpiv-ask-user-question@2.13.9"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -752,14 +606,9 @@
         },
         {
           "code": "kit_test_missing",
-          "fact": "No test in this repository loads the component in a generated profile."
+          "fact": "No test in this repository installs or loads the component in a Pi profile."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "Pi package declaration only; the guidance file of the extension stays owned by the user"
-      }
+      ]
     },
     "hermes": {
       "source": {
@@ -767,7 +616,6 @@
         "spec": "pi-hermes-memory"
       },
       "status": "tested",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -781,17 +629,7 @@
         "prompts": [],
         "themes": []
       },
-      "env": [],
-      "configOwnership": {
-        "claims": [
-          {
-            "file": "hermes-memory-config.json",
-            "key": ""
-          }
-        ],
-        "status": "reviewed",
-        "boundary": "Pi package declaration plus the whole hermes-memory-config.json file; runtime stores stay under the agent directory"
-      }
+      "env": []
     },
     "wiki": {
       "source": {
@@ -799,7 +637,6 @@
         "spec": "@zosmaai/pi-llm-wiki"
       },
       "status": "tested",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -813,17 +650,7 @@
         "prompts": [],
         "themes": []
       },
-      "env": [],
-      "configOwnership": {
-        "claims": [
-          {
-            "file": "settings.json",
-            "key": "/llm-wiki"
-          }
-        ],
-        "status": "reviewed",
-        "boundary": "Pi package declaration and the llm-wiki settings section only; the personal vault lives under HOME or WIKI_HOME"
-      }
+      "env": []
     },
     "openviking": {
       "source": {
@@ -831,7 +658,6 @@
         "path": "packages/openviking-pi"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -863,12 +689,7 @@
           "code": "capture_cost_unmeasured",
           "fact": "The extension captures no tool result output unless captureToolResults is true. With it on, each tool part is capped by captureToolMaxChars and the server externalizes larger output. Not measured: the growth of session storage and the effect on memory extraction."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One local-file packages entry for packages/openviking-pi/index.ts; Pi resolves the source file directly, not through a directory filter. Extension settings resolve from OPENVIKING_* variables, .openviking/config.json and ~/.openviking/, which the kit does not own"
-      }
+      ]
     },
     "agentcore": {
       "source": {
@@ -876,7 +697,6 @@
         "path": "packages/agentcore-pi"
       },
       "status": "unverified",
-      "reason": null,
       "requires": [
         "core"
       ],
@@ -898,18 +718,13 @@
         },
         {
           "code": "aws_resource_required",
-          "fact": "The owner supplies the AgentCore Memory resource, the IAM user of the person with its namespace-scoped inline policy, the access key and the person config file. A generated profile creates none of them; the owner tool packages/agentcore-memory-admin renders the policy and the person config."
+          "fact": "The owner supplies the AgentCore Memory resource, the IAM user of the person with its namespace-scoped inline policy, the access key and the person config file. The kit creates none of them; the owner tool packages/agentcore-memory-admin renders the policy and the person config."
         },
         {
           "code": "package_runtime_unverified",
-          "fact": "Offline fake-core tests cover the recall hook, the propose tool and its confirmation. Not verified: a generated Pi session with live AWS recall or propose."
+          "fact": "Offline fake-core tests cover the recall hook, the propose tool and its confirmation. Not verified: a Pi session with live AWS recall or propose."
         }
-      ],
-      "configOwnership": {
-        "claims": [],
-        "status": "reviewed",
-        "boundary": "One local-file package entry and the process-local AGENTCORE_MEMORY_CONFIG_FILE launch value; the launch line removes an inherited AGENTCORE_MEMORY_CONFIG. The kit never reads the person config file. Credentials stay in the AWS profile that the person config names, else in the default AWS SDK credential chain."
-      }
+      ]
     }
   }
 }

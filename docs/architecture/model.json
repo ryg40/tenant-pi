@@ -6,7 +6,6 @@
  },
  "placeholders": {
   "clone": "$HOME/tenant-pi",
-  "private": "$HOME/.config/tenant-pi",
   "profile": "$HOME/.pi/profiles/main",
   "live": "~/.pi/agent",
   "pi_bin": "the pi command of your npm prefix",
@@ -147,10 +146,10 @@
      "label": "User terminal",
      "sub": "Prompts, replies, approvals",
      "kind": "input",
-     "summary": "You interact with Pi in a terminal. The launcher selects {{profile}} through PI_CODING_AGENT_DIR. It runs {{pi_bin}} from your shell PATH.",
-     "doc": "docs/launcher.md",
+     "summary": "You interact with Pi in a terminal. The start line selects {{profile}} through PI_CODING_AGENT_DIR. It runs {{pi_bin}} from your shell PATH.",
+     "doc": "INSTALL.md",
      "files": [
-      "{{private}}/launch-main.sh"
+      "install.sh"
      ]
     },
     {
@@ -173,7 +172,7 @@
      "sub": "Core; Node + selected profile",
      "kind": "runtime",
      "summary": "Pi runs as your operating-system account, using {{profile}}/settings.json. A profile selects configuration and state; it is not an OS sandbox. Local tools keep the account permissions.",
-     "doc": "docs/launcher.md",
+     "doc": "INSTALL.md",
      "files": [
       "{{profile}}/settings.json"
      ],
@@ -194,7 +193,7 @@
      "drill": "components",
      "tags": [
       "optional",
-      "selection is not verification"
+      "loading is not verification"
      ]
     },
     {
@@ -203,8 +202,8 @@
      "label": "Profile state",
      "sub": "auth.json; sessions; Hermes",
      "kind": "output",
-     "summary": "Pi writes login and sessions under {{profile}}. Enabled Hermes stores session indexes and memory there too. A new candidate gets none of this state. Authentication is not copied between profiles.",
-     "doc": "docs/private-directory.md",
+     "summary": "Pi writes login and sessions under {{profile}}. Enabled Hermes stores session indexes and memory there too. A second profile gets none of this state. Authentication is not copied between profiles.",
+     "doc": "INSTALL.md",
      "files": [
       "{{profile}}/auth.json",
       "{{profile}}/sessions/"
@@ -232,7 +231,7 @@
      "sub": "Files, shell and trusted settings",
      "kind": "file",
      "summary": "Core tools read and edit files and run shell commands with account permissions. A trusted project can add resource and settings overrides.",
-     "doc": "docs/workflow-modules.md",
+     "doc": "docs/guides/modules.md",
      "drill": "profile"
     },
     {
@@ -241,7 +240,7 @@
      "label": "Runtime module sources",
      "sub": "Clone paths + installed npm modules",
      "kind": "file",
-     "summary": "Optional in-tree code stays at {{clone}}/packages/. Generated profiles refer to its absolute paths; keep the clone in place. The AgentCore extension imports the shared memory core in packages/agentcore-memory-core. The Claude Code plugin packages/agentcore-claude and the owner tool packages/agentcore-memory-admin use the same core; no profile loads them. Other selected modules load from the profile npm directory. The clone is a code source, not a running service.",
+     "summary": "Optional in-tree code stays at {{clone}}/packages/. The profile settings refer to its absolute paths; keep the clone in place. The AgentCore extension imports the shared memory core in packages/agentcore-memory-core. The Claude Code plugin packages/agentcore-claude and the owner tool packages/agentcore-memory-admin use the same core; no profile loads them. Other selected modules load from the profile npm directory. The clone is a code source, not a running service.",
      "doc": "docs/packages.md",
      "files": [
       "packages/tenantext/package.json",
@@ -268,7 +267,7 @@
      "label": "Remote memory",
      "sub": "OpenViking; optional AgentCore",
      "kind": "service",
-     "summary": "Only enabled and configured clients contact these services. OpenViking recalls memories and can capture turns. AgentCore sends each typed prompt to AWS as a recall query and has no capture path. Its propose tool sends a text only after the person confirms it. Both need the two memory consents.",
+     "summary": "Only enabled and configured clients contact these services. OpenViking recalls memories and can capture turns. AgentCore sends each typed prompt to AWS as a recall query and has no capture path. Its propose tool sends a text only after the person confirms it. Install them only after you agree to the transfer.",
      "doc": "docs/memory-modules.md",
      "tags": [
       "optional",
@@ -283,7 +282,7 @@
      "sub": "MCP, knowledge, tracker, usage",
      "kind": "service",
      "summary": "Optional tools send their call inputs to configured services and return results to Pi. Some enabled modules also make startup or automatic calls. Endpoint configuration proves neither access nor a successful call.",
-     "doc": "docs/workflow-modules.md",
+     "doc": "docs/guides/modules.md",
      "drill": "runtime",
      "tags": [
       "optional",
@@ -523,7 +522,7 @@
   {
    "id": "profile",
    "label": "Profile & files",
-   "summary": "A selected profile is a directory, not a separate account. The launcher chooses it; Pi and enabled modules use several storage scopes. No authentication state moves to a new profile.",
+   "summary": "A profile is a directory, not a separate account. PI_CODING_AGENT_DIR of the start line chooses it; Pi and enabled modules use several storage scopes. No authentication state moves to a new profile.",
    "groups": [
     {
      "id": "p-process",
@@ -552,13 +551,13 @@
     {
      "id": "p-launch",
      "group": "p-process",
-     "label": "Launcher",
+     "label": "Start line",
      "sub": "PI_CODING_AGENT_DIR",
      "kind": "input",
-     "summary": "The launcher in {{private}} starts {{pi_bin}} with {{profile}} as the agent directory. It removes inherited PI_CODING_AGENT_SESSION_DIR. It inherits other environment values, including provider keys.",
-     "doc": "docs/launcher.md",
+     "summary": "The start line runs {{pi_bin}} with {{profile}} as the agent directory. With env -u it removes an inherited PI_CODING_AGENT_SESSION_DIR. It inherits other environment values, including provider keys.",
+     "doc": "INSTALL.md",
      "files": [
-      "scripts/launcher.py"
+      "install.sh"
      ]
     },
     {
@@ -587,7 +586,7 @@
      "sub": "Working directory; account rights",
      "kind": "runtime",
      "summary": "The profile does not confine tool access to its own directory. Trusted project settings can override profile choices. Project trust is a separate launch-time decision.",
-     "doc": "docs/workflow-modules.md"
+     "doc": "docs/guides/modules.md"
     },
     {
      "id": "p-memory",
@@ -605,12 +604,11 @@
      "label": "Selected profile settings",
      "sub": "{{profile}}/settings.json",
      "kind": "output",
-     "summary": "Settings hold package sources, filters and defaults. Optional mcp-adapter.json and hermes-memory-config.json live beside them. models.json registers direct inference, from the owner or from a validated inputs.modelsFile. .tenant-pi/ holds generation records, not a runtime daemon.",
-     "doc": "docs/private-directory.md",
+     "summary": "Settings hold package sources, filters and defaults. install.sh writes settings.json and models.json from the templates of the kit when they are absent; after that the files belong to you. Optional mcp-adapter.json and hermes-memory-config.json live beside them. models.json registers direct inference.",
+     "doc": "INSTALL.md",
      "files": [
       "{{profile}}/settings.json",
-      "{{profile}}/.tenant-pi/choices.json",
-      "{{profile}}/.tenant-pi/state.json"
+      "config/settings.example.json"
      ]
     },
     {
@@ -619,8 +617,8 @@
      "label": "Profile-owned runtime state",
      "sub": "auth.json; sessions/; npm/; caches",
      "kind": "output",
-     "summary": "These files belong to this profile. A new candidate starts without its login, sessions, installed npm modules or Hermes store. MCP can spill output to the temporary directory outside the profile.",
-     "doc": "docs/workflow-modules.md",
+     "summary": "These files belong to this profile. A second profile starts without its login, sessions, installed npm modules or Hermes store. MCP can spill output to the temporary directory outside the profile.",
+     "doc": "docs/guides/modules.md",
      "files": [
       "{{profile}}/auth.json",
       "{{profile}}/sessions/",
@@ -636,7 +634,7 @@
      "summary": "In-tree runtime modules are loaded by absolute path from this clone. npm modules reside under the profile npm directory. Moving the clone breaks those path references. A kit update can change code loaded by an existing profile.",
      "doc": "docs/packages.md",
      "files": [
-      "scripts/profile_plan.py"
+      "install.sh"
      ]
     },
     {
@@ -646,7 +644,7 @@
      "sub": "Working directory; .pi/",
      "kind": "file",
      "summary": "Pi tools can read and write the project. Trusted .pi/settings.json can add settings and resources.",
-     "doc": "docs/workflow-modules.md"
+     "doc": "docs/guides/modules.md"
     },
     {
      "id": "p-account",
@@ -654,7 +652,7 @@
      "label": "Shared account state",
      "sub": "Wiki, OpenViking client, OS keyring",
      "kind": "comp-memory",
-     "summary": "The wiki vault {{wiki_vault}}, ~/.openviking/ and the operating-system keyring are outside the selected profile. Other profiles of this account can share them. The fallback {{live}} stays separate; a new candidate does not import it.",
+     "summary": "The wiki vault {{wiki_vault}}, ~/.openviking/ and the operating-system keyring are outside the selected profile. Other profiles of this account can share them. The fallback {{live}} stays separate; the kit does not import it.",
      "doc": "docs/memory-modules.md",
      "files": [
       "{{wiki_vault}}",
@@ -809,11 +807,11 @@
      "label": "B. Direct inference",
      "sub": "models.json of the profile",
      "kind": "runtime",
-     "summary": "Pi reads custom provider registrations from {{profile}}/models.json. generate writes it only from a validated inputs.modelsFile; the owner can also write it. llama-swap and vLLM are examples. Neither needs the optional Tenantext gateway. Registration does not prove reachability.",
+     "summary": "Pi reads custom provider registrations from {{profile}}/models.json. install.sh writes it with no provider; you add each provider. llama-swap and vLLM are examples. Neither needs the optional Tenantext gateway. Registration does not prove reachability.",
      "doc": "docs/guides/providers.md",
      "files": [
       "{{profile}}/models.json",
-      "scripts/models_input.py"
+      "config/models.example.json"
      ]
     },
     {
@@ -835,7 +833,7 @@
      "sub": "Only when selected and configured",
      "kind": "comp-mcp",
      "summary": "MCP means Model Context Protocol. The adapter exposes tools from configured servers. Exclusive mode uses the profile definitions and disables built-in MCP. Lazy servers connect on use; eager servers can connect at startup. OAuth can use the shared OS keyring.",
-     "doc": "docs/workflow-modules.md",
+     "doc": "docs/guides/modules.md",
      "files": [
       "{{profile}}/mcp-adapter.json"
      ]
@@ -846,7 +844,7 @@
      "label": "Knowledge and workflow skills",
      "sub": "Optional skill modules",
      "kind": "comp-skills",
-     "summary": "Selected knowledge and workflow tools can use OpenKnowledge and a Gitea tracker. A skill file does not install its tools or services. Requests carry the task or page content needed for that operation.",
+     "summary": "Selected knowledge and workflow tools can use OpenKnowledge and the issue tracker. A skill file does not install its tools or services. Requests carry the task or page content needed for that operation.",
      "doc": "docs/packages.md"
     },
     {
@@ -907,7 +905,7 @@
      "sub": "{{mcp_servers}}",
      "kind": "service",
      "summary": "The adapter passes tool arguments to the selected server and returns its results to Pi. A server can run as a local stdio process or a remote HTTP service. Disabled definitions never connect.",
-     "doc": "docs/workflow-modules.md",
+     "doc": "docs/guides/modules.md",
      "tags": [
       "optional"
      ]
@@ -916,7 +914,7 @@
      "id": "r-ok",
      "group": "r-services",
      "label": "Knowledge / tracker services",
-     "sub": "OpenKnowledge and Gitea",
+     "sub": "OpenKnowledge and the issue tracker",
      "kind": "service",
      "summary": "Knowledge calls use {{ok_service}} through its tools. Tracker calls use the configured repository service. These services receive selected pages, task text or issue content; none is implied by a core install.",
      "doc": "docs/packages.md",
@@ -1064,12 +1062,12 @@
   {
    "id": "memory",
    "label": "Memory & data",
-   "summary": "All four memory modules are optional. Local storage does not mean local-only model context: recalled text can enter the chosen model request. Configuration and consent permit behavior; they do not prove that a live operation succeeds.",
+   "summary": "All four memory modules are optional. Local storage does not mean local-only model context: recalled text can enter the chosen model request. Configuration permits behavior; they do not prove that a live operation succeeds.",
    "groups": [
     {
      "id": "m-client",
      "label": "Enabled memory module",
-     "sub": "Selection + explicit consent + choices",
+     "sub": "pi install line + your agreement + settings",
      "x": 40,
      "y": 50,
      "nodeW": 300,
@@ -1112,7 +1110,7 @@
      "id": "m-ov",
      "group": "m-client",
      "label": "OpenViking client",
-     "sub": "Optional; both memory consents",
+     "sub": "Optional; remote memory",
      "kind": "comp-memory",
      "summary": "The enabled client asks for memories before user prompts and can send session turns to its server. Tool-result output is included only with captureToolResults true. Credentials and identity come from external configuration, not this kit.",
      "doc": "docs/memory-modules.md",
@@ -1126,7 +1124,7 @@
      "label": "AgentCore client",
      "sub": "Optional; recall and confirmed propose",
      "kind": "comp-memory",
-     "summary": "AgentCore recall sends each typed prompt to AWS as the search query. The tool agentcore_propose writes one proposal only after the person confirms the text and the target namespace. The extension has no capture path. Both memory consents are required. It uses the AWS profile of the person config, else the AWS SDK credential chain. It imports the shared core packages/agentcore-memory-core; the Claude Code plugin packages/agentcore-claude uses the same core. The owner's reviewed submit to /shared/ and /actor/ is a separate approval-gated path.",
+     "summary": "AgentCore recall sends each typed prompt to AWS as the search query. The tool agentcore_propose writes one proposal only after the person confirms the text and the target namespace. The extension has no capture path. It uses the AWS profile of the person config, else the AWS SDK credential chain. It imports the shared core packages/agentcore-memory-core; the Claude Code plugin packages/agentcore-claude uses the same core. The owner's reviewed submit to /shared/ and /actor/ is a separate approval-gated path.",
      "doc": "docs/memory-modules.md#agentcore-memory",
      "files": [
       "packages/agentcore-pi/README.md",
@@ -1138,9 +1136,9 @@
      "id": "m-embedding",
      "group": "m-client",
      "label": "Wiki embeddings",
-     "sub": "Separate text-transfer consent",
+     "sub": "Separate embedding settings",
      "kind": "comp-memory",
-     "summary": "An embedding is a numeric representation used for similarity search. Embeddings are off unless explicitly configured with embeddingTextTransfer consent. Backfill is a separate operation, not a consequence of installing the kit.",
+     "summary": "An embedding is a numeric representation used for similarity search. Embeddings are off unless the llm-wiki settings name an embedding provider. Backfill is a separate operation, not a consequence of installing the kit.",
      "doc": "docs/memory-modules.md#wiki-embeddings"
     },
     {
@@ -1217,7 +1215,7 @@
      "doc": "docs/memory-modules.md#wiki-embeddings",
      "tags": [
       "optional endpoint",
-      "text-transfer consent"
+      "embedding settings"
      ]
     },
     {
@@ -1357,7 +1355,7 @@
   {
    "id": "components",
    "label": "Module catalog",
-   "summary": "Available modules, not a detected installation. Core is required; every other module is optional. Manifest status and source checks are not proof of a working client. Select a card for inputs, consent, dependencies and readiness gaps.",
+   "summary": "Available modules, not a detected installation. Core is required; every other module is optional. Manifest status and source checks are not proof of a working client. Select a card for inputs, consent, dependencies and gaps.",
    "groups": [
     {
      "id": "g-c-core",
@@ -1443,7 +1441,7 @@
      "consent": "none",
      "doc": "docs/guides/providers.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1460,7 +1458,7 @@
      ],
      "doc": "docs/packages.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1478,7 +1476,7 @@
      ],
      "doc": "docs/guides/providers.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1492,7 +1490,7 @@
      "consent": "none",
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1506,7 +1504,7 @@
      "consent": "none",
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1520,7 +1518,7 @@
      "consent": "none",
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1534,7 +1532,7 @@
      "consent": "none",
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1548,7 +1546,7 @@
      "consent": "none",
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1562,7 +1560,7 @@
      "consent": "none",
      "doc": "docs/resources.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1573,10 +1571,10 @@
      "kind": "comp-memory",
      "summary": "Local memory in the profile: hermes-memory-config.json and runtime memory files. It uses the native module better-sqlite3.",
      "inputs": "memory.hermes; roles.memory when backgroundReview is true",
-     "consent": "consent.memoryCapture: true",
+     "consent": "your agreement to local capture",
      "doc": "docs/memory-modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1587,10 +1585,10 @@
      "kind": "comp-memory",
      "summary": "LLM Wiki: profile settings and a personal vault outside the target. An existing vault is used as it is.",
      "inputs": "memory.wiki",
-     "consent": "consent.memoryCapture: true",
+     "consent": "your agreement to local capture",
      "doc": "docs/memory-modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1601,14 +1599,14 @@
      "kind": "comp-memory",
      "summary": "The vendored OpenViking extension. It writes sessions and memories to a separately configured OpenViking server.",
      "inputs": "memory.openviking; npm ci --ignore-scripts in packages/openviking-pi; a server",
-     "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
+     "consent": "your agreement to remote memory writes",
      "files": [
       "packages/openviking-pi/README.md",
       "packages/openviking-pi/package.json"
      ],
      "doc": "docs/memory-modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1619,14 +1617,14 @@
      "kind": "comp-memory",
      "summary": "Optional shared AgentCore Memory on the memory core: recall before each typed prompt and the confirmed propose tool agentcore_propose. OpenViking stays primary. The extension has no capture path.",
      "inputs": "memory.agentcore.configFile; npm ci --ignore-scripts in packages/agentcore-memory-core; an AWS resource",
-     "consent": "consent.memoryCapture and consent.remoteMemoryWrites: true",
+     "consent": "your agreement to remote memory writes",
      "files": [
       "packages/agentcore-pi/README.md",
       "packages/agentcore-memory-core/package.json"
      ],
      "doc": "docs/memory-modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1636,14 +1634,14 @@
      "label": "coordinator-skills",
      "kind": "comp-skills",
      "summary": "Skills for a coordinator: grilling, wayfinder, research, prototype, specs and tickets, review, status. They name host tools that the kit does not install.",
-     "inputs": "a Gitea tracker for to-spec, to-tickets and wayfinder",
+     "inputs": "the issue tracker for to-spec, to-tickets and wayfinder",
      "consent": "none",
      "files": [
       "packages/tenantext/skills/coordinator-skills/README.md"
      ],
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1660,7 +1658,7 @@
      ],
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1674,7 +1672,7 @@
      "consent": "none",
      "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1688,7 +1686,7 @@
      "consent": "none",
      "doc": "docs/herdr-setup.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1702,7 +1700,7 @@
      "consent": "none",
      "doc": "docs/herdr-setup.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1716,7 +1714,7 @@
      "consent": "none",
      "doc": "packages/tenantext/docs/herdr-watch.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1730,7 +1728,7 @@
      "consent": "none",
      "doc": "docs/herdr-setup.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     },
     {
@@ -1742,9 +1740,9 @@
      "summary": "The MCP adapter with definitions from a private input file. It disables the native Pi MCP and runs in exclusive mode.",
      "inputs": "inputs.mcpFile and that file under --local-dir",
      "consent": "none",
-     "doc": "docs/workflow-modules.md",
+     "doc": "docs/guides/modules.md",
      "tags": [
-      "optional; not a detected selection"
+      "not a detected installation"
      ]
     }
    ],
@@ -1820,7 +1818,7 @@
    "view": "overview",
    "node": "terminal",
    "title": "Start with the terminal",
-   "text": "Use a plain terminal or an optional Herdr workspace. Your launcher chooses the Pi profile for that process."
+   "text": "Use a plain terminal or an optional Herdr workspace. Your start line chooses the Pi profile for that process."
   },
   {
    "view": "overview",
@@ -1844,7 +1842,7 @@
    "view": "profile",
    "node": "p-state",
    "title": "Authentication stays in its profile",
-   "text": "A new candidate does not get the old auth.json or sessions. Log in again. The launcher can still inherit shell credentials."
+   "text": "A second profile does not get the auth.json or sessions of another. Log in again. The start line can still inherit shell credentials."
   },
   {
    "view": "memory",

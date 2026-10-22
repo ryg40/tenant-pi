@@ -15,6 +15,6 @@ The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. 
 
 - Adds one Herdr worker pane per ticket, with an isolated worktree and a throwaway branch that never merges.
 - Selects the model and thinking level from the request or Herdr local defaults.
-- Publishes branch pointers and decisions as Gitea ticket comments with the parent label.
+- Publishes branch pointers and decisions as ticket comments with the parent label.
 - Routes HTML review through the artifact server, Walkr or `pidesktop`, not a local browser.
 - Updates `LOGIC.md` handoff and review wording for Walkr and ticket comments. `UI.md` stays unchanged.

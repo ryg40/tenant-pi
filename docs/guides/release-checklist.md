@@ -3,44 +3,31 @@
 A portable release is a snapshot of the reviewed publish set on the branch `portable`. This checklist lists the gates before a snapshot and the steps that publish it. A passed gate is a fact for this release only. It is not a claim about a later release.
 
 Record each gate as passed, failed, blocked or not run. Never write "passed" for a gate that did not run.
-For a pin change followed by a snapshot, use the [pin move and release guide](pin-move-release.md).
-It records a maintainer-approved fast track with gate 6 not run, not full release qualification.
+For a pin move followed by a snapshot, also follow [the release after a pin move](#release-after-a-pin-move).
 
 ## Release classes
 
-The publisher accepts --class patch or --class full. The default is patch.
-It records the class in the notes header and as `class: patch` or `class: full` in the annotated tag.
+The `--class` option of `scripts/publish_portable.py` selects `patch` or `full`. The class is in the notes header and in the annotated tag.
 
 - A patch release records the check-set stamp and the snapshot-range pre-push lines.
 - A patch release carries forward gates 6 and 7 from the last full tag.
 - A full release records every gate, including `scripts/scan.sh all` and the clean Linux core trial.
 - Use full at each pin move or on request. A new component also needs a full release.
 
-Publish at most one patch release per day; it bundles every ticket merged since the last tag.
+Publish at most one patch release per day; it bundles every change merged since the last tag.
 This is a maintainer policy, not a command-line limit.
 A full-class tag records the checks; its class alone does not mean that every gate passed.
 A legacy portable tag without a `class:` line counts as full.
-The publisher finds the last full tag in newest-first tag order.
 
 ## Combined offline check
 
-This section is the one description of `scripts/check.py`. `python3 scripts/check.py --help` lists its selection rules and options.
+`python3 scripts/check.py --help` states which tests a run selects.
 
-The everyday command is `python3 scripts/check.py --tier fast`.
-It runs the tests of the changed files: the files that differ from the merge base of `HEAD` with `origin/main` (else `main`), and the untracked files that Git does not ignore.
-A changed root script runs the root test modules that import it or name its path. A changed file in a package folder runs the suites of that package. Any other changed file runs all root test modules.
-Each run also parses the tracked JSON files and the Markdown frontmatter, runs `scripts/scan.sh tree` and runs `git diff --check`.
-Without Betterleaks on `PATH`, the scan line says `skipped`; the pre-push hook still scans each push.
-A package suite needs Node, the `node_modules` of the package and, for `packages/tenantext`, the Pi links. Without them, the check fails with one line that names the setup step of [the package documents](../packages.md).
-The fast tier skips the measured slow tests and gives no release qualification.
-
-The full check set is `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --all`: every root test module, every package suite and the checks of each run. CI runs the same command.
-The final line is `check: passed` only when every part succeeds.
-A run of everything with the default tier `full`, on a clean tree and with no skipped part, records a local Git-tree stamp. So the release host needs Betterleaks. Check the stamp with `python3 scripts/check.py --stamp-status`.
-See [offline checks and local stamps](../publishing.md#offline-checks-and-local-stamps) for the fields and matching rules.
-The publisher reads a matching stamp instead of repeating the check set.
-A missing or stale stamp triggers a full check set. Live-trial requirements remain unchanged.
-The publish rules of `scripts/publish_check.py` run when the publisher cuts a snapshot, not in this check. A new file needs no `PUBLISH` entry until the next snapshot.
+- The everyday command is `python3 scripts/check.py --tier fast`. It runs the tests of the changed files and gives no release qualification.
+- The full check set is `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --all`. CI runs the same command. The final line is `check: passed` only when every part succeeds.
+- A run of everything on a clean tree, with no skipped part, records a local stamp. Without Betterleaks on `PATH` the scan part is skipped, so the release host needs Betterleaks. `python3 scripts/check.py --stamp-status` checks the stamp. The publisher reuses a matching stamp; see [local stamps](../publishing.md#offline-checks-and-local-stamps).
+- A package suite needs Node, the `node_modules` of the package and, for `packages/tenantext`, the Pi links. See [the package tests](../packages.md#tests).
+- The publish rules of `scripts/publish_check.py` run when the publisher cuts a snapshot, not in this check.
 
 ## Gates
 
@@ -48,68 +35,32 @@ The publish rules of `scripts/publish_check.py` run when the publisher cuts a sn
 | --- | --- | --- |
 | 1. The check set (replaces gates 1 to 4) | `PYTHONDONTWRITEBYTECODE=1 python3 scripts/check.py --all` ends with `check: passed`; record the clean-tree stamp | Yes |
 | 5. Scanner | Both classes: record the snapshot-range pre-push lines at level `fail`. Full only: also run `scripts/scan.sh all` and require exit 0. | Yes |
-| 6. Clean Linux core trial | A core-only profile on a clean Linux user: INSTALL.md Stages 0 to 9, with Stage 9 checks 1, 2 and 4 recorded. Patch carries forward the last full record. | Full |
+| 6. Clean Linux core trial | A core install on a clean Linux user: each step of INSTALL.md, with the first start recorded. Patch carries forward the last full record. | Full |
 | 7. Optional live services | Each optional module, the gateway and each MCP server: passed, failed, blocked or not run. Patch carries forward the last full record. | Report only |
 
 Gate 1 replaces the former gates 1 to 4 with one check set and one stamp record.
 Gates 5 to 7 keep their numbers.
-The unit suite includes the examples, sample overlay, builder determinism tests and [documentation check](#documentation-check).
-The test `DocCheckRepoTests` of `tests/test_doc_check.py` checks the publish set documentation. A finding fails the unit tests.
+The unit suite of gate 1 includes [the documentation check](troubleshooting.md#the-documentation-check-fails) and the text checks of the coordinator and knowledge skills against [the issue tracker document](../agents/issue-tracker.md).
 Run the tests with `unittest`, not `pytest`: see [troubleshooting](troubleshooting.md#the-publish-check-fails-after-pytest).
-
-Gate 1 also checks the text of `coordinator-skills` and `knowledge-skills` under `packages/tenantext/skills/`.
-The test `tests/test_skill_invariants.py` reads their Markdown and the label table of [the issue tracker document](../agents/issue-tracker.md).
-A finding fails the unit tests.
-
-A pin move changes one tracked file: `config/manifest.json`.
-The reviewed core anchor in `scripts/validate.py` holds the package name and no version.
-Use the `pin` action of `scripts/pi_update.py` for the edit.
-`runtime.piVersion` is the tested version. `runtime.piAcceptedRange` is the accepted range.
-A changed stable pin automatically sets `>=<new version> <next minor>` in the same manifest edit.
-The range therefore moves with the pin, including a move to another minor or major line.
-A same-pin call preserves a separately reviewed range. The validator requires the tested version inside the range.
-Replace `<new version>` with the approved version. Run this command from the kit root:
-
-```sh
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py pin --version "<new version>"
-```
-
-Warning: this command replaces `config/manifest.json`. Keep a copy of any uncommitted edits before you run it.
-
-To use a separate reviewed range, run `pin --version "<new version>" --range "<reviewed range>"` instead.
-This still changes only that file. Review the range before accepting the candidate.
-Bounds use stable versions. A prerelease pin needs an explicit range with a lower stable bound before its numeric version.
-Otherwise the automatic lower bound excludes that prerelease and the editor refuses the move.
-See [the prerelease rule](../check-runtime.md#comparison).
-
-Tests read the current pin from the manifest. Guides point to `runtime.piVersion` instead of copying its value.
-Historical observations and package-specific dependency pins stay fixed; review them before qualifying a new release.
-Run the offline gates on the candidate copy before accepting the move.
-
-The `questions` component has its own pin: an exact version of `@juicesharp/rpiv-ask-user-question` in its `source.spec` in `config/manifest.json`. It is not a version range.
-The source of that version was not reviewed.
-`scripts/pi_update.py detect` exits 10 while the registry has a newer version.
-This continues until the maintainer of the release reviews the newer version and moves the pin.
 
 ### Gate 5: the scan record
 
 For full, run `scripts/scan.sh all` and record its result and level. The publisher leaves this line as a placeholder.
 For patch, record the pre-push lines only. Do not run `scripts/scan.sh all` for a patch release.
 Without a previous full portable tag, make a full release first.
-The pre-push hook scans the union of the branch and tag commit sets once.
-Use its `pre-push: result pass; range <revisions>; level fail` line as the snapshot-range record.
-The publisher prints this line from the push output and copies it into the notes.
-A failed push keeps its failure line. A missing hook line is not a passed scan.
+The pre-push hook prints one `pre-push: result` line for the commits of the push; see [the range of a push](../secret-handling.md#the-range-of-a-push).
+The publisher copies this line from the push output into the notes.
+A failed push keeps its failure line. A missing hook line is not a passed scan. An empty range is not a scan of a new commit.
 Do not run a separate manual snapshot-range scan.
 A build with `--no-push` has no pre-push record; mark the snapshot-range check as not run until the approved push.
 
 ### Gate 6: the clean Linux core trial
 
 - Use a Linux user with no Pi profile of its own, no kit credentials and no optional services.
-- Follow [INSTALL.md](../../INSTALL.md) with a core-only overlay.
-- Record the Pi version, the Node version and the Python version from `check-runtime`.
-- Record the `check-baseline` result for `~/.pi/agent` of that user (INSTALL.md Stage 9 check 4). For a user with no Pi profile the result is `unchanged`, with `was` and `now` both `absent`.
-- A model reply (Stage 9 check 3) needs a credential. Report it separately as passed, failed, blocked or not run.
+- Follow [INSTALL.md](../../INSTALL.md) with the core install and no optional module.
+- Record the Pi version, the Node version and the Python version from `scripts/check_runtime.py`.
+- Record that `~/.pi/agent` of that user is absent after the first start, or unchanged when it existed before.
+- A model reply needs a credential. Report it separately as passed, failed, blocked or not run.
 
 Not verified: this gate with the kit pin in `config/manifest.json`, key `runtime.piVersion`.
 
@@ -121,7 +72,7 @@ A release note names each optional module, route and service with its result. Th
 - Gateway route: blocked, no key on the test client.
 - `mcp`, server `example`: not run.
 
-Do not write "all modules work" when only the core trial ran. Do not describe a documentation review or an offline `generate` as a live installation.
+Do not write "all modules work" when only the core trial ran. Do not describe a documentation review or an offline qualification as a live installation.
 
 ## Platforms that are not qualified
 
@@ -131,17 +82,17 @@ These platforms are not qualified in this release. A guide may give an adaptatio
 | --- | --- | --- |
 | [macOS on Apple silicon](macos.md) | Not qualified | Gate 6 on a clean macOS user with Homebrew or nvm Node, plus the tests and the publish check on that host. |
 | Windows, also WSL | Not qualified | Gate 6 under WSL or native Windows; the kit uses POSIX paths and modes, so a native Windows run also needs a code review. |
-| Browser-hosted Pi | Not qualified | Gate 6 with Pi started from a browser terminal, with the launch environment checks of [INSTALL.md](../../INSTALL.md#shells-that-do-not-inherit-your-variables). |
+| Browser-hosted Pi | Not qualified | Gate 6 with Pi started from a browser terminal, with the environment checks of [the first start](../../INSTALL.md#first-start). |
 | Pi inside Herdr | Not qualified | Gate 6 with Pi started in a Herdr pane, plus the `herdr` component loaded and used once. |
-| The `questions` component | Not qualified | An interactive session of a generated profile that loads the extension and shows one question dialog, plus the plain-text fallback in a session without it. |
+| The `questions` component | Not qualified | An interactive session of a profile of the kit that loads the extension and shows one question dialog, plus the plain-text fallback in a session without it. |
 | A temporary Herdr session | Not qualified | A named test session that starts, shows its state, stops and is deleted, with no model request, on a host that the maintainer of the release approves. |
-| Install on a remote Linux host over SSH | Not qualified | The stages run over SSH on a disposable Linux host that the maintainer of the release approves, with the identity and ownership checks recorded. |
+| Install on a remote Linux host over SSH | Not qualified | The install steps run over SSH on a disposable Linux host that the maintainer of the release approves, with the identity and ownership checks recorded. |
 
 Each run needs a record with the exact commands, the versions, and each check as passed, failed, blocked or not run. The maintainer of the release accepts the record before the status changes.
 
 ## Publish steps
 
-These steps come from [publishing](../publishing.md).
+[Publishing](../publishing.md) explains the publisher. `python3 scripts/publish_portable.py --help` lists its options.
 
 1. Commit every change on your source branch. The publish command refuses a dirty working tree.
 2. Run the check set once on the clean tree. For full, also run `scripts/scan.sh all` and keep its result.
@@ -151,11 +102,9 @@ These steps come from [publishing](../publishing.md).
    python3 scripts/publish_portable.py --no-push --class patch
    ```
 
-   The publisher prints the matching stamp without repeating the check set.
-   It writes notes to a new system temporary file and prints `notes: <path>`.
-   The --notes option selects another path. Keep the notes outside the checkout.
+   The publisher prints the matching stamp without repeating the check set. It prints the path of the draft notes, `notes: <path>`. Keep the notes outside the checkout.
 
-4. Inspect the snapshot: `git show portable --stat`. Check each new file against the [publish set rules](#add-a-file-to-the-publish-set).
+4. Inspect the snapshot: `git show portable --stat`. Check each new file against the [publish set rules](../publishing.md#adding-a-file-to-the-portable-set) and [the public reader rules](../publishing.md#public-reader-rules). Reviewers read each added file as readers without access to the private development repository: names, paths, tracker references, service choices, historical claims, licenses and provenance, not only scanner matches.
 5. Run the publisher once to push, only after the maintainer approves the release:
 
    ```sh
@@ -164,213 +113,58 @@ These steps come from [publishing](../publishing.md).
 
    Use the same class on both runs. The second run reads the same stamp and does not repeat the check set.
    It writes a new notes file with the push record. Use that file for the release entry.
-   A repeat build preserves the original changes list. It refuses a different source or class for an unchanged snapshot.
    A changed tree or client needs a new full check set and snapshot review before approval.
-
-   The command pushes two refs by name: the branch `portable` to the destination named by `--remote` and `--remote-branch`, and the tag `portable/<yyyymmdd>-<source sha>` of this snapshot. It pushes no other tag and no other branch. When the snapshot did not change, for example after a build with `--no-push`, it pushes the snapshot tag that already points at the snapshot commit. The commit and the tag carry the neutral identity `tenant-pi portable`.
+   The publisher pushes only the branch `portable` and the tag of this snapshot. When you also keep the snapshot on the development remote, push the same branch and tag there by name. Never use `git push --follow-tags`.
+   Then check with `git ls-remote` that each remote resolves the tag to the snapshot commit. Check that the visibility of the publication repository matches the approved visibility; portable content does not imply a public repository.
 
 6. Wait for the CI run of the snapshot on GitHub: the workflow "Offline checks" ([continuous integration](../publishing.md#continuous-integration)). Both matrix jobs, Linux and macOS, must pass before you create the release entry. A failed job stops the release entry.
-7. Review [the release notes](#release-notes) from the publisher after the last gate. Fill the placeholders and publish the entry on the tag. The publisher does not create the release entry. Keep the tested snapshot unchanged.
-8. Update the documentation site of the kit, if you maintain one: set the new tag in its version file, run its capture script, and update the pages that changed. (The maintainers' site is tenant-docs; its `README.md` section `New release of a project` has the steps.)
+7. Review [the release notes](#release-notes) from the publisher after the last gate. Fill the placeholders and publish the entry on the tag. Keep the tested snapshot unchanged.
+8. Update the documentation site of the kit, if you maintain one: set the new tag in its version file and update the pages that changed.
 
-Warning: `--force` can replace an existing remote snapshot chain, but it does not remove earlier tags.
+The public history only moves forward; see [publishing](../publishing.md#history).
 
-Use a new, empty repository for a new-root publication; see [publishing](../publishing.md#a-new-history).
+## Release after a pin move
+
+A pin move changes the runtime contract, so it needs the full class and `scripts/scan.sh all`. A fast track leaves gate 6 not run. It needs the approval of the maintainer, and it is not a fully qualified release.
+
+1. Detect the candidate and read its notes with [the update checks](../pi-update.md). Record the effect of each entry on `install.sh`, the settings template, the extensions, the skills and the package APIs. Resolve each required migration first.
+2. On a topic branch, move the pin with `pin`, then run `qualify` once. Qualification runs the full check set in the candidate copy, so do not repeat it in the worktree. Record each step with its exit code in the commit body. Compare an unexplained failure with the unchanged base, and name each accepted baseline failure.
+3. Get an independent review of the pin diff and its evidence. Then merge it.
+4. On the merged `main`, run `python3 scripts/check.py --stamp-status`, or the full check set once when the stamp is missing. When the check set fails, revert the merge and stop the release until a fix passes.
+5. Run gate 5 with `scripts/scan.sh all`. A development result at level `warn` is not the snapshot result; the snapshot needs the pre-push record at level `fail`.
+6. For a fast track, record gate 6 as not run and the qualification as `fast track: gate 6 not run, approved by the maintainer`. Record each part of gate 7.
+7. Follow [the publish steps](#publish-steps) with `--class full`.
+
+Pitfalls:
+
+- A worktree can lack the Pi peer packages after `npm ci`. Qualification links its own copies to the candidate installation.
+- A commit body must contain no machine path: the history scan reads commit messages, not only file content.
+- After the release, reinstall each changed skill that a host uses with the installer in its folder under `packages/tenantext/skills/`, after approval of the local writes.
 
 ## Release notes
 
 The publication service is the Git host of the published repository, for example GitHub.
-The publisher writes a draft notes file outside the snapshot. The maintainer reviews it after the last gate.
-The maintainer creates the release entry on the tag. The publisher does not create that entry.
+The publisher writes a draft notes file outside the snapshot, with the template of the class. It fills the identity, the pin, the update block for clients, the stamp record, the snapshot-range line and the changes. The maintainer fills each other placeholder in angle brackets after the last gate: the qualification, `scan.sh all`, gates 6 and 7, the full URL of [the platforms that are not qualified](#platforms-that-are-not-qualified) at the tag, the known defects and the open gaps.
 The snapshot holds no notes file, because a later file changes the tested tree.
 
-Both classes include the tag, source commit, snapshot commit, kind, Pi pin, changes and known defects.
-Each changes line comes from a merge subject since the source commit of the previous portable tag.
-The publisher copies the gate 1 lines from the matching stamp, including its client and skipped count.
-It records gate 5 from the push output, or `not run (no push)` with --no-push.
-The generated known-defects line is `<none recorded>`. Review it before publication.
-
-Full notes also hold:
-
-- The tag, the source commit and the snapshot commit.
-- The Pi pin (`runtime.piVersion`) and the accepted range (`runtime.piAcceptedRange`).
-- The qualification: full qualification, or a fast track with gate 6 not run.
-- The update block for clients, before the gates.
-- The check-set stamp from the `publish_portable.py` output: tree hash, time, result lines, client and skipped count.
-- Gates 1, 5 and 6 with one word: passed, failed, blocked or not run. Include each gate's record.
-- The stamp's public reader result. The unit result includes the documentation check.
-- Gate 7 with one word for each part. This gate has no word for the whole gate.
-- For gate 7, one line for each optional module, route and service, as [the section of gate 7](#gate-7-optional-live-services-are-never-implied) says.
-- The changes since the previous tag, as a short list.
-- A link to the section [Platforms that are not qualified](#platforms-that-are-not-qualified) of this checklist at the tag. Write the full URL: the release entry is outside the tree.
-- Each known defect and each open gap.
-
-Never write "passed" for a gate that did not run. Do not write "all modules work" when only the core trial ran.
-
-Check the notes against [the public reader rules](../publishing.md#public-reader-rules) before you create the entry. The publish check does not read them, because they are not in the publish set.
+- Never write "passed" for a gate that did not run. Do not write "all modules work" when only the core trial ran.
+- The skipped-test count depends on the client. Record the count and the client from the check result, not from another client.
+- Check the notes against [the public reader rules](../publishing.md#public-reader-rules) before you create the entry. The publish check does not read them, because they are not in the publish set.
+- The release entry is Markdown: each list item is one line on the release page.
 
 Warning: a list of changes that you copy from commit messages can hold references to a private tracker. Check the list against the public reader rules.
 
-Warning: a release entry is public when the repository is public.
-
-The skipped-test count depends on the client. Record the count from the check result, not from this guide.
-Record the client alongside the actual count, rather than copying one count to another client.
-Take the stamp fields for both templates from the `publish_portable.py` output.
-`check.py --stamp-status` prints only the stamp status line, not those fields.
-
-Replace each placeholder in angle brackets. Do not replace an unrun gate with a passed result.
-In both templates, the update block for clients comes right after the header lines, before the gates.
-The publisher writes the whole block from the two source commits.
-The placeholders `<overlay>` and `<private dir>` of its `Run:` line stay for the client.
-Without a previous tag, the block is `## Update` with the line `- First release: no update data.`
-The release entry is Markdown: each list item is one line on the release page.
-
-### Patch notes template
-
-The publisher fills this template. Gates 6 and 7 refer to the last full tag, not the last patch tag.
-
-```markdown
-# Portable release: patch
-
-- Tag: portable/<yyyymmdd>-<source sha>
-- Source commit: <source sha>
-- Snapshot commit: <snapshot sha>
-- Kind of release: patch release
-- Pi pin (runtime.piVersion): <version>
-
-## Update from <previous tag>
-
-- <"No new candidate expected." or "A new candidate may be needed: <reasons>.">
-- Pi pin: <"unchanged (<version>)" or "<old> -> <new>; install the new Pi first.">
-- <one line for each changed range: accepted range, Node range, Python range>
-- <"npm ci --ignore-scripts needed in: <packages>" or "No package line needed.">
-- Files that can change a generated profile: <paths and "removed: <path>" items, or none>
-- Run: `python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>`
-- A clean clone at this tag needs no test run.
-
-## Gates
-
-1. The check set (stamp record)
-   - tree: <tree from the stamp>
-   - when: <when from the stamp>
-   - client: <client from the stamp>
-   - skipped: <skipped from the stamp>
-   - resultLines:
-   - <every resultLines entry, unchanged>
-5. Scanner
-   - Snapshot range: <pre-push result line, or not run (no push)>
-Gates 6-7: unchanged from <last full tag>
-
-## Changes since <previous tag>
-
-- <one merge subject per line, checked against the public reader rules>
-
-## Known defects
-
-<none recorded>
-```
-
-### Full notes template
-
-The publisher fills the identity, pin, update block, stamp, changes and snapshot-range lines.
-The maintainer fills the other records. The `scan.sh all` line remains a placeholder until that scan runs.
-
-```markdown
-# Portable release: full
-
-- Tag: portable/<yyyymmdd>-<source sha>
-- Source commit: <source sha>
-- Snapshot commit: <snapshot sha>
-- Pi pin (runtime.piVersion): <version>
-- Accepted range (runtime.piAcceptedRange): <range>
-- Kind of release: full release
-- Qualification: <full qualification, or fast track: gate 6 not run, approved by the maintainer>
-
-## Update from <previous tag>
-
-- <"No new candidate expected." or "A new candidate may be needed: <reasons>.">
-- Pi pin: <"unchanged (<version>)" or "<old> -> <new>; install the new Pi first.">
-- <one line for each changed range: accepted range, Node range, Python range>
-- <"npm ci --ignore-scripts needed in: <packages>" or "No package line needed.">
-- Files that can change a generated profile: <paths and "removed: <path>" items, or none>
-- Run: `python3 scripts/tenant_pi.py update --overlay <overlay> --local-dir <private dir>`
-- A clean clone at this tag needs no test run.
-
-## Gates
-
-1. The check set (stamp record)
-   - tree: <tree from the stamp>
-   - when: <when from the stamp>
-   - client: <client from the stamp>
-   - skipped: <skipped from the stamp>
-   - resultLines:
-   - <every resultLines entry, unchanged>
-5. Scanner
-   - Snapshot range: <pre-push result line, or not run (no push)>
-   - scan.sh all: <passed, failed, blocked or not run> - <result line with the level>
-6. Clean Linux core trial: <passed, failed, blocked or not run> - <result line>
-7. Optional live services (one line for each, no total result)
-   - <module, route or service>: <passed, failed, blocked or not run> - <result line>
-
-## Changes since <previous tag>
-
-- <one merge subject per line, checked against the public reader rules>
-
-Platforms that are not qualified: <full URL of docs/guides/release-checklist.md at the tag>#platforms-that-are-not-qualified
-
-## Known defects
-
-<none recorded>
-
-## Open gaps
-
-- <gap, or none known>
-```
-
-## Add a file to the publish set
-
-A new tracked file under `scripts/`, `tests/` or `docs/` enters through `PUBLISH_DIRS` unless `scripts/dev-only-files.txt` excludes it.
-Package directories also have rules, with technical exclusions.
-`PUBLISH` in `scripts/publish_check.py` keeps explicit entries for root files, workflow files, `config/`, selected package files, `extensions/` and the install skill.
-Files outside directory rules need an explicit entry after review.
-For a private copy, the optional deny list names reviewed files or directory prefixes that must not publish.
-A portable copy needs no list.
-A file outside the publish rules and deny list fails with `unreviewed_file: repository inventory`.
-Review each new file for secrets and host values before committing it.
-
-The publish check also applies [the public reader rules](../publishing.md#public-reader-rules): no reference to a private tracker, no machine path, no dated record of one host and no value of a deny list. `python3 scripts/publish_check.py --public` lists each finding.
-
-## Documentation check
-
-`scripts/doc_check.py` selects explicit Markdown entries from `PUBLISH` and Markdown files under `docs/`, including subdirectories.
-It checks only files that `published()` accepts, so denied docs are omitted.
-It uses the Python 3.11 standard library, runs offline, starts no process and writes nothing.
-
-The unit tests of gate 1 run the same check, so a release needs no separate command. Run the script directly to see the list of findings:
+Only the maintainer of the release creates the entry, after approval of the notes and after the CI run passed. With GitHub, from the saved notes file:
 
 ```sh
-PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py
+gh release create '<tag>' --repo '<owner>/<repo>' --verify-tag --title '<tag>' --notes-file '<notes file>'
+gh release view '<tag>' --repo '<owner>/<repo>' --json tagName,isDraft,url
 ```
 
-It prints `doc check valid: <n> files, <n> links, <n> json blocks, <n> actions (offline text checks only)` and exits with 0. Else it prints one line for each finding, sorted, then `doc check failed: <n> findings`, and exits with 1. A finding is `rule: path:line`. It never holds text of the file.
+`--verify-tag` stops the command when the remote repository does not have the tag. The view must print the tag, `isDraft` as `false`, and the URL of the entry.
 
-| Rule | Meaning |
-| --- | --- |
-| `link_missing` | A relative link names a file that does not exist. |
-| `link_outside` | A relative link leaves the repository. |
-| `link_unpublished` | A link names a file outside the publish set. A portable snapshot does not hold it. `DEV_ONLY_TARGETS` in `scripts/doc_check.py` can name an optional private-copy target that is permitted; the list is empty. |
-| `anchor_missing` | A `#anchor` matches no heading of the target file. The anchor form is the GitHub heading form. |
-| `json_example` | A fenced `json` block is not one JSON document and not JSON Lines. |
-| `cli_action` | `tenant_pi.py <action>` names an action that the parser does not have. |
-| `cli_flag` | A flag after `tenant_pi.py <action>` is not an option of that action. In `INSTALL.md`, the guides and `README.md`, a code span that holds only a flag must be a kit option or a reviewed flag of another program. |
-| `env_name` | In `INSTALL.md`, the guides and `README.md`, a `TENANTEXT_*`, `PI_*` or `WIKI_*` name is not in the manifest and not a launch-line name. |
-| `action_unguided` | An action of the parser is not named in `INSTALL.md` or a guide under `docs/guides/`. |
-| `doc_missing`, `doc_text` | A selected Markdown file is absent, is a link, or is not UTF-8. |
+Warning: a release entry is public when the repository is public.
 
-The check reads the parser of `scripts/tenant_pi.py` in the same process: it imports the module and stops `main` at `parse_args`. So the check follows each change of the CLI.
+Warning: the help of `gh release create` says that a published release locks its tag when the repository has release immutability on.
 
-Limits:
-
-- The package documents under `packages/` are not checked. They have their own test suites.
-- A flag in prose outside a code span is not checked.
-- The check proves that a link resolves and that a command has a valid shape. It does not prove that a command works.
+Not verified: the commands for a publication service other than GitHub.

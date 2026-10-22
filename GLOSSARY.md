@@ -6,13 +6,14 @@ This file is the project glossary that the `domain-modeling` skill reads.
 ## Language
 
 **Guided configuration kit**:
-Reviewed defaults, local-choice templates, validation, and setup instructions for preparing a fresh Pi setup.
+Reviewed defaults, templates, checks, and setup instructions for preparing a fresh Pi setup.
 It does not own an installed environment's ongoing configuration changes.
 _Avoid_: Managed installer, configuration manager
 
-**Local overlay**:
-The client's private choices that adapt portable defaults to its paths, models, and services.
-_Avoid_: Portable baseline, exported agent home
+**Profile directory**:
+The Pi agent directory of `PI_CODING_AGENT_DIR` that `install.sh` writes the templates into, only when each file is absent.
+After the install, the user owns its files.
+_Avoid_: Generated profile, candidate
 
 **Hybrid recall**:
 Keyword search combined with embedding similarity to find relevant wiki pages.
@@ -31,6 +32,6 @@ A temporary Linux user created for one trial and removed after it; it holds no c
 _Avoid_: Test user, service account
 
 **Refusal rules**:
-The shared location restrictions that protect the kit, live profile and personal wiki vaults.
-See the [refusal-rules table](docs/private-directory.md#refusal-rules).
+The location checks of `install.sh` that protect the live profile `~/.pi/agent` and the clone.
+The comment at the top of `install.sh` states them. See [install.sh](INSTALL.md#run-installsh).
 

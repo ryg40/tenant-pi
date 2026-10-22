@@ -176,7 +176,14 @@ export function normalizeRemote(url) {
   } else {
     return null;
   }
-  path = path.replace(/\/+$/, "").replace(/\.git$/, "").replace(/\/+$/, "").replace(/^\/+/, "");
+  // Scan boundaries once: an unanchored trailing-slash regex retries at every internal slash.
+  let start = 0;
+  let end = path.length;
+  while (end > 0 && path[end - 1] === "/") end -= 1;
+  if (end >= 4 && path.slice(end - 4, end) === ".git") end -= 4;
+  while (end > 0 && path[end - 1] === "/") end -= 1;
+  while (start < end && path[start] === "/") start += 1;
+  path = path.slice(start, end);
   if (!host || !path) return null;
   return `${host.toLowerCase()}/${path}`;
 }

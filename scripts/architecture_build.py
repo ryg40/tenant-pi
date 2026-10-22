@@ -151,7 +151,6 @@ def component_node(node, component, root):
         ["Inputs", node.pop("inputs", "none")],
         ["Consent", node.pop("consent", "none")],
         ["Environment", ", ".join(component.get("env", [])) or "none"],
-        ["Boundary", (component.get("configOwnership") or {}).get("boundary", "none")],
     ]
     node["gaps"] = [[gap["code"], gap["fact"]] for gap in component.get("gaps", [])]
 

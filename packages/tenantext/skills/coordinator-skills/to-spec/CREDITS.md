@@ -13,7 +13,7 @@ The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. 
 
 ## Changes from the pinned upstream commit
 
-- Replaces generic tracker setup with the Gitea tracker contract and stops when no tracker exists.
+- Replaces generic tracker setup with the tracker contract and stops when no tracker exists.
 - Adds the OpenViking, OpenKnowledge through `okknow`, and Pi LLM-WIKI read order, with `GLOSSARY.md` read first.
 - Adds question-tool instructions for both harnesses, up to three questions per round, and the `grilling` call.
 - Publishes the spec as an issue, defines its triage-label handoff to `to-tickets`, and adds map parent labels.

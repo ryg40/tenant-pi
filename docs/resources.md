@@ -1,6 +1,6 @@
 # Resources component
 
-Status: `unverified`. The component is `resources` in `config/manifest.json`. The source is `packages/tenantext/extensions/resources/`. No test in this repository loads the component in a generated profile.
+Status: `unverified`. The component is `resources` in `config/manifest.json`. The source is `packages/tenantext/extensions/resources/`. No unit test of the kit loads the component in a profile; the qualification of the kit loads it with no session.
 
 This page states the contract of the component. The package tests under `packages/tenantext/test/resources-*.test.ts` test the code against a temporary agent directory. Not verified: each behaviour on this page in a live Pi session.
 
@@ -13,9 +13,7 @@ The source facts below use `<reviewed release>`, Pi `1.0.3`; they do not qualify
 
 ## Enable the component
 
-1. Move `resources` from `selection.disable` to `selection.enable` in the overlay. The validator then accepts the component and lists its gaps in the plan.
-2. Generate the profile. The profile adds `extensions/resources/index.ts` to the `extensions` filter of the `packages/tenantext` package declaration.
-3. Run `npm ci --ignore-scripts` in `packages/tenantext`. Not verified: this component needs `node_modules/` at load time.
+The core install of the kit loads the component: `install.sh` names `packages/tenantext` in the `packages` list of the profile settings, and Pi loads each extension of the package, `extensions/resources/index.ts` with them.
 
 ## Command
 
@@ -80,7 +78,7 @@ The inventory has these sources:
 - The explicit entries of the resource arrays `extensions`, `skills` and `prompts` in `settings.json`.
 - Each package of `packages[]` with its resources. A local path package resolves relative to the agent directory. An npm package is under `<agent dir>/npm/node_modules/<name>`. A git package is under `<agent dir>/git/`. The component reads the `pi` field of the package manifest. Without that field it reads the conventional directories.
 - Each MCP server of `<agent dir>/mcp.json` and of `.pi/mcp.json`, and each project override of `.pi/mcp.json`.
-- The four built-in extensions.
+- The built-in extensions of the table above.
 
 The enabled state follows the rules of Pi: the `-path` and `!glob` entries of the arrays, the filter lists of a package entry, `enabled: false` on an MCP entry, and the `disabledMcpServers` block.
 
@@ -90,7 +88,7 @@ The component makes minimal edits. It keeps all other keys and the key order. It
 
 ### How Pi reads a list
 
-These rules are read in the source of the reviewed release: the function `applyPatterns` in `dist/core/package-manager.js`. That file is byte-equal in Pi 1.0.2 and the reviewed release. The comment at the top of `packages/tenantext/extensions/resources/writers.ts` has the line numbers. The package test `test/resources-inventory.test.ts` compares the inventory with the result of the installed Pi on four settings files.
+These rules are read in the source of the reviewed release: the function `applyPatterns` in `dist/core/package-manager.js`. That file is byte-equal in Pi 1.0.2 and the reviewed release. The comment at the top of `packages/tenantext/extensions/resources/writers.ts` has the line numbers. The package test `test/resources-inventory.test.ts` compares the inventory with the result of the installed Pi on fixture settings files.
 
 | Entry | Meaning |
 | --- | --- |
@@ -214,7 +212,7 @@ Not modeled:
 - An installed extension that registers `/mcp`, such as `pi-mcp-adapter`. It replaces the built-in MCP support while `builtin:mcp` can still show as on. From 5.0.0 the adapter reads `.pi/mcp.json` outside its exclusive mode, but it skips an entry without `command` or `url`, so an override entry has no effect there (source reading of 5.4.0, `config.ts`).
 - In the menu, a row keeps its text until the write. After a change of a user row in memory, the override row of the same server can show the old state.
 
-A generated profile with the `mcp` module has `-builtin:mcp` and no `mcp.json`, so the native override has no effect there. A generated profile without the `mcp` module keeps the built-in MCP extension. There the override applies when `<agent dir>/mcp.json` exists. A `+builtin:mcp` entry in the settings of a trusted project turns the native path on again, unless an installed extension registers `/mcp` (not verified at runtime).
+A profile with `-builtin:mcp` in its `extensions` list and no `mcp.json` gets no effect from the native override. A profile without that entry keeps the built-in MCP extension. There the override applies when `<agent dir>/mcp.json` exists. A `+builtin:mcp` entry in the settings of a trusted project turns the native path on again, unless an installed extension registers `/mcp` (not verified at runtime).
 
 ### Errors
 

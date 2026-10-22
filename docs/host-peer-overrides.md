@@ -20,7 +20,7 @@ An installed copy can bypass the extension loader and create a duplicate runtime
 | `@juicesharp/rpiv-ask-user-question` | 2.11.0 | `typebox` |
 | `@zosmaai/pi-llm-wiki` | 0.12.4 | `@earendil-works/pi-tui`, `typebox` |
 
-Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, and the script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 lists `typebox` under `dependencies`, and the script corrects it. The registry manifest of the kit pin lists `typebox` under `peerDependencies` with the range `*` (upstream changelog 2.12.0). The gap `peer_package_unverified` of `questions` in `config/manifest.json` names that version. Run on a copy of that manifest, the script prints nothing and leaves the file byte-equal. Not verified: a Pi start with the pinned version installed and no peer warning. The script keeps all three packages in its list: a later version of a package can list a host module under `dependencies` again.
+Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies` with the range `*`, and the script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 lists `typebox` under `dependencies`, and the script corrects it. The registry manifest of the kit pin lists `typebox` under `peerDependencies` with the range `*` (upstream changelog 2.12.0). The gap `peer_package_unverified` of `questions` in `config/manifest.json` names that version. Run on a copy of that manifest, the script prints nothing and leaves the file byte-equal. Not verified: a Pi start with the pinned version installed and no peer warning. The script keeps each package in its list: a later version of a package can list a host module under `dependencies` again.
 
 `pi-hermes-memory` and `@zosmaai/pi-llm-wiki` are the sources of the optional `hermes` and `wiki` modules of this kit. `@juicesharp/rpiv-ask-user-question` is the source of the optional `questions` component. The script skips a package that is not installed.
 
@@ -34,9 +34,9 @@ node scripts/patch_extension_peers.mjs                 # <agent-dir>/npm; honour
 node scripts/patch_extension_peers.mjs /path/to/npm    # an explicit npm root
 ```
 
-The plan prints the line for one profile with the absolute path of the script, so that line runs from each directory: `PI_CODING_AGENT_DIR=<target> node <kit>/scripts/patch_extension_peers.mjs`. Run the line as the plan prints it.
+For one profile, name the script by its absolute path, so that the line runs from each directory: `PI_CODING_AGENT_DIR=<profile> node <clone>/scripts/patch_extension_peers.mjs`. [The optional modules](../INSTALL.md#optional-modules) give the line.
 
-The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no listed manifest needs a correction: the package is not installed, or its manifest has each named module only under `peerDependencies` with the range `"*"`. The script ends with exit code 0 in both cases, so a run that prints nothing does not show that a manifest was correct before. The proof is a start of Pi that prints no peer warning.
+The script prints one line for each manifest that it corrects. It prints nothing when no listed manifest needs a correction: the package is not installed, or its manifest has each named module only under `peerDependencies` with the range `"*"`. The script ends with exit code 0 in both cases, so a run that prints nothing does not show that a manifest was correct before. The proof is a start of Pi that prints no peer warning.
 
 Restart Pi after a change. The script needs Node 18 or later.
 
@@ -44,7 +44,7 @@ Restart Pi after a change. The script needs Node 18 or later.
 
 Observed with Pi 1.1.0: a start of Pi installs a declared package that is missing. That install does not run the override. Each start then prints the peer warning until the override script runs.
 
-The setup lines of the plan prevent this. They install each declared npm source with `pi install <source>`, and the script is the last line. Run them before the first start of the profile. `pi update --extensions` does not replace them: it does not install or change a source with an exact version.
+The lines of [the optional modules](../INSTALL.md#optional-modules) prevent this: the `pi install` lines, then the override script. Run them before the first start of the profile. `pi update --extensions` does not replace them: it does not install or change a source with an exact version.
 
 With the `npmCommand` wrapper below in `settings.json`, each install that Pi runs goes through the wrapper.
 

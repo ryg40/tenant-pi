@@ -72,6 +72,13 @@ optional. Add them to the machine file when the machine has them:
 With no MCP entry, `spawn.py` gives Claude Code no MCP configuration and allows
 no MCP tool. The session keeps the MCP servers of the user.
 
+For a Pi wrapper, set `launch.pi_executable` in the machine file to an absolute
+executable path, such as the installed `tenant-pi` launcher. Model discovery
+uses that executable. New POSIX shell panes receive a shell-local `pi` function
+that calls the wrapper; Herdr still tracks the agent as `pi`. Existing panes
+and shell startup files remain unchanged. Without this setting, `pi` remains
+the launcher. An invalid path or unsupported shell fails without fallback.
+
 The DonSeTch example uses `headers_helper` to read `DONSETCH_HTTP_TOKEN` when
 Claude Code connects or reconnects. The generated MCP configuration stores only
 the helper command, not the token. The desktop browser and

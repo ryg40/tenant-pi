@@ -6,6 +6,7 @@ sys.dont_write_bytecode = True
 
 import argparse
 from contextlib import contextmanager, nullcontext
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,7 @@ import re
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import threading
@@ -22,8 +24,8 @@ from urllib.request import ProxyHandler, build_opener
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts.tenant_pi import _dir_state, _load_input
-from scripts.validate import Invalid, absolute, fail, hint_field, in_range, link_hint, manifest, npm_parts, parse_range
+from scripts.validate import (Invalid, absolute, fail, hint_field, in_range, link_hint, load, manifest, npm_parts,
+                              parse_range)
 
 PACKAGE = "@earendil-works/pi-coding-agent"
 VERSION = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?\Z")
@@ -34,6 +36,11 @@ PI_KEYS = ("PATH", "HOME", "TMPDIR", "LANG", "PI_CODING_AGENT_DIR",
 OFFLINE = (("check-set", ["scripts/check.py", "--all"]),)
 # The packages whose tests need the Pi packages of the candidate: (step name, folder).
 LINKED = (("tenantext", "tenantext"), ("openviking", "openviking-pi"))
+# Bounds of the scan of the live agent directory: direct entries, entries of all levels, directory levels.
+MAX_ENTRIES = 4096
+MAX_TREE = 1_000_000
+MAX_LEVELS = 64
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 
 
 def version(value):
@@ -56,7 +63,7 @@ def registry_latest(name):
 
 
 def detect(*, latest=registry_latest):
-    data = _load_input(str(ROOT / "config/manifest.json"), "manifest.file")
+    data = load(ROOT / "config/manifest.json")
     manifest(data)
     rows = []
     for name in ["core", *sorted(set(data["components"]) - {"core"})]:
@@ -71,6 +78,114 @@ def detect(*, latest=registry_latest):
     # An unpinned module has no old version to compare, so it cannot trigger exit 10.
     return {"action": "detect", "core": rows[0], "modules": rows[1:],
             "new": any(row["different"] is True for row in rows)}
+
+
+def _kind(mode):
+    if stat.S_ISLNK(mode):
+        return "symlink"
+    if stat.S_ISDIR(mode):
+        return "dir"
+    return "file" if stat.S_ISREG(mode) else "other"
+
+
+def _names(fd):
+    """The sorted entry names of one open directory; a directory that went away has none."""
+    try:
+        with os.scandir(fd) as found:
+            return sorted(entry.name for entry in found)
+    except FileNotFoundError:
+        return []
+
+
+def scan(fd, field):
+    """The state of the open directory `fd`: its modification time and one row for each direct entry.
+
+    A row has the name, kind, size and modification time of the entry, from one status call
+    that follows no link. The row of a directory also has the count and the total size of the
+    entries below it, and a SHA-256 digest of their paths, kinds, sizes and modification
+    times, depth first and sorted. Only directories are opened, each without following a link,
+    so no file content enters the state. An entry that goes away during the walk is left out.
+    The caller keeps `fd`.
+    """
+    rows = []
+    walked = 0
+    stack = [(fd, iter(_names(fd)), "")]
+    try:
+        while stack:
+            current, names, prefix = stack[-1]
+            name = next(names, None)
+            if name is None:
+                stack.pop()
+                if stack:
+                    os.close(current)
+                continue
+            try:
+                info = os.stat(name, dir_fd=current, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            walked += 1
+            if walked > MAX_TREE or (len(stack) == 1 and len(rows) == MAX_ENTRIES):
+                fail("input_too_large", field)
+            kind = _kind(info.st_mode)
+            size = 0 if kind == "dir" else info.st_size
+            if len(stack) == 1:
+                rows.append({"name": name, "kind": kind, "size": size, "mtimeNs": info.st_mtime_ns,
+                             **({"entries": 0, "digest": hashlib.sha256()} if kind == "dir" else {})})
+            else:
+                rows[-1]["entries"] += 1
+                rows[-1]["size"] += size
+                line = f"{prefix + name}\x00{kind}\x00{size}\x00{info.st_mtime_ns}\n"
+                rows[-1]["digest"].update(line.encode("utf-8", "surrogateescape"))
+            if kind != "dir":
+                continue
+            if len(stack) > MAX_LEVELS:
+                fail("input_too_large", field)
+            try:
+                child = os.open(name, DIR_FLAGS, dir_fd=current)
+            except (FileNotFoundError, NotADirectoryError):
+                continue  # Gone or replaced since the status call: nothing below it counts.
+            try:
+                stack.append((child, iter(_names(child)), "" if len(stack) == 1 else prefix + name + "/"))
+            except BaseException:
+                os.close(child)
+                raise
+    finally:
+        for other, _, _ in stack[1:]:
+            os.close(other)
+    for row in rows:
+        if row["kind"] == "dir":
+            row["digest"] = row["digest"].hexdigest()
+    return {"mtimeNs": os.fstat(fd).st_mtime_ns, "entries": rows}
+
+
+def _dir_state(directory, field):
+    """The `scan` state of one explicitly named directory, or None when it is absent.
+
+    Every path component is opened as a real directory. No file is opened and no link is followed.
+    """
+    try:
+        fd = os.open("/", DIR_FLAGS)
+        try:
+            for part in Path(directory).parts[1:]:
+                child = os.open(part, DIR_FLAGS, dir_fd=fd)
+                os.close(fd)
+                fd = child
+        except BaseException:
+            os.close(fd)
+            raise
+    except FileNotFoundError:
+        return None
+    except NotADirectoryError as exc:
+        # The directory or a directory above it is a symbolic link or is not a directory.
+        fail("not_directory", field, hint=link_hint(directory, exc))
+    except OSError as exc:
+        fail("unreadable", field, hint=link_hint(directory, exc))
+    try:
+        return scan(fd, field)
+    except OSError:
+        fail("unreadable", field)
+    finally:
+        os.close(fd)
 
 
 def workspace(value):
@@ -174,7 +289,7 @@ def install(steps, requested):
 
 
 def pi_wrapper(run, env):
-    """check-runtime supplies a new empty agent directory; env -i strips even Python flags."""
+    """scripts/check_runtime.py supplies a new empty agent directory; env -i strips even Python flags."""
     pi = run / "prefix/node_modules/.bin/pi"
     wrapper = run / "pi-isolated"
     fields = [shlex.quote(key + "=" + value) for key, value in env.items() if key != "PI_CODING_AGENT_DIR"]
@@ -263,6 +378,55 @@ def openviking_check(steps, package, env):
     load_env = {**env, "PI_CODING_AGENT_DIR": str(agent)}
     steps.command("openviking-load", ["/usr/bin/env", "-i", *(key + "=" + load_env[key] for key in PI_KEYS),
                                     "node", str(probe)], timeout=90)
+
+
+def profile_check(steps, env, candidate):
+    """The candidate Pi resolves the profile that install.sh wrote, then loads its extensions.
+
+    The profile must declare the tenantext package of the candidate copy and the pinned question
+    package. Pi must resolve each extension of `packages/tenantext/package.json` and each skill that
+    install.sh links, load each extension without an error, and send no network request. No
+    session starts. The question package stays uninstalled: `PI_OFFLINE` skips a missing install.
+    """
+    package = candidate / "packages/tenantext"
+    pi = (steps.run / "prefix/node_modules/@earendil-works/pi-coding-agent").resolve()
+    spec = load(candidate / "config/manifest.json")["components"]["questions"]["source"]["spec"]
+    declared = json.loads((package / "package.json").read_text(encoding="utf-8"))["pi"]["extensions"]
+    expected = {
+        "packages": [str(package), "npm:" + spec],
+        "extensions": sorted(os.path.normpath(package / item) for item in declared),
+        "skills": sorted(str(path) for pattern in ("*/SKILL.md", "*/*/SKILL.md")
+                         for path in (package / "skills").glob(pattern)),
+    }
+    probe = steps.run / "profile-load.mjs"
+    probe.write_text(
+        'import assert from "node:assert/strict";\n'
+        'import { readFileSync } from "node:fs";\n'
+        'import net from "node:net";\n'
+        'let networkAttempts = 0;\n'
+        'const deny = () => { networkAttempts++; throw new Error("network forbidden during extension load"); };\n'
+        'globalThis.fetch = deny; net.Socket.prototype.connect = deny;\n'
+        'const { DefaultPackageManager } = await import(' + json.dumps((pi / "dist/core/package-manager.js").as_uri()) + ');\n'
+        'const { SettingsManager } = await import(' + json.dumps((pi / "dist/core/settings-manager.js").as_uri()) + ');\n'
+        'const { loadExtensions } = await import(' + json.dumps((pi / "dist/core/extensions/loader.js").as_uri()) + ');\n'
+        'const expected = ' + json.dumps(expected) + ';\n'
+        'const cwd = process.cwd(), agentDir = process.env.PI_CODING_AGENT_DIR;\n'
+        'const settings = JSON.parse(readFileSync(agentDir + "/settings.json", "utf8"));\n'
+        'assert.deepEqual(settings.packages, expected.packages);\n'
+        'const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: false });\n'
+        'const resources = await new DefaultPackageManager({ cwd, agentDir, settingsManager }).resolve();\n'
+        'const enabled = kind => resources[kind].filter(r => r.enabled).map(r => r.path).sort();\n'
+        'assert.deepEqual(enabled("extensions"), expected.extensions);\n'
+        'assert.deepEqual(enabled("skills"), expected.skills);\n'
+        'const loaded = await loadExtensions(enabled("extensions"), cwd);\n'
+        'assert.deepEqual(loaded.errors, []);\n'
+        'assert.equal(loaded.extensions.length, expected.extensions.length);\n'
+        'assert.equal(networkAttempts, 0);\n'
+        'console.log(`Installed profile: ${loaded.extensions.length} tenantext extensions loaded, '
+        '${expected.skills.length} skills resolved; no session started`);\n')
+    load_env = {**env, "PI_CODING_AGENT_DIR": str(steps.run / "home/.pi/profiles/qualify")}
+    return steps.command("profile-load", ["/usr/bin/env", "-i", *(key + "=" + load_env[key] for key in PI_KEYS),
+                                          "node", str(probe)], timeout=90)
 
 
 def pin_contents(manifest_text, requested, *, accepted_range=None):
@@ -404,8 +568,8 @@ def endpoint(*, finish_reason="stop", text="43", poll_interval=0.5):
         thread.join()
 
 
-def print_check(steps, env, generated, requested):
-    if not generated:
+def print_check(steps, env, profile_ready, requested):
+    if not profile_ready:
         steps.skip("print-mode")
         steps.skip("print-response")
         if tuple(map(int, requested.split("-", 1)[0].split("."))) >= (1, 2, 0):
@@ -416,8 +580,8 @@ def print_check(steps, env, generated, requested):
     with endpoint() as (port, calls):
         models = {"providers": {"local-test": {"baseUrl": f"http://127.0.0.1:{port}/v1",
                    "api": "openai-completions", "apiKey": "none", "models": [{"id": "sum-model"}]}}}
-        (run / "profile/models.json").write_text(json.dumps(models) + "\n")
-        pi_env = {**env, "PI_CODING_AGENT_DIR": str(run / "profile")}
+        (run / "home/.pi/profiles/qualify/models.json").write_text(json.dumps(models) + "\n")
+        pi_env = {**env, "PI_CODING_AGENT_DIR": str(run / "home/.pi/profiles/qualify")}
         command = ["/usr/bin/env", "-i", *(key + "=" + pi_env[key] for key in PI_KEYS),
                    str(run / "prefix/node_modules/.bin/pi"), "--no-approve", "--no-extensions",
                    "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-tools",
@@ -433,7 +597,7 @@ def print_check(steps, env, generated, requested):
     with endpoint(finish_reason="length", text="partial reply") as (port, calls):
         models["providers"]["local-test"]["baseUrl"] = f"http://127.0.0.1:{port}/v1"
         models["providers"]["local-test"]["models"][0]["maxTokens"] = PRINT_OUTPUT_LIMIT
-        (run / "profile/models.json").write_text(json.dumps(models) + "\n")
+        (run / "home/.pi/profiles/qualify/models.json").write_text(json.dumps(models) + "\n")
         stderr_log = run / "logs/print-length.stderr.log"
         passed = steps.command("print-length", command, env=pi_env, timeout=90,
                                expected_exit=1, stderr_log=stderr_log)
@@ -460,8 +624,8 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
         if installed:
             wrapper = pi_wrapper(run, env)
             # Check the Python that runs the qualification. The `python3` of the allow list can be older, as on macOS.
-            steps.command("check-runtime", [sys.executable, "-B", str(candidate / "scripts/tenant_pi.py"),
-                          "check-runtime", "--pi", str(wrapper), "--python", sys.executable], cwd=candidate, timeout=90)
+            steps.command("check-runtime", [sys.executable, "-B", str(candidate / "scripts/check_runtime.py"),
+                          "--pi", str(wrapper), "--python", sys.executable], cwd=candidate, timeout=90)
         else:
             steps.skip("check-runtime")
         # The check of everything runs the suite of each package in the candidate copy, so each package
@@ -490,14 +654,17 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
             # A kit without the package folder has no OpenViking step.
             steps.skip("openviking-test")
             steps.skip("openviking-load")
-        data = _load_input(str(candidate / "config/config.example.json"), "overlay.file")
-        data["target"]["agentDir"] = str(run / "profile")
-        data["selection"]["enable"] = ["core"]
-        (run / "overlay.json").write_text(json.dumps(data) + "\n")
-        generated = steps.command("generate", [sys.executable, "-B", str(candidate / "scripts/tenant_pi.py"),
-                                  "generate", "--overlay", str(run / "overlay.json"),
-                                  "--target", str(run / "profile")], cwd=candidate)
-        print_check(steps, env, generated and installed, requested)
+        # The install of a user: install.sh writes the core templates into a new profile directory.
+        # HOME is the empty home of the run, so the script links no skill of the caller.
+        written = steps.command("kit-install", ["/bin/sh", str(candidate / "install.sh"),
+                                               "--new", "qualify", "--shell", "none", "--with", "none", "--yes"], cwd=candidate,
+                                env={**env, "INSTALL_SKIP_PACKAGES": "1",
+                                     "PATH": str(run / "prefix/node_modules/.bin") + os.pathsep + env["PATH"]})
+        if written and installed:
+            profile_check(steps, env, candidate)
+        else:
+            steps.skip("profile-load")
+        print_check(steps, env, written and installed, requested)
     except CandidateCopyError as exc:
         steps.record("candidate-copy", {"error": str(exc)}, exc.code)
     except (OSError, ValueError, Invalid, subprocess.SubprocessError):

@@ -9,9 +9,9 @@ metadata:
     url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
-Use this template for the merge record of a topic branch. The merge record is the comment on the Gitea issue of the ticket when the branch is merged. The same text is the body of a Gitea pull request when one exists.
+Use this template for the merge record of a topic branch. The merge record is the comment on the issue of the ticket in the issue tracker (see `docs/agents/issue-tracker.md`) when the branch is merged. The same text is the body of a pull request when one exists.
 
-Post the record with the comment operation of `docs/agents/issue-tracker.md` (section "Generic operations"). When a pull request exists, set its body through the Gitea pull request API: `PATCH "$API/pulls/$INDEX"` with `body`. `$API` is the shell variable of the tracker document, and the token is the token of that document. `$INDEX` is the index of the pull request: the `number` field of its entry in the reply to `GET "$API/pulls?state=open"`.
+Post the record with the comment operation of `docs/agents/issue-tracker.md` (section "Generic operations"). When a pull request exists, set its body through the pull request API of the tracker: `PATCH "$API/pulls/$INDEX"` with `body`. `$API` is the shell variable of the tracker document, and the token is the token of that document. `$INDEX` is the index of the pull request: the `number` field of its entry in the reply to `GET "$API/pulls?state=open"`.
 
 ```markdown
 ## Summary
@@ -90,7 +90,7 @@ src/
 └── transport/      # sends API requests
 ```
 
-- Show component interaction, control flow, or data flow with Mermaid. Gitea renders Mermaid in comments and in a pull request body:
+- Show component interaction, control flow, or data flow with Mermaid. The tracker renders Mermaid in comments and in a pull request body (see the contract):
 
 ```mermaid
 sequenceDiagram

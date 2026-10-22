@@ -1,119 +1,40 @@
 # Troubleshooting
 
-Each kit command prints a failure as one static line. This guide lists the known failure classes, the exact text, and the fix.
+Each kit script prints a failure as one static line. This guide lists the known failure classes and the fix.
 
 ## How to read a diagnostic
 
-A refused action prints one JSON object on standard error and exits with code 2:
+`install.sh` prints a refusal as one line `install: <reason>` on standard error and exits with code 2. It writes nothing before a refusal. The reason names the variable or the path to correct.
+
+A kit script with JSON output (`scripts/check_runtime.py`, `scripts/pi_update.py`) prints a refusal as one JSON object and exits with code 2:
 
 ```json
-{"candidate_created": false, "error": "registry_required: registry"}
+{"error": "absolute_path: check-runtime.pi"}
 ```
 
 - The `error` text has the form `rule: field`. It never holds a path, a value or a secret.
-- A JSON syntax error (`invalid_json`) adds two keys, `line` and `column`. Both are integers, counted from 1. No other diagnostic has them.
 - A refusal for a link in the path adds one key, `hint`. See [A link in the path](#a-link-in-the-path).
-- `candidate_created` is `true` only when a directory exists after the failure. Inspect that directory. The kit has no rollback and deletes nothing.
-- `check-runtime` exits with 0 when Node and Python match, and Pi is `match` or `untested_in_range`. A failed requirement gives exit code 1. Its report is on standard output.
-- `generate --launcher` exits with 1 when the profile is complete and the launcher file is not. The report is on standard output, with the rule under `launcher.error`.
-
-The tables list diagnostic rules. A row marked "documented" has no runtime observation.
+- `scripts/check_runtime.py` exits with 0 when Node and Python match, and Pi is `match` or `untested_in_range`. A failed requirement gives exit code 1. Its report is on standard output.
 
 ### A link in the path
 
-A diagnostic with a `hint` key means that a directory of the path is a symbolic link. The kit refuses every linked directory of a path that it reads or writes. On macOS, `/tmp`, `/var` and `/etc` are such links, and `$TMPDIR` is under `/var`:
+A diagnostic with a `hint` key means that a directory of the path is a symbolic link. `scripts/pi_update.py` refuses a linked directory of its work directory. On macOS, `/tmp`, `/var` and `/etc` are such links, and `$TMPDIR` is under `/var`:
 
 ```json
-{"candidate_created": false, "error": "unsafe_path: init-private.dir.parents", "hint": "/tmp is a link to private/tmp; give the resolved path /private/tmp/tenant-pi"}
+{"error": "unsafe_path: pi-update.workdir", "hint": "/tmp is a link to private/tmp; give the resolved path /private/tmp/q"}
 ```
 
-Give the resolved path of the hint, or a path under the home directory. Do not make a link to get past the refusal. The row "Resolved path" in [Local differences](../../INSTALL.md#local-differences) has a command that prints the resolved form of a path.
+Give the resolved path of the hint, or a path under the home directory. Do not make a link to get past the refusal. `python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' <path>` prints the resolved form of a path on Linux and macOS.
+
+## install.sh
+
+- A refusal names the fix. A common case: `~` inside quotes is not expanded. Give the absolute path, such as `"$HOME/.pi/profiles/main"`.
+- A line that starts with `kept:` is no failure. The file was there before, and the script never overwrites a file. When the script also prints a `note:` line, add `"<clone>/packages/tenantext"` to the `packages` list of that file.
+- A line that starts with `skipped:` names a skill of your own with the same name in `~/.claude/skills`. Keep it, or move it and run the script again.
 
 ## Wiki embedding diagnostics
 
-The Tenantext `/tenantext-doctor` command reports these configuration checks without sending embedding requests.
-See [Switch wiki embeddings off](../memory-modules.md#switch-wiki-embeddings-off) for the settings keys, kit overlay path, and restart check.
-
-| Diagnostic | Level | Meaning |
-| --- | --- | --- |
-| `wiki_embeddings_shared_endpoint` | warn | Wiki embeddings share an endpoint host and port with OpenViking, or the `openviking` module is also enabled. |
-| `wiki_embeddings_on` | info | Wiki embeddings are configured. The line reports model and host only; it does not verify credentials or service health. |
-
-## Overlay and input
-
-| Diagnostic | Cause | Fix |
-| --- | --- | --- |
-| `input_missing: overlay.file` | The file, or a directory of its path, does not exist. A relative path that does not resolve gives this too. (documented) | Give the absolute path of the file. |
-| `input_path_unsafe: overlay.file` | A directory of the path is a link or is not a directory. A shell process substitution such as `<(...)` gives such a path. | Give a path through real directories to a regular file. |
-| `input_unreadable: overlay.file` | The system refuses the read, for example because you have no read permission. (documented) | Check the owner and the mode of the file and of each directory of its path. |
-| `input_not_regular: overlay.file` | The last name of the path is a link, a directory or another entry that is not a regular file. (documented) | Give the path of the regular file itself. |
-| `input_encoding: overlay.file` | The file is not UTF-8 text. (documented) | Save the file as UTF-8. |
-| `invalid_json: overlay.file` with `line` and `column` | The file is not valid JSON. The parser refuses the character at that line and column. The cause is often at the end of the line before: a missing comma or brace, or a fragment that was pasted into the file. (documented) | Correct the syntax at that place. Then run `python3 -m json.tool "<file>" >/dev/null && echo "JSON valid"`. |
-| `input_too_deep: overlay.file`, `input_too_large: overlay.file` | The JSON nests deeper than 64 levels, or the file is larger than 1 MiB. (documented) | Check that the path names the overlay. |
-| `input_path: overlay.file` | The path has a `.` or `..` segment. (documented) | Write the normalized absolute path. |
-| `registry_required: registry` | The overlay has `modelRoutes` with a role or a cycle model, and no `--registry`. | Add `--registry "$HOME/.config/tenant-pi/registry.json"` to `validate`, `plan` and `generate`. |
-| `registry_without_routes: registry` | `--registry` is given, but the overlay has no `modelRoutes`. | Remove `--registry` for a core-only overlay. |
-| `unsupported_model_thinking: overlay.modelRoutes.choice` | The registry has no entry for a provider, model and thinking level of the overlay. | Add `{"<provider>": {"<model>": ["<level>"]}}` for each model you confirm. |
-| `blocked_component: overlay.selection.enable` | A `blocked` module is enabled. | Move it to `selection.disable`. See [the module guide](modules.md). |
-| `missing_dependency: overlay.selection.enable` | An enabled module requires another module that is not enabled. Example: `ops-footer` needs `context-meter`. | Enable the required module. |
-| `memory_disabled: overlay.consent` | `consent.memoryCapture` is `true`, and no memory module is enabled. | Set it to `false`, or enable `hermes` or `wiki` with a `memory` block. |
-| `memory_choices_required: overlay.memory` | A memory module is enabled, and the overlay has no `memory` block. `validate` looks for the block first, so this error comes before the consent error. | Add the `memory` block of [INSTALL.md](../../INSTALL.md#stage-5-the-private-overlay), step 5. |
-| `memory_consent_required: overlay.consent.memoryCapture` | A memory module is enabled, the overlay has the `memory` block, and `consent.memoryCapture` is `false`. (documented) | Set `consent.memoryCapture: true` after you read [memory modules](../memory-modules.md). |
-| `moved_key: overlay.endpoints.tenantext is now overlay.endpoints.codex-accounts` | The overlay uses the old gateway key. | Rename the key to `codex-accounts` in `endpoints` and `env`. |
-| `undeclared_env: overlay.env` | An `env` value of the overlay names a variable that the manifest does not declare for the module. For `codex-accounts`, the allowed names are `TENANTEXT_LITELLM_API_KEY` for the key and `TENANTEXT_LITELLM_BASE_URL` for the URL. | Use the allowed name. |
-| `unknown_fields: overlay` | The overlay has a key that this kit does not define. (documented) | Remove the key. |
-| `input_missing: runtime_report.file`, `invalid_json: runtime_report.file` | The `--runtime-report` file is absent (`input_missing`), or it is empty or not JSON (`invalid_json`). A `check-runtime` run that stops with exit code 2 leaves an empty file behind a `>` redirect. (documented) | Run `python3 scripts/tenant_pi.py check-runtime > "<file>"` again and read its exit code. Exit code 1 still writes the report. |
-| `runtime_report_required: runtime_report.pi.required`, `runtime_report.pi.tested` or `runtime_report.pi.acceptedRange` | The report comes from another tested version or range. The `required` rule also exists for `node` and `python`. (documented) | Make the report again with this kit. |
-| `runtime_report_status: runtime_report.pi.status`, `runtime_report_installed: runtime_report.pi.installed` | The file is not an unchanged `check-runtime` report: a status does not agree with its versions, or `installed` is not a version. (documented) | Make the report again. Do not edit the file. |
-| `herdr_report_status: herdr_report.herdr.status`, `herdr_report_installed: herdr_report.herdr.installed` | The `--herdr-report` file is not an unchanged `check-herdr` report: the status is unknown, or `installed` does not agree with it. (documented) | Run `check-herdr` again and save its output. Do not edit the file. |
-
-The same rules apply to each JSON input, with another field: `manifest.file`, `registry.file`, `mcp.file`. [The CLI contract](../generator.md#input-file-errors) has the full table.
-
-[Candidate comparison](../candidate-compare.md#overlay-compatibility-corrections) has more overlay rules and their fixes.
-
-## Target, private directory and launcher
-
-See the [refusal rules](../private-directory.md#refusal-rules) for protected paths, symbolic links and environment variants.
-
-For `under_kit`, choose a path outside the clone, such as `"$HOME/.config/tenant-pi"` for a private directory.
-For `under_pi_agent`, choose a path outside the live profile, such as `"$HOME/.pi/profiles/main"` for a target.
-Set `target.agentDir` to the new target when you change the target path.
-For `under_wiki_vault`, choose a path outside the vault.
-To record vault metadata, use `baseline --dir` with `--out` in the private directory.
-For `init-private --target`, keep the target outside the private directory, live profile and clone.
-
-| Diagnostic | Cause | Fix |
-| --- | --- | --- |
-| `invalid_plan: target_mismatch: plan.targetAgentDir` | `--target` differs from `target.agentDir` of the overlay. | Use the same absolute path in both places. |
-| `sample_target: overlay.target.agentDir` | The overlay still has the sample target `/home/EXAMPLE_USER/new-agent`. `init-private` without `--target` writes it. `validate`, `plan` and `generate` refuse it. (documented) | Change the one value of `target.agentDir` to the absolute path of the new profile. Check the syntax with `python3 -m json.tool "<file>" >/dev/null`. For a new private directory, use `init-private` with `--target`. |
-| `target_exists: target` | The target exists. `generate` never writes into an existing directory. | Choose a new target name, for example with a date. Edit `target.agentDir` to match. |
-| `unsafe_path: target.parents` | The parent of the target does not exist, or a directory above it is a link or not a directory. | Create the parent with `mkdir -p`. Do not use a linked parent. |
-| `unsafe_parent_owner: target.parent` | The immediate parent of the target is not owned by the caller. A parent of another non-root user fails earlier with `unsafe_owner`, so in practice root owns the parent and you are not root. (documented) | Use a parent that you own, for example `"$HOME/.pi-profiles"` when root owns `~/.pi`. |
-| `unsafe_owner: target.parents`, `unsafe_permissions: target.parents` | A directory above the target belongs to another user, or its group or others can write to it without a sticky bit. (documented) | Use a parent tree that only you own. |
-| `pi_login_blocked: overlay.modelRoutes.gateway.auth` | The gateway uses `auth: "login"`. A fresh profile cannot log in to the gateway at this pin. (documented) | Use `{"auth": "env"}` and export `TENANTEXT_LITELLM_API_KEY`. |
-| `target_exists: init-private.dir` | The private directory exists. | Keep the existing directory, or name a new one. The action never adopts a directory. |
-| `under_overlay_target: init-private.dir` | The path is inside a profile target. | Choose a directory outside the target. |
-| `absolute_path: init-private.target`, `shell_or_template: init-private.target` | The `--target` path is relative, starts with `~`, or has a `$`. The kit does not expand a path. (documented) | Give the expanded absolute path, for example `--target "$HOME/.pi/profiles/main"` in double quotes. |
-| `under_private_dir: init-private.target` | The target is inside the private directory. | Choose a target outside that directory. |
-| `home_required: init-private.home` | `HOME` is not set. `init-private` and `--launcher` need it. | Run the command in a shell with `HOME` set to an absolute path. |
-| `home_required: target.home`, `absolute_path: target.home` | `HOME` is not set, or it is not an absolute path without a trailing slash. `validate`, `plan` and `generate` need it to find `~/.pi/agent`. (documented) | Run the command in a shell with `HOME` set to an absolute path. |
-| `target_exists: launcher.path` | The launcher file exists. The check runs before the target is created. | Remove the old file after review, or use a new name, for example `launch-main-2.sh`. |
-| `absolute_path: launcher.path` | The launcher path is relative. | Give an absolute path. |
-
-## Comparison
-
-The command of [the candidate update guide](../../POST_INSTALL.md#the-one-rule-each-change-is-a-new-candidate):
-
-```sh
-python3 scripts/tenant_pi.py compare --left '<old target>' --right '<new target>' > '<private dir>/report.json'
-```
-
-| Diagnostic | Cause | Fix |
-| --- | --- | --- |
-| `same_directory: compare.right` | `--left` and `--right` are the same path. | Name two different directories. |
-| `absolute_path: compare.left` | A side is a relative path. | Give absolute paths. |
-| `settings_missing` | A side has no `settings.json`. (documented) | Check the path. |
-| `unsupported_schema_version` | A side comes from a kit with another schema. (documented) | Follow the migration steps of [candidate comparison](../candidate-compare.md#schema-versions-and-migration). |
+`/tenantext-doctor` reports wiki embedding settings without an embedding request. See [Switch wiki embeddings off](../memory-modules.md#switch-wiki-embeddings-off) for the diagnostics, the settings keys and the restart check.
 
 ## Runtime and environment
 
@@ -123,58 +44,48 @@ These failures come from the runtime or from the environment of the launching sh
 
 A bare `pi` command reads `~/.pi/agent`, or the directory in `PI_CODING_AGENT_DIR`. A version check can then touch the live profile.
 
-1. Run `python3 scripts/tenant_pi.py check-runtime`. It sets `PI_CODING_AGENT_DIR` to an empty temporary directory for `pi --version` and removes the directory.
+1. Run `python3 scripts/check_runtime.py`. It sets `PI_CODING_AGENT_DIR` to an empty temporary directory for `pi --version` and removes the directory.
 2. Without the kit, run `PI_CODING_AGENT_DIR="$(mktemp -d)" pi --version`.
-
-### `check-baseline` reports `changed` or `no_baseline`
-
-| Output | What to do |
-| --- | --- |
-| `"result":"no_baseline"` | The baseline file does not exist. Check the `--baseline` path. A baseline that you record after the launch proves nothing about the launch: record the check as not run. |
-| `"result":"changed"` with names | A Pi in the live profile, or a command of the install, changed these direct entries. See [the directory baseline](../directory-baseline.md#a-pi-in-the-live-profile). |
-| `"result":"changed"`, no names, `"directoryModified":true` | An entry was made and removed in the directory. A bare `pi --version` does this: observed with Pi 1.0.2 and a `settings.json` in the directory. The command counts also when the installing agent ran it. |
-| `target_exists: baseline.out` | A baseline exists at that path. Keep it. For a second baseline, give another file name. |
-| `not_directory: baseline.dir` | The directory, or a directory above it, is a symbolic link. Give the real path, for example from `realpath "$HOME/.pi/agent"`. |
 
 ### `PI_CODING_AGENT_DIR` points at the wrong profile
 
-A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of that shell. The launch line sets the variable for one process only.
+A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of that shell. The start line of [the first start](../../INSTALL.md#first-start) sets the variable for one process only.
 
 1. Run `echo "${PI_CODING_AGENT_DIR:-<unset>}"` before a manual `pi` command.
-2. Start a profile only with its launcher file or the exact plan line. Do not export the variable in a startup file.
+2. Start a profile with the start line, or with a shell alias that holds it.
 
-### `check-runtime` reports `mismatch` or `missing`
+### `check_runtime.py` reports `mismatch` or `missing`
 
 | Status | Fix |
 | --- | --- |
-| `untested_in_range` for `pi` | Keep the installed version and record `core_runtime_untested_in_range`. The kit tests ran on the tested version only. |
-| `missing` for `pi` | Install the pin by hand (INSTALL.md, package dependencies), or add its directory to `PATH` in the launching shell. |
+| `untested_in_range` for `pi` | Keep the installed version and record it as untested. The kit tests ran on the tested version only. |
+| `missing` for `pi` | Install the pin with the line of [the prerequisites](../../INSTALL.md#prerequisites), or add its directory to `PATH` in the launching shell. |
 | `mismatch` for `pi` | Keep the other Pi and record the gap, or install the manifest pin (`runtime.piVersion`) under a prefix. Do not run the global install line as a default step: it replaces the other Pi for every profile. Example: an installed Pi `0.99.2` is a `mismatch`. |
 | `mismatch` for `node` | Select Node 24 with your version manager in the launching shell. |
 | `unparsed` | Run the tool with `--version` by hand and read the output. |
 
 ### The key or the `PATH` line is missing in another shell
 
-A non-interactive SSH command, a browser terminal, a desktop launcher or a service does not always read your interactive startup file. See [INSTALL.md](../../INSTALL.md#shells-that-do-not-inherit-your-variables). Run `check-runtime` and the `test -n` check in the shell that starts Pi.
+A non-interactive SSH command, a browser terminal, a desktop launcher or a service does not always read your interactive startup file. Run `python3 scripts/check_runtime.py` and `test -n "${TENANTEXT_LITELLM_API_KEY:-}" && echo set` in the shell that starts Pi.
 
 ### Pi warns about host-provided extension packages
 
-Pi `0.99.x` printed this warning at start. With the kit pin in `config/manifest.json`, key `runtime.piVersion`, it was observed for `typebox` in the question extension.
+Pi `0.99.x` and later print this warning at start:
 
 ```text
 Warning: Extension package ".../package.json": Host-provided extension packages must be declared in
 peerDependencies with a "*" range, not dependencies: typebox.
 ```
 
-An installed package lists a host module under `dependencies`, and the override did not run after the install. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: both manifests list the host modules under `peerDependencies`, and the override script makes no change for them. `@juicesharp/rpiv-ask-user-question` 2.11.0 listed `typebox` under `dependencies`; the registry manifest of the kit pin lists it under `peerDependencies` with the range `*`. The gap `peer_package_unverified` in `config/manifest.json` names that version. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. The `pi install` lines of the plan install the packages before the first start. Run the override by hand:
+An installed package lists a host module under `dependencies`, and the override did not run after the install. One cause: a start of Pi installs a declared package that is missing, without the override. Then each start prints the warning until the override script runs. [Host peer overrides](../host-peer-overrides.md) names the package versions that were checked. Run the override by hand:
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
 ```
 
-The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects. It prints nothing when no manifest needs a correction. The plan prints this line with the absolute path of the script of the clone, so the line runs from each directory.
+The script prints one line for each manifest that it corrects, and nothing when no manifest needs a correction. The line names the script by its absolute path, so it runs from each directory.
 
-An update of the package writes the old manifest again. See [host peer overrides](../host-peer-overrides.md) for the `npmCommand` wrapper. That wrapper adds `npmCommand` to `settings.json`, and the next `compare` shows it as drift. List `/npmCommand` in `unmanaged` to accept it. See [accepted drift](../accepted-drift.md).
+An update of the package writes the old manifest again. See [host peer overrides](../host-peer-overrides.md) for the `npmCommand` wrapper.
 
 ### `pi install` prints `vulnerabilities` and a hint to run `npm audit fix`
 
@@ -182,7 +93,7 @@ The `pi install` line of the `wiki` package prints an audit summary of npm for t
 
 Warning: do not run `npm audit fix` in the profile, and do not run `npm audit fix --force`. The command changes the installed packages of the profile. It can undo the peer override, and it can install versions that the kit did not review.
 
-To install without the module, switch `wiki` off before `generate`. See [the audit summary of npm](../../INSTALL.md#the-audit-summary-of-npm) in INSTALL.md.
+To go without the module, run `pi remove npm:@zosmaai/pi-llm-wiki` with the `PI_CODING_AGENT_DIR` of the profile. See [the optional modules](../../INSTALL.md#optional-modules).
 
 ## Kit checks
 
@@ -204,12 +115,12 @@ The same failure comes from any untracked file in the clone.
 
 ### The documentation check fails
 
-The unit tests run the documentation check. A finding fails the test `DocCheckRepoTests` of `tests/test_doc_check.py`, and the failure text holds each finding.
+`scripts/doc_check.py` checks the Markdown files of the publish set offline: relative links and anchors resolve, each fenced `json` block parses, and each environment name of `INSTALL.md`, `README.md` and a guide is a known name. It does not check the documents under `packages/`, and it does not prove that a command works. The unit tests run the same check, and the failure text holds each finding.
 
-Run `PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py` to see the findings alone. It prints one `rule: path:line` line for each finding. See [the release checklist](release-checklist.md#documentation-check) for each rule.
+Run `PYTHONDONTWRITEBYTECODE=1 python3 scripts/doc_check.py` to see the findings alone. Each finding is one `rule: path:line` line with no text of the file. The docstring at the top of the script states the rules. `link_unpublished` means that the target is outside the publish set, so a portable snapshot does not hold it.
 
 ## When nothing here fits
 
-1. Keep every directory as it is. Do not retry `generate` into the same target.
-2. Write the exact diagnostic, the command and the stage into `install-log.md` of the private directory.
-3. Read the document of the action: [generator](../generator.md), [private directory](../private-directory.md), [launcher](../launcher.md), [candidate comparison](../candidate-compare.md).
+1. Keep every directory as it is.
+2. Write down the exact diagnostic and the command.
+3. Read [INSTALL.md](../../INSTALL.md) and the document of the script: [Pi update checks](../pi-update.md), [in-tree packages](../packages.md).

@@ -1,335 +1,47 @@
-# Updates and changes after a base install
+# After the install
 
-This file is for a user who has a base install of this kit, or for an agent of that user. You do not read `INSTALL.md` again. Each section below has the commands of one task, the result to check, and one link for the details.
-
-The real paths of this machine are in the results file, `<private dir>/INSTALLER_KIT_RESULTS.md`. That file names the clone, the overlay, each candidate and each launcher. `<private dir>` is usually `.config/tenant-pi` in your home directory. When no private directory exists, the results file is `INSTALLER_KIT_RESULTS.md` in your home directory.
-
-Words used below:
-
-- `<clone>`: the directory of this repository. Run each `python3 scripts/tenant_pi.py` command from `<clone>`.
-- `<private dir>`: the directory outside the clone that holds the overlay, the launcher files and the install log, for example `/home/<name>/.config/tenant-pi`.
-- `<overlay>`: the overlay file, `<private dir>/overlay.json`.
-- `<parent>`: the directory that holds the candidates, for example `/home/<name>/.pi/profiles`.
-- `<target>`: the absolute path of one candidate directory. `<old target>` is the candidate in use. `<new target>` is the next candidate, and `<name>` is its last part.
-
-Write each path as an absolute path with the home directory written out, for example `/home/<name>/.pi/profiles`. The kit refuses `~`: a path such as `'~/.pi/profiles'` stops an action with `absolute_path`. A path with `"$HOME/..."` in double quotes is also correct in a command: the shell expands it.
-
-The rules of the install stay in force. Write no secret into a file. Never write into `~/.pi/agent`. An agent asks before each command that changes the machine.
+This page is for the time after [the install](INSTALL.md). Each task below is one change to the profile directory `<profile>`, or one command in the clone `<clone>`. Use the `PI_CODING_AGENT_DIR` of the profile for each `pi` command.
 
 ## Get a new version of the kit
 
-Pull the clone, then run the read-only check of the kit. It writes no file and takes seconds. Give each other option of the first plan again, for example `--registry`.
+Run `git pull` in the clone, then type `/reload` in each Pi session. See [UPDATE.md](UPDATE.md).
+
+## Add or remove an optional module
+
+Run `./install.sh --upgrade <name> --shell bash --with wiki --yes` to add Wiki in the same profile and refresh its alias. Choose the shell and modules you use. Other module commands appear in [the optional modules](INSTALL.md#optional-modules). Then run `/reload`. To remove a module, run `pi remove` with the same source:
 
 ```sh
-cd '<clone>' && git pull --ff-only
-python3 scripts/tenant_pi.py update --overlay '<overlay>' --local-dir '<private dir>'
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi remove npm:pi-hermes-memory
 ```
 
-Follow the verdict. `nextCommands` of the output holds each line with the real paths of this machine.
-
-| Verdict | What to do |
-| --- | --- |
-| `same_profile` | Keep the candidate in use. Run the lines of `packages.lines`, if any, then start Pi again. |
-| `new_candidate` | Run the lines of `nextCommands`: they are [the loop](#the-one-rule-each-change-is-a-new-candidate) with a new target. `comparison.changes` names the files that differ. |
-| `runtime_action_needed` | Run the Pi line or the `PATH` line of `nextCommands`, then run `update` again. |
-
-A candidate of an earlier release has no output digests, so `update` can ask one time for a new candidate, with the reason `no_output_digests`.
-
-A clean clone at a release tag needs no test run. The GitHub workflow `.github/workflows/checks.yml` runs `python3 scripts/check.py --all` on Linux and macOS for each snapshot that is pushed to GitHub. The maintainer creates the release entry of a tag only after both runs pass ([continuous integration](docs/publishing.md#continuous-integration)). A clone with local changes runs `python3 scripts/check.py --tier fast`; `update` then prints that line first. A profile loads the in-tree packages from the clone by path, so a candidate loads new package code at its next start. Not verified: the effect of a pull on a running Pi session. Details: [the update action](docs/update.md).
-
-## Confirm the base install
-
-1. Read `<private dir>/INSTALLER_KIT_RESULTS.md`. It must name one candidate or more with the state `complete`, each with its launcher.
-2. List what the candidate in use declares:
-
-   ```sh
-   python3 scripts/tenant_pi.py inventory --dir '<old target>'
-   ```
-
-   `inventory` shows `"managed":true` and the package sources of the candidate. See [the profile inventory](docs/profile-inventory.md).
-3. Compare the runtime with the kit, in the shell that launches Pi:
-
-   ```sh
-   python3 scripts/tenant_pi.py check-runtime > '<private dir>/runtime.json'; cat '<private dir>/runtime.json'
-   ```
-
-   `node` shows `match`, and `pi` shows `match` or `untested_in_range`. Exit code 1 is a finding, not a failure: the file holds the report.
-
-If a step gives another result, stop. The base install is not complete: `INSTALL.md` is the document for that state.
-
-## The one rule: each change is a new candidate
-
-The kit changes no profile in place. A change is an edit of the overlay, then a new candidate directory with a new launcher. The old candidate stays as it is and is the fallback. A new kit version that does not change the profile needs no new candidate: see [Get a new version of the kit](#get-a-new-version-of-the-kit). Each task below names only what differs from this loop.
-
-1. Edit `<overlay>`. Make the change of the task, and set `target.agentDir` to `<new target>`, a directory that does not exist.
-2. Validate the overlay, then make the plan:
-
-   ```sh
-   python3 scripts/tenant_pi.py validate --overlay '<overlay>' --local-dir '<private dir>'
-   python3 scripts/tenant_pi.py plan --overlay '<overlay>' --local-dir '<private dir>' --runtime-report '<private dir>/runtime.json' --launcher '<private dir>/launch-<name>.sh'
-   ```
-
-   `validate` prints `"valid":true`. Read `readinessGaps` and `commands.setupDisplayOnly` of the plan.
-3. Generate the candidate:
-
-   ```sh
-   python3 scripts/tenant_pi.py generate --overlay '<overlay>' --local-dir '<private dir>' --runtime-report '<private dir>/runtime.json' --target '<new target>' --launcher '<private dir>/launch-<name>.sh'
-   ```
-
-   The result has `"filesComplete":true`, and `"complete":true` under `launcher`.
-4. Record the baseline of the live agent directory: see "Record the baseline of a new candidate".
-5. Run the setup lines of the plan: see "Install the declared npm packages of a new candidate".
-6. Log in. Run `<private dir>/launch-<name>.sh`, use `/login`, select the model, and exit Pi. A new candidate has no login.
-7. Check the candidate. Startup prints no extension error and no peer warning. Run the `check-baseline` line of "Record the baseline of a new candidate": it prints `"result":"unchanged"`. Then compare the two candidates:
-
-   ```sh
-   python3 scripts/tenant_pi.py compare --left '<old target>' --right '<new target>' > '<private dir>/report-<name>.json'
-   ```
-
-   `changes` of the report holds `/overlay/target/agentDir` and the fields of your change, and no other field.
-8. Switch. Use `<private dir>/launch-<name>.sh` from this time on. To go back, run the launcher of the old candidate.
-
-Give each other option of the first plan again, for example `--registry` or `--require-role`. `generate` refuses an existing target with `target_exists: target`, so an old candidate cannot change. Details: [the profile lifecycle](docs/private-directory.md#profile-lifecycle).
-
-The selection comes from the overlay. A new candidate keeps each enabled component, for example `herdr` and `questions`: the same package entries are in its `settings.json`. The regeneration writes into the new target only. It does not write into the old candidate, into `~/.pi/agent`, or into a shared directory of the user.
-
-### Read the comparison
-
-`compare` reads at most the declared files of the two sides and writes nothing. Read these keys of the report:
-
-| Key | Meaning |
-| --- | --- |
-| `changes` | Declared fields that differ. A private field shows as a marker, without a value. |
-| `unsupported` | Fields that the comparison does not interpret, for example a key that Pi wrote. |
-| `accepted` | Differences that the `unmanaged` list of the overlay accepts, with the reason. |
-| `markers` | `generatedAt`, `kitCommit` and `outputDigests`. They differ between any two generations. |
-| `left.drift`, `right.drift` | `status: "owner_edits"` lists the `settings.json` keys that changed after generation. |
-
-Two candidates of the same overlay and kit differ only in `/overlay/target/agentDir` and in the markers. The live profile can be a side too: it compares as `settings_only`. See [candidate comparison](docs/candidate-compare.md).
-
-### Switch profiles
-
-Switching is a launch choice. Run the launcher file of the candidate you want:
+## Update the npm modules
 
 ```sh
-"$HOME/.config/tenant-pi/launch-main-2.sh"
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi update --extensions
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
 ```
 
-To go back, run the launcher of the old candidate. Without launcher files, use the `commands.launchDisplayOnly` line of each plan. The line sets `PI_CODING_AGENT_DIR` and removes `PI_CODING_AGENT_SESSION_DIR` for one process.
+The first line moves each module without a version to the newest version of the registry. It does not change a module with an exact version. The second line corrects the host-provided peers again; see [host peer overrides](docs/host-peer-overrides.md).
 
-Limits of a switch:
+## Change the model or the login
 
-- Each candidate authenticates and installs its declared packages on its own. Run the [declared-package steps](#install-the-declared-npm-packages-of-a-new-candidate) and log in for the new candidate. The kit copies no auth, sessions, memory or packages. With `questions`, `inventory` shows `coordination.questionExtension` as `declared` for the new candidate until the `pi install` line of the plan ran for it.
-- Going back is not a data rollback. Data that a session wrote into a candidate stays there.
-- The live `~/.pi/agent` stays untouched. Replacing it is your manual decision and is out of scope of the kit.
-- Old candidates stay on disk. The kit deletes nothing. Remove an old candidate by hand only after you checked that no launcher points at it.
+Use `/login`, `/model` and `/scoped-models` inside Pi. Press `Ctrl+S` in `/model` to save a model as the default. Pi writes these choices into `<profile>`; the kit does not read them.
 
-## Add or remove a component
+## A template of the kit changed
 
-1. See each component with its number and its mark. Then print the new selection: name each component that stays on and each new ID, and leave out an ID to remove it.
-
-   ```sh
-   python3 scripts/tenant_pi.py components --overlay '<overlay>' --format text
-   python3 scripts/tenant_pi.py components --select core,<id>,<id>
-   ```
-
-   In the list, a line with `[x]` is on, `requires:` names the components that a line needs, and `needs:` names its prerequisites. The second command writes no file. Its `added` names each required component that the action added. Its `prerequisites` names what each component needs: an `overlay:` key, a `gap:` of the plan, a `setup:` line.
-2. Replace the `selection` object of `<overlay>` with the `selection` object of the output. Add each `overlay:` key. Then do the loop.
-
-To remove a memory module (`hermes`, `wiki` or `openviking`), also set `memory.<module>` to `null`. Else `validate` stops with `memory_module_disabled: overlay.memory.<module>`. When no memory module stays on, remove the `memory` block and set `consent.memoryCapture` to `false`. Else `validate` stops with `memory_disabled: overlay.consent`.
-
-`validate` stops with `missing_dependency: overlay.selection.enable` when a required component is off. Details: [the module guide](docs/guides/modules.md#change-a-selection).
-
-## Switch a memory module on
-
-The modules are `hermes`, `wiki` and `openviking`. Each stores session text. Put the module into the selection, then set the consent key and the `memory` block in `<overlay>`:
-
-```json
-{
-  "consent": {"memoryCapture": true, "remoteMemoryWrites": false, "telemetry": false},
-  "memory": {"schemaVersion": 1, "hermes": {"backgroundReview": false},
-             "wiki": {"ambientPersonalVault": true, "backgroundTasks": false}, "openviking": null}
-}
-```
-
-- The `memory` block holds all three module keys. The key of a module that is off is `null`.
-- `validate` looks for the block first. It stops with `memory_choices_required: overlay.memory` without the block, with each value of the consent key, and with `required_fields: overlay.memory` when a module key is absent. With the block and the consent `false`, it stops with `memory_consent_required: overlay.consent.memoryCapture`.
-- `openviking` also needs `consent.remoteMemoryWrites: true` and a server of your own.
-- All candidates of one account share the LLM Wiki vault `~/.llm-wiki/` below the home directory. The Hermes store is below the profile, so a new candidate starts with an empty one.
-
-Before `wiki` goes on, look for a vault of the account:
+`install.sh` writes `settings.json` and `models.json` only when they are absent, so a profile keeps the copy of its install. Compare the files by hand, and copy a change that you want:
 
 ```sh
-python3 scripts/tenant_pi.py check-wiki-vault
+diff "$HOME/tenant-pi/config/settings.example.json" "$HOME/.pi/profiles/main/settings.json"
 ```
 
-- `"result":"vault_exists"`: use the existing vault and follow the [refusal rules](docs/private-directory.md#refusal-rules). Set `memory.wiki.wikiHome` to `wikiHome.root` only when `personalVault` is `wikiHome`.
-- `"result":"second_vault"`: set no `wikiHome`. The candidate uses the vault of the home directory.
-- `"result":"no_vault"`: the extension makes the vault at the first start. When `wikiHome` of the output is `null`, set no `wikiHome`: the vault is `.llm-wiki` in the home directory. When it is not `null`, the shell has `WIKI_HOME`: set `memory.wiki.wikiHome` to the value of `wikiHome.root`. Without that key the launch line removes `WIKI_HOME`, and the vault starts in the home directory.
-- `"doubled":true`: keep `wiki` off until you decide. The extension moves the inner vault one level up at the first start.
-- `ambientPersonalVault`: with `true`, the extension makes a vault when none exists, and it adds text from the vault to each prompt in each directory. With `false`, a start writes nothing, no vault text goes into a prompt, and the wiki tools still use the vault. `wikiHome` needs `true`.
-- Leave `memory.wiki.embedding` out, so that an existing store stays unchanged.
+## Add a second profile
 
-[INSTALL.md](INSTALL.md#the-llm-wiki-vault) has the table of each result. See also [the vault check](docs/memory-modules.md#the-vault-check).
+Run `./install.sh --new <name> --shell bash --with none --yes`, or answer its prompts. Choose `zsh` for Zsh. The name selects both `~/.pi/profiles/<name>` and its managed alias. Existing names are refused. Profiles share the clone, but not login or session files. A memory module can use shared storage.
 
-The background model calls are off in this block: both modules capture and answer tool calls only.
+## Remove the kit
 
-Warning: the background calls cost tokens on the `roles.memory` model.
+1. Remove the links of the kit in `~/.claude/skills`. Each one points into `<clone>/packages/tenantext/skills`.
+2. Remove the profile directory, or remove `<clone>/packages/tenantext` from the `packages` list of its `settings.json`.
 
-To switch them on, set `memory.hermes.backgroundReview` to `true` with `"reviewTransport": "direct"`, or `memory.wiki.backgroundTasks` to `true`, and set the role `roles.memory` to a provider, a model and a thinking level. Without the role, `validate` stops with `memory_role_required`.
-
-Then do the loop. Details: [memory modules](docs/memory-modules.md).
-
-## Install the declared npm packages of a new candidate
-
-Only when the candidate declares an npm source: `hermes`, `wiki`, `mcp` or `questions`. `commands.setupDisplayOnly` of the plan has one `pi install` line for each declared source, and then the peer override line. Run the lines that name `<new target>`, in the order of the plan. With `hermes` and `wiki` they are:
-
-```sh
-PI_CODING_AGENT_DIR='<new target>' pi install npm:pi-hermes-memory
-PI_CODING_AGENT_DIR='<new target>' pi install npm:@zosmaai/pi-llm-wiki
-PI_CODING_AGENT_DIR='<new target>' node <clone>/scripts/patch_extension_peers.mjs
-```
-
-- Use each source string as the plan prints it. With another string, Pi rewrites `settings.json`.
-- Do not run the `npm install --global` line of the plan when Pi is installed. That line replaces Pi for each profile.
-- The plan prints the last line with the absolute path of the script of the clone, so the line runs from each directory. Run the line as the plan prints it.
-- The script prints one line, `Adjusted host-provided peers: <package>`, for each manifest that it corrects, and nothing when no manifest needs a correction. Observed with `pi-hermes-memory` 0.9.10 and `@zosmaai/pi-llm-wiki` 0.12.5: the first run prints nothing for `hermes` and `wiki`. With `questions`, the first run prints the line of that package.
-- With `wiki`, the `pi install` line prints an audit summary of npm, with a count of vulnerabilities and a hint to run `npm audit fix`. This output is expected. See [INSTALL.md](INSTALL.md#the-audit-summary-of-npm).
-
-Warning: do not run `npm audit fix` in the candidate. The command changes the installed packages, and it can undo the peer override.
-
-Done when `PI_CODING_AGENT_DIR='<new target>' pi list` prints a path line that starts with `<new target>/npm/node_modules/` below each declared source, the override script ends with exit code 0, and a second run of it prints nothing. Where the first run printed nothing, the proof is the next start of the candidate: startup prints no peer warning. Details: [host peer overrides](docs/host-peer-overrides.md).
-
-## Update the npm packages of one candidate
-
-Run both lines. `<clone>` in the second line is the absolute path of the clone, so the line runs from each directory. Details: [host peer overrides](docs/host-peer-overrides.md#reapply-it-automatically-after-each-extension-update).
-
-```sh
-PI_CODING_AGENT_DIR='<target>' pi update --extensions
-PI_CODING_AGENT_DIR='<target>' node <clone>/scripts/patch_extension_peers.mjs
-```
-
-- The first line moves only an installed source without a version (`hermes`, `wiki`, `mcp`) to the newest registry version. It is the one task that changes a candidate in place.
-- A source with an exact version (`questions`) does not move. Its version changes with a new kit version and a new candidate.
-- An update writes the upstream manifests again. Run the second line after each update. It prints one line for each manifest that it corrects, and it ends with exit code 0. A second run of it prints nothing. Where the first run printed nothing, the proof is the next start: startup prints no peer warning.
-- With `wiki`, an update can print the same kind of audit summary of npm as the install: a count of vulnerabilities and a hint to run `npm audit fix`. Such output is not a failure of the update. Not verified: the npm output of an update of the `wiki` package. See [INSTALL.md](INSTALL.md#the-audit-summary-of-npm).
-- With `wiki`: at `@zosmaai/pi-llm-wiki` 0.12.5 a start changes no existing file of a vault and adds only `meta/qmd/`. Not verified: a newer version. Record a new baseline of the vault before the update, and compare the vault with it after the next launch: see "Record the baseline of a new candidate". That comparison is check 8 in `INSTALL.md`. It is the proof for the installed version.
-
-Warning: do not run `npm audit fix` in the candidate, and do not run `npm audit fix --force`. The command changes the installed packages of the candidate. It can undo the peer override, and it can install versions that the kit did not review.
-
-## Keep an accepted difference
-
-Some keys of `settings.json` have no overlay field, for example `npmCommand` of the peer override wrapper. List the pointer of the key in `unmanaged` of `<overlay>`, with a reason. Details: [accepted drift](docs/accepted-drift.md).
-
-```json
-{"unmanaged": [{"key": "/npmCommand", "reason": "Reviewed npm wrapper; kept on purpose."}]}
-```
-
-- The next `compare` reports that key under `accepted`, not under `changes` or `unsupported`.
-- The kit writes no accepted value into a new candidate. Apply the value by hand to each new candidate after review. For `npmCommand`, copy the wrapper files into `<new target>/local-overrides/` and add the key to `<new target>/settings.json`.
-
-## What a new candidate does not get
-
-A candidate comes from the overlay, not from the old candidate. The kit copies nothing between candidates.
-
-| Not in a new candidate | What to do |
-| --- | --- |
-| Authentication (`auth.json`) | Log in again with `/login` in the new candidate. |
-| Sessions (`<target>/sessions`), and the memory stores of the profile, for example the Hermes store | They stay in the old candidate. |
-| A model choice from `/model`, and each other edit inside Pi | Carry it into the overlay first: see the next section. |
-| The installed npm packages | Run the setup lines again. |
-| `models.json` of a direct provider | Copy your master copy into the new candidate: see "Add a provider or a model route". |
-
-All candidates of one account share what is outside the candidate directories: the `pi` command, Node, the clone, the LLM Wiki vault `~/.llm-wiki/` below the home directory, and the keyring of the operating system. Going back to an old candidate is not a data rollback. Details: [candidate comparison](docs/candidate-compare.md#switching-profiles).
-
-## Take over a choice that you made inside Pi
-
-1. Compare, with the candidate that holds the choice on the right. Read the report:
-
-   ```sh
-   python3 scripts/tenant_pi.py compare --left '<old target>' --right '<target>' > '<private dir>/report.json'
-   ```
-
-   `right.drift` of the report has `"status":"owner_edits"`, and `fields` lists each key of `settings.json` that changed after the generation.
-2. Put each approved choice into the overlay field of [the table](docs/candidate-compare.md#drift-owner-edits-inside-a-candidate).
-3. Set each consent by hand after your own decision.
-
-The user-owned keys are `roles`, `modelRoutes`, `selection`, `endpoints`, `env`, `ownerPackages`, `unmanaged`, `memory` and `ownerResources`.
-
-For each difference, select one of three actions: carry it, accept it as drift, or drop it. To drop it, do nothing: the next candidate does not have the change.
-
-### After a native Pi operation
-
-Pi can write `settings.json` of a profile on its own. Examples: `pi install` of a new source or of a source string that differs from the declared string, `/model`, a settings change in the interface, a `/resources` toggle, and the `npmCommand` wrapper setup. `pi update --extensions` does not write `settings.json`. `pi install` does not write it when the source string is identical to the declared string.
-
-After each such operation:
-
-1. Run `compare` again. Put the previous candidate on the left and the changed candidate on the right. The drift section of a side compares its `settings.json` with its own recorded choices, so the other side can be any candidate.
-2. Read `right.drift.fields`. Each listed key changed after generation. Example: `/npmCommand` and `/defaultThinkingLevel` show there after such an edit.
-3. Carry, accept or drop each change as in this section.
-
-The drift stays visible on purpose. The kit does not hide or revert it. An accepted key still shows in `drift.fields`.
-
-## Record the baseline of a new candidate
-
-The baseline proves, after the launch, that the live agent directory did not change. Run the first line before the first Pi command that names `<new target>`, with a new file name. Run the second line after the first launch of the new candidate.
-
-```sh
-python3 scripts/tenant_pi.py baseline --dir "$HOME/.pi/agent" --out '<private dir>/live-baseline-<name>.json'
-python3 scripts/tenant_pi.py check-baseline --dir "$HOME/.pi/agent" --baseline '<private dir>/live-baseline-<name>.json'
-```
-
-- `baseline` prints `"complete":true` under `baseline`. It never replaces a baseline: an existing file stops it with `target_exists: baseline.out`.
-- `check-baseline` prints `"result":"unchanged"`. With `changed`, find out whether a Pi ran in the live profile after `recordedAt`. A `pi` command without the launcher counts. Details: [the directory baseline](docs/directory-baseline.md#how-to-read-the-result).
-
-With `wiki` on, also record the baseline of the vault at the same moment, and compare it after the first launch. `<vault>` is `<wikiHome>/.llm-wiki` when the overlay has `memory.wiki.wikiHome`, else the `.llm-wiki` directory in the home directory, written as an absolute path.
-
-```sh
-python3 scripts/tenant_pi.py baseline --dir '<vault>' --out '<private dir>/wiki-vault-baseline-<name>.json'
-python3 scripts/tenant_pi.py check-baseline --dir '<vault>' --baseline '<private dir>/wiki-vault-baseline-<name>.json'
-```
-
-The second line prints `"result":"unchanged"`, or `changed` with only `"modified":["meta"]`: the first start makes the index directory `meta/qmd/` in an existing vault. Each other difference is a stop. [INSTALL.md](INSTALL.md#check-8-the-comparison-of-the-vault) has the table of the outputs.
-
-## Remove a candidate that is not used
-
-The kit has no remove action and deletes nothing. You remove a candidate by hand. Details: [switching profiles](#switch-profiles).
-
-1. Look at the directory, and find each launcher that points at it:
-
-   ```sh
-   ls -la '<old target>'
-   grep -l -- '<old target> ' '<private dir>'/launch-*.sh
-   ```
-
-   Read the name and `generatedAt` of each candidate in the list.
-Warning: a removal of the wrong directory deletes `auth.json`, the sessions and the memory of that candidate. Read the path two times before the removal.
-
-2. Delete the directory and its launcher file yourself, when you use neither of them.
-
-## Move to a new Pi version
-
-`config/manifest.json` holds the tested version, `runtime.piVersion` (the pin), and the accepted range, `runtime.piAcceptedRange`. One `pi` command serves each profile of the user. Details: [Pi update checks](docs/pi-update.md).
-
-- Read the `pi` entry of `check-runtime` after each change of Pi or Node, and make the runtime report again.
-- `match`: the installed Pi is the pin. `untested_in_range`: the installed Pi is in the accepted range, and the kit tests did not run on it. Keep it, and record the gap `core_runtime_untested_in_range`.
-- `mismatch`: the installed Pi is outside the range. The global install line of the plan replaces Pi for each profile. Run it only after your own decision.
-- The pin moves only with a new kit version. Then follow [Get a new version of the kit](#get-a-new-version-of-the-kit).
-
-## Add a provider or a model route
-
-Details: [the provider guide](docs/guides/providers.md).
-
-- A login to a provider that Pi includes: launch the candidate and use `/login`. The login stays in that candidate.
-- A local provider (llama-swap, vLLM): the registration is `models.json` of the candidate. Use `inputs.modelsFile: "inputs/models.json"` and `--local-dir` to regenerate the supported non-secret format. See [the provider guide](docs/guides/providers.md#direct-providers). Unsupported Pi registration fields still need a separately reviewed manual copy.
-- A default model for each new candidate: enable `model-routing` and set `roles.interactive` in `<overlay>`. With `modelRoutes`, give `--registry` to `validate`, `plan` and `generate`. Then do the loop.
-
-## Write the results file again
-
-After each change, render the complete file again. Add the new launcher to `places.launchers` of the facts file of the install first. Name each candidate that you keep:
-
-```sh
-python3 scripts/tenant_pi.py results --facts '<private dir>/results-facts.json' --overlay '<overlay>' --target '<old target>' --target '<new target>' --out-dir '<private dir>' --replace
-```
-
-The result has `"complete":true` and `"replaced":true`. Without `--replace`, an existing file stops the action with `target_exists: results.out_dir`. Record the change in `<private dir>/install-log.md` too. Details: [the results file](docs/install-results.md).
+Warning: the profile directory holds the login (`auth.json`), the sessions and the memory of its modules. Removing it deletes them.

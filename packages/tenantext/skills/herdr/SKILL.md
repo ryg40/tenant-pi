@@ -136,7 +136,9 @@ The order is request, then file. A named model skips the file; a requested think
 The skill ships no model choice. See `models.example.json`.
 
 A role gives the agent an order of preference for its tools, with fallbacks.
-It removes no tool. The task that you send has priority over the role.
+It removes no tool, except the desktop tools of the computer-use module for a read role.
+`SPAWN.md` section 2 explains that exception and the override for one task.
+The task that you send has priority over the role.
 The tools and skills come from the catalog `resources.json`, with the location
 of each on this machine. `python3 $S/resources.py --role <role>` shows the
 entries for that role. A search MCP server and a desktop browser skill are

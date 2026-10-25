@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import shlex
 import shutil
 import stat
 import subprocess
@@ -14,6 +15,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / 'install.sh'
 MANIFEST = json.loads((ROOT / 'config/manifest.json').read_text())
+DECLARED_SKILL = next(item for component in MANIFEST['components'].values()
+                      if component['source'] == {'kind': 'tree', 'path': 'packages/tenantext'}
+                      for item in component['resources']['skills'])
 
 
 class InstallTests(unittest.TestCase):
@@ -141,6 +145,36 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertIsNone(call['session'])
         self.assertTrue(call['path'].startswith(str(self.bin) + ':'))
 
+    def test_launcher_execs_the_selected_runtime_and_a_repeat_switches_it(self):
+        # The Pi-Bolt installer links pi-bolt to a release file named pi.
+        release = self.base / 'bolt release' / 'pi'
+        release.parent.mkdir()
+        release.write_text(self.pi.read_text().replace("'args'", "'bolt': True, 'args'"))
+        release.chmod(0o700)
+        (self.bin / 'pi-bolt').symlink_to(release)
+        other = self.base / 'own runtime'
+        other.write_text(self.pi.read_text().replace("'args'", "'own': True, 'args'"))
+        other.chmod(0o700)
+        launcher = self.home / '.local/bin/demo'
+
+        def launched():
+            subprocess.run([str(launcher), 'x'], env=self.env, check=True)
+            return json.loads((self.profile / 'calls.jsonl').read_text().splitlines()[-1])
+
+        self.success(self.run_install('--new', 'demo', '--shell', 'bash', '--with', 'none', '--yes', '--runtime', 'pi-bolt'))
+        self.assertTrue(launched().get('bolt'))
+        exec_line = [line for line in launcher.read_text().splitlines() if line.startswith('exec ')]
+        self.assertEqual(str(release.resolve()), shlex.split(exec_line[0])[1])
+        # An upgrade without the option keeps the runtime; one with the option switches it.
+        self.success(self.install(mode='upgrade'))
+        self.assertTrue(launched().get('bolt'))
+        self.success(self.run_install('--upgrade', 'demo', '--shell', 'bash', '--with', 'none', '--yes', '--runtime', 'pi'))
+        call = launched()
+        self.assertNotIn('bolt', call)
+        self.assertEqual(['x'], call['args'])
+        self.success(self.run_install('--upgrade', 'demo', '--shell', 'bash', '--with', 'none', '--yes', '--runtime', str(other)))
+        self.assertTrue(launched().get('own'))
+
     def test_zsh_and_zdotdir(self):
         for directory in (self.home, self.home / "zsh ' space"):
             with self.subTest(directory=directory):
@@ -220,15 +254,18 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertTrue((self.profile / 'settings.json').exists())
         self.assertFalse((self.home / '.bashrc').exists())
 
-    def test_clone_quoting_and_claude_links(self):
-        kit = self.base / 'kit " quote & |'
+    def kit_copy(self, kit, *skills):
         (kit / 'config').mkdir(parents=True)
         shutil.copy(SCRIPT, kit / 'install.sh')
         for file in ('settings.example.json', 'models.example.json', 'manifest.json'):
             shutil.copy(ROOT / 'config' / file, kit / 'config' / file)
-        skill = kit / 'packages/tenantext/skills/demo'
-        skill.mkdir(parents=True)
-        (skill / 'SKILL.md').write_text('demo')
+        for skill in skills:
+            (kit / 'packages/tenantext' / skill).mkdir(parents=True)
+            (kit / 'packages/tenantext' / skill / 'SKILL.md').write_text('skill')
+        return kit
+
+    def test_clone_quoting_and_claude_links(self):
+        kit = self.kit_copy(self.base / 'kit " quote & |', DECLARED_SKILL)
         (self.home / '.claude').mkdir()
         result = self.install(shell='none', script=kit / 'install.sh')
         self.success(result)
@@ -236,7 +273,47 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertIn(str(self.home / '.claude/skills'), result.stdout)
         settings = json.loads((self.profile / 'settings.json').read_text())
         self.assertEqual(str(kit / 'packages/tenantext'), settings['packages'][0])
-        self.assertEqual(skill, (self.home / '.claude/skills/demo').resolve())
+        skill = kit / 'packages/tenantext' / DECLARED_SKILL
+        self.assertEqual(skill, (self.home / '.claude/skills' / skill.name).resolve())
+
+    def test_claude_links_skip_a_skill_that_the_manifest_does_not_declare(self):
+        # A folder with a SKILL.md outside the published set, for example a draft in the clone, gets no link.
+        kit = self.kit_copy(self.base / 'kit', DECLARED_SKILL, 'skills/draft-skill')
+        (self.home / '.claude').mkdir()
+        self.success(self.install(shell='none', script=kit / 'install.sh'))
+        self.assertTrue((self.home / '.claude/skills' / Path(DECLARED_SKILL).name).is_symlink())
+        self.assertFalse(os.path.lexists(self.home / '.claude/skills/draft-skill'))
+
+    def command(self, name, body):
+        path = self.bin / name
+        path.write_text('#!/bin/sh\n' + body)
+        path.chmod(0o700)
+
+    def test_computer_use_on_another_platform_writes_nothing(self):
+        self.command('uname', 'echo Darwin\n')
+        self.assertEqual(2, self.install(modules='computer-use').returncode)
+        self.assertEqual({}, self.snapshot())
+
+    def test_computer_use_and_its_plugin_need_their_own_yes(self):
+        self.command('uname', 'echo Linux\n')
+        self.command('claude', 'echo "$*" >> "$HOME/claude-calls"\necho "[]"\n')
+        (self.home / '.claude').mkdir()
+        before = self.snapshot()
+        result = self.interactive([('Optional modules', 'computer-use'), ('desktop', 'no')],
+                                  '--new', 'demo', '--shell', 'none', '--yes')
+        self.assertEqual(2, result.returncode)
+        self.assertEqual(before, self.snapshot())
+        # --yes approves the profile only. Without a terminal or --claude-plugin, no plugin step runs.
+        self.success(self.install(shell='none', modules='computer-use'))
+        spec = 'npm:' + MANIFEST['components']['computer-use']['source']['spec']
+        self.assertIn(spec, (self.profile / 'calls.jsonl').read_text())
+        result = self.interactive([('Claude Code plugin', 'no')],
+                                  '--upgrade', 'demo', '--shell', 'none', '--with', 'computer-use', '--yes')
+        self.success(result)
+        self.assertFalse((self.home / 'claude-calls').exists())
+        self.success(self.run_install('--upgrade', 'demo', '--shell', 'none', '--with', 'computer-use',
+                                      '--yes', '--claude-plugin'))
+        self.assertTrue((self.home / 'claude-calls').exists())
 
     def test_symlink_profiles_cannot_target_live_or_clone(self):
         self.profile.parent.mkdir(parents=True)

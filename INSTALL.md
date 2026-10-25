@@ -34,6 +34,24 @@ python3 scripts/check_runtime.py
 
 The script compares the installed Pi, Node and Python with `runtime` of the manifest. It does not open a live profile. For a status other than `match`, see [troubleshooting](docs/guides/troubleshooting.md#check_runtimepy-reports-mismatch-or-missing).
 
+### Pi-Bolt, an alternative runtime
+
+Pi-Bolt is the Pi coding agent compiled ahead of time to one native executable ([source](https://github.com/opensec-git/Pi-Bolt), npm package `pi-bolt`, MIT license). It has the commands, sessions, settings, providers and extensions of Pi. Builds exist for Linux x86-64 and ARM64, macOS on Apple silicon and Windows x64. The kit does not install it.
+
+The install line of the Pi-Bolt README installs it to `~/.pi-bolt` and links the `pi-bolt` command into `~/.local/bin`. Its installer checks the release checksum.
+
+```sh
+curl -fsSL https://pi-bolt.opensec.in/install.sh | sh
+```
+
+One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.4.0 (Pi-Bolt 1.0.2, linux-x64, JIT off)`. Use the Pi-Bolt release that carries `runtime.piVersion`. `runtime.piBoltVersion` in the manifest is the tested Pi-Bolt release. Check it:
+
+```sh
+python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"
+```
+
+The `pi` entry of the report then has a `piBolt` field with the installed and the tested Pi-Bolt release. Select Pi-Bolt with `--runtime pi-bolt` of [install.sh](#run-installsh).
+
 ## Clone
 
 ```sh
@@ -53,26 +71,43 @@ Keep the clone in its place. The profile names `packages/tenantext` inside it.
 
 The script offers an upgrade of an existing named profile or a new alternate profile in `~/.pi/profiles/<name>`. It asks for shell setup and optional modules, then shows the proposed changes for approval. The inherited `PI_CODING_AGENT_DIR` is only a suggestion. Without a terminal, supply every choice through the flags in `install.sh`.
 
+The module question and `--with` accept `wiki`, `hermes`, `mcp` and `computer-use`, separated by commas, or `none`:
+
+```sh
+./install.sh --new main --shell bash --with computer-use --yes
+```
+
+- `computer-use` is for Linux only. On another platform the script stops before its first write, and names the open choice of a macOS module.
+- `--with computer-use` is your yes to desktop control. After `computer-use` as an answer to the module question, the script asks about desktop control before the install. A no stops the script before its first write.
+- When `~/.claude` exists and the `claude` command is on `PATH`, the Claude Code plugin of the module needs a separate yes: `--claude-plugin`, or a yes to its own question. `--yes` does not give it. See [the Claude Code plugin](docs/guides/modules.md#claude-code-plugin).
+
 The script writes absent templates from `config/`. It refuses the live profile `~/.pi/agent` and each directory inside the clone. The settings template names `<clone>/packages/tenantext` as a local package and the question extension. The models template has no provider.
+
+`--runtime pi|pi-bolt|<absolute path>` selects the Pi runtime of the profile. The script looks up `pi` and `pi-bolt` on `PATH`. Without the option, an upgrade keeps the runtime of its launcher. Else the script asks when `pi` and `pi-bolt` are both on `PATH` and `--yes` is absent. Else it uses `pi`. To switch an existing profile, run an upgrade with the option:
+
+```sh
+./install.sh --upgrade main --runtime pi-bolt
+```
 
 Missing choices or cancellation exit before writes. `--yes` approves the displayed changes, but not a name conflict. Resolve a conflict separately with `--replace-alias` or an interactive yes.
 
 The installer writes absent templates and keeps the selected directory. It preserves authentication, sessions, memory, models and unrelated settings. A missing or moved tenantext package entry gets an exact JSON proposal and a backup before the approved change. Existing package filters stay filtered. Optional modules use the npm specs in `config/manifest.json`; the installer never upgrades Pi itself.
 
-The alias uses `~/.local/bin/<name>`. This launcher records the absolute Pi path, puts its directory first on `PATH`, and forwards arguments. It clears the inherited session directory and stores no credentials. Run an upgrade after moving Pi or Node.
+The alias uses `~/.local/bin/<name>`. This launcher records the runtime choice and the absolute path of the runtime, puts its directory first on `PATH`, and forwards arguments. It clears the inherited session directory and stores no credentials. Run an upgrade after moving Pi, Pi-Bolt or Node. The Pi-Bolt installer links `pi-bolt` to a release file named `pi`. For `pi-bolt`, the launcher records that file when its name is `pi`. Herdr 0.9.5 detects the agent from the process name. On Linux, the Pi-Bolt executable is named `pi`. On macOS, `pi` starts `pi-bin`, and the detection there is not verified. See [the herdr skill](packages/tenantext/skills/herdr/SPAWN.md#2a-resources-tools-and-skills-with-their-locations). Run an upgrade after a change to another Pi-Bolt build, for example the JIT build.
 
 After the profile succeeds, the installer backs up the startup file and writes one named managed block. Bash uses `~/.bashrc`; Zsh uses `${ZDOTDIR:-$HOME}/.zshrc`. A repeat upgrade replaces that block and keeps unrelated content. Symlink startup files and launchers require manual setup instead. The completion report gives the command to load the alias.
 
-When `~/.claude` exists, the installer also links kit skills into `~/.claude/skills`. It keeps folders and links to other sources.
+When `~/.claude` exists, the installer also links kit skills into `~/.claude/skills`. These are the skills that `config/manifest.json` declares for `packages/tenantext`, the skills of the Pi profile. A folder with a `SKILL.md` that the manifest does not declare gets no link. The installer keeps folders and links to other sources. These links are the default form of the kit skills in Claude Code. The `tenantext` plugin for Claude Code is for the Simplified English hook, `/ste` and `/spawn_agent`. When you have the links, skip the skill build of the plugin. The plugin skills are for a host that does not keep the kit clone. See [Claude Code](docs/guides/modules.md#claude-code).
 
 ## Optional modules
 
-Each optional module is one `pi install` line. Use the `PI_CODING_AGENT_DIR` of the profile. Run only the lines of the modules that you want:
+Each optional module is one `pi install` line. Use the `PI_CODING_AGENT_DIR` of the profile. Run only the lines of the modules that you want. With Pi-Bolt as the runtime, use `pi-bolt install` in place of `pi install`. Like Pi, it adds the package to the shared `packages` list of the profile. It uses `npm` on `PATH`, or its own built-in package manager when `npm` is absent. The launcher `~/.local/bin/<name> install <spec>` runs the runtime of the profile with the profile directory.
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.24
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/openviking-pi/index.ts"
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/agentcore-pi/index.ts"
 ```
@@ -90,10 +125,13 @@ The script prints one line for each manifest that it corrects, and nothing when 
 | `mcp` | Read the README of `pi-mcp-adapter` for its server file. | Connects MCP servers through the adapter. Pi has a built-in MCP client too; to use only the adapter, add `"-builtin:mcp"` to the `extensions` list of `<profile>/settings.json`. |
 | `hermes` | Write [the Hermes config file](docs/memory-modules.md#the-hermes-config-file); without it, the package defaults make model calls of their own. | Stores memory of the sessions in `<profile>/pi-hermes-memory/`. |
 | `wiki` | Read [an existing vault](docs/memory-modules.md#an-existing-vault). | Uses the personal vault `~/.llm-wiki` of the account, or `$WIKI_HOME/.llm-wiki`. An existing vault stays as it is. With the default settings, text of the vault goes into each prompt and so to the model provider. |
+| `computer-use` | Read [computer use](docs/guides/modules.md#computer-use). The module needs Linux, a graphical session with AT-SPI accessibility, and network access for its binary download. | The official computer-use module of the kit for Linux. Its tools read the accessibility tree, take screenshots and send input to your desktop. Screen content goes into the conversation and so to the model provider. |
 | `openviking` | `npm ci --ignore-scripts` in `<clone>/packages/openviking-pi`, and an OpenViking server that you set up. | Sends session content to that server and recalls it. See [OpenViking](docs/memory-modules.md#openviking-what-the-vendored-source-does). |
 | `agentcore` | `npm ci --ignore-scripts` in `<clone>/packages/agentcore-memory-core`, and the AWS resources of the owner. | Recalls and proposes memories in AWS AgentCore Memory. Start Pi with `AGENTCORE_MEMORY_CONFIG_FILE`; see [start and setup](docs/memory-modules.md#start-and-setup). |
 
-- An `npm:` line without a version installs the newest version of the registry. The question extension of the core install has an exact version.
+- An `npm:` line without a version installs the newest version of the registry. The question extension of the core install and the `computer-use` line have an exact version.
+- The `computer-use` line can print an `npm warn install-scripts` line that names `npm/install.js`. Observed with version 0.7.24: the script still ran and downloaded the binary.
+- `install.sh --with computer-use` installs the same spec, from `config/manifest.json`. Do not run the line on a platform other than Linux.
 - A `pi install` line loads each resource that the package declares. The `wiki` package declares a skill, prompt commands and an MCP server too; see [the wiki facts](docs/memory-modules.md#wiki-what-the-pinned-source-does) for a filter.
 - The `wiki` line prints an npm audit summary with a count of vulnerabilities. The output is expected. Do not run `npm audit fix` in the profile: it changes the installed packages, and it can undo the peer correction.
 - Observed with Pi 1.3.0: `pi install` of a local path writes the path relative to `<profile>` into `settings.json`. Keep the clone and the profile in their places.

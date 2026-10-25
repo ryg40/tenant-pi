@@ -13,6 +13,7 @@ The Pi extensions that `pi.extensions` of `package.json` lists form the installa
 - **doctor**: `/tenantext-doctor` checks what this machine has and writes the matching settings.
 - **resources**: `/resources` lists extensions, skills, prompts and MCP servers, with enable controls and saved profiles.
 - **herdr-watch**: `herdr_spawn` starts a task session in a new Herdr pane and sends its task; `herdr_watch_start` prompts a pane that exists. Both wait on the pane in the background and deliver its reply as a task notification. See [docs/herdr-watch.md](docs/herdr-watch.md).
+- **next-prompt**: One faint next-action suggestion in the empty editor, read from the final dummies report; Tab takes it as a draft. See [docs/next-prompt.md](docs/next-prompt.md).
 
 The suite also ships the **tracker-site** skill: restart briefs that tell you where a repository stands after a long session or days away. It is a Python package in `tracker/`, not a Pi extension.
 
@@ -69,6 +70,7 @@ The suite loads these stable resources:
 | doctor | `extensions/doctor/index.ts` |
 | resources | `extensions/resources/index.ts` |
 | herdr-watch | `extensions/herdr-watch/index.ts` |
+| next-prompt | `extensions/next-prompt/index.ts` |
 | herdr skill | `skills/herdr/SKILL.md` |
 | coordinator skills (the table in [skills/coordinator-skills/README.md](skills/coordinator-skills/README.md)) | `skills/coordinator-skills/<skill>/SKILL.md` |
 | knowledge skills (the table in [skills/knowledge-skills/README.md](skills/knowledge-skills/README.md)) | `skills/knowledge-skills/<skill>/SKILL.md` |
@@ -106,7 +108,7 @@ To load only some extensions or skills, replace the path string in the `packages
 
 Keep the full package directory: entry points can import shared files.
 Do not also register a second copy of the package in the same profile.
-`/resources` inside Pi switches single resources on and off without an edit by hand.
+`/resources` inside Pi switches single resources on and off without an edit by hand. It groups the items by kind, one line per item; Space turns an item on or off, `/` filters, and `s` saves the changes to `settings.json` and reloads. See [the resources page](../../docs/resources.md#menu).
 Tenantext uses `tenantext/settings.json` relative to the profile's Pi agent directory.
 
 ## Commands
@@ -318,6 +320,14 @@ They read only endpoint fields from `OPENVIKING_URL`, `OPENVIKING_BASE_URL`, `OP
 The file paths come from `OPENVIKING_CLI_CONFIG_FILE`, `OPENVIKING_CONFIG_FILE`, and `~/.openviking/{ovcli.conf,ov.conf}`.
 They compare host and effective port, not URL paths. Missing or unreadable OV files contribute no endpoint.
 The module check uses the profile's OpenViking package declarations and extension filters, including project overrides.
+
+The computer-use checks run only when the profile settings list `npm:@agent-sh/computer-use-linux`. They report three things:
+
+- `computer-use-version`: the installed version in `<profile>/npm` against the pin in `config/manifest.json` of the kit clone. Without that file, the version of the profile line is the reference.
+- `computer-use-binary`: the binary that the extension starts, in the order of the extension: `COMPUTER_USE_LINUX_BIN`, the package binary, then `computer-use-linux` on `PATH`.
+- `computer-use-readiness`: the blockers and warnings of the `readiness` block from `computer-use-linux doctor`. That command reads the desktop state.
+
+The checks never run the setup commands of the package, so they change no desktop setting. On a platform other than Linux, one warning replaces the three checks.
 These checks make no network request, access no credential field, and supply no automatic fix.
 
 | Diagnostic | Level | Meaning |
@@ -431,7 +441,7 @@ Not verified: writing through the OpenKnowledge project API. The adapter only de
 
 ## Claude Code plugin
 
-`claude-code/` holds a Claude Code plugin that ships `herdr` and applies the same rule block. Claude Code has no per-turn system prompt hook, so the delivery differs:
+`claude-code/` holds a Claude Code plugin. It applies the same rule block and ships `/spawn_agent`. After a build, it also carries the skills that `config/manifest.json` of the kit declares for this package. Claude Code has no per-turn system prompt hook, so the delivery of the rules differs:
 
 | Pi extension | Claude Code plugin |
 | --- | --- |
@@ -443,20 +453,50 @@ Not verified: writing through the OpenKnowledge project API. The adapter only de
 
 The marketplace manifest is `packages/tenantext/.claude-plugin/marketplace.json` from the kit root.
 Its plugin source is the sibling `claude-code/` directory inside this package.
+
+The skill links that the kit `install.sh` writes into `~/.claude/skills` are the default form of these skills in Claude Code.
+The plugin is for the `SessionStart` hook, `/ste` and `/spawn_agent`.
+When you have the links, skip the skill build: with both forms, Claude Code lists each skill twice, as `<name>` and as `tenantext:<name>`.
+The plugin skills are for a host that does not keep the kit clone, because the links point into the clone.
+
 The skills under `claude-code/skills/` are generated and Git ignores them.
 A remote marketplace clone or published snapshot has no skills until the build runs in the clone, because Git excludes the generated directory.
-Before loading the plugin, build them from `packages/tenantext/skills/` with Python 3, from the kit root:
+To build them from `packages/tenantext/skills/`, run with Python 3 from the kit root:
 
 ```sh
 python3 packages/tenantext/claude-code/build-skills.py
 ```
 
-The script copies `herdr`, preserves file modes, and omits `install.sh`, `tests/`, `__pycache__/` and `*.pyc`.
+The script reads the skill list from `config/manifest.json` of the kit.
+It copies each declared skill to a flat folder `skills/<name>/`, preserves file modes, and omits `install.sh`, `tests/`, `__pycache__/` and `*.pyc`.
+It adds the `tracker` package to the copy of `tracker-site`: the skill runs that package, and the plugin cache of Claude Code holds only the plugin directory.
+It copies `LICENSE` and `licenses/` of this package beside the skill folders, so a cached copy of the plugin has the licence texts.
+The links in the `CREDITS.md` files of the skills resolve in the in-place form, where Claude Code reads the plugin from `claude-code/` of the clone.
+In a cached copy, the links do not resolve; the texts are in `skills/LICENSE` and `skills/licenses/` of the plugin.
 An optional directory argument selects another output directory.
 The script refuses unexpected destination entries and links before writing any files.
 It can replace files at generated output paths, but it deletes nothing.
 
-Not verified: Claude Code marketplace installation or a `--plugin-dir` launch from this kit layout.
+To install the plugin for your user, run from the kit root:
+
+```sh
+claude plugin marketplace add ./packages/tenantext
+claude plugin install tenantext@tenantext --scope user
+```
+
+Claude Code can keep a copy of the plugin directory in its plugin cache, in a folder of the plugin version.
+To update the plugin, pull the kit, run the build again if you use the plugin skills, then:
+
+```sh
+claude plugin marketplace update tenantext
+claude plugin update tenantext@tenantext --scope user
+```
+
+Start a new Claude Code session after an install or an update.
+A change of the plugin contents raises `version` in `claude-code/.claude-plugin/plugin.json`.
+
+`claude plugin validate` passes for the plugin directory and for the marketplace file (observed with Claude Code 2.1.310).
+Not verified: a marketplace installation or a `--plugin-dir` launch from this kit layout.
 The package tests cover rule-block consistency and hook behavior, not those installation paths.
 
 Commands:
@@ -480,6 +520,8 @@ Files:
 | `claude-code/scripts/session-start.mjs` | Emits the rule block as `additionalContext`, records the run, exits 0 on every path |
 | `claude-code/scripts/ste.mjs` | Backs `/ste` |
 | `claude-code/scripts/rules.mjs` | Copy of `src/rules.ts`. A test asserts the two blocks are identical |
+| `claude-code/commands/spawn_agent.md` | Backs `/spawn_agent`. Copy of `skills/herdr/commands/spawn_agent.md`; a test asserts the two are identical |
+| `claude-code/build-skills.py` | Builds the generated `claude-code/skills/` from the skills that the kit manifest declares, with the licence texts |
 
 ## Develop
 
@@ -537,7 +579,7 @@ Layout and names ([`LAYOUT.md`](skills/herdr/LAYOUT.md)):
 - A coordinator handoff starts the next coordinator below the active coordinator pane.
 - An agent name is `<project>-<role>-<n>`, for example `tenantext-scout-2`. The pane label starts with that name.
 
-A role is an order of preference with fallbacks, not a set of limits. Each role prompt starts with "The task has priority". The researcher and the scout are both context gatherers with the same tools; the researcher starts with the web and the scout starts with the local machine. For the web, both use the web tools of the harness. A machine file can put optional entries before them, for example a search MCP server or a desktop browser skill; `skills/herdr/SPAWN.md` explains the entries. `spawn.py` removes no tool unless `--strict` is given, and starts each Claude Code session in the `auto` permission mode.
+A role is an order of preference with fallbacks, not a set of limits. Each role prompt starts with "The task has priority". The researcher and the scout are both context gatherers with the same tools; the researcher starts with the web and the scout starts with the local machine. For the web, both use the web tools of the harness. A machine file can put optional entries before them, for example a search MCP server or a desktop browser skill; `skills/herdr/SPAWN.md` explains the entries. `spawn.py` removes no tool unless `--strict` is given, except the desktop tools of the computer-use module for the read roles, and starts each Claude Code session in the `auto` permission mode.
 
 The skill ships no model choice. Optional `~/.config/herdr-skill/models.json` supplies defaults per role and harness; `models.example.json` shows the shape.
 `XDG_CONFIG_HOME` replaces `~/.config` when set. A named model skips the file; a requested thinking level wins.

@@ -4,7 +4,8 @@ import { freshness, safeText } from "./adapters.ts";
 import { plainPaint, type Paint } from "./paint.ts";
 import type { Settings } from "./settings.ts";
 import type { ContextService, DashboardSnapshot, IntegrationSnapshot, StatusSnapshot } from "./types.ts";
-import { buildView, formatRelative, formatWhen, isCodexLabel, memoryGroups, type Alert, type QuotaView, type View } from "./view.ts";
+import { periodState } from "../../src/period-end.ts";
+import { buildView, formatDay, formatLocalTime, formatRelative, formatWhen, isCodexLabel, memoryGroups, type Alert, type QuotaView, type View } from "./view.ts";
 import { fit, join as joinParts, justify, pick, quotaChip, width as visibleWidth, type Candidate } from "./widgets.ts";
 
 export { fit } from "./widgets.ts";
@@ -33,6 +34,7 @@ export function contextRow(ctx: ContextState, view: View, width: number, paint: 
  * Quota chip groups from verbose to terse: full account names with resets, full names, short names, only the low windows, then bare alerts.
  * A reset at least a day away shows its date: for a low window in every row, for a normal window only in a stacked row.
  * Accounts stay in identity order at every level.
+ * A stacked row adds the saved period end of its own account. It is optional and never an alert: it drops before any relative reset.
  */
 export function quotaCandidates(quota: QuotaView, paint: Paint, aged: Aged, now: number, stacked = false): { candidates: (Candidate | undefined)[]; compact?: Candidate; alert: boolean } {
   const alert = quota.alerts.length > 0;
@@ -44,6 +46,12 @@ export function quotaCandidates(quota: QuotaView, paint: Paint, aged: Aged, now:
     // The absolute form helps only for a far reset (7d, premium); a 5h reset stays relative.
     const text = level === "absolute" && (!stacked || at - now >= DAY_MS) ? `${relative} · ${formatWhen(at)}` : pad ? relative.padEnd(RESET_WIDTH) : relative;
     return " " + paint.fg("dim", text);
+  };
+  // The qualifier always stays with the date: a cached period end is never a billing date, and a past one is never upcoming.
+  const period = (a: QuotaView["accounts"][number], form: PeriodForm) => {
+    if (!a.period || form === "none") return undefined;
+    const qualifier = a.period.state === "cached" ? "cached" : `cached, ${a.period.state}`;
+    return paint.fg("muted", `${form === "full" ? "period end" : "end"} ${formatDay(a.period.endsAt)} (${qualifier})`);
   };
   const account = (a: QuotaView["accounts"][number], short: boolean, chip: number, low: ResetForm, normal: ResetForm, onlyLow: boolean) => {
     const name = paint.fg("muted", short ? a.short : a.label);
@@ -57,8 +65,8 @@ export function quotaCandidates(quota: QuotaView, paint: Paint, aged: Aged, now:
   };
   const tail = (route: boolean) => [route && quota.route ? (quota.route.alert ? paintAlert(paint, quota.route.alert, aged) : paint.fg(quota.route.kind, quota.route.text)) : undefined, quota.stale ? paint.fg("dim", "stale") : undefined,
     quota.more ? paint.fg("dim", `+${quota.more}`) : undefined];
-  const level = (short: boolean, chip: number, low: ResetForm, normal: ResetForm, onlyLow: boolean, route: boolean, minWidth = 0): Candidate | undefined => {
-    const groups = quota.accounts.map(a => account(a, short, chip, low, normal, onlyLow)).filter(Boolean);
+  const level = (short: boolean, chip: number, low: ResetForm, normal: ResetForm, onlyLow: boolean, route: boolean, minWidth = 0, form: PeriodForm = "none"): Candidate | undefined => {
+    const groups = quota.accounts.map(a => { const text = account(a, short, chip, low, normal, onlyLow); return text && joinParts([text, period(a, form)], "  "); }).filter(Boolean);
     if (!groups.length) return undefined;
     // A stacked row holds one account, so reset times fit without the wide-terminal minimum.
     return { text: joinParts([...groups, ...tail(route)], "  "), minWidth: stacked ? 0 : minWidth };
@@ -70,13 +78,16 @@ export function quotaCandidates(quota: QuotaView, paint: Paint, aged: Aged, now:
     : a.windows.length ? `${paint.fg("muted", a.short)} ${quotaChip(a.windows.find(w => w.alert) ?? a.windows[0], paint)}` : undefined), "  ") };
   const candidates = [
     // A stacked row has room for the date of a far reset on a normal window too. It keeps every relative reset before it drops the normal ones.
-    stacked ? level(false, 10, "absolute", "absolute", false, true) : undefined,
+    // The period end goes before a reset date that repeats a relative reset, and drops before any relative reset.
+    stacked ? level(false, 10, "absolute", "absolute", false, true, 0, "full") : undefined, stacked ? level(false, 10, "absolute", "absolute", false, true, 0, "short") : undefined,
+    stacked ? level(false, 10, "relative", "relative", false, true, 0, "short") : undefined, stacked ? level(false, 10, "absolute", "absolute", false, true) : undefined,
     level(false, 10, "absolute", "relative", false, true, 160), stacked ? level(false, 10, "relative", "relative", false, true) : undefined, level(false, 10, "absolute", "none", false, true, 120), level(false, 10, "relative", "none", false, true),
     level(false, 10, "none", "none", false, true), level(true, 8, "none", "none", false, false), alert ? level(true, 8, "none", "none", true, false) : undefined, narrow, compact,
   ];
   return { candidates, compact, alert };
 }
 type ResetForm = "none" | "relative" | "absolute";
+type PeriodForm = "none" | "short" | "full";
 const RESET_WIDTH = "↺ 23h 59m".length;
 const NO_LOGIN = "no login";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -345,6 +356,16 @@ export function detailedReport(data: DashboardSnapshot, context: ContextService,
   catch { contextReport = "CTX report unavailable"; }
   const freshnessLine = (name: string, snapshot: StatusSnapshot) => `${name}: ${marker(snapshot, now)}; checked:${snapshot.checkedAt || "never"}; lifetime:${snapshot.staleAfter}ms; ${snapshot.summary}`;
   const limits = data.limits;
+  const iso = (epoch: number) => new Date(epoch).toISOString();
+  // Every configured Codex account gets a period line. The date is cached evidence: the line never names it a billing or renewal date.
+  const periodLine = (a: NonNullable<typeof limits>["accounts"][number]) => {
+    const p = a.login === false ? undefined : a.period;
+    const source = a.login === false ? "none (no login)" : p ? `${p.source}; collected:${p.collectedAt !== undefined ? iso(p.collectedAt) : "unknown"}` : "not supported for this login";
+    if (p?.endsAt === undefined) return `${a.label} period end: unavailable; source:${source}; billing date not verified`;
+    const state = periodState(p.endsAt, p.providerCheckedAt, now);
+    const checked = p.providerCheckedAt !== undefined ? `${iso(p.providerCheckedAt)} (${formatRelative(now - p.providerCheckedAt)} ago)` : "age unknown";
+    return `${a.label} period end: ${iso(p.endsAt)} (local ${formatLocalTime(p.endsAt)}); state:${state}${state === "past" ? " (not an upcoming charge)" : ""}; provider checked:${checked}; source:${source}; billing date not verified`;
+  };
   const windows = (a: NonNullable<typeof limits>["accounts"][number]) => a.windows.map(w => w.unavailable ? `${w.name} n/a` : `${w.name} ${Math.round(w.percent ?? 0)}%${w.resetsAt ? ` resets ${new Date(w.resetsAt).toISOString()} (${formatWhen(w.resetsAt)}, in ${formatRelative(w.resetsAt - now)})` : ""}`).join("; ");
   return [
     `MODEL ${s.state} ${s.provider}/${s.model} think:${s.thinking}`,
@@ -358,7 +379,9 @@ export function detailedReport(data: DashboardSnapshot, context: ContextService,
     freshnessLine("REPO", data.git),
     data.git.repo ? `Repository:${data.git.repo}; branch:${data.git.branch}; staged:${data.git.staged}; unstaged:${data.git.unstaged}; untracked:${data.git.untracked}; ahead:${data.git.ahead ?? "n/a"}; behind:${data.git.behind ?? "n/a"}; worktrees:${data.git.worktrees}; current:${data.git.worktree}` : "",
     limits ? [freshnessLine("LIMITS", limits), `route:${limits.route.selected ?? "n/a"} (${limits.route.state})`,
-      ...limits.accounts.map(a => a.login === false ? `${a.label}: no login` : `${a.label}: ${a.state}; ${windows(a) || "no windows"}${a.plan ? `; plan:${a.plan}` : ""}`)].join("\n") : "LIMITS unavailable",
+      ...limits.accounts.map(a => a.login === false ? `${a.label}: no login` : `${a.label}: ${a.state}; ${windows(a) || "no windows"}${a.plan ? `; plan:${a.plan}` : ""}`),
+      "Period end: the saved subscription active-until time of the account login. It is cached evidence, not a verified billing, renewal or payment date. Provider checked is the age of the evidence; collected is only the local read. Stale: the provider check is over 24 hours old or its time is unknown.",
+      ...limits.accounts.map(periodLine)].join("\n") : "LIMITS unavailable",
     data.anthropic ? [freshnessLine("ANTHROPIC", data.anthropic), `source:${data.anthropic.source ?? "n/a"}; plan:${data.anthropic.plan ?? "n/a"}`,
       ...data.anthropic.accounts.map(a => `${a.label}: ${a.state}; ${windows(a) || "no windows"}`)].join("\n") : "ANTHROPIC not detected (see /anthropic-usage)",
     data.copilot ? [freshnessLine("COPILOT", data.copilot), `source:${data.copilot.source ?? "n/a"}; plan:${data.copilot.plan ?? "n/a"}`,

@@ -2,68 +2,38 @@
 
 `D` is the absolute `scripts` directory beside this file.
 
-## The outcome block
+## The outcome report
 
-When the work is complete, end your last message with one outcome block. It replaces the report of that turn. Use the three box-drawing tables of `REPORT.md` in Claude Code and Pi, with the same labels in the same order.
+When the work is complete, end your last message with one outcome report. It replaces the report of that turn. Claude Code and Pi use the compact form of `REPORT.md` section 3, in compact report syntax 2 of `REPORT.md` section 6. Give the `added:` line of the page entry above it.
 
-```
-OUTCOME  The plan is settled. Nothing is changed live.
+```markdown
+**OUTCOME** The plan is settled; live changes wait for approval
 
-┌───────────┬────────────────────────────────────────────────────────┐
-│   Field   │                         Detail                         │
-├───────────┼────────────────────────────────────────────────────────┤
-│ Goal      │ Settle the service plan with the owner.                │
-├───────────┼────────────────────────────────────────────────────────┤
-│ Open      │ The owner must approve the plan.                       │
-├───────────┼────────────────────────────────────────────────────────┤
-│ Next      │ The owner reviews the plan.                            │
-├───────────┼────────────────────────────────────────────────────────┤
-│ Important │ THE PLAN IS READY; LIVE CHANGES STILL NEED APPROVAL.   │
-└───────────┴────────────────────────────────────────────────────────┘
+- **[1]** Done: The two routes of the service had one shared timeout.
+- **[2]** Done: The owner chose eight slots in the question tool.
+- **[3]** Needs approval: The new service profile is ready, but it is not live.
+- **[4]** Unverified: The health check of the new profile did not run. https://status.example.org/service/health
+- **[5]** Done: The session entry is on the page DUMMIES.
 
-What was done:
-┌───┬───────────┬────────────────────────────────────────────────────┐
-│ # │   Action  │                Resource and result                 │
-├───┼───────────┼────────────────────────────────────────────────────┤
-│ 1 │ Read      │ config.yaml                                        │
-│   │           │ Two routes shared the same timeout.                │
-├───┼───────────┼────────────────────────────────────────────────────┤
-│ 2 │ Checked   │ models.json                                        │
-│   │           │ The provider had the expected context limit.       │
-├───┼───────────┼────────────────────────────────────────────────────┤
-│ 3 │ Read      │ The service profile                                │
-│   │           │ Four slots served concurrent requests.             │
-├───┼───────────┼────────────────────────────────────────────────────┤
-│ 4 │ Decided   │ The question tool                                  │
-│   │           │ The owner selected eight slots.                    │
-├───┼───────────┼────────────────────────────────────────────────────┤
-│ 5 │ Recorded  │ The project DUMMIES page                           │
-│   │           │ The session entry held the plan.                   │
-└───┴───────────┴────────────────────────────────────────────────────┘
+**Warning:** Clients wait while the cache copy runs after the change.
 
-What's next:
-┌───┬─────────┬──────────────────────────────────────────────────────┐
-│ # │  Owner  │                      Next step                       │
-├───┼─────────┼──────────────────────────────────────────────────────┤
-│ 1 │ Owner   │ Review the plan and approve or request changes.      │
-├───┼─────────┼──────────────────────────────────────────────────────┤
-│ 2 │ Agent   │ If approved, change the service profile.             │
-├───┼─────────┼──────────────────────────────────────────────────────┤
-│ 3 │ Agent   │ After the change, check the service health.          │
-└───┴─────────┴──────────────────────────────────────────────────────┘
+**Next:**
+- **[a]** Owner decides: Approve the new profile, or ask for changes.
+- **[b]** Agent, after the owner approves the new profile: Change the profile and run the health check.
+
+Tell the users of the service about the wait before the change.
 ```
 
-- `OUTCOME` is the result at the end of the session, in 12 words or less. It is also the `--summary` text of the page entry.
-- `Important`, `Open` and `Next` have the meaning that they have in the report. `Goal` is the goal at the start of the session.
-- `What was done` has the high-level completed actions in past tense. Compress them to exactly five rows. Each row names its real resources (a repository, an endpoint, an external tool, a URL) and the most important item that you found there.
-- An action row has 2 lines or less. Break after the resource name or at a comma. Follow the report's padding, continuation and width rules.
-- `What's next` follows the report's owner, condition and no-further-steps rules. Keep likely future work separate from completed actions.
-- Limits: 12 content words per line, 3 lines per summary label, 180 words excluding labels, headers, borders and step numbers. Narrow panes may use more lines, not more words.
-- One item of the block is in CAPITAL LETTERS: the `Important` text. The block is a fenced block with no language tag, as the report.
+- `OUTCOME`: the result at the end of the session, in 12 words or less. It is also the `--summary` text of the page entry.
+- Items: include the subjects of the session with their final states. Restart item numbers at `1` and independent next-action labels at `a`, as `REPORT.md` says. Neither sequence has a count cap.
+- Each item names its real resources (a repository, an endpoint, an external tool, a URL) and the most important fact about them.
+- `**Warning:**`, `**Next:**`, the prose after the block and the URL rules are as in the report. Use no table at the end of the work.
 
 ## The log page
 
 The page `DUMMIES` is the human session log of a project: one entry for each session, the newest first. It is the page `projects/<project>/DUMMIES` of OpenKnowledge. The script `page.py` reads and writes it through the `okknow` command only. `<project>` is the name of the repository directory; `--project <slug>` names another project. Outside a Git repository, `--project <slug>` is necessary.
+
+The page keeps its own schema: the four labels and the Markdown tables below. Compact report syntax 2 is the chat contract only. It does not apply to the page, and a program that reads a report never reads the page.
 
 ## Add the entry of this session
 
@@ -95,7 +65,9 @@ python3 D/page.py add --summary "<the OUTCOME line: the result in 12 words or le
 EOF
 ````
 
-- The entry is the outcome block in the syntax of the page. Box-drawing borders belong only in the chat output; keep the Markdown labels and tables shown in the entry template. The stored label order remains `Important`, `Open`, `Next`, `Goal`. Map `What was done` to `#### Done`; summarize `What's next` in `**Next:**`. The four label lines are necessary, in this order and form. Write them for a junior developer, as in the report. The page has no line limit: a sentence can be longer than in the block.
+- The entry is the outcome report in the schema of the page. The four label lines are necessary, in this order and form: `Important`, `Open`, `Next`, `Goal`. Write them for a junior developer, as in the report. The page has no line limit: a sentence can be longer than in the chat.
+- Map the outcome report to the labels. `Important`: the main warning or the most important item, in CAPITAL LETTERS. `Open`: the items that are not `Done` and not `Retired`, each with its state word, and the later actions of `**Next:**`. `Next`: the recommended next action, or `None.` and its reason. `Goal`: the goal at the start of the session. `#### Done`: the `Done` items, compressed to five rows.
+- Write each subject in words. Report numbers and action labels are local to one report, so a label alone in the page names nothing.
 - Keep a source change, a push, a build and a deployment apart. Name the commit identifiers, the endpoints and the checks with their results.
 - Write no credential. Name the place of a secret, not its value.
 - The script refuses a line that has the form of a credential, but this is a first guard only: you write no credential, also in a form that the script does not find.

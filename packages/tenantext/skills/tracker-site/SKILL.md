@@ -9,7 +9,7 @@ The restart brief is one Markdown file per repository in the `tracker-brief/1` f
 
 ## Commands
 
-The tool is the `tracker` Python package in the tenantext repository. Find the tenantext root: it is two directories above this SKILL.md. In this file, `tracker CMD` means:
+The tool is the `tracker` Python package of tenantext. The tenantext root is the directory that holds the `tracker` folder. When a `tracker` folder is beside this SKILL.md, as in the Claude Code plugin, the root is the directory of this SKILL.md. Else the root is two directories above the real path of this SKILL.md; resolve links first. In this file, `tracker CMD` means:
 
 ```sh
 PYTHONPATH=<tenantext root> python3 -m tracker.refresh --repo-path <repository> CMD

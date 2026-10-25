@@ -1,9 +1,13 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { buildInventory, formatItem, itemKey, readFiles, sortItems, sourceLabel, stripCredentials, type Dirs, type ResourceItem } from "./inventory.ts";
 import { NAME_RULE, deleteProfile, listProfiles, loadProfile, matchProfile, profileExists, saveProfile, validProfileName } from "./profiles.ts";
+import { createBrowser, type BrowserAction } from "./view.ts";
 import { commitWrites, planWrites, type DesiredItem, type PlanOptions } from "./writers.ts";
 
-export type ResourcesContext = Pick<ExtensionCommandContext, "hasUI" | "reload"> & { ui: Pick<ExtensionCommandContext["ui"], "select" | "input" | "confirm" | "notify"> };
+/** `mode` and `ui.custom` select the browser of the TUI. Without them the menu is the `ui.select` list. */
+export type ResourcesContext = Pick<ExtensionCommandContext, "hasUI" | "reload"> & Partial<Pick<ExtensionCommandContext, "mode">> & {
+	ui: Pick<ExtensionCommandContext["ui"], "select" | "input" | "confirm" | "notify"> & Partial<Pick<ExtensionCommandContext["ui"], "custom">>;
+};
 export interface ResourcesOptions extends PlanOptions { dirs: Dirs }
 
 export const SET_DEFAULT = "Set as default (write settings and reload)";
@@ -40,7 +44,7 @@ async function write(ctx: ResourcesContext, options: ResourcesOptions, desired: 
 	try { commitWrites(plan.writes); }
 	catch (error) { ctx.ui.notify(`Write failed: ${message(error)}`, "error"); return false; }
 	// Reload replaces the extension runtime. Report first, then reload, then return.
-	ctx.ui.notify([`Wrote ${plan.changes.length} change(s) to ${plan.writes.map(item => item.file).join(", ")}.`, ...plan.notes].join("\n"), "info");
+	ctx.ui.notify([`Saved ${plan.changes.length} change(s) to ${plan.writes.map(item => item.file).join(", ")}.`, ...plan.notes].join("\n"), "info");
 	await ctx.reload();
 	return true;
 }
@@ -91,7 +95,23 @@ export function listCommand(ctx: ResourcesContext, options: ResourcesOptions): v
 	if (items) ctx.ui.notify(formatList(items), "info");
 }
 
-/** The `ctx.ui.select` loop. Changes stay in memory until `Set as default`. */
+async function saveProfileAction(ctx: ResourcesContext, options: ResourcesOptions, working: ResourceItem[]): Promise<void> {
+	const name = (await ctx.ui.input("Profile name", "a-z, 0-9, dot, underscore, hyphen"))?.trim();
+	if (name) await saveCommand(ctx, options, name, working);
+}
+
+/** Returns true when the profile was written. */
+async function applyProfileAction(ctx: ResourcesContext, options: ResourcesOptions): Promise<boolean> {
+	const names = listProfiles(options.dirs.agentDir).map(profile => profile.name);
+	if (names.length === 0) { ctx.ui.notify("No profiles saved.", "info"); return false; }
+	const name = await ctx.ui.select("Apply profile", names);
+	return !!name && await applyCommand(ctx, options, name);
+}
+
+/**
+ * The menu. Changes stay in memory until a save: `s` in the browser of the TUI, `Set as default` in the select list.
+ * The browser asks before it closes with unsaved changes; the select list reports the discarded changes.
+ */
 export async function resourcesMenu(ctx: ResourcesContext, options: ResourcesOptions): Promise<void> {
 	if (!ctx.hasUI) return listCommand(ctx, options);
 	const start = inventory(ctx, options.dirs);
@@ -99,25 +119,35 @@ export async function resourcesMenu(ctx: ResourcesContext, options: ResourcesOpt
 	const working = start.map(item => ({ ...item }));
 	const original = new Map(start.map(item => [itemKey(item), item.enabled]));
 	const readOnly = (item: ResourceItem) => item.scope === "project" && !options.writeProject;
+	const unsaved = () => working.filter(item => original.get(itemKey(item)) !== item.enabled).length;
+	if (ctx.mode === "tui" && ctx.ui.custom) {
+		const state = { cursor: "", collapsed: new Set<string>(), filter: "" };
+		for (;;) {
+			const action = await ctx.ui.custom<BrowserAction>((tui, theme, _keys, done) => createBrowser({
+				items: working, original, readOnly, state, done,
+				rows: () => tui.terminal.rows, requestRender: () => tui.requestRender(), say: text => ctx.ui.notify(text, "info"),
+			}, theme));
+			if (action === "save") { if (await write(ctx, options, working)) return; }
+			else if (action === "profile") await saveProfileAction(ctx, options, working);
+			else if (action === "apply") { if (await applyProfileAction(ctx, options)) return; }
+			else if (unsaved() === 0 || await ctx.ui.confirm("Discard changes", `Discard ${unsaved()} unsaved change(s)? Press s in the list to save them.`)) return;
+		}
+	}
 	for (;;) {
 		const rows = working.map(item => `${formatItem(item)}${readOnly(item) ? " (read-only)" : ""}${original.get(itemKey(item)) !== item.enabled ? " (changed)" : ""}`);
-		const changed = working.filter(item => original.get(itemKey(item)) !== item.enabled).length;
-		const choice = await ctx.ui.select(`Resources: ${working.length} item(s), ${changed} changed`, [...rows, SET_DEFAULT, SAVE_PROFILE, APPLY_PROFILE, DISCARD]);
-		if (choice === undefined || choice === DISCARD) return;
+		const changed = unsaved();
+		const choice = await ctx.ui.select(`Resources: ${working.length} item(s), ${changed} changed. "${SET_DEFAULT}" saves them.`, [SET_DEFAULT, SAVE_PROFILE, APPLY_PROFILE, DISCARD, ...rows]);
+		if (choice === undefined || choice === DISCARD) {
+			if (changed) ctx.ui.notify(`Discarded ${changed} unsaved change(s).`, "info");
+			return;
+		}
 		if (choice === SET_DEFAULT) {
 			if (await write(ctx, options, working)) return;
 			continue;
 		}
-		if (choice === SAVE_PROFILE) {
-			const name = (await ctx.ui.input("Profile name", "a-z, 0-9, dot, underscore, hyphen"))?.trim();
-			if (name) await saveCommand(ctx, options, name, working);
-			continue;
-		}
+		if (choice === SAVE_PROFILE) { await saveProfileAction(ctx, options, working); continue; }
 		if (choice === APPLY_PROFILE) {
-			const names = listProfiles(options.dirs.agentDir).map(profile => profile.name);
-			if (names.length === 0) { ctx.ui.notify("No profiles saved.", "info"); continue; }
-			const name = await ctx.ui.select("Apply profile", names);
-			if (name && await applyCommand(ctx, options, name)) return;
+			if (await applyProfileAction(ctx, options)) return;
 			continue;
 		}
 		const item = working[rows.indexOf(choice)];

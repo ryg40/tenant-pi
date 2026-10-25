@@ -1,5 +1,6 @@
 import { nextMoveChip } from "../context-meter/next-move.ts";
 import type { ContextState } from "../context-meter/snapshot.ts";
+import { periodState, type PeriodState } from "../../src/period-end.ts";
 import { freshness } from "./adapters.ts";
 import type { PaintKind } from "./paint.ts";
 import type { Settings } from "./settings.ts";
@@ -15,7 +16,11 @@ export interface Group extends Alert { alert: boolean }
 export interface MemoryGroup extends Group { minimal: string }
 export type QuotaLevel = "normal" | "low" | "exhausted" | "unavailable";
 export interface QuotaWindow { name: string; percent?: number; level: QuotaLevel; resetsAt?: number; alert?: Alert }
-export interface QuotaAccount { label: string; short: string; state: StatusState; windows: QuotaWindow[]; alert?: Alert; /** `false`: configured, no login. Dim text, no alert. */ login?: false }
+export interface QuotaAccount {
+  label: string; short: string; state: StatusState; windows: QuotaWindow[]; alert?: Alert; /** `false`: configured, no login. Dim text, no alert. */ login?: false;
+  /** The saved period end of this account and its state at `now`. Cached evidence, never a billing date. Never raises an alert. */
+  period?: { endsAt: number; state: PeriodState };
+}
 export interface QuotaView {
   accounts: QuotaAccount[]; route?: { text: string; kind: PaintKind; alert?: Alert; selected?: string }; stale: boolean; alerts: Alert[];
   /** The count of accounts that the row budget dropped. The last quota row shows it as a dim `+N`. */
@@ -46,6 +51,15 @@ export function formatRelative(ms: number): string {
   if (days > 0) return hours ? `${days}d ${hours}h` : `${days}d`;
   if (hours > 0) return mins ? `${hours}h ${mins}m` : `${hours}h`;
   return `${mins}m`;
+}
+/** Calendar date in the local zone: `2026-11-05`. */
+export function formatDay(epoch: number, timeZone?: string): string {
+  return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "2-digit", day: "2-digit", ...(timeZone ? { timeZone } : {}) }).format(new Date(epoch));
+}
+/** Date and time with the zone name in the local zone: `2026-11-05 07:00 EST`. */
+export function formatLocalTime(epoch: number, timeZone?: string): string {
+  const time = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZoneName: "short", ...(timeZone ? { timeZone } : {}) }).format(new Date(epoch));
+  return `${formatDay(epoch, timeZone)} ${time}`;
 }
 /** Friendly absolute time in the local zone: `Tue 9/22 · 09:46 UTC`. Never raw ISO. */
 export function formatWhen(epoch: number, timeZone?: string): string {
@@ -124,7 +138,9 @@ export function quotaView(limits: LimitsSnapshot, now: number): QuotaView {
     });
     const alert = account.state === "error" ? { key: `quota:${account.label}:error`, kind: "error" as const, glyph: "✗", text: `${account.label} ✗ error`, compact: `${short} ✗` } : undefined;
     if (alert) alerts.unshift(alert);
-    return { label: account.label, short, state: account.state, windows, alert, ...(account.login === false ? { login: false as const } : {}) };
+    const endsAt = account.login === false ? undefined : account.period?.endsAt;
+    const period = endsAt === undefined ? undefined : { endsAt, state: periodState(endsAt, account.period?.providerCheckedAt, now) };
+    return { label: account.label, short, state: account.state, windows, alert, ...(account.login === false ? { login: false as const } : {}), ...(period ? { period } : {}) };
   });
   let route: QuotaView["route"];
   if (limits.route.state === "error") {

@@ -25,6 +25,8 @@ Q2 - <question title>: <question body, with the choices>
 Recommended: <your recommended answer>
 ```
 
+Word each question so that "yes" accepts your recommended answer.
+
 Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
 
 Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, memory, the tracker), look it up yourself when it is one command or one read. When it is a search, do this. Load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. Start a Herdr `scout` pane and ask it. Use a Herdr pane for each search. Don't block on it: a running lookup is an unsettled prerequisite, so only the questions downstream of it wait for the result; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.

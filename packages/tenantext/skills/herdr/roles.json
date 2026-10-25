@@ -1,5 +1,5 @@
 {
-  "comment": "Role table for spawn.py. A role sets the tab, the session type and the usual file access. It sets no model and removes no tool. The tools and skills of a role come from resources.json. spawn.py applies hard tool limits only with --strict.",
+  "comment": "Role table for spawn.py. A role sets the tab, the session type and the usual file access. It sets no model and removes no tool, except the desktop tools of the computer-use module for a read role. The tools and skills of a role come from resources.json. spawn.py applies hard tool limits only with --strict.",
   "roles": {
     "coordinator": {
       "session": "primary",

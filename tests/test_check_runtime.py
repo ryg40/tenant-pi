@@ -189,6 +189,14 @@ class CheckTests(unittest.TestCase):
                 self.assertEqual({"installed": installed, "required": PIN, "status": status, **PI_FIELDS}, report["pi"])
                 self.assertEqual(status != "mismatch", matches(report))
 
+    def test_pi_bolt_line_is_read_as_the_pi_version(self):
+        for pi, status in ((PIN, "untested_in_range"), (OUTSIDE, "mismatch")):
+            with self.subTest(pi=pi):
+                self.output["/bin/pi"] = Done(f"{pi} (Pi-Bolt 0.0.1, linux-x64, JIT off)\n".encode())
+                report = self.check()["pi"]
+                self.assertEqual((pi, status), (report["installed"], report["status"]))
+                self.assertEqual({"installed": "0.0.1", "tested": RUNTIME["piBoltVersion"]}, report["piBolt"])
+
     def test_lower_bound_prerelease_is_a_mismatch(self):
         self.output["/bin/node"] = Done(b"v24.0.0-rc.1\n")
         self.output["/bin/python3"] = Done(b"Python 3.11.0a1\n")

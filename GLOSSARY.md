@@ -31,7 +31,22 @@ _Avoid_: Manual test, smoke test
 A temporary Linux user created for one trial and removed after it; it holds no credential beyond the scoped key of that trial.
 _Avoid_: Test user, service account
 
+**Pi-Bolt**:
+The Pi coding agent compiled ahead of time to one native executable, with the commands, settings and extensions of Pi.
+`install.sh --runtime pi-bolt` makes it the runtime of a profile. `pi-bolt --version` prints the Pi version first.
+_Avoid_: Bolt
+
 **Refusal rules**:
 The location checks of `install.sh` that protect the live profile `~/.pi/agent` and the clone.
 The comment at the top of `install.sh` states them. See [install.sh](INSTALL.md#run-installsh).
 
+
+**Computer-use module**:
+The optional module `computer-use`: the npm package `@agent-sh/computer-use-linux` at the exact version of `config/manifest.json`, for Linux only.
+Its tools read the screen and send input to the desktop of the user, so `install.sh` installs it only after a yes to desktop control. No module for macOS is chosen.
+See [computer use](docs/guides/modules.md#computer-use).
+_Avoid_: Desktop module, cua
+
+**Desktop tools**:
+The tools of the computer-use module: `computer_use_linux_*` in Pi, and the MCP server of the Claude Code plugin `computer-use-linux@computer-use-linux`.
+The Herdr read roles start without them.

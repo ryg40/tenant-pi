@@ -18,7 +18,7 @@ This repository does not depend on the upstream package. It intentionally omits 
 The skill texts in `skills/coordinator-skills/` are adapted from the skills of `mattpocock/skills`. Each skill directory has a `CREDITS.md` with its upstream path.
 
 - Project: https://github.com/mattpocock/skills
-- Upstream version used as the base: `1.3.1`, commit `6fd9479`
+- Upstream version used as the base: `1.3.1`, commit `5beb35b`
 - License: MIT
 - Copyright: 2026 Matt Pocock
 
@@ -32,7 +32,7 @@ The four skill texts in `skills/knowledge-skills/` are adapted from Inkeep's ski
 Each skill directory has a `CREDITS.md` with its upstream path and changes.
 
 - Project: https://github.com/inkeep/open-knowledge-skills
-- Upstream commit: `776760f49d5b3b5c24921165b6c1ea17e8990fd5`
+- Upstream commit: `66571d24bdfd08faae2a5e91849b01f9686a2a9c`
 - License: MIT
 - Copyright: 2026 Inkeep
 

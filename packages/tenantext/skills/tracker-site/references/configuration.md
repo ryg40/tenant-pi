@@ -65,7 +65,7 @@ Default: `~/.pi/agent/tracker-state/<repo-slug>/`. The slug is the `owner/name` 
 
 ## Default view budgets
 
-The validator keeps these defaults. See [the schema](../../../tracker/schema.md#budgets) for the fields included in the word count.
+The validator keeps these defaults. The section Budgets of `tracker/schema.md` in the tenantext root gives the fields included in the word count.
 
 | Limit | Default |
 | --- | --- |

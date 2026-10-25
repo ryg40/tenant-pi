@@ -2,6 +2,7 @@ import { readStoredCredential, type ExtensionAPI, type ExtensionContext } from "
 import { existsSync } from "node:fs";
 import type { CodexAccountConfig } from "./settings.ts";
 import { fetchCodexLimits, type CodexLimitsResult, type CodexPlan } from "./limits.ts";
+import { readSubscription, type CodexSubscription } from "./subscription.ts";
 import { readTokenFile, tokenFileNoLogin } from "./token-file.ts";
 
 export const CODEX_STATUS_EVENT = "tenantext:codex:status";
@@ -12,10 +13,12 @@ export interface CodexStatusSnapshot {
 	/**
 	 * `plan` is an allowlisted, normalized value. It is absent when the payload did not report one or the fetch failed.
 	 * `login: false` marks a configured account that has no login. Its state is `unknown` and it has no windows.
+	 * `subscription` is the saved period end of an account with a token file, read again at each collection. Absent for a
+	 * Pi login (an unsupported source) and for an account with no login. Older snapshots without it stay valid.
 	 */
 	accounts: Array<{ provider: string; label: string; state: "ok" | "error" | "unknown"; login?: false; plan?: CodexPlan; windows: Array<{
 		label: string; remainingPercent: number; resetsAt?: string; unavailable?: boolean;
-	}> }>;
+	}>; subscription?: CodexSubscription }>;
 	/** Account names are the gateway service names codex1, codex2, codex3, ... */
 	routing?: { state: "ok" | "error" | "unknown"; selectedAccount?: string; preferredAccount?: string;
 		blockedUntil?: string; quotaCacheSeconds?: number; summary?: string };
@@ -78,7 +81,8 @@ export const collectLimitsFor = (explicit: boolean): LimitsCollector => async (a
 	}));
 export const collectLimits: LimitsCollector = collectLimitsFor(false);
 
-export function createCodexStatus(pi: ExtensionAPI, accounts: CodexAccountConfig[], collect: LimitsCollector = collectLimits) {
+export function createCodexStatus(pi: ExtensionAPI, accounts: CodexAccountConfig[], collect: LimitsCollector = collectLimits,
+	readPeriod: typeof readSubscription = readSubscription) {
 	let ctx: ExtensionContext | undefined;
 	let stopped = false;
 	let requested = false;
@@ -92,10 +96,19 @@ export function createCodexStatus(pi: ExtensionAPI, accounts: CodexAccountConfig
 		state: "unknown", summary: "Gateway status unavailable.",
 	} };
 	const publish = () => { if (!stopped) pi.events.emit(CODEX_STATUS_EVENT, structuredClone(snapshot)); };
+	// The period end comes from the current file only. It never rides on a last good reading, and a no login row clears it.
+	const withPeriod = (entry: SnapshotAccount, now: number): SnapshotAccount => {
+		const { subscription: _previous, ...rest } = entry;
+		const tokenFile = accounts.find((account) => account.provider === entry.provider)?.tokenFile;
+		return tokenFile && entry.login !== false ? { ...rest, subscription: readPeriod(tokenFile, now) } : rest;
+	};
 	const refresh = (force = false): Promise<AccountLimits> => {
 		if (stopped || !ctx) return Promise.resolve([]);
 		if (pending) return pending;
 		if (!force && snapshot.checkedAt && Date.now() - snapshot.checkedAt < CODEX_REFRESH_MIN_MS) {
+			// A throttled request sends no quota request, but it reads the local period end again.
+			const now = Date.now();
+			snapshot = { ...snapshot, accounts: snapshot.accounts.map((entry) => withPeriod(entry, now)) };
 			publish();
 			return Promise.resolve(cached);
 		}
@@ -117,7 +130,7 @@ export function createCodexStatus(pi: ExtensionAPI, accounts: CodexAccountConfig
 				if (stopped || signal.aborted) return [];
 				cached = results;
 				const now = Date.now();
-				snapshot = { ...snapshot, checkedAt: now, accounts: results.map(({ account, result }) => {
+				snapshot = { ...snapshot, checkedAt: now, accounts: results.map(({ account, result }): SnapshotAccount => {
 					if (!result.success && result.error === NO_LOGIN_ERROR) {
 						lastGood.delete(account.provider);
 						return { provider: account.provider, label: account.provider === "openai-codex" ? "Codex 1" : `Codex ${account.provider.split("-").at(-1)}`,
@@ -136,7 +149,7 @@ export function createCodexStatus(pi: ExtensionAPI, accounts: CodexAccountConfig
 					const last = lastGood.get(account.provider);
 					const reset = last?.account.windows.some((window) => window.resetsAt !== undefined && Date.parse(window.resetsAt) <= now);
 					return last && !reset && now - last.at < CACHED_LIMITS_MS ? { ...last.account, state: "unknown" as const } : current;
-				}) };
+				}).map((entry) => withPeriod(entry, now)) };
 				publish();
 				return results;
 			} catch { return []; }

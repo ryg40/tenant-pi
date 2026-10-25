@@ -12,6 +12,8 @@ OpenKnowledge (OK) is a markdown-CRDT collaboration platform exposed via MCP. Th
 
 > Skill version tracks `@inkeep/open-knowledge-server`. `cat ~/.ok/skill-state.yml` shows what's installed. `ok seed` needs `@inkeep/open-knowledge` >= 0.4.0; if it errors `unknown command`, `npm install -g @inkeep/open-knowledge`.
 
+> **CLI name.** Commands here use Stable's `ok` (`open-knowledge`) and `~/.ok/`. With OpenKnowledge Beta, use `ok-beta` (`open-knowledge-beta`) and `~/.ok-beta/` instead; `preview_url`'s `okOpenCommand` already names the right one.
+
 > **Setup (not connected yet?).** If the `mcp__open-knowledge*` tools aren't available in your client, this project isn't wired up on this machine - see [`references/setup.md`](references/setup.md) for the rung ladder (approve `.mcp.json` -> `ok start` CLI -> optional desktop app) and the canonical quickstart.
 
 ## TL;DR - the 90% case
@@ -91,7 +93,7 @@ KB docs are factual artifacts: every claim traceable, and **the source lives ins
 - **No evidence?** Search and ingest the result, OR mark `(TODO: needs source)`, OR don't write the claim. Do NOT fabricate - unsourced speculation rots into untraceable tribal lore.
 ## Linking - standard markdown links (MUST)
 
-Link every noun-phrase that names another document - `[text](./relative/path.md)` - and link liberally. To point at one section of a long doc, in chat replies too, link `./path.md#heading-slug`. **Every link must resolve to a doc that exists by the time you're done** (a same-pass forward-reference you create later in the pass is fine; for one that genuinely won't exist, leave the mention as plain prose + a tracked task). Never backtick a link (`` `[text](./foo.md)` `` is a bug) and never use HTML `<a>`. **After every `write`/`edit`, read `brokenLinks`: fix reported `href`s; `[]` means all links resolve unless `brokenLinkSuppression` withheld reserved-log findings (not yours to repair) or a `link-check-deferred` warning says nothing was checked yet (that doc is re-checked only by a later write/edit of it or an `audit`, which may time out until startup finishes).** `audit` is authoritative; its same marker carries the same meaning. External web sources are NOT inline body links (see Grounding). Full rule set, slug rule + the `[[Page]]` legacy note: `references/linking.md`.
+Link every noun-phrase that names another document - `[text](./relative/path.md)` - and link liberally. To point at one section of a long doc, in chat replies too, link `./path.md#heading-slug`. **Every link must resolve to a doc that exists by the time you're done** (a same-pass forward-reference you create later in the pass is fine; for one that genuinely won't exist, leave the mention as plain prose + a tracked task). Never backtick a link (`` `[text](./foo.md)` `` is a bug) and never use HTML `<a>`. **After every `write`/`edit`, read `brokenLinks`: fix reported `href`s; `[]` means all links resolve unless `brokenLinkSuppression` withheld reserved-log findings (not yours to repair) or a `link-check-deferred` warning says nothing was checked yet (the server was still starting or busy with other writes; that doc is re-checked only by a later write/edit of it or an `audit`, which may time out while the server is still starting).** `audit` is authoritative; its same marker carries the same meaning. External web sources are NOT inline body links (see Grounding). Full rule set, slug rule + the `[[Page]]` legacy note: `references/linking.md`.
 
 ## Folders, frontmatter, templates
 

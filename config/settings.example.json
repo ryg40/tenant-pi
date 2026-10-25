@@ -4,6 +4,6 @@
   "enableAnalytics": false,
   "packages": [
     "{kit}/packages/tenantext",
-    "npm:@juicesharp/rpiv-ask-user-question@2.13.9"
+    "npm:@juicesharp/rpiv-ask-user-question@2.15.0"
   ]
 }

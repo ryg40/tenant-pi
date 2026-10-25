@@ -18,7 +18,8 @@ Inputs
   --interactive  the user works in this session: no task session result format. coordinator implies it
   --strict       apply hard tool limits: read roles cannot edit files, and a role with web
                  access gets only the MCP servers of the catalog (see SPAWN.md). Without it,
-                 the role prompt gives an order of preference with fallbacks and removes no tool
+                 the role prompt gives an order of preference with fallbacks and removes no tool,
+                 except the desktop tools of the computer-use module for read roles (SPAWN.md)
   --unattended   claude write roles only: allow edits in advance.
                  The auto mode decides each shell command.
   --dry-run      print the resolved values and the command; create nothing
@@ -52,6 +53,9 @@ CLAUDE_HERDR_TOOLS = (f"Skill Bash(python3 {HERE}/:*) Bash(herdr agent:*) "
                       "Bash(herdr pane neighbor:*) Bash(herdr pane get:*) Bash(herdr pane layout:*) "
                       "Bash(herdr tab list:*) Bash(herdr workspace list:*) Bash(herdr --skill) "
                       "Bash(jq:*) Bash(test:*) Bash(echo:*)")
+# The desktop tools of the computer-use module: the Pi extension and the server of the Claude Code plugin.
+PI_DESKTOP_TOOLS = "computer_use_linux_*"
+CLAUDE_DESKTOP_TOOLS = "mcp__plugin_computer-use-linux_computer-use-linux"
 
 
 def fail(msg, code=EXIT["invalid"]):
@@ -162,6 +166,16 @@ def pi_executable():
     return executable
 
 
+def is_pi_bolt(executable):
+    """True when the first line of `<executable> --version` names Pi-Bolt."""
+    try:
+        out = subprocess.run([executable, "--version"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                             timeout=20).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return "(Pi-Bolt " in (out.splitlines() or [""])[0]
+
+
 def prepare_pi_launcher(pane, executable):
     if executable == "pi":
         return
@@ -175,6 +189,10 @@ def prepare_pi_launcher(pane, executable):
         raise RuntimeError("custom Pi launcher requires a new pane at a POSIX shell prompt")
     # Herdr keeps its Pi lifecycle detection; only this new shell gets the wrapper.
     command = f'pi() {{ {shlex.quote(executable)} "$@"; }}'
+    if is_pi_bolt(executable):
+        # Pi-Bolt reports the agent name pi-bolt, which Herdr 0.9.5 does not know. Without
+        # HERDR_SOCKET_PATH it skips that report and Herdr detects the process as pi.
+        command = f'pi() {{ (unset HERDR_SOCKET_PATH; exec {shlex.quote(executable)} "$@"); }}'
     code, data, raw = herdr("pane", "run", pane, command)
     if code != 0 or error_code(data):
         raise RuntimeError("could not configure the custom Pi launcher in the new pane")
@@ -239,7 +257,8 @@ def system_prompt(r, cfg=None):
 def native_args(r, cfg, unattended, name, write=True):
     """Build the harness arguments.
 
-    Default: no tool is removed. The role prompt gives the order of preference.
+    Default: no tool is removed, except the desktop tools of the computer-use module for read
+    roles. The role prompt gives the order of preference.
     With strict: read roles lose the edit tools, and a role with web access gets only
     the MCP servers of the catalog. The catalog ships no MCP server; the machine file adds one.
     """
@@ -254,12 +273,15 @@ def native_args(r, cfg, unattended, name, write=True):
             a += ["--provider", provider, "--model", mid]
         if r["thinking"]:
             a += ["--thinking", r["thinking"]]
+        excluded = [PI_DESKTOP_TOOLS] if r["access"] == "read" else []
         if strict:
             a += ["--no-skills", "--skill", SKILL, "--no-prompt-templates"]
             if r["access"] == "read":
-                a += ["--exclude-tools", "edit,write"]
+                excluded = ["edit", "write", *excluded]
             if r["web"] and paths.get("pi_mcp_config_strict"):
                 a += ["--mcp-config", paths["pi_mcp_config_strict"]]
+        if excluded:
+            a += ["--exclude-tools", ",".join(excluded)]
     else:
         a = []
         if r["model"]:
@@ -272,8 +294,11 @@ def native_args(r, cfg, unattended, name, write=True):
         allowed = [CLAUDE_HERDR_TOOLS] if sub else []
         if sub and r["access"] == "read":
             allowed.append(CLAUDE_READ_TOOLS)
+        disallowed = [CLAUDE_DESKTOP_TOOLS] if r["access"] == "read" else []
         if strict and r["access"] == "read":
-            a += ["--disallowedTools", "Edit Write NotebookEdit" + (" WebSearch WebFetch" if r["web"] else "")]
+            disallowed = ["Edit Write NotebookEdit" + (" WebSearch WebFetch" if r["web"] else ""), *disallowed]
+        if disallowed:
+            a += ["--disallowedTools", " ".join(disallowed)]
         if sub and r["access"] == "write" and unattended:
             allowed.append("Read Write Edit Grep Glob")
         servers = mcp_servers(resources) if r["web"] else {}

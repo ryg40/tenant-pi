@@ -6,6 +6,7 @@ It is offline: it reads files only. Scripts and JSON retain their protocol ident
 A second test plants one violation of each class in a fixture and expects each finding.
 The forbidden tracker commands come from one rule line of the tracker document, not from this file.
 """
+import json
 import re
 import runpy
 import shutil
@@ -309,19 +310,30 @@ class SkillInvariantTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(script), str(destination)],
                                 capture_output=True, text=True)
         self.assertEqual(0, result.returncode, result.stderr)
+        # The plugin carries each skill that the manifest declares for the package, and no other skill.
+        manifest = json.loads((ROOT / "config/manifest.json").read_text(encoding="utf-8"))
+        declared = [Path(item).relative_to("skills") for component in manifest["components"].values()
+                    if component["source"] == {"kind": "tree", "path": "packages/tenantext"}
+                    for item in component["resources"]["skills"]]
+        self.assertTrue(declared)
+        self.assertEqual(sorted(item.name for item in declared),
+                         sorted(path.parent.name for path in destination.glob("*/SKILL.md")))
+        # The copy of tracker-site carries the tracker package; the licence texts are beside the skills.
+        package = COMPONENT.parent.parent
+        sources = [(COMPONENT.parent / item, Path(item.name)) for item in declared]
+        sources += [(package / "tracker", Path("tracker-site/tracker")), (package / "licenses", Path("licenses")),
+                    (package / "LICENSE", Path("LICENSE"))]
         expected = {}
-        for name in ("herdr",):
-            for path in (COMPONENT.parent / name).rglob("*"):
-                relative = path.relative_to(COMPONENT.parent)
+        for source, target in sources:
+            for path in [source] if source.is_file() else source.rglob("*"):
+                relative = path.relative_to(source)
                 if {"install.sh", "tests", "__pycache__"}.intersection(relative.parts) or path.suffix == ".pyc":
                     continue
                 if path.is_file():
-                    expected[relative] = (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
+                    expected[target / relative] = (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
         actual = {path.relative_to(destination): (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
                   for path in destination.rglob("*") if path.is_file()}
-        self.assertTrue(expected)
         self.assertEqual(expected, actual)
-        self.assertEqual({"herdr"}, {path.name for path in destination.iterdir()})
 
     def test_plugin_skill_build_excludes_artifacts_and_replaces_only_output_paths(self):
         build = runpy.run_path(str(COMPONENT.parent.parent / "claude-code/build-skills.py"))["build"]
@@ -336,17 +348,17 @@ class SkillInvariantTests(unittest.TestCase):
                     path = skill / excluded
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text("excluded\n")
-            self.assertEqual(1, build(source, destination))
+            self.assertEqual(1, build(source, destination, ("herdr",)))
             self.assertEqual({Path("herdr/SKILL.md")},
                              {path.relative_to(destination) for path in destination.rglob("*") if path.is_file()})
             (source / "herdr/SKILL.md").write_text("second\n")
-            self.assertEqual(1, build(source, destination))
+            self.assertEqual(1, build(source, destination, ("herdr",)))
             self.assertEqual("second\n", (destination / "herdr/SKILL.md").read_text())
             self.assertEqual(0o751, stat.S_IMODE((destination / "herdr/SKILL.md").stat().st_mode))
             (source / "herdr/SKILL.md").write_text("third\n")
             (destination / "herdr/user.md").write_text("keep\n")
             with self.assertRaisesRegex(ValueError, "unexpected entry"):
-                build(source, destination)
+                build(source, destination, ("herdr",))
             self.assertEqual("second\n", (destination / "herdr/SKILL.md").read_text())
             self.assertEqual("keep\n", (destination / "herdr/user.md").read_text())
 
@@ -421,7 +433,7 @@ class SkillInvariantTests(unittest.TestCase):
             alias.symlink_to(source, target_is_directory=True)
             destination = alias / "herdr/output"
             with self.assertRaisesRegex(ValueError, "overlaps the source skills"):
-                build(source, destination)
+                build(source, destination, ("herdr",))
             self.assertFalse((source / "herdr/output").exists())
             for name in ("herdr",):
                 self.assertEqual("source\n", (source / name / "SKILL.md").read_text())
@@ -477,11 +489,11 @@ class SkillInvariantTests(unittest.TestCase):
                             else:
                                 target.hardlink_to(outside / "user.md")
                     with self.assertRaises(ValueError):
-                        build(source, destination)
+                        build(source, destination, ("herdr",))
                     self.assertEqual("keep\n", (outside / "user.md").read_text())
             for destination in (source, source / "herdr/output", root):
                 with self.subTest(destination=destination), self.assertRaisesRegex(ValueError, "overlaps"):
-                    build(source, destination)
+                    build(source, destination, ("herdr",))
             self.assertEqual("source\n", (source / "herdr/SKILL.md").read_text())
 
     def test_present_optional_skills_are_checked(self):

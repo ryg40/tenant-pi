@@ -2,7 +2,7 @@
 
 - Source: https://github.com/inkeep/open-knowledge-skills
 - Upstream path: `skills/core/open-knowledge`
-- Pinned commit: `776760f49d5b3b5c24921165b6c1ea17e8990fd5`
+- Pinned commit: `66571d24bdfd08faae2a5e91849b01f9686a2a9c` (reviewed; ported)
 - Author: Inkeep
 - Licence: MIT, copyright 2026 Inkeep.
 - Licence text: `../../../licenses/open-knowledge-skills-MIT.txt`.
@@ -17,7 +17,7 @@
 ## Changes from the pin
 
 - Replace em-dashes and en-dashes with hyphens, ellipses with three periods, and arrows with ASCII arrows.
-- Replace middle dots with semicolons, section signs with the word "section", and the comparison symbol with `<=`.
+- Replace middle dots with semicolons, section signs with the word "section", and the comparison symbol with `<=`. Replace the Japanese slug example with words.
 - Replace the warning symbol with `Warning:`, tree drawing characters with ASCII characters, and menu separators with `>`.
 - Reword the delegation warning in `SKILL.md` to use "another agent" and "delegation". Keep markdown exploration on MCP.
 - Scope the description to initialized OpenKnowledge projects and configured content. Kit installation alone does not initialize a project.

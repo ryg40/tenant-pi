@@ -10,7 +10,7 @@ The text of this skill is adapted for this kit from an upstream skill. The parag
 | --- | --- |
 | Upstream source | `mattpocock/skills` (https://github.com/mattpocock/skills) |
 | Upstream path | `skills/engineering/pr/SKILL.md` |
-| Upstream version | 1.3.1, commit `6fd9479` |
+| Upstream version | 1.3.1, commit `5beb35b` (reviewed; unchanged) |
 | Licence | MIT |
 | Visual menu | Dex Horthy, `humanlayer/skills` (https://github.com/humanlayer/skills), `plugins/show-me`, MIT |
 

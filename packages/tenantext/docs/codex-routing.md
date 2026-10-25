@@ -170,6 +170,23 @@ The collector publishes only the windows in the response. `limit_window_seconds`
 | Weekly window in `secondary_window` only (not observed) | `7d` |
 | Window without `limit_window_seconds` | `window` |
 
+### Subscription period end
+
+For an account with a `tokenFile`, each collection also reads the saved subscription period end from that file. The supported files are a flat account-worker file and a nested Codex CLI `tokens` container. The collector decodes the payload of the saved `id_token` in memory and reads two claims of the `https://api.openai.com/auth` namespace: `chatgpt_subscription_active_until` (the period end) and `chatgpt_subscription_last_checked` (the provider check time). Decoding is not verification: the collector does not check the token signature and makes no billing request. The date never comes from a token expiry, a login time, a subscription start, a quota reset, or a guessed monthly interval.
+
+The snapshot account gets a `subscription` field with only `periodEndsAt`, `providerCheckedAt` when known, `collectedAt`, `source`, and `state` (`cached`, `stale`, `past`, or `unavailable`). The ID token, the claims, the identity values, and file errors never enter the snapshot. These cases give `unavailable` and no date:
+
+- a file over 64 KiB
+- an `id_token` over 16 KiB or not of three segments
+- claims nested deeper than eight levels
+- a missing claim
+- a timestamp without a zone or with an invalid calendar date
+- a provider check time more than five minutes in the future
+- a file without an `account_id`, or an ID token without a `chatgpt_account_id`
+- an ID token whose `chatgpt_account_id` differs from the `account_id` of the file
+
+The period end is read again at each collection and at each throttled refresh request, from the current file only. It never rides on a last good reading. So a replaced, removed, or malformed file, or a file of another login, shows the new state and not an older date. An expired access token does not remove a readable period end, but the date stays cached evidence. A `no login` account has no `subscription` field. A Pi login without a `tokenFile` is not a supported source: the field is absent, and the collector requests no login and no token refresh.
+
 ## Status bus
 
 | Export | Event name |

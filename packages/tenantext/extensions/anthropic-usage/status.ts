@@ -1,5 +1,6 @@
 import { detectAnthropicCredentials, SOURCE_LABELS, type AnthropicCredential, type AnthropicPlan, type AnthropicSourceId, type DetectOptions } from "./detect.ts";
 import type { AnthropicUsageSettings } from "./settings.ts";
+import type { SharedStore } from "./shared.ts";
 import { fetchAnthropicUsage, type AnthropicUsageResult, type AnthropicWindow } from "./usage.ts";
 
 export const ANTHROPIC_STATUS_EVENT = "tenantext:anthropic:status";
@@ -44,6 +45,8 @@ export interface AnthropicStatusOptions {
 	emit: (event: string, value: unknown) => void;
 	fetcher?: Fetcher;
 	clock?: () => number;
+	/** The reading that every client of the Claude Code login shares (shared.ts). Absent: this meter asks on its own. */
+	shared?: SharedStore;
 }
 export function createAnthropicStatus(options: AnthropicStatusOptions) {
 	const clock = options.clock ?? Date.now;
@@ -54,6 +57,8 @@ export function createAnthropicStatus(options: AnthropicStatusOptions) {
 	let pending: Promise<AnthropicStatusSnapshot> | undefined;
 	let controller: AbortController | undefined;
 	let stopped = false;
+	// `shared`: the windows came from the shared reading. `waiting`: another client asked less than five minutes ago.
+	let fromShared = false, waiting = false;
 	const publish = () => { if (!stopped) options.emit(ANTHROPIC_STATUS_EVENT, structuredClone(snapshot)); };
 	const refresh = (force = false, minimumMs?: number): Promise<AnthropicStatusSnapshot> => {
 		const settings = options.settings();
@@ -63,8 +68,23 @@ export function createAnthropicStatus(options: AnthropicStatusOptions) {
 			publish(); return Promise.resolve(snapshot);
 		}
 		if (pending) return pending;
-		const age = clock() - snapshot.checkedAt;
-		if (!force && snapshot.checkedAt && age < (minimumMs ?? settings.pollSeconds * 1000)) { publish(); return Promise.resolve(snapshot); }
+		const now = clock(), pollMs = settings.pollSeconds * 1000;
+		// The shared reading belongs to the Claude Code login. A meter that uses the Pi login asks on its own.
+		const login = options.shared ? detectAnthropicCredentials({ ...options.detect(), sources: settings.sources, now })[0] : undefined;
+		const shared = login?.source === "claude-code" ? options.shared : undefined;
+		if (shared && login) {
+			const reading = shared.read();
+			// A newer reading of another client counts as a check at its own time, so this meter asks only when that reading is old.
+			if (reading.at !== undefined && reading.at <= now && now - reading.at < pollMs && reading.at > (lastGood?.checkedAt ?? 0) && reading.windows.length) {
+				snapshot = { checkedAt: reading.at, staleAfter: pollMs * 2, state: "ok", source: "claude-code", ...(login.plan ? { plan: login.plan } : {}), windows: reading.windows };
+				lastGood = snapshot; probe = undefined; fromShared = true; waiting = false;
+			}
+		}
+		const age = now - snapshot.checkedAt;
+		if (!force && snapshot.checkedAt && age < (minimumMs ?? pollMs)) { publish(); return Promise.resolve(snapshot); }
+		// Only one client asks in five minutes. The others take its reading on a later refresh.
+		if (shared && !shared.claim(now)) { waiting = true; publish(); return Promise.resolve(snapshot); }
+		waiting = false;
 		controller = new AbortController();
 		const signal = controller.signal;
 		pending = (async () => {
@@ -72,10 +92,12 @@ export function createAnthropicStatus(options: AnthropicStatusOptions) {
 				probe = await probeAnthropic({ ...options.detect(), sources: settings.sources, now: clock() }, signal, options.fetcher);
 				if (stopped || signal.aborted) return snapshot;
 				const staleAfter = settings.pollSeconds * 2000;
+				fromShared = false;
 				if (probe.result?.success && probe.credential) {
 					snapshot = { checkedAt: clock(), staleAfter, state: "ok", source: probe.credential.source,
 						...(probe.credential.plan ? { plan: probe.credential.plan } : {}), windows: probe.result.usage.windows };
 					lastGood = snapshot;
+					if (shared && probe.credential.source === "claude-code") shared.write(snapshot.checkedAt, snapshot.windows);
 				} else if (!probe.tried.length) {
 					// No active credential: the login is absent or expired. An earlier reading does not stand in for it.
 					lastGood = undefined;
@@ -104,6 +126,8 @@ export function createAnthropicStatus(options: AnthropicStatusOptions) {
 			const lines = [`## Anthropic usage`, "", `- Mode: ${settings.mode}. Sources: ${settings.sources.join(", ")}.`];
 			if (snapshot.state === "ok" && snapshot.source) lines.push(`- Source: ${SOURCE_LABELS[snapshot.source]}.${snapshot.plan ? ` Plan: ${snapshot.plan}.` : ""}`);
 			else lines.push(`- State: ${snapshot.state}${snapshot.error ? ` (${snapshot.error})` : ""}.${snapshot.state === "unknown" ? " The windows are the last good reading." : ""}`);
+			if (fromShared) lines.push(`- Reading: shared with the other clients of the Claude Code login, taken ${new Date(snapshot.checkedAt).toISOString()}.`);
+			if (waiting) lines.push("- Waiting: another client asked less than 5 minutes ago. This meter takes its reading.");
 			for (const t of probe?.tried ?? []) lines.push(`- Tried ${SOURCE_LABELS[t.source]} (${t.detail}): ${t.error ?? "accepted"}.`);
 			if (snapshot.windows.length) {
 				lines.push("", "| Window | Used | Remaining | Reset |", "| --- | ---: | ---: | --- |");

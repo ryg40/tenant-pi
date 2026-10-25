@@ -38,6 +38,7 @@ export interface OVConfig {
   skillCatalog: boolean;
   skillCatalogTokenBudget: number;
   resumeContextBudget: number;
+  resumeArchiveInject: boolean;
   commitTokenThreshold: number;
   commitKeepRecentCount: number;
   takeoverEnabled: boolean;
@@ -93,20 +94,24 @@ export function loadConfig(cwd: string = process.cwd()): OVConfig {
  *
  * Additive by default: a missing or malformed setting must never let
  * OpenViking replace Pi's native history implicitly, so takeover runs only when
- * some layer (env, workspace, ovcli.conf, ov.conf) asks for it. `loadConfig()`
+ * some layer (env, workspace, ovcli.conf, ov.conf) asks for it. The archive
+ * overview stays in the prompt after a resume or compaction unless a layer sets
+ * `resumeArchiveInject`, as before upstream 0.4.21 turned it off. `loadConfig()`
  * stays equal to the shared loader, which memory-plugin-shared's parity test
  * checks.
  */
 export function loadLocalConfig(cwd: string = process.cwd()): OVConfig {
   const config = loadConfig(cwd);
+  const configured = configuredSettings(cwd);
   return {
     ...config,
-    takeoverEnabled: takeoverConfigured(cwd) ? config.takeoverEnabled : false,
+    takeoverEnabled: configured.has("takeoverEnabled") ? config.takeoverEnabled : false,
+    resumeArchiveInject: configured.has("resumeArchiveInject") ? config.resumeArchiveInject : true,
   };
 }
 
-/** Did any configuration layer set `takeoverEnabled` (or `OPENVIKING_TAKEOVER`)? */
-function takeoverConfigured(cwd: string): boolean {
+/** The settings that some configuration layer (or its `OPENVIKING_*` variable) sets. */
+function configuredSettings(cwd: string): Set<string> {
   const files = loadCredentialFiles(process.env);
   const section = files.ovFile?.pi;
   const legacy = section && typeof section === "object" && !Array.isArray(section) ? section : {};
@@ -117,7 +122,7 @@ function takeoverConfigured(cwd: string): boolean {
     cliFile: files.cliFile,
     clientVersion: EXTENSION_VERSION,
   });
-  return configured.has("takeoverEnabled");
+  return configured;
 }
 
 /** Tools use the same resolved identity and actor peer as REST recall. */

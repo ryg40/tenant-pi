@@ -2,7 +2,7 @@
 
 - Source: https://github.com/inkeep/open-knowledge-skills
 - Upstream path: `skills/core/open-knowledge-write-skill`
-- Pinned commit: `776760f49d5b3b5c24921165b6c1ea17e8990fd5`
+- Pinned commit: `66571d24bdfd08faae2a5e91849b01f9686a2a9c` (reviewed; ported)
 - Author: Inkeep
 - Licence: MIT, copyright 2026 Inkeep.
 - Licence text: `../../../licenses/open-knowledge-skills-MIT.txt`.

@@ -1,7 +1,8 @@
 import type { AnthropicStatusSnapshot } from "../anthropic-usage/status.ts";
 import type { CodexStatusSnapshot } from "../codex-accounts/status.ts";
 import type { CopilotStatusSnapshot } from "../copilot-usage/status.ts";
-import type { IntegrationSnapshot, IntegrationSource, LimitsAccount, LimitsSnapshot, LimitsWindow, StatusSnapshot, StatusState } from "./types.ts";
+import { CLOCK_SKEW_MS, parseZonedTimestamp } from "../../src/period-end.ts";
+import type { IntegrationSnapshot, IntegrationSource, LimitsAccount, LimitsPeriod, LimitsSnapshot, LimitsWindow, StatusSnapshot, StatusState } from "./types.ts";
 
 const states = new Set(["ok", "warning", "error", "unknown"]);
 export function state(value: unknown): StatusState {
@@ -98,6 +99,18 @@ function accountIdentity(provider: unknown): { label: string; order: number } {
   const match = typeof provider === "string" ? /^openai-codex-(\d{1,3})$/.exec(provider) : null;
   return match ? { label: `Codex${Number(match[1])}`, order: Number(match[1]) } : { label: "Codex", order: 899 };
 }
+/**
+ * The saved period end of one account. Only strict zoned timestamps cross. An `unavailable` state or a provider check time after
+ * the local clock gives no date. The footer derives `cached`, `stale` and `past` again at paint time.
+ */
+function codexPeriod(value: unknown, now: number): LimitsPeriod | undefined {
+  const v = record(value);
+  if (!v || v.source !== "token-file") return;
+  const endsAt = parseZonedTimestamp(v.periodEndsAt), providerCheckedAt = parseZonedTimestamp(v.providerCheckedAt), collectedAt = parseZonedTimestamp(v.collectedAt);
+  const period: LimitsPeriod = { source: "token-file", ...(collectedAt !== undefined ? { collectedAt } : {}) };
+  if (v.state === "unavailable" || endsAt === undefined || (providerCheckedAt !== undefined && providerCheckedAt - now > CLOCK_SKEW_MS)) return period;
+  return { ...period, endsAt, ...(providerCheckedAt !== undefined ? { providerCheckedAt } : {}) };
+}
 /** Accept the `CodexStatusSnapshot` shape but whitelist every field. No runtime provider import, no pre-formatted strings. */
 /** `lifetimeFloor` is the shortest lifetime the footer gives a quota reading: see `quotaLifetimeFloor` in `runtime.ts`. */
 export function codexStatus(value: unknown, now = Date.now(), lifetimeFloor = 0): LimitsSnapshot | undefined {
@@ -124,7 +137,8 @@ export function codexStatus(value: unknown, now = Date.now(), lifetimeFloor = 0)
       else { windows.push({ name, percent, unavailable: false, resetsAt: resetEpoch(w.resetsAt) }); if (percent <= 10 && severity !== "error") severity = "warning"; }
     }
     const plan = typeof account.plan === "string" && CODEX_PLANS.has(account.plan) ? account.plan : undefined;
-    accounts.push({ ...accountIdentity(account.provider), state: s, windows, ...(plan ? { plan } : {}) });
+    const period = codexPeriod(account.subscription, now);
+    accounts.push({ ...accountIdentity(account.provider), state: s, windows, ...(plan ? { plan } : {}), ...(period ? { period } : {}) });
   }
   // Identity order only. A low window changes styling inside its group, never the group order.
   accounts.sort((a, b) => a.order - b.order);
@@ -160,7 +174,8 @@ export function copilotStatus(value: unknown, now = Date.now(), lifetimeFloor = 
 }
 /** Mirrors the plan values of the Anthropic extension. Any other value never crosses the boundary. */
 const ANTHROPIC_PLANS = new Set(["free", "pro", "max", "team", "enterprise"]);
-const ANTHROPIC_WINDOWS = new Set(["5h", "7d", "opus", "sonnet"]);
+/** The fixed windows and the known model-scoped weekly windows. Any other label never crosses the boundary. */
+const ANTHROPIC_WINDOWS = new Set(["5h", "7d", "opus", "sonnet", "fable"]);
 const ANTHROPIC_SOURCES = new Set(["claude-code", "pi"]);
 /** Anthropic quota as one `Claude` account after the Codex accounts and before Copilot. `absent` or a malformed value clears the meter. */
 export function anthropicStatus(value: unknown, now = Date.now(), lifetimeFloor = 0): (LimitsSnapshot & { source?: string; plan?: string }) | undefined {
@@ -170,7 +185,9 @@ export function anthropicStatus(value: unknown, now = Date.now(), lifetimeFloor 
   const windows: LimitsWindow[] = [];
   // `unknown`: the last request failed and the windows are the last good reading. It shows no error chip.
   let severity: StatusState = v.state === "error" ? "error" : v.state === "unknown" ? "unknown" : "ok";
-  for (const raw of typed.windows.slice(0, 4)) {
+  // The label filter comes first, so unknown windows cannot push a known one out of the row.
+  for (const raw of typed.windows) {
+    if (windows.length >= ANTHROPIC_WINDOWS.size) break;
     const w = record(raw);
     if (!w || typeof w.label !== "string" || !ANTHROPIC_WINDOWS.has(w.label)) continue;
     const percent = number(w.remainingPercent, 100);

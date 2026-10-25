@@ -72,6 +72,10 @@
    "label": "Skill set",
    "color": "#7fdc8f"
   },
+  "comp-desktop": {
+   "label": "Computer-use module",
+   "color": "#ff6b6b"
+  },
   "file": {
    "label": "File",
    "color": "#8b98ad"
@@ -1416,6 +1420,16 @@
      "cols": 1,
      "tone": "service",
      "nodeW": 320
+    },
+    {
+     "id": "g-c-desktop",
+     "label": "Computer use",
+     "sub": "npm @agent-sh/computer-use-linux; Linux only",
+     "x": 820,
+     "y": 810,
+     "cols": 1,
+     "tone": "live",
+     "nodeW": 320
     }
    ],
    "nodes": [
@@ -1489,6 +1503,20 @@
      "inputs": "none",
      "consent": "none",
      "doc": "docs/guides/modules.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "next-prompt",
+     "component": "next-prompt",
+     "group": "g-c-tenantext",
+     "label": "next-prompt",
+     "kind": "comp-tenantext",
+     "summary": "Shows the next action of the final dummies report as faint text in the empty editor of a coordinator session. Tab takes it into the editor. It makes no model call and no request.",
+     "inputs": "dummies on, the next-prompt settings file",
+     "consent": "none",
+     "doc": "packages/tenantext/docs/next-prompt.md",
      "tags": [
       "not a detected installation"
      ]
@@ -1741,6 +1769,20 @@
      "inputs": "inputs.mcpFile and that file under --local-dir",
      "consent": "none",
      "doc": "docs/guides/modules.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "computer-use",
+     "component": "computer-use",
+     "group": "g-c-desktop",
+     "label": "computer-use",
+     "kind": "comp-desktop",
+     "summary": "The official Linux computer-use module of the kit: agent-sh computer-use-linux at an exact version. Its Pi tools read the accessibility tree, take screenshots and send input to the desktop of the user. No macOS module is chosen.",
+     "inputs": "a graphical Linux session with AT-SPI; the release binary that the postinstall script downloads",
+     "consent": "your agreement to desktop control and to screen content in the conversation",
+     "doc": "docs/guides/modules.md#computer-use",
      "tags": [
       "not a detected installation"
      ]

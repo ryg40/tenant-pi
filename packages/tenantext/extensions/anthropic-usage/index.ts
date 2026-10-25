@@ -1,6 +1,7 @@
 import { readStoredCredential, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { loadAnthropicSettings, type AnthropicUsageSettings } from "./settings.ts";
+import { fileSharedStore } from "./shared.ts";
 import { ANTHROPIC_REFRESH_EVENT, createAnthropicStatus } from "./status.ts";
 
 const ENTRY_TYPE = "anthropic-usage-report";
@@ -15,6 +16,7 @@ export default function anthropicUsage(pi: ExtensionAPI) {
 		settings: () => settings,
 		detect: () => ({ readPiCredential: () => readStoredCredential("anthropic") }),
 		emit: (event, value) => pi.events.emit(event, value),
+		shared: fileSharedStore(),
 	});
 	let active = false;
 	pi.registerEntryRenderer(ENTRY_TYPE, entry => new Text((entry.data as { body: string }).body, 0, 0));

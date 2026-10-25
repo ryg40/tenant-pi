@@ -11,7 +11,7 @@ export default function doctor(pi: ExtensionAPI) {
 	pi.on("session_shutdown", () => { active = false; });
 	pi.registerEntryRenderer(ENTRY_TYPE, entry => new Text((entry.data as { body: string }).body, 0, 0));
 	pi.registerCommand("tenantext-doctor", {
-		description: "Check the local tenantext setup (Codex, Copilot, Anthropic, footer) and optionally write the detected settings",
+		description: "Check the local tenantext setup (Codex, Copilot, Anthropic, footer, computer use) and optionally write the detected settings",
 		getArgumentCompletions: (prefix: string) => {
 			const items = ["check", "fix"].filter(c => c.startsWith(prefix)).map(c => ({ value: c, label: c }));
 			return items.length ? items : null;

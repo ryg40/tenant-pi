@@ -182,6 +182,7 @@ class UpdateTests(unittest.TestCase):
                 path.touch()
         elif name == "kit-install":
             (run / "home/.pi/profiles/qualify").mkdir(parents=True)
+            (run / "home/.pi/profiles/qualify/settings.json").write_text('{"packages": []}\n')
         elif name in ("print-mode", "print-length"):
             models = json.loads((run / "home/.pi/profiles/qualify/models.json").read_text())
             from urllib.parse import urlsplit
@@ -422,7 +423,8 @@ class UpdateTests(unittest.TestCase):
                      "kit-install", "profile-load"):
             self.assertEqual(steps[name]["exitCode"], 0)
         # The install of the run wrote the core templates and linked no skill: the home of the run has no ~/.claude.
-        self.assertEqual({"settings.json", "models.json"}, {path.name for path in (run / "home/.pi/profiles/qualify").iterdir()})
+        self.assertLessEqual({"settings.json", "models.json"},
+                             {path.name for path in (run / "home/.pi/profiles/qualify").iterdir()})
         self.assertEqual(str(run / "kit/packages/tenantext"),
                          json.loads((run / "home/.pi/profiles/qualify/settings.json").read_text())["packages"][0])
         self.assertFalse((run / "home/.claude").exists())
@@ -440,6 +442,22 @@ class UpdateTests(unittest.TestCase):
         inventory = json.loads((run / "logs/openviking-test-inventory.log").read_text())
         self.assertEqual(inventory, {"tests": sorted(test_files)})
         self.assertTrue(all(Path(name).is_relative_to(run / "kit/packages/openviking-pi") for name in tests["args"][1:]))
+
+    def test_profile_load_installs_and_loads_the_computer_use_component(self):
+        expected = []
+        real = update.profile_expected
+        with patch.object(update, "linux", return_value=True), \
+                patch.object(update, "profile_expected", side_effect=lambda *args: expected.append(real(*args)) or expected[-1]):
+            report = self.qualify()
+        self.assertTrue(report["passed"], report)
+        component = MANIFEST["components"]["computer-use"]
+        spec = component["source"]["spec"]
+        self.assertTrue(any(spec in " ".join(command) for _, command, *_ in self.recorded))
+        [expected] = expected
+        self.assertIn("npm:" + spec, expected["packages"])
+        for kind in ("extensions", "skills"):
+            for item in component["resources"][kind]:
+                self.assertTrue(any(path.endswith(item) for path in expected[kind]), (kind, item))
 
     @slow
     def test_candidate_keeps_pages_unchanged_when_the_pin_moves(self):

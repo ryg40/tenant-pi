@@ -100,6 +100,7 @@ REVIEWED_SOURCES = {
     "hermes": {"kind": "npm", "name": "pi-hermes-memory"},
     "wiki": {"kind": "npm", "name": "@zosmaai/pi-llm-wiki"},
     "questions": {"kind": "npm", "name": "@juicesharp/rpiv-ask-user-question"},
+    "computer-use": {"kind": "npm", "name": "@agent-sh/computer-use-linux"},
 }
 
 
@@ -333,9 +334,13 @@ def manifest(data):
     if type(data["schemaVersion"]) is not int or data["schemaVersion"] != SCHEMA_VERSION:
         fail("schema_version", "manifest.schemaVersion")
     runtime = data["runtime"]
-    fields(runtime, ("piVersion", "piAcceptedRange", "nodeRange", "pythonRange"), (), "manifest.runtime")
+    fields(runtime, ("piVersion", "piAcceptedRange", "nodeRange", "pythonRange"), ("piBoltVersion",), "manifest.runtime")
     if not isinstance(runtime["piVersion"], str) or not VERSION.fullmatch(runtime["piVersion"]):
         fail("exact_version", "manifest.runtime.piVersion")
+    # The tested Pi-Bolt release that carries `piVersion`; optional.
+    bolt = runtime.get("piBoltVersion")
+    if "piBoltVersion" in runtime and (not isinstance(bolt, str) or not VERSION.fullmatch(bolt)):
+        fail("exact_version", "manifest.runtime.piBoltVersion")
     if runtime["nodeRange"] != ">=24.0.0 <25" or runtime["pythonRange"] != ">=3.11":
         fail("runtime_range", "manifest.runtime")
     components = data["components"]

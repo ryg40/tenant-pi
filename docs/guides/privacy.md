@@ -38,20 +38,26 @@ The wiki extension itself writes into the vault when the agent uses a wiki tool;
 
 The core install has no memory module. Install one only after you agree to its storage and recall. Hermes stores text of the sessions below the profile, the wiki in the vault. With `ambientPersonalVault: true`, the package default, the wiki also adds text from the vault to each prompt in each directory, and that text goes to the model provider of the session.
 
-## What the kit never does
+## What the kit does and does not do
 
-The scripts of the kit that a user runs are `install.sh`, `scripts/check_runtime.py` and `scripts/patch_extension_peers.mjs`. None of them:
+The scripts of the kit that a user runs are `install.sh`, `scripts/check_runtime.py` and `scripts/patch_extension_peers.mjs`. They do these things only after a choice of the user:
 
-- edits a shell startup file such as `~/.bashrc`, `~/.zshrc` or `~/.profile`, or changes `PATH`;
-- installs a package, or runs `npm`, `pip`, `git` or a system package manager;
+- Startup file: `install.sh` edits one startup file only after the approval, an interactive yes or `--yes`. It backs up the file and writes one managed block with the alias. Bash uses `~/.bashrc`; Zsh uses `${ZDOTDIR:-$HOME}/.zshrc`. With `--shell none`, it edits no startup file. No script edits `~/.profile`.
+- `PATH`: no script changes the `PATH` of the shell of the user. The launcher `~/.local/bin/<name>` puts the directory of the selected runtime first on `PATH` for the runtime that it starts.
+- Packages: after the approval, `install.sh` installs the question module and the optional modules of `--with`. It runs `<runtime> install <spec>` for each module, with the profile directory. No script runs `pip`, `git` or a system package manager.
+- Runtime: `install.sh` runs the selected runtime (`pi`, `pi-bolt` or the path of `--runtime`) only for these module installs. `scripts/check_runtime.py` runs `pi --version` with an empty temporary `PI_CODING_AGENT_DIR`. With `--pi` or `--launcher`, the check runs that runtime, for example Pi-Bolt, the same way.
+
+None of the scripts:
+
 - starts, stops or configures a service, a timer or a daemon;
-- runs `pi`, except `pi --version` inside `scripts/check_runtime.py` with an empty temporary `PI_CODING_AGENT_DIR`;
-- opens a network connection or makes a model call;
+- opens a network connection itself or makes a model call. The runtime downloads the modules that `install.sh` installs, through `npm` or the package manager of Pi-Bolt;
 - reads `auth.json`, a session or a memory store;
 - copies auth, sessions, memory, queues, keyring state or installed packages between profiles;
 - writes, prints or resolves a secret value.
 
-`install.sh` writes only the absent files of the profile directory and the links in `~/.claude/skills`. `scripts/patch_extension_peers.mjs` rewrites only the `package.json` files of installed npm modules of the profile; see [host peer overrides](../host-peer-overrides.md).
+Exception: only after a separate yes, `install.sh` also runs the `claude plugin` commands of the computer-use module. Two of them, the marketplace add and the plugin install, use the network.
+
+`install.sh` writes the absent files of the profile directory, the launcher, the managed block above and the links in `~/.claude/skills`. It changes an existing settings file only after an approved proposal, and it backs up the file first. `scripts/patch_extension_peers.mjs` rewrites only the `package.json` files of installed npm modules of the profile; see [host peer overrides](../host-peer-overrides.md).
 
 `scripts/check_runtime.py` starts child processes with the full environment of the caller. It replaces `PI_CODING_AGENT_DIR` for `pi --version`, and it reads `PATH` to find tools. Not verified: the behaviour of an arbitrary executable that the version checks start.
 

@@ -21,6 +21,7 @@ Facts of the components:
 - The profile depends on the location of the kit. If you move the kit, change the paths of `settings.packages`.
 - The `env` list of each component in `config/manifest.json` names the environment variables that it reads. `coordinator-skills` sends its token to the API of the issue tracker; see [the issue tracker document](agents/issue-tracker.md).
 - `ops-footer` and `doctor` import files of other extensions of the package. The import of a file does not need the other component to be enabled. The only runtime import of `ops-footer` is a file import of `context-meter/service.ts`. `ops-footer` and `context-meter` exchange ownership events. The manifest keeps `context-meter` as a requirement of `ops-footer`: this is a safe choice, not a proven need. Not verified: the behaviour of `ops-footer` and `doctor` when the other extensions are off.
+- `next-prompt` shows one faint next-action suggestion in the empty Pi editor, read from the final dummies report, with no model call. [The extension document](../packages/tenantext/docs/next-prompt.md) names its conditions and its setting. Not verified: the suggestion with the editor of another extension.
 - `resources` adds the `/resources` command. The command shows the extensions, skills, prompts and MCP servers of the agent directory, turns each one on or off, and saves named profiles. `docs/resources.md` has the command and the settings syntax. The component declares no environment variable. It follows the reviewed resource settings syntax. Not verified: a load of the component with the kit pin.
 - The extensions of `packages/tenantext` need no `node_modules/` at load time. OpenViking and AgentCore need `npm ci --ignore-scripts` before their first start; see [the memory modules](memory-modules.md).
 
@@ -40,7 +41,7 @@ Tenantext is a Pi extension suite with a Claude Code plugin under `claude-code/`
 | Item | Value |
 | --- | --- |
 | Source | `packages/tenantext` |
-| Claude Code plugin | `claude-code/`; `build-skills.py` builds `herdr` from the package source skill |
+| Claude Code plugin | `claude-code/`; `build-skills.py` builds each skill that `config/manifest.json` declares for the package, from the package sources |
 | License | MIT, `packages/tenantext/LICENSE`; third-party notices in `packages/tenantext/THIRD_PARTY_NOTICES.md` and `packages/tenantext/licenses/` |
 
 ### Publish set

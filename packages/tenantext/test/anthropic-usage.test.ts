@@ -3,6 +3,7 @@ import test from "node:test";
 import { stripTerminalSequences } from "@earendil-works/pi-tui";
 import { claudeCredentialsPath, detectAnthropicCredentials, normalizePlan } from "../extensions/anthropic-usage/detect.ts";
 import { loadAnthropicSettings, parseAnthropicSettings } from "../extensions/anthropic-usage/settings.ts";
+import { ATTEMPT_MS, fileSharedStore, type SharedStore } from "../extensions/anthropic-usage/shared.ts";
 import { ANTHROPIC_STATUS_EVENT, CACHED_READING_MS, createAnthropicStatus, type AnthropicStatusSnapshot } from "../extensions/anthropic-usage/status.ts";
 import { ANTHROPIC_USAGE_URL, fetchAnthropicUsage, parseAnthropicUsage, resetDate } from "../extensions/anthropic-usage/usage.ts";
 import { runChecks } from "../extensions/doctor/checks.ts";
@@ -30,14 +31,19 @@ const PAYLOAD = {
 	seven_day_sonnet: null,
 	seven_day_oauth_apps: null, extra_usage: { is_enabled: false, monthly_limit: null }, note: "ignored free text",
 };
+// The same payload with the `limits` list: a model-scoped weekly limit becomes its own window.
+const SCOPED = { ...PAYLOAD, limits: [
+	{ kind: "weekly_all", percent: 59, resets_at: "2026-09-26T09:00:00.000000+02:00", scope: { model: {} } },
+	{ kind: "weekly_scoped", percent: 56, resets_at: "2026-09-26T09:00:00.000000+02:00", scope: { model: { display_name: "Fable" } } },
+] };
 const settings = parseAnthropicSettings({});
 const respond = (body: unknown, status = 200) => (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
 const all = { ...defaults, maximumRows: 12 };
 const rowsOf = (data: ReturnType<typeof healthy>, width = 200) => dashboardRows(data, contextStub(), all, width, undefined, NOW).map(stripTerminalSequences);
 
 test("parses the usage payload: remaining percent, clamped, null windows dropped, other keys ignored", () => {
-	const usage = parseAnthropicUsage(PAYLOAD);
-	assert.deepEqual(usage.windows.map(w => [w.label, w.remainingPercent]), [["5h", 72], ["7d", 40.5], ["opus", 55]]);
+	const usage = parseAnthropicUsage(SCOPED);
+	assert.deepEqual(usage.windows.map(w => [w.label, w.remainingPercent]), [["5h", 72], ["7d", 40.5], ["opus", 55], ["fable", 44]]);
 	assert.equal(usage.windows[0].resetsAt, "2026-09-22T10:12:00.123Z", "microseconds and offset become toISOString");
 	assert.equal(usage.windows[1].resetsAt, "2026-09-26T07:00:00.000Z");
 	assert.ok(!JSON.stringify(usage).includes("ignored"));
@@ -101,7 +107,7 @@ test("the request is one read-only GET with the bearer header, and an error body
 		{ success: false, error: "Network request failed", auth: false });
 });
 
-function service(options: { oauth?: unknown; pi?: unknown; fetcher: typeof fetch; mode?: string; clock?: () => number; pollSeconds?: number }) {
+function service(options: { oauth?: unknown; pi?: unknown; fetcher: typeof fetch; mode?: string; clock?: () => number; pollSeconds?: number; shared?: SharedStore }) {
 	const events: AnthropicStatusSnapshot[] = [];
 	let requests = 0;
 	const status = createAnthropicStatus({
@@ -109,9 +115,42 @@ function service(options: { oauth?: unknown; pi?: unknown; fetcher: typeof fetch
 		detect: () => ({ env: {}, home: HOME, readClaudeFile: claudeFile(options.oauth), readPiCredential: () => options.pi }),
 		emit: (event, value) => { assert.equal(event, ANTHROPIC_STATUS_EVENT); events.push(value as AnthropicStatusSnapshot); },
 		fetcher: (credential, signal) => { requests++; return fetchAnthropicUsage(credential, signal, options.fetcher); },
+		shared: options.shared,
 	});
 	return { status, events, requests: () => requests };
 }
+
+test("meters of the Claude Code login share one reading, and only one client asks in five minutes", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "anthropic-shared-"));
+	try {
+		let now = NOW;
+		const path = join(dir, "usage.json");
+		const meter = (fetcher: typeof fetch) => service({ oauth: login({ expiresAt: NOW + 5 * 3_600_000 }), fetcher, clock: () => now, pollSeconds: 3600, shared: fileSharedStore(path) });
+		const first = meter(respond(SCOPED)), second = meter(respond(SCOPED));
+		const own = await first.status.refresh();
+		assert.deepEqual((await second.status.refresh()).windows, own.windows);
+		assert.equal(first.requests() + second.requests(), 1, "the second meter takes the shared reading");
+		const fable = JSON.parse(readFileSync(path, "utf8")).limits.find((l: { scope: { model: { display_name?: string } } }) => l.scope.model.display_name === "fable");
+		assert.deepEqual(fable, { kind: "weekly_scoped", percent: 56, resets_at: "2026-09-26T07:00:00.000Z", scope: { model: { display_name: "fable" } } }, "the status line reads this entry");
+		// The reading is an hour old. One client asks and gets HTTP 429; the next client waits five minutes.
+		now += 3_600_000;
+		const failing = meter(respond({}, 429)), waiting = meter(respond(SCOPED));
+		await failing.status.refresh();
+		await waiting.status.refresh(true);
+		assert.deepEqual([failing.requests(), waiting.requests()], [1, 0], "a forced refresh waits too");
+		now += ATTEMPT_MS;
+		await waiting.status.refresh();
+		assert.equal(waiting.requests(), 1);
+		// A reading of the Claude Code status line: the `limits` list alone gives the whole row.
+		writeFileSync(path, JSON.stringify({ attemptAt: now, at: now, limits: [
+			{ kind: "session", percent: 5, resets_at: "2026-09-22T10:12:00.000000+00:00", scope: { model: {} } },
+			{ kind: "weekly_all", percent: 62, resets_at: null, scope: { model: {} } },
+			{ kind: "weekly_scoped", percent: 56, resets_at: null, scope: { model: { display_name: "Fable" } } }] }));
+		const third = meter(respond(SCOPED));
+		assert.deepEqual((await third.status.refresh()).windows.map(w => [w.label, w.remainingPercent]), [["5h", 95], ["7d", 38], ["fable", 44]]);
+		assert.equal(third.requests(), 0);
+	} finally { rmSync(dir, { recursive: true, force: true }); }
+});
 
 test("an active login publishes windows, plan and source, and never the token", async () => {
 	const { status, events } = service({ oauth: login(), pi: { type: "oauth", access: SENTINEL_PI, expires: NOW + 60_000 }, fetcher: respond(PAYLOAD) });
@@ -221,7 +260,7 @@ test("three Codex accounts render in order, a no-login account says no login, an
 	const data = healthy();
 	data.limits = limits;
 	data.copilot = copilotStatus({ checkedAt: NOW, staleAfter: 600_000, state: "ok", source: "pi", plan: "individual", windows: [{ label: "premium", remainingPercent: 83, remaining: 249, entitlement: 300 }] }, NOW);
-	data.anthropic = anthropicStatus({ checkedAt: NOW, staleAfter: 600_000, state: "ok", source: "claude-code", plan: "max", windows: parseAnthropicUsage(PAYLOAD).windows }, NOW);
+	data.anthropic = anthropicStatus({ checkedAt: NOW, staleAfter: 600_000, state: "ok", source: "claude-code", plan: "max", windows: parseAnthropicUsage(SCOPED).windows }, NOW);
 	const view = buildView(data, contextStub().state(), all, NOW);
 	assert.deepEqual(view.quota?.accounts.map(a => [a.label, a.short]), [["Codex1", "C1"], ["Codex2", "C2"], ["Codex3", "C3"], ["Claude", "CL"], ["Copilot", "CP"]]);
 	assert.deepEqual(view.alerts.filter(a => a.key.startsWith("quota:")), [], "no login raises no alert");
@@ -230,7 +269,7 @@ test("three Codex accounts render in order, a no-login account says no login, an
 	assert.deepEqual(quota.map(r => r.split(" ")[0]), ["Codex1", "Codex2", "Codex3", "Claude", "Copilot"]);
 	assert.match(quota[0], /^Codex1  \[5h 80%\] +\[7d 80%\]$/);
 	assert.match(quota[2], /^Codex3  no login$/);
-	assert.match(quota[3], /^Claude  \[5h 72%\] ↺ 3h 12m +\[7d 41%\] .*\[opus 55%\]/);
+	assert.match(quota[3], /^Claude  \[5h 72%\] ↺ 3h 12m +\[7d 41%\] .*\[opus 55%\].*\[fable 44%\]/);
 	assert.match(quota[4], /^Copilot \[premium 83%\]/);
 	assert.doesNotMatch(rows.join("\n"), /✗/);
 	const report = detailedReport(data, contextStub(), NOW);

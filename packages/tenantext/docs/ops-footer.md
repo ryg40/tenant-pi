@@ -75,6 +75,20 @@ Without color, chips render as `[5h 80%]`.
 
 A configured Codex account that has no login shows its label and `no login` in the dim style: `Codex3  no login`. It keeps its place in the identity order. It raises no alert and it does not change the state of the quota group. Two cases count as no login. In the first case, the `tokenFile` of the account exists, but its `access_token` or `account_id` is empty or null. In the second case, the account is in `codex-accounts/settings.json`, it has no `tokenFile`, and Pi has no stored login for it. An expired token is not this case: it keeps the last good reading and then shows an error chip. With no settings file, an account with no credential stays hidden.
 
+#### Subscription period end
+
+A Codex account with a `tokenFile` can show its saved subscription period end after its chips: `period end 2026-11-05 (cached)`. The period end is the saved active-until time of the login. It is not a billing date: a billing date is the next charge that an authoritative billing source confirms, and the footer has no such source. The date is cached evidence only. It does not show that the login works, that the subscription renews, or that a charge follows.
+
+| Text | Meaning |
+| --- | --- |
+| `(cached)` | The provider checked the subscription less than 24 hours ago |
+| `(cached, stale)` | The provider check is more than 24 hours old, or its time is unknown |
+| `(cached, past)` | The period end is at or before the current time. It is not an upcoming charge. The footer does not infer a cancellation, a failed payment, or a new period |
+
+The date is the calendar day in the local time zone. A row that is too narrow first shortens the label to `end`, then drops the date before any relative reset. The qualifier always stays with the date. The date never raises an alert, never changes the quota state, and takes no row of its own. A `no login` row shows no date. An account with a Pi login and no `tokenFile` has no supported source, so its row shows no date. Without color, the date shows the same words.
+
+The report keeps every date that a row drops, see [Detailed report](#detailed-report).
+
 #### Row budget for quota rows
 
 `maximumRows` is the row budget. The location row, the bar and the model row always stay, so the other rows share `maximumRows` minus 3. The default is 8. It holds five quota rows: three Codex accounts, Claude and Copilot.
@@ -208,9 +222,20 @@ Each row stays within the exact width that Pi supplies. The renderer uses Pi's A
 
 Set `NO_COLOR` or `TERM=dumb` to disable color. Blocks use `▓`, free space uses `·`, markers use `│`, and chips use brackets.
 
+Layout v4 has the row texts of v3 in another order. Preview each layout with `node --experimental-strip-types scripts/footer-preview.ts --layout all` from the package directory.
+
+### Detailed report
+
 Use `/ops-footer report` for every value and source timestamp. The report keeps tokens, cache, cost, host, session, paths, worktrees, all windows with absolute resets, tool counts, status counts, routing, and freshness.
 
-Layout v4 has the row texts of v3 in another order. Preview each layout with `node --experimental-strip-types scripts/footer-preview.ts --layout all` from the package directory.
+The report has one period line for each configured Codex account:
+
+```text
+Codex1 period end: 2026-11-05T12:00:00.000Z (local 2026-11-05 07:00 EST); state:cached; provider checked:2026-10-24T10:00:00.000Z (2h ago); source:token-file; collected:2026-10-24T12:00:00.000Z; billing date not verified
+Codex3 period end: unavailable; source:none (no login); billing date not verified
+```
+
+The period end shows in UTC and in local time with the zone name. `provider checked` is the time of the provider's last check, the basis of the evidence age, or `age unknown` when the token has none. `collected` is only the time of the local read: a repeated read does not make old evidence look new. `state` is `cached`, `stale`, `past`, or the line says `unavailable`. Every line says `billing date not verified`.
 
 ## Enable the extension
 
@@ -397,6 +422,8 @@ Window labels must be a duration of one to three digits with `m`, `h`, or `d`, o
 A valid selected account remains visible when routing health is unknown. This permits header-derived routing evidence without a gateway status endpoint.
 
 The `login` field passes only as the literal `false`. Then the account has no windows, the row shows `no login`, and the detailed report shows `<label>: no login`.
+
+The optional `subscription` field passes only with the source `token-file` and strict timestamps: a real calendar date and time with `Z` or a `+hh:mm` offset. `periodEndsAt`, `providerCheckedAt`, and `collectedAt` cross as epoch values. The state `unavailable`, a malformed period end, or a provider check time more than five minutes after the local clock gives no date. The footer derives `cached`, `stale`, and `past` again at paint time, so a reading ages without a new collection. A `no login` account drops the field. A snapshot without the field stays valid, and the other quota providers have no such field.
 
 Stale quotas show `stale`. Unavailable windows show `n/a` on a dim chip. Reset timestamps become epoch values and render as relative or friendly local text.
 

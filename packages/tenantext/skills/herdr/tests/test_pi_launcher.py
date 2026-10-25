@@ -52,6 +52,21 @@ class PiLauncher(unittest.TestCase):
             self.assertEqual(result.stdout, value + "\n")
             self.assertEqual(call.call_args.args[:3], ("pane", "run", "new-pane"))
 
+    def test_pi_bolt_wrapper_unsets_the_herdr_socket(self):
+        for line, kept in (("1.4.0 (Pi-Bolt 1.0.2, linux-x64, JIT off)", ""), ("1.4.0", "socket")):
+            with self.subTest(line=line), tempfile.TemporaryDirectory() as root:
+                executable = Path(root) / "pi"
+                executable.write_text('#!/bin/sh\nif [ "$1" = --version ]; then echo "%s"; '
+                                      'else printf "%%s\\n" "${HERDR_SOCKET_PATH-}"; fi\n' % line)
+                executable.chmod(0o700)
+                info = {"result": {"process_info": {"foreground_processes": [{"name": "bash"}]}}}
+                with patch.object(spawn, "herdr", side_effect=[(0, info, ""), (0, {"result": {}}, "")]) as call:
+                    spawn.prepare_pi_launcher("new-pane", str(executable))
+                command = call.call_args.args[-1]
+                result = subprocess.run(["bash", "-c", command + "; pi"], env=os.environ | {"HERDR_SOCKET_PATH": "socket"},
+                                        capture_output=True, text=True, check=True)
+                self.assertEqual(result.stdout, kept + "\n")
+
     def test_unsupported_shell_is_not_modified(self):
         info = {"result": {"process_info": {"foreground_processes": [{"name": "fish"}]}}}
         with patch.object(spawn, "herdr", return_value=(0, info, "")) as call:

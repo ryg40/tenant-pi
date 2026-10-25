@@ -32,9 +32,32 @@ A line of `list` has these fields in this order: `[x]` or `[ ]`, kind, scope, so
 
 ### Menu
 
-The menu is a selection list. The groups are in this order: extensions, MCP servers, skills, prompts. Each row has the form `[x] <kind> <scope> <source> <id>`. A selected row changes its state in memory only.
+In the Pi TUI the menu is a resource browser. A change stays in memory until you press `s`. The footer always shows `s save <N> change(s)`. The saved notice names the file.
 
-The last rows are these actions:
+The browser groups the items in this order: extensions, skills, prompts, MCP servers, built-ins. A group with no item is not shown. Each group has a header line with the number of items that are on, for example `▾ Extensions  9 of 15 on`.
+
+Each item has one line, cut to the width of the terminal and never wrapped: the mark, the short name and the source label, in aligned columns. Flags follow: `project`, `read-only` and `changed`.
+
+| Column | Value |
+| --- | --- |
+| Mark | `[x]` on, `[ ]` off |
+| Short name | The last path segment without `index.ts` and the file extension, the skill directory, or the server name. The package name where that segment is `src`, `dist` or `lib`, or where the item is the whole package. |
+| Source label | The package name for a package item (`npm:<name>` without the version, `git:<repository>`, the directory name of a local path), `local`, `builtin`, `mcp` or `override` |
+
+Under the list, one detail line shows the selected item: kind, scope, source and the full path or id, with the MCP text of `list`.
+
+| Key | Result |
+| --- | --- |
+| Up, Down, PgUp, PgDn, Home, End | Moves the selection. |
+| Space or Enter on an item | Turns the item on or off in memory. A project item is read-only. |
+| Space or Enter on a header | Folds or opens the group. |
+| `/` | Starts a filter. The typed text selects the items whose name, source label or id contains it. While you type, Enter keeps the filter and Esc clears it. After Enter, Esc first clears the kept filter. |
+| `s` | Writes the states to the files, shows `Saved <N> change(s) to <file>.`, then reloads. |
+| `p` | Asks for a name, then saves the states as a profile. |
+| `a` | Shows the profile names. After a selection it shows the changes and asks for a confirmation. |
+| Esc | Closes the browser. With unsaved changes it asks first: `Discard <N> unsaved change(s)?` No returns to the browser. |
+
+Without the TUI, for example in RPC mode, the menu is a selection list of `ctx.ui.select`. The first rows are these actions, and the item rows follow in the form of `list`:
 
 | Row | Result |
 | --- | --- |
@@ -43,7 +66,7 @@ The last rows are these actions:
 | `Apply profile...` | Shows the profile names. After a selection it shows the changes and asks for a confirmation. |
 | `Discard changes` | Leaves the files untouched. |
 
-The Esc key has the same result as `Discard changes`.
+The Esc key has the same result as `Discard changes`. With unsaved changes, both show `Discarded <N> unsaved change(s).`
 
 ## Item model
 
@@ -209,8 +232,8 @@ The package tests compare the rows with the result of `loadMcpConfig()` of the l
 Not modeled:
 
 - The other checks of Pi on an entry. Examples are a server name with a character that is not permitted, and two names that differ only in `-` and `_`. A bad `exposure` value and a bad `url` are two more. Pi ignores such an entry. The component shows it as a row. For a full project server, the component tests only that the entry has `command` or `url`, and that an entry with `url` has no `auth`.
-- An installed extension that registers `/mcp`, such as `pi-mcp-adapter`. It replaces the built-in MCP support while `builtin:mcp` can still show as on. From 5.0.0 the adapter reads `.pi/mcp.json` outside its exclusive mode, but it skips an entry without `command` or `url`, so an override entry has no effect there (source reading of 5.4.0, `config.ts`).
-- In the menu, a row keeps its text until the write. After a change of a user row in memory, the override row of the same server can show the old state.
+- An installed extension that registers `/mcp`, such as `pi-mcp-adapter`. It replaces the built-in MCP support while `builtin:mcp` can still show as on. From 5.0.0 the adapter reads `.pi/mcp.json` outside its exclusive mode, but it skips an entry without `command` or `url`, so an override entry has no effect there (source reading of 5.4.0 and 6.0.0, `config.ts`).
+- In the menu, an override row keeps its state until the write. After a change of a user row in memory, the override row of the same server can show the old state.
 
 A profile with `-builtin:mcp` in its `extensions` list and no `mcp.json` gets no effect from the native override. A profile without that entry keeps the built-in MCP extension. There the override applies when `<agent dir>/mcp.json` exists. A `+builtin:mcp` entry in the settings of a trusted project turns the native path on again, unless an installed extension registers `/mcp` (not verified at runtime).
 

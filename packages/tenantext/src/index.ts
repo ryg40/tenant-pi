@@ -5,6 +5,7 @@ import { buildContextReport, type PromptOptionsLike } from "./report.ts";
 import { RULES_BLOCK, RULES_VERSION, estimateTokensFromText } from "./rules.ts";
 import { DECISIONS_EVENT, ensureSettings, loadSettings, saveSettings, settingsPath, type TenantextSettings } from "./settings.ts";
 import { settingsMenu } from "./settings-menu.ts";
+import { SETTINGS_EVENT as NEXT_PROMPT_EVENT } from "./next-prompt-settings.ts";
 import { loadSettings as loadMeterSettings } from "./context-meter-settings.ts";
 
 const STATUS_KEY = "tenantext";
@@ -169,6 +170,7 @@ export default function tenantext(pi: ExtensionAPI) {
 							if (toggled) pi.events.emit(DECISIONS_EVENT, { enabled: next.decisions });
 						},
 						footerChanged() { pi.events.emit("tenantext:ops-footer:settings-reload", undefined); },
+						nextPromptChanged(enabled) { pi.events.emit(NEXT_PROMPT_EVENT, { enabled }); },
 					});
 					return;
 				case "save":

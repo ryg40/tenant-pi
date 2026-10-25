@@ -380,17 +380,41 @@ def openviking_check(steps, package, env):
                                     "node", str(probe)], timeout=90)
 
 
-def profile_check(steps, env, candidate):
-    """The candidate Pi resolves the profile that install.sh wrote, then loads its extensions.
+def linux():
+    return sys.platform.startswith("linux")
 
-    The profile must declare the tenantext package of the candidate copy and the pinned question
-    package. Pi must resolve each extension of `packages/tenantext/package.json` and each skill that
-    install.sh links, load each extension without an error, and send no network request. No
-    session starts. The question package stays uninstalled: `PI_OFFLINE` skips a missing install.
+
+def computer_use_install(steps, candidate):
+    """Install the pinned computer-use package into the qualify profile, as `pi install` lays it out.
+
+    `--ignore-scripts` keeps the release download of the package out of the run; the extension loads
+    without its binary. The package supports Linux only, so another platform records no install.
+    Returns the installed package directory, or None.
+    """
+    spec = load(candidate / "config/manifest.json")["components"]["computer-use"]["source"]["spec"]
+    if not linux():
+        steps.record("computer-use-install", {"platform": sys.platform, "result": "not_applicable_linux_only"})
+        return None
+    profile = steps.run / "home/.pi/profiles/qualify"
+    if not steps.command("computer-use-install", npm_command(steps.run, "install", "--ignore-scripts", "--legacy-peer-deps",
+                                                             "--prefix", str(profile / "npm"), "--", spec)):
+        return None
+    settings_path = profile / "settings.json"
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings["packages"].append("npm:" + spec)
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
+    return profile / "npm/node_modules" / npm_parts(spec)[0]
+
+
+def profile_expected(candidate, computer_use=None):
+    """The packages, extensions and skills that the profile-load step expects Pi to resolve.
+
+    With `computer_use`, the installed directory of that component, the set also holds its pinned
+    spec and the extension and the skill that the manifest names.
     """
     package = candidate / "packages/tenantext"
-    pi = (steps.run / "prefix/node_modules/@earendil-works/pi-coding-agent").resolve()
-    spec = load(candidate / "config/manifest.json")["components"]["questions"]["source"]["spec"]
+    components = load(candidate / "config/manifest.json")["components"]
+    spec = components["questions"]["source"]["spec"]
     declared = json.loads((package / "package.json").read_text(encoding="utf-8"))["pi"]["extensions"]
     expected = {
         "packages": [str(package), "npm:" + spec],
@@ -398,6 +422,26 @@ def profile_check(steps, env, candidate):
         "skills": sorted(str(path) for pattern in ("*/SKILL.md", "*/*/SKILL.md")
                          for path in (package / "skills").glob(pattern)),
     }
+    if computer_use:
+        resources = components["computer-use"]["resources"]
+        expected["packages"].append("npm:" + components["computer-use"]["source"]["spec"])
+        expected["extensions"] = sorted([*expected["extensions"],
+                                         *(str(computer_use / item) for item in resources["extensions"])])
+        expected["skills"] = sorted([*expected["skills"], *(str(computer_use / item) for item in resources["skills"])])
+    return expected
+
+
+def profile_check(steps, env, candidate, computer_use=None):
+    """The candidate Pi resolves the profile that install.sh wrote, then loads its extensions.
+
+    The profile must declare the tenantext package of the candidate copy and the pinned question
+    package. Pi must resolve each extension of `packages/tenantext/package.json` and each skill that
+    install.sh links, load each extension without an error, and send no network request. No
+    session starts. The question package stays uninstalled: `PI_OFFLINE` skips a missing install.
+    With `computer_use`, Pi must also resolve and load that component; see `profile_expected`.
+    """
+    pi = (steps.run / "prefix/node_modules/@earendil-works/pi-coding-agent").resolve()
+    expected = profile_expected(candidate, computer_use)
     probe = steps.run / "profile-load.mjs"
     probe.write_text(
         'import assert from "node:assert/strict";\n'
@@ -422,7 +466,7 @@ def profile_check(steps, env, candidate):
         'assert.deepEqual(loaded.errors, []);\n'
         'assert.equal(loaded.extensions.length, expected.extensions.length);\n'
         'assert.equal(networkAttempts, 0);\n'
-        'console.log(`Installed profile: ${loaded.extensions.length} tenantext extensions loaded, '
+        'console.log(`Installed profile: ${loaded.extensions.length} extensions loaded, '
         '${expected.skills.length} skills resolved; no session started`);\n')
     load_env = {**env, "PI_CODING_AGENT_DIR": str(steps.run / "home/.pi/profiles/qualify")}
     return steps.command("profile-load", ["/usr/bin/env", "-i", *(key + "=" + load_env[key] for key in PI_KEYS),
@@ -661,7 +705,7 @@ def qualify(requested, workdir, *, strict_baseline=False, runner=execute):
                                 env={**env, "INSTALL_SKIP_PACKAGES": "1",
                                      "PATH": str(run / "prefix/node_modules/.bin") + os.pathsep + env["PATH"]})
         if written and installed:
-            profile_check(steps, env, candidate)
+            profile_check(steps, env, candidate, computer_use_install(steps, candidate))
         else:
             steps.skip("profile-load")
         print_check(steps, env, written and installed, requested)

@@ -9,6 +9,7 @@ import { loadCodexAccountsSettings } from "../extensions/codex-accounts/config.t
 import { normalizeCodexPlan, parseCodexLimits, parseCodexUsage } from "../extensions/codex-accounts/parse-limits.ts";
 import { limitsReport } from "../extensions/codex-accounts/index.ts";
 import { accountLimits, NO_LOGIN_ERROR, presentAccounts } from "../extensions/codex-accounts/status.ts";
+import { MAX_TOKEN_FILE_BYTES, readSubscription } from "../extensions/codex-accounts/subscription.ts";
 import {
 	DEFAULT_CODEX_ACCOUNTS,
 	validateCodexAccounts,
@@ -266,4 +267,42 @@ test("the limits report names an account with no login", () => {
 	const report = limitsReport([{ account: { provider: "openai-codex-3", label: "Codex 3" }, result: { success: false, error: NO_LOGIN_ERROR } }]);
 	assert.match(report, /\| Codex 3 \| — \| no login \|/);
 	assert.doesNotMatch(report, /error/);
+});
+
+// Synthetic ID token: only the claim names follow the saved Codex login. The signature is never checked.
+const idToken = (auth: Record<string, unknown>) => ["{\"alg\":\"none\"}", JSON.stringify({ email: "sentinel@example.invalid", "https://api.openai.com/auth": auth })]
+	.map((part) => Buffer.from(part).toString("base64url")).join(".") + ".sig";
+
+test("a malformed or missing period end gives no date, and a past one is not upcoming", () => {
+	const dir = mkdtempSync(join(tmpdir(), "codex-period-"));
+	const now = Date.parse("2026-10-24T12:00:00Z");
+	const write = (name: string, data: unknown) => { const path = join(dir, name); writeFileSync(path, typeof data === "string" ? data : JSON.stringify(data)); return path; };
+	const auth = (until: unknown, checked: unknown = "2026-10-24T10:00:00.123456+00:00") => ({ chatgpt_account_id: "acct", chatgpt_subscription_active_until: until, chatgpt_subscription_last_checked: checked });
+	const flat = (claims: Record<string, unknown>) => ({ access_token: "a", account_id: "acct", id_token: idToken(claims) });
+	const read = (name: string, data: unknown) => readSubscription(write(`${name}.json`, data), now);
+
+	const valid = read("flat", flat(auth("2026-11-05T14:00:00+02:00")));
+	assert.equal(valid.periodEndsAt, "2026-11-05T12:00:00.000Z");
+	assert.equal(read("nested", { tokens: flat(auth("2026-11-05T12:00:00Z")) }).periodEndsAt, "2026-11-05T12:00:00.000Z");
+	assert.equal(read("leap", flat(auth("2028-02-29T12:00:00Z"))).periodEndsAt, "2028-02-29T12:00:00.000Z");
+	assert.ok(!JSON.stringify(valid).includes("sentinel") && !JSON.stringify(valid).includes("acct"));
+
+	const bad: Array<[string, unknown]> = [
+		["no zone", flat(auth("2026-11-05T12:00:00"))], ["no calendar day", flat(auth("2026-02-30T12:00:00Z"))], ["no leap day", flat(auth("2027-02-29T12:00:00Z"))],
+		["number", flat(auth(1_800_000_000))], ["missing claim", flat({ chatgpt_account_id: "acct" })], ["no id token", { access_token: "a", account_id: "acct" }],
+		["bad segment", { access_token: "a", account_id: "acct", id_token: "a.%%%.c" }], ["broken json", "{ not json"],
+		["other identity", { ...flat(auth("2026-11-05T12:00:00Z")), account_id: "other" }], ["future check", flat(auth("2026-11-05T12:00:00Z", "2026-10-25T12:00:00Z"))],
+		["oversized", JSON.stringify({ ...flat(auth("2026-11-05T12:00:00Z")), pad: "x".repeat(MAX_TOKEN_FILE_BYTES) })],
+	];
+	for (const [name, data] of bad) {
+		const reading = read(name.replace(/ /g, "-"), data);
+		assert.equal(reading.periodEndsAt, undefined, name);
+		assert.equal(reading.state, "unavailable", name);
+	}
+	assert.equal(readSubscription(join(dir, "missing.json"), now).state, "unavailable");
+
+	assert.equal(read("past", flat(auth("2026-10-24T12:00:00Z"))).state, "past", "a period end at the current time is past");
+	assert.equal(read("old", flat(auth("2026-11-05T12:00:00Z", "2026-10-22T12:00:00Z"))).state, "stale");
+	const unknownAge = read("unknown-age", flat(auth("2026-11-05T12:00:00Z", null)));
+	assert.deepEqual([unknownAge.state, unknownAge.providerCheckedAt], ["stale", undefined], "a missing check time is age unknown, not fresh");
 });

@@ -2,6 +2,7 @@
   "schemaVersion": 2,
   "runtime": {
     "piVersion": "1.4.0",
+    "piBoltVersion": "1.0.2",
     "piAcceptedRange": ">=1.4.0 <1.5",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
@@ -419,6 +420,45 @@
         }
       ]
     },
+    "next-prompt": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/next-prompt/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
+        },
+        {
+          "code": "report_contract_dependency",
+          "fact": "The suggestion reads Compact report syntax 2 of the dummies skill in coordinator-skills. Without that skill, or with dummies off, the component shows nothing."
+        },
+        {
+          "code": "owner_acceptance_open",
+          "fact": "The default (on when dummies is on) and the accepted text form are proposals. The owner confirms both at acceptance."
+        }
+      ]
+    },
     "coordinator-skills": {
       "source": {
         "kind": "tree",
@@ -566,7 +606,7 @@
     "questions": {
       "source": {
         "kind": "npm",
-        "spec": "@juicesharp/rpiv-ask-user-question@2.13.9"
+        "spec": "@juicesharp/rpiv-ask-user-question@2.15.0"
       },
       "status": "unverified",
       "requires": [
@@ -590,11 +630,11 @@
         },
         {
           "code": "package_source_unreviewed",
-          "fact": "The registry metadata of version 2.13.9 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
+          "fact": "The registry metadata of version 2.15.0 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
         },
         {
           "code": "peer_package_unverified",
-          "fact": "Version 2.13.9 lists typebox under peerDependencies with the range * and names the optional peer package @juicesharp/rpiv-i18n; no install of version 2.13.9 with the kit pin was observed."
+          "fact": "Version 2.15.0 lists typebox under peerDependencies with the range * and names the optional peer package @juicesharp/rpiv-i18n; no install of version 2.15.0 with the kit pin was observed."
         },
         {
           "code": "question_ui_unverified",
@@ -679,7 +719,7 @@
         },
         {
           "code": "server_required",
-          "fact": "The extension needs an OpenViking server with viking://~ home alias support. The endpoint and the key resolve from OPENVIKING_* variables, ~/.openviking/ovcli.conf or ~/.openviking/ov.conf; the kit writes none of them and has no field for them."
+          "fact": "The extension needs an OpenViking server with viking://~ home alias support. The endpoint and the key resolve from OPENVIKING_* variables, ~/.openviking/ovcli.conf or ~/.openviking/ov.conf; the kit writes none of them and has no field for them. Context takeover, off by default, trims history only when the server confirms Working Memory for the commit; OpenViking v0.5.0 and later do."
         },
         {
           "code": "package_runtime_unverified",
@@ -723,6 +763,51 @@
         {
           "code": "package_runtime_unverified",
           "fact": "Offline fake-core tests cover the recall hook, the propose tool and its confirmation. Not verified: a Pi session with live AWS recall or propose."
+        }
+      ]
+    },
+    "computer-use": {
+      "source": {
+        "kind": "npm",
+        "spec": "@agent-sh/computer-use-linux@0.7.24"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "computer-use-linux",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "pi/extension/index.ts"
+        ],
+        "skills": [
+          "skills/computer-use-linux/SKILL.md"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "platform_linux_only",
+          "fact": "The package.json of version 0.7.24 limits os to linux and cpu to x64 and arm64, and its postinstall script stops on another platform. The kit has no computer-use module for macOS; that choice is open."
+        },
+        {
+          "code": "package_source_unreviewed",
+          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. The extension source and the release binaries were not reviewed."
+        },
+        {
+          "code": "release_download_required",
+          "fact": "The postinstall script npm/install.js downloads the release binaries of the same version from the GitHub releases of agent-sh/computer-use-linux. It checks each binary against its published sha256 file. The install therefore needs network access. Without the downloaded binary, the extension looks for COMPUTER_USE_LINUX_BIN, then for computer-use-linux on PATH."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The tools need a graphical Linux session with the AT-SPI accessibility bridge and an input backend that the doctor tool of the package reports ready. The kit installs none of them; the kit doctor reports the readiness that the doctor of the package gives. The setup tools of the package change the desktop settings of the user."
+        },
+        {
+          "code": "desktop_runtime_unverified",
+          "fact": "The tools observe and act on the live desktop of the user. Screenshots and accessibility trees that a tool returns go into the conversation and so to the model provider. A loaded extension does not prove that a tool works on a given desktop."
         }
       ]
     }

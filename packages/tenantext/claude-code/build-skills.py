@@ -1,43 +1,82 @@
 #!/usr/bin/env python3
 """Build the plugin skills from package sources without deleting any files."""
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
 import stat
 import sys
 
-SKILLS = ("herdr",)
 EXCLUDED = {"install.sh", "tests", "__pycache__"}
+PACKAGE = "packages/tenantext"
+MANIFEST = Path(__file__).resolve().parents[3] / "config/manifest.json"
+# Package directories that a skill runs from its own copy. The plugin cache of Claude Code holds only
+# the plugin directory, so the copy of tracker-site carries the tracker package beside its SKILL.md.
+SUPPORT = {"tracker-site": ("tracker",)}
+# Package licence texts that the CREDITS.md files of the skills name. A cached plugin copy has no other file
+# of the package, so the build puts them beside the skill folders, with the names of the package root.
+NOTICES = ("LICENSE", "licenses")
 
 
-def inventory(source):
-    directories, files = [], []
+def declared_skills(manifest=MANIFEST):
+    """The skill paths below skills/ that the kit manifest declares for this package, in manifest order."""
+    skills = []
+    for component in json.loads(Path(manifest).read_text(encoding="utf-8"))["components"].values():
+        if component["source"] != {"kind": "tree", "path": PACKAGE}:
+            continue
+        for item in component["resources"]["skills"]:
+            if not item.startswith("skills/"):
+                raise ValueError(f"declared skill is not below skills/: {item}")
+            skills.append(item.removeprefix("skills/"))
+    return tuple(skills)
 
-    def visit(path):
+
+def inventory(source, skills, notices=()):
+    """Map each source file and directory to its path in the flat output: <skill name>/... and the notices."""
+    directories, files, names, roots = [], [], [], [source]
+
+    def visit(path, target):
         if path.name in EXCLUDED or path.suffix == ".pyc":
             return
         if path.is_symlink():
             raise ValueError(f"source is a symlink: {path}")
         if path.is_dir():
-            directories.append(path.relative_to(source))
+            directories.append(target)
             for child in sorted(path.iterdir()):
-                visit(child)
+                visit(child, target / child.name)
         elif path.is_file():
-            files.append(path.relative_to(source))
+            files.append((path, target))
         else:
             raise ValueError(f"source is not a regular file or directory: {path}")
 
-    for name in SKILLS:
-        skill = source / name
+    for relative in skills:
+        skill = source / relative
         if not skill.is_dir():
-            raise ValueError(f"source skill is missing: {name}")
-        visit(skill)
-    return directories, files
+            raise ValueError(f"source skill is missing: {relative}")
+        if skill.name in names:
+            raise ValueError(f"two declared skills have the name: {skill.name}")
+        names.append(skill.name)
+        visit(skill, Path(skill.name))
+        for name in SUPPORT.get(skill.name, ()):
+            support = source.parent / name
+            if not support.is_dir():
+                raise ValueError(f"support directory is missing: {support}")
+            roots.append(support)
+            visit(support, Path(skill.name) / name)
+    for name in notices:
+        notice = source.parent / name
+        if name in names:
+            raise ValueError(f"a declared skill has the name of a licence entry: {name}")
+        if not notice.exists():
+            raise ValueError(f"licence entry is missing: {notice}")
+        roots.append(notice)
+        visit(notice, Path(name))
+    return directories, files, names, roots
 
 
-def build(source, destination):
-    directories, files = inventory(source)
+def build(source, destination, skills=None, notices=()):
+    directories, files, names, roots = inventory(source, declared_skills() if skills is None else skills, notices)
     # Resolve parent aliases, but never follow links at or inside the destination.
     destination = Path(os.path.realpath(destination.parent)) / destination.name
     for path in (destination, *destination.parents):
@@ -49,15 +88,17 @@ def build(source, destination):
             raise ValueError(f"cannot inspect destination path: {path}; check its parent directories") from error
         if not stat.S_ISDIR(mode):
             raise ValueError(f"destination path is not a plain directory: {path}")
-    resolved_source, resolved_destination = source.resolve(), destination.resolve()
-    if (resolved_destination.is_relative_to(resolved_source)
-            or resolved_source.is_relative_to(resolved_destination)):
-        raise ValueError("destination overlaps the source skills")
-    expected_directories, expected_files = set(directories), set(files)
+    resolved_destination = destination.resolve()
+    for root in roots:
+        resolved_source = root.resolve()
+        if (resolved_destination.is_relative_to(resolved_source)
+                or resolved_source.is_relative_to(resolved_destination)):
+            raise ValueError("destination overlaps the source skills")
+    expected_directories, expected_files = set(directories), {target for _, target in files}
 
     def validate(path):
         relative = path.relative_to(destination)
-        inside_skill = len(relative.parts) > 1 and relative.parts[0] in SKILLS
+        inside_skill = len(relative.parts) > 1 and relative.parts[0] in names
         metadata = path.lstat()
         if stat.S_ISLNK(metadata.st_mode):
             raise ValueError(f"destination contains a symlink: {path}")
@@ -78,8 +119,8 @@ def build(source, destination):
     destination.mkdir(parents=True, exist_ok=True)
     for relative in directories:
         (destination / relative).mkdir(exist_ok=True)
-    for relative in files:
-        shutil.copy2(source / relative, destination / relative)
+    for path, relative in files:
+        shutil.copy2(path, destination / relative)
     return len(files)
 
 
@@ -90,11 +131,12 @@ def main():
                         help="output skills directory (default: skills beside this script)")
     args = parser.parse_args()
     try:
-        count = build(plugin.parent / "skills", args.destination.absolute())
-    except (OSError, ValueError) as error:
+        skills = declared_skills()
+        count = build(plugin.parent / "skills", args.destination.absolute(), skills, NOTICES)
+    except (OSError, ValueError, KeyError, TypeError) as error:
         print(f"build-skills: {error}", file=sys.stderr)
         return 1
-    print(f"build-skills: copied {count} files")
+    print(f"build-skills: copied {count} files of {len(skills)} skills and the licence texts")
     return 0
 
 

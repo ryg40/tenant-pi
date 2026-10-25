@@ -4,6 +4,8 @@
 
 Each component of `config/manifest.json` is one module of the kit. The core install of [install.sh](../../INSTALL.md#run-installsh) loads `core`, every component of `packages/tenantext` and the question extension. Each other module is one `pi install` line of [the optional modules](../../INSTALL.md#optional-modules).
 
+With [Pi-Bolt](../../INSTALL.md#pi-bolt-an-alternative-runtime) as the runtime, `pi-bolt install` installs a module the same way. Source reading of Pi-Bolt: it reads the shared `packages` list of the profile, and an optional `piBolt.packages` list adds or removes packages for Pi-Bolt only. The kit writes no `piBolt` key. Observed with Pi-Bolt 1.0.1: the module install of `install.sh` with `--runtime pi-bolt` added the question package to `packages`. Not verified: each other module in a Pi-Bolt session. Pi-Bolt runs an extension without a JIT by default, so a heavy extension can be slower than in Pi.
+
 The manifest is the state of this release. It is not a claim that a module works on a clean client.
 
 ## Status labels
@@ -32,6 +34,7 @@ Facts that hold for every component:
 - An in-tree (`tree`) module points at the package directory of the clone by its path. Keep the clone in place.
 - `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider (source reading). Switch them off with `/resources` when you do not agree to that.
 - `herdr-relay` needs the herdr skill at `~/.agents/skills/herdr`, or the folder in `HERDR_SKILL_HOME`.
+- `next-prompt` shows the next action of the final dummies report as faint text in the empty editor of a coordinator session. It makes no model call and no request; see [its document](../../packages/tenantext/docs/next-prompt.md).
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [providers](providers.md).
 
@@ -57,6 +60,97 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 - **Own packages and directories**: add a Pi package that you maintain with `pi install <path>`, or a skills directory to the `skills` list of the profile settings.
 - **Agent fan-out**: no subagents module exists. Use the Herdr skill of `packages/tenantext`. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.
 - **Questions** (`questions`): the Pi extension with the `ask_user_question` tool, in the core install. It needs an interactive session. Without it, a skill asks in plain text. It is not an extension for Claude Code.
+- **Computer use** (`computer-use`): control of the desktop on Linux. Ask about desktop control before you install it. Read [computer use](#computer-use) first.
+
+## Computer use
+
+The `computer-use` module is agent-sh `computer-use-linux` 0.7.24, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. The computer-use module for macOS is not chosen yet. Its manifest status is `unverified`. The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
+
+The package gives Pi native tools and a skill. The tools read the AT-SPI accessibility tree, take screenshots and list windows. They also send clicks, keys and text to the desktop of the user. Screenshots and accessibility trees that a tool returns go into the conversation, and so to the model provider.
+
+The module needs these things:
+
+- Linux on x64 or arm64. The `package.json` of the package sets `os` to `linux`, so npm refuses another platform.
+- A graphical session with the AT-SPI accessibility bridge, and an input backend. The doctor tool of the package names each blocker. Its setup tools can turn on AT-SPI and install a GNOME Shell extension; they change the desktop settings of the user.
+- The postinstall download. The script `npm/install.js` of the npm package downloads the release binaries of the same version from GitHub. It checks each binary against its published `.sha256` file. The install needs network access.
+
+Without the downloaded binary, the extension looks for `COMPUTER_USE_LINUX_BIN`, then for `computer-use-linux` on `PATH` (source: the Pi setup reference of the package skill). To get the binary again, run `pi remove` with the same source, then the `computer-use` line again.
+
+To install the module in a Pi profile:
+
+1. Run `install.sh --with computer-use` (see [install.sh](../../INSTALL.md#run-installsh)), or the `computer-use` line of [the optional modules](../../INSTALL.md#optional-modules). Both use the exact version, so `pi update --extensions` does not move it. On a platform other than Linux, `install.sh` stops before its first write.
+2. Type `/reload` in the Pi session. Pi loads the loader tool `computer_use_linux_tools`.
+3. Run `/tenantext-doctor`. It reports the installed version against the kit pin, the binary, and the blockers and warnings of the doctor of the package. It changes no desktop setting.
+4. Or ask the agent to load and call the doctor tool: `computer_use_linux_tools({ tools: ["doctor"] })`, then `computer_use_linux_doctor({})`. The `readiness` block of the reply names each blocker.
+
+### Claude Code plugin
+
+Claude Code uses the same package as a plugin, `computer-use-linux@computer-use-linux`. When `~/.claude` exists and the `claude` command is on `PATH`, `install.sh --with computer-use` offers the plugin after a separate yes:
+
+- `--claude-plugin` on the command line is that yes. `--yes` does not give it.
+- In a terminal without `--claude-plugin`, the installer asks one question before it changes the profile.
+- Without a terminal and without `--claude-plugin`, the installer prints one line and installs no plugin.
+
+With the yes, the installer runs the two commands of the README of the package:
+
+```sh
+claude plugin marketplace add agent-sh/computer-use-linux
+claude plugin install computer-use-linux@computer-use-linux
+```
+
+When the marketplace exists from an earlier run, the add can fail. The installer then continues with the plugin install when `claude plugin marketplace list` names the marketplace.
+
+Then it reads the plugin version from `claude plugin list --json` and compares it with the kit pin. It prints a difference; it does not hide one. A failed plugin step ends the installer with exit 1 after the profile and the alias are in place.
+
+The kit does not pin the plugin version. Decision of this release:
+
+- The marketplace gives its newest release, so a later install or update can give a version after the kit pin. The installer reports that difference.
+- The plugin launcher downloads the release binaries of its own version into `~/.cache/computer-use-linux/plugin/` at the first start. It needs `curl` or `wget`.
+- To run the binary of the kit pin from the plugin, set `COMPUTER_USE_LINUX_BIN`. Its value is the absolute path of that binary.
+  - Set it in the environment that starts Claude Code. The plugin launcher then starts that binary and downloads nothing (source reading of the launcher of version 0.7.24).
+  - The binary of a Pi profile is `<profile>/npm/node_modules/@agent-sh/computer-use-linux/npm/bin/computer-use-linux-linux-<arch>`. `<arch>` is `x64` or `arm64`.
+  - The skill text of the plugin still comes from the plugin version.
+  - The Pi extension reads the same variable first. Pi panes started from that environment use the same binary.
+- Not verified: a marketplace source fixed to a release tag. The kit does not use one.
+
+Start a new Claude Code session after the install. Each new session then has the desktop tools.
+
+### Herdr panes
+
+Each new Pi pane of a profile with the module, and each new Claude Code pane with the plugin, has the desktop tools. The Herdr skill removes them from the read roles: `spawn.py` starts a `researcher`, `scout` or `reviewer` pane without them. A `coordinator` or `worker` pane keeps them. A read role does not need to act on the desktop, and the screen content of a desktop tool goes to the model provider. [Start an agent](../../packages/tenantext/skills/herdr/SPAWN.md) gives the options and the way to keep the tools for one task.
+
+### A new version
+
+The pin moves in three places: the manifest spec, the line of each Pi profile, and the Claude Code plugin. `pi update --extensions` does not move the exact spec of a profile line. [The computer-use version](../../UPDATE.md#the-computer-use-version) gives the steps.
+
+## Claude Code
+
+The Pi profile is the reference. The Claude Code form of the kit carries each component that has a Claude Code form, and nothing else.
+
+| Component | Claude Code form | Source of the form |
+| --- | --- | --- |
+| `tenantext` | The `SessionStart` hook of the Simplified English rules, and `/ste` | The `tenantext` plugin |
+| `herdr` | The skill, and `/spawn_agent` | The skill: a link of `install.sh`, or the plugin. The command: the plugin |
+| `herdr-relay`, `coordinator-skills`, `knowledge-skills`, `tracker-site` | The skills | The links of `install.sh`, or the plugin |
+| `agentcore` | The plugin `packages/agentcore-claude` | `claude --plugin-dir`; see [in-tree packages](../packages.md) |
+| `computer-use` | The plugin of the package | [The Claude Code plugin](#claude-code-plugin) |
+
+The skill links of `install.sh` are the default form of the kit skills. A pull of the kit updates them at once.
+The `tenantext` plugin is for the `SessionStart` hook, `/ste` and `/spawn_agent`.
+When you have the links, skip the skill build of the plugin: with both forms, Claude Code lists each skill twice, as `<name>` and as `tenantext:<name>`.
+The plugin skills are for a host that does not keep the kit clone, because the links point into the clone.
+[The package README](../../packages/tenantext/README.md#claude-code-plugin) gives the build and the install of the plugin.
+
+The Claude Code form has these gaps today:
+
+- `ops-footer`, `context-meter`, `codex-accounts`, `copilot-usage` and `anthropic-usage` have no Claude Code form in the kit. A Claude Code status line could show them.
+- `agentcore` is not in the marketplace file. Its plugin `packages/agentcore-claude` loads in place with `claude --plugin-dir`.
+
+The other components have no Claude Code form in the kit:
+
+- Claude Code has its own model selection, MCP client and question tool: `model-routing`, `mcp` and `questions`.
+- `doctor`, `resources` and `herdr-watch` act on the Pi profile or on Pi sessions.
+- `hermes`, `wiki` and `openviking` are Pi packages. The kit has no Claude Code form of them.
 
 ## Change a selection
 

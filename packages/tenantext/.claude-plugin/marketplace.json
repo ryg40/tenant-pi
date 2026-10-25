@@ -1,12 +1,12 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "tenantext",
-  "description": "tenantext: Simplified English (adapted ASD-STE001) output rules for Claude Code",
+  "description": "tenantext for Claude Code: the Simplified English hook, /ste, /spawn_agent and the kit skills",
   "owner": { "name": "The tenant-pi authors" },
   "plugins": [
     {
       "name": "tenantext",
-      "description": "Simplified English (adapted ASD-STE001) output rules: injected at session start and after /clear, resume and compaction. /ste toggles the default.",
+      "description": "A SessionStart hook injects the Simplified English (adapted ASD-STE001) output rules at session start and after /clear, resume and compaction. /ste toggles the default. /spawn_agent starts a Herdr agent pane. After build-skills.py runs in the kit clone, the plugin also carries the skills that the kit manifest declares for tenantext.",
       "author": { "name": "The tenant-pi authors" },
       "source": "./claude-code",
       "category": "productivity",

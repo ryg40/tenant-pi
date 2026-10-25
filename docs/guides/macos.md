@@ -100,6 +100,12 @@ Use the user-owned prefix of INSTALL.md if the global prefix is not writable or 
 Do not run npm with `sudo` to work around that check.
 Then run `python3 scripts/check_runtime.py`.
 
+### Pi-Bolt
+
+[Pi-Bolt](../../INSTALL.md#pi-bolt-an-alternative-runtime) has a build for Apple silicon and macOS 13 or later. Run its install line in zsh. The installer links `pi-bolt` into `~/.local/bin`. When that directory is not on `PATH`, add `export PATH="$HOME/.local/bin:$PATH"` to `~/.zshrc` and run `exec zsh`. Then run `python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"`.
+
+In the macOS build, `pi` is a small launcher that starts `pi-bin` beside its real path. The launcher of `install.sh --runtime pi-bolt` starts that `pi` through its real path. Herdr 0.9.5 detects the agent from the process name, and on macOS that name can be `pi-bin`. Not verified: Herdr detects a Pi-Bolt pane on macOS as `pi`. A file downloaded with a browser can carry a quarantine attribute; see the Pi-Bolt troubleshooting page. Not verified: Pi-Bolt with the kit on macOS.
+
 ## Clone and install.sh
 
 Follow [the clone](../../INSTALL.md#clone) and [install.sh](../../INSTALL.md#run-installsh) unchanged.
@@ -109,6 +115,8 @@ It resolves `/tmp` and `/var` links on its own, so a profile under `/tmp` is che
 ## Optional modules
 
 Follow [the optional modules](../../INSTALL.md#optional-modules) unchanged. Run only the lines of the modules that you want.
+
+Do not run the `computer-use` line on macOS. Its package supports Linux only. `install.sh --with computer-use` stops on macOS before its first write. The computer-use module for macOS is not chosen yet; see [computer use](modules.md#computer-use).
 
 The package `pi-hermes-memory` uses the native module `better-sqlite3`. Observed with `better-sqlite3` 13.0.3 and npm 11.19.0 on Linux x64: the module holds a prebuilt binary. npm runs no install script, nothing is compiled, and the module loads from that file. Not verified: a prebuilt binary for macOS. Only when no prebuilt binary fits the platform and the Node version, a build from source needs a compiler toolchain. With npm 11, npm does not start that build on its own. Observed with npm 11.19.0: the `npm warn install-scripts` line of the `wiki` install names `better-sqlite3`, and npm runs no install script. For a build from source, install the Apple toolchain when absent:
 

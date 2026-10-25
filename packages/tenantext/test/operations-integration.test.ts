@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,6 +14,8 @@ import { installOpsFooter } from "../extensions/ops-footer/runtime.ts";
 import { defaults } from "../extensions/ops-footer/settings.ts";
 import type { GitAdapter } from "../extensions/ops-footer/git.ts";
 import { languageStatus } from "../extensions/ops-footer/adapters.ts";
+import { formatDay } from "../extensions/ops-footer/view.ts";
+import { contextStub } from "./footer-fixtures.ts";
 
 test("suite language status preserves only fixed public fields", () => {
   assert.equal(languageStatus("STE on · guard passed"), "STE on guard passed");
@@ -156,6 +158,103 @@ for (const longPath of [false, true]) for (const reverse of [false, true]) test(
     await fire("session_shutdown");
     assert.ok(gitDisposed && healthDisposed);
     assert.equal(bus.eventNames().length, 0);
+    if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("each Codex period end reaches only its own row through the real collector, bus, footer and report", async () => {
+  const dir = join(tmpdir(), `tenantext-period-${randomUUID()}`);
+  mkdirSync(join(dir, "codex-accounts"), { recursive: true });
+  const previous = process.env.PI_CODING_AGENT_DIR, previousFetch = globalThis.fetch;
+  process.env.PI_CODING_AGENT_DIR = dir;
+  const now = Date.now(), DAY = 86_400_000;
+  // Local noon of a local day, and the day as the view formats it, so the expected date holds in every zone.
+  const noon = (days: number) => { const date = new Date(now); date.setHours(12, 0, 0, 0); date.setDate(date.getDate() + days); return date; };
+  const day = (date: Date) => formatDay(date.getTime());
+  const plusTwo = (date: Date) => `${new Date(date.getTime() + 7_200_000).toISOString().slice(0, 19)}+02:00`;
+  const [one, two, past, later, retained] = [noon(20), noon(40), noon(-10), noon(60), noon(80)];
+  // Synthetic logins. Only the claim names follow a saved Codex login; every value is a sentinel that must stay out of the footer.
+  const login = (n: number, until: string, checkedAgo: number, expiresIn: number) => {
+    const auth = { chatgpt_account_id: `sentinel-acct-${n}`, chatgpt_subscription_active_until: until, chatgpt_subscription_last_checked: new Date(now - checkedAgo).toISOString() };
+    const idToken = ["{}", JSON.stringify({ email: `sentinel-${n}@example.invalid`, "https://api.openai.com/auth": auth })].map(part => Buffer.from(part).toString("base64url")).join(".") + ".sig";
+    return { access_token: `sentinel-access-${n}`, account_id: `sentinel-acct-${n}`, expires_at: (now + expiresIn) / 1000, id_token: idToken };
+  };
+  const write = (n: number, data: unknown) => { const path = join(dir, `codex${n}.json`); writeFileSync(path, JSON.stringify(data)); return path; };
+  const files = [
+    write(1, login(1, plusTwo(one), 3_600_000, DAY)),
+    write(2, { tokens: login(2, two.toISOString(), 3 * DAY, -DAY) }),
+    write(3, login(3, past.toISOString(), 3_600_000, -DAY)),
+    write(4, login(4, `${day(two)}T12:00:00`, 3_600_000, -DAY)),
+    write(5, { ...login(5, retained.toISOString(), 3_600_000, DAY), access_token: "", account_id: "" }),
+  ];
+  writeFileSync(join(dir, "codex-accounts", "settings.json"), JSON.stringify({ accounts: files.map((tokenFile, i) => ({ provider: i ? `openai-codex-${i + 1}` : "openai-codex", label: `Codex ${i + 1}`, tokenFile })) }));
+  globalThis.fetch = (async () => new Response(JSON.stringify({ rate_limit: { primary_window: { used_percent: 30, limit_window_seconds: 18_000 } } }))) as typeof fetch;
+  const handlers = new Map<string, Set<(event: any, ctx: any) => any>>();
+  const bus = new EventEmitter();
+  const commands = new Map<string, any>();
+  const published: unknown[] = [], notes: string[] = [];
+  bus.on("tenantext:codex:status", value => published.push(value));
+  let component: { render(width: number): string[]; dispose?(): void } | undefined;
+  const sm = SessionManager.inMemory(dir);
+  const theme = { fg: (_key: string, text: string) => `\x1b[36m${text}\x1b[0m` };
+  const ctx = {
+    mode: "tui", hasUI: true, cwd: dir, thinkingLevel: "low", model: { provider: "openai-codex", id: "gpt-6-astra", contextWindow: 100000 },
+    sessionManager: sm, isIdle: () => true, hasPendingMessages: () => false,
+    ui: {
+      theme, notify: (text: string) => notes.push(text), setStatus() {}, setWidget() {},
+      setFooter(factory: any) { component?.dispose?.(); component = factory?.({ requestRender() {} }, theme, { getExtensionStatuses: () => new Map(), onBranchChange: () => () => {}, getGitBranch: () => "main" }); },
+    },
+  } as unknown as ExtensionContext;
+  const api = () => ({
+    on(name: string, handler: any) { if (!handlers.has(name)) handlers.set(name, new Set()); handlers.get(name)!.add(handler); return () => { handlers.get(name)!.delete(handler); }; },
+    events: { on(name: string, handler: any) { bus.on(name, handler); return () => bus.off(name, handler); }, emit(name: string, value: unknown) { bus.emit(name, value); } },
+    registerCommand(name: string, command: unknown) { commands.set(name, command); },
+    registerProvider() {}, registerEntryRenderer() {}, getCommands: () => [], getActiveTools: () => [],
+    appendEntry() { assert.fail("Dashboard must not write history"); }, sendMessage() { assert.fail("Dashboard must not add model context"); },
+  } as unknown as ExtensionAPI);
+  const fire = async (name: string, event = {}) => { for (const fn of [...handlers.get(name) ?? []]) await fn(event, ctx); };
+  const git = { state: "ok" as const, summary: "local Git", checkedAt: now, staleAfter: 60000, repo: "fixture", branch: "main" };
+  try {
+    codexAccounts(api());
+    installOpsFooter(api(), {
+      context: () => contextStub(), load: async () => ({ ...defaults, healthUrls: {}, maximumRows: 12 }),
+      git: () => ({ snapshot: git, refresh: async () => git, dispose() {} }) as unknown as GitAdapter,
+      health: () => ({ check: async () => { throw new Error("No configured health source"); }, dispose() {} }) as any,
+    });
+    await fire("session_start", { reason: "startup" });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const rows = () => component!.render(200).map(stripTerminalSequences);
+    const row = (label: string) => rows().find(line => line.startsWith(`${label} `)) ?? assert.fail(`no ${label} row`);
+    const dates = (text: string): string[] => text.match(/\d{4}-\d{2}-\d{2}/g) ?? [];
+    assert.deepEqual(dates(row("Codex1")), [day(one)], "an offset timestamp shows its own calendar day");
+    assert.deepEqual(dates(row("Codex2")), [day(two)]);
+    assert.match(row("Codex2"), /stale/, "provider evidence older than a day is marked");
+    assert.deepEqual(dates(row("Codex3")), [day(past)]);
+    assert.match(row("Codex3"), /past/, "a past period end is not shown as upcoming");
+    assert.deepEqual(dates(row("Codex4")), [], "a timestamp without a zone gives no date and keeps the row");
+    assert.deepEqual(dates(row("Codex5")), [], "a no login row shows no retained date");
+
+    await commands.get("ops-footer").handler("report", ctx);
+    const report = notes.at(-1)!.split("\n").filter(line => / period end: /.test(line));
+    const own = (n: number) => report.find(line => line.startsWith(`Codex${n} period end:`)) ?? assert.fail(`no Codex${n} report line`);
+    const periods = [one, two, past, undefined, undefined].map(date => date && day(date));
+    for (const [i, period] of periods.entries()) {
+      const others = [...periods, day(retained)].filter(other => other && other !== period);
+      const shownDates = dates(own(i + 1));
+      assert.ok((!period || shownDates.includes(period)) && !shownDates.some(date => others.includes(date)), `the Codex${i + 1} report line names only its own date`);
+    }
+    assert.match(own(3), /past/);
+
+    // A manual footer refresh reads the replaced file again.
+    write(1, login(1, later.toISOString(), 60_000, DAY));
+    await commands.get("ops-footer").handler("refresh", ctx);
+    assert.deepEqual(dates(row("Codex1")), [day(later)]);
+    const shown = [JSON.stringify(published), rows().join("\n"), notes.join("\n")].join("\n");
+    assert.ok(!shown.includes("sentinel") && !shown.includes(Buffer.from("{}").toString("base64url") + "."), "no token, identity or claim crosses the bus or reaches the display");
+  } finally {
+    await fire("session_shutdown");
+    globalThis.fetch = previousFetch;
     if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR; else process.env.PI_CODING_AGENT_DIR = previous;
     rmSync(dir, { recursive: true, force: true });
   }

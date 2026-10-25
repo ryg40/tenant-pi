@@ -2,7 +2,8 @@ import type { AnthropicCredential } from "./detect.ts";
 
 /** One quota window from `GET https://api.anthropic.com/api/oauth/usage`. */
 export interface AnthropicWindow {
-	label: "5h" | "7d" | "opus" | "sonnet";
+	/** `5h`, `7d`, `opus`, `sonnet`, or the lower-case name of a model-scoped weekly limit, for example `fable`. */
+	label: string;
 	remainingPercent: number;
 	resetsAt?: string;
 }
@@ -30,7 +31,21 @@ export function resetDate(value: unknown): string | undefined {
 	return Number.isFinite(time) ? new Date(time).toISOString() : undefined;
 }
 
-/** `utilization` is the percent used, 0 to 100. A window that is null or has no numeric `utilization` is dropped. */
+/** The model name of a scoped limit becomes a short label: lower case, letters, digits, dot and hyphen. */
+const MODEL_LABEL = /^[a-z][a-z0-9.-]{0,11}$/;
+/** The `limits` kinds of the fixed windows. They repeat `five_hour` and `seven_day`, and alone they are a full reading. */
+const LIMIT_KINDS: Record<string, AnthropicWindow["label"]> = { session: "5h", weekly_all: "7d" };
+function limitLabel(kind: unknown, name: unknown): string | undefined {
+	if (kind !== "weekly_scoped") return typeof kind === "string" && Object.hasOwn(LIMIT_KINDS, kind) ? LIMIT_KINDS[kind] : undefined;
+	const label = typeof name === "string" ? name.toLowerCase().replace(/[^a-z0-9.-]/g, "").slice(0, 12) : "";
+	return MODEL_LABEL.test(label) ? label : undefined;
+}
+
+/**
+ * `utilization` is the percent used, 0 to 100. A window that is null or has no numeric `utilization` is dropped.
+ * The `limits` list adds the windows that the keys did not give: `session` is `5h`, `weekly_all` is `7d`, and each
+ * model-scoped weekly limit (`kind: "weekly_scoped"`, for example Fable) takes the name of its model. Its `percent` is the percent used.
+ */
 export function parseAnthropicUsage(value: unknown): AnthropicUsage {
 	const v = record(value) ?? {};
 	const windows: AnthropicWindow[] = [];
@@ -39,6 +54,13 @@ export function parseAnthropicUsage(value: unknown): AnthropicUsage {
 		const used = finite(w?.utilization);
 		if (!w || used === undefined) continue;
 		const resetsAt = resetDate(w.resets_at);
+		windows.push({ label, remainingPercent: clamp(100 - used), ...(resetsAt ? { resetsAt } : {}) });
+	}
+	for (const raw of Array.isArray(v.limits) ? v.limits : []) {
+		const limit = record(raw);
+		const used = finite(limit?.percent), label = limitLabel(limit?.kind, record(record(limit?.scope)?.model)?.display_name);
+		if (!limit || used === undefined || label === undefined || windows.some(w => w.label === label)) continue;
+		const resetsAt = resetDate(limit.resets_at);
 		windows.push({ label, remainingPercent: clamp(100 - used), ...(resetsAt ? { resetsAt } : {}) });
 	}
 	return { windows };

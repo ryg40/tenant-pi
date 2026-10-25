@@ -6,7 +6,7 @@ The text of this skill is adapted for this kit from an upstream skill.
 | --- | --- |
 | Upstream source | `mattpocock/skills` (https://github.com/mattpocock/skills) |
 | Upstream path | `skills/engineering/prototype/` (`SKILL.md`, `LOGIC.md`, `UI.md`) |
-| Upstream version | 1.3.1, commit `6fd9479` |
+| Upstream version | 1.3.1, commit `5beb35b` (reviewed; unchanged) |
 | Licence | MIT |
 
 The frontmatter `name` and the file `agents/openai.yaml` are the upstream ones. The upstream licence text and its copyright notice are in [`licenses/mattpocock-skills-MIT.txt`](../../../licenses/mattpocock-skills-MIT.txt) of this package. The changes are under the MIT licence of this package.

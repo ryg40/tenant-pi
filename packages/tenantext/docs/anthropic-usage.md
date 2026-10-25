@@ -34,6 +34,7 @@ The request is read-only. It times out after 15 seconds. It follows no redirect.
 | `seven_day` | `7d` window |
 | `seven_day_opus` | `opus` window, when the field is not null |
 | `seven_day_sonnet` | `sonnet` window, when the field is not null |
+| `limits` | Each entry adds a window that the keys above did not give. `kind` `session` is the `5h` window and `weekly_all` the `7d` window. An entry with `kind` `weekly_scoped` and a model name in `scope.model.display_name` takes the model name in lower case as its label, for example `fable`. `percent` is the percent used. The footer shows only the labels that it knows: `5h`, `7d`, `opus`, `sonnet` and `fable` |
 | `utilization` | The percent used, 0 to 100. The meter shows `100 - utilization`, limited to 0 to 100 |
 | `resets_at` | The reset time. The extension converts it to a UTC time with milliseconds |
 
@@ -72,6 +73,16 @@ The plan comes from `subscriptionType` through the allow-list. It shows in `/ant
 ## Refresh
 
 The footer asks for a refresh on its health poll. The meter answers at most once per `pollSeconds` (default 300). When the provider of the active model is `anthropic`, a settled turn refreshes after 60 seconds.
+
+### Shared reading
+
+The endpoint answers HTTP 429 when several clients of one login poll it. So every meter that uses the Claude Code login shares one reading in `$XDG_CACHE_HOME/claude-pi-footer/usage.json` (default `~/.cache/claude-pi-footer/usage.json`):
+
+- On each refresh, the meter reads the file. A reading of another client that is newer than its own and younger than `pollSeconds` replaces its own reading, with no request.
+- Before a request, the meter claims it: it writes the time to `attemptAt`. When any client asked less than 5 minutes ago, the meter sends no request and takes that client's reading on a later refresh.
+- After a good reading, the meter writes `at` and the windows as the `limits` list of the endpoint.
+
+The file holds only the times and the percentages, with mode `600`. A Claude Code status line that uses the same file and the same rules shares the reading too. A meter that uses the Pi login does not use the file. `/tenantext-doctor` still asks the endpoint directly.
 
 Events: the extension publishes `tenantext:anthropic:status`. It listens for `tenantext:anthropic:refresh`.
 

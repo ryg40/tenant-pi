@@ -19,7 +19,26 @@ Set `S` to the absolute `scripts` directory beside the loaded `SKILL.md`, includ
 
 A role is an order of preference, not a set of limits. Each role prompt starts
 with "The task has priority", then gives its methods in order, with a fallback
-for each. `spawn.py` removes no tool unless you add `--strict`.
+for each. `spawn.py` removes no tool unless you add `--strict`, with one
+exception: the desktop tools.
+
+The read roles (`researcher`, `scout`, `reviewer`) start without the desktop
+tools of the computer-use module. A pi pane gets `--exclude-tools
+computer_use_linux_*`; a Claude Code pane gets `--disallowedTools
+mcp__plugin_computer-use-linux_computer-use-linux`. The `coordinator` and the
+`worker` keep them. These tools read the screen and send input to the desktop,
+and the screen content goes to the model provider; a read role does not need
+them. A pane without the module ignores the option (source reading for pi:
+the option only filters tool names).
+
+A task that needs the desktop in a read role has two ways:
+
+- pi: add native arguments after `--`. A later `--exclude-tools` replaces the
+  earlier list (source reading of the Pi 1.4.0 argument parser), so
+  `-- --exclude-tools ''` keeps every tool, and `-- --exclude-tools edit,write`
+  keeps the desktop tools under `--strict`.
+- Claude Code: start a `worker` pane instead. Not verified: whether a later
+  `--disallowedTools` replaces the earlier one.
 
 The `researcher` and the `scout` are both context gatherers with the same tools.
 The `researcher` starts with the web. The `scout` starts with the local machine,
@@ -78,6 +97,27 @@ uses that executable. New POSIX shell panes receive a shell-local `pi` function
 that calls the wrapper; Herdr still tracks the agent as `pi`. Existing panes
 and shell startup files remain unchanged. Without this setting, `pi` remains
 the launcher. An invalid path or unsupported shell fails without fallback.
+
+Pi-Bolt (the Pi coding agent compiled to one native executable) works as
+`launch.pi_executable`. Known limit of Herdr 0.9.5:
+
+- Pi-Bolt has a built-in Herdr reporter. When `HERDR_ENV=1`, `HERDR_PANE_ID`
+  and `HERDR_SOCKET_PATH` are all set, it reports the agent name `pi-bolt`.
+  Herdr 0.9.5 does not know that name, so `herdr agent start --kind pi` fails
+  with `agent_kind_mismatch: expected pi, detected pi-bolt`.
+- `spawn.py` runs `<executable> --version` once. When the line names Pi-Bolt,
+  the `pi` function of the new pane unsets `HERDR_SOCKET_PATH` for Pi-Bolt.
+  Pi-Bolt then skips its reporter. No wrapper script is necessary.
+- Herdr detects a Pi agent from the file name of the started program. It must
+  be `pi`. Set the setting to an installed `tenant-pi` launcher with the
+  Pi-Bolt runtime: `install.sh --runtime pi-bolt` makes the launcher start the
+  release file `pi` of the Pi-Bolt installer. The `pi-bolt` link itself has
+  the wrong name.
+- In the pane, Pi-Bolt and the commands that it starts have no
+  `HERDR_SOCKET_PATH`. The scripts of this skill then do not reorder the tabs
+  that the pane creates.
+
+Remove this workaround when Herdr knows `pi-bolt` or Pi-Bolt reports `pi`.
 
 The DonSeTch example uses `headers_helper` to read `DONSETCH_HTTP_TOKEN` when
 Claude Code connects or reconnects. The generated MCP configuration stores only

@@ -61,6 +61,7 @@ test("the menu lists the groups in order, toggles one item, writes it as the def
 	const { ctx, log } = mock({ choices: ["user local extensions/solo.ts", SET_DEFAULT] });
 	await runResources("", ctx, { dirs });
 	assert.deepEqual(log.options[0], [
+		SET_DEFAULT, SAVE_PROFILE, APPLY_PROFILE, DISCARD,
 		"[x] extension user package extensions/a.ts (../kit)",
 		"[x] extension project local extensions/pe.ts (read-only)",
 		"[x] extension user local extensions/solo.ts",
@@ -71,14 +72,13 @@ test("the menu lists the groups in order, toggles one item, writes it as the def
 		"[x] mcp user mcp live",
 		"[x] skill user local skills/alpha",
 		"[x] prompt user local prompts/review.md",
-		SET_DEFAULT, SAVE_PROFILE, APPLY_PROFILE, DISCARD,
 	]);
 	assert.ok(log.options[1]!.includes("[ ] extension user local extensions/solo.ts (changed)"));
 	assert.match(log.titles[1]!, /1 changed/);
 	assert.deepEqual(JSON.parse(readFileSync(join(dirs.agentDir, "settings.json"), "utf8")), { theme: "dark", packages: ["../kit"], extensions: ["-extensions/solo.ts"] });
 	assert.equal(log.reloads, 1);
 	assert.equal(log.options.length, 2, "the loop ends after the write");
-	assert.match(log.notices.join("\n"), /Wrote 1 change/);
+	assert.match(log.notices.join("\n"), /Saved 1 change/);
 }));
 
 test("discard and Esc write nothing, and a project item is read-only", () => withFixture(async dirs => {
@@ -173,7 +173,7 @@ test("the menu shows a project MCP override, and a change of the user row report
 	assert.ok(log.options[1]!.includes("[ ] mcp user mcp live (project override: off in a trusted project; user file: off) (changed)"));
 	assert.equal(JSON.parse(readFileSync(join(dirs.agentDir, "mcp.json"), "utf8")).mcpServers.live.enabled, false);
 	assert.deepEqual(JSON.parse(readFileSync(join(dirs.projectDir, "mcp.json"), "utf8")), { mcpServers: { live: { enabled: false } } });
-	assert.match(log.notices.join("\n"), /Wrote 1 change\(s\).*\nIn a trusted project, the project override in .*mcp\.json keeps mcp live off\./);
+	assert.match(log.notices.join("\n"), /Saved 1 change\(s\).*\nIn a trusted project, the project override in .*mcp\.json keeps mcp live off\./);
 	const list = mock({ hasUI: false });
 	await runResources("list", list.ctx, { dirs });
 	assert.match(list.log.notices[0]!, /\[ \] mcp project override live \(override of the user server\)/);

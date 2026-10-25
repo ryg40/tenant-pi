@@ -47,7 +47,7 @@ The discovery skill only covers setup and discovery.
 
 ## Credits and checks
 
-All its skills use upstream commit `776760f49d5b3b5c24921165b6c1ea17e8990fd5`.
+All its skills use upstream commit `66571d24bdfd08faae2a5e91849b01f9686a2a9c`.
 Each `CREDITS.md` records the source paths, source comparison and adaptations.
 The MIT licence text is in `../../licenses/open-knowledge-skills-MIT.txt`.
 The kit additions use the package MIT licence.

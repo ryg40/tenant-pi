@@ -227,13 +227,19 @@ class Launch(IsolatedConfig):
         r = spawn.resolve(opts(harness="claude", role="worker", interactive=True), CFG)
         self.assertNotIn("FINAL_COMPRESSED_CONTEXT", spawn.system_prompt(r, CFG))
 
-    def test_default_launch_removes_no_tool(self):
+    def test_default_launch_removes_only_the_desktop_tools_of_read_roles(self):
+        desktop = {"pi": ("--exclude-tools", "computer_use_linux_*"),
+                   "claude": ("--disallowedTools", "mcp__plugin_computer-use-linux_computer-use-linux")}
         for harness in ("pi", "claude"):
             for role in _common.ROLES:
                 r = spawn.resolve(opts(harness=harness, role=role), CFG)
                 args = spawn.native_args(r, CFG, False, f"t-{role}-1", write=False)
-                for flag in ("--exclude-tools", "--disallowedTools", "--no-skills", "--strict-mcp-config"):
-                    self.assertNotIn(flag, args, (harness, role))
+                flag, tools = desktop[harness]
+                if r["access"] == "read":
+                    self.assertEqual(args[args.index(flag) + 1], tools, (harness, role))
+                for other in ("--exclude-tools", "--disallowedTools", "--no-skills", "--strict-mcp-config"):
+                    if other != flag or r["access"] != "read":
+                        self.assertNotIn(other, args, (harness, role))
 
     def test_each_claude_session_starts_in_auto_mode(self):
         for role in _common.ROLES:
@@ -251,7 +257,7 @@ class Launch(IsolatedConfig):
         self.assertIn("Edit Write NotebookEdit", args[args.index("--disallowedTools") + 1])
         r = spawn.resolve(opts(harness="pi", role="reviewer", strict=True), CFG)
         args = spawn.native_args(r, CFG, False, "t-reviewer-1", write=False)
-        self.assertEqual(args[args.index("--exclude-tools") + 1], "edit,write")
+        self.assertEqual(set(args[args.index("--exclude-tools") + 1].split(",")), {"edit", "write", "computer_use_linux_*"})
         self.assertIn("Strict launch", spawn.system_prompt(r, CFG))
 
     def test_the_shipped_catalog_gives_no_mcp_server(self):

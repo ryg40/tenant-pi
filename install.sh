@@ -11,7 +11,7 @@ ask() {
   IFS= read -r answer <&3 || fail "cancelled"
   exec 3>&-
 }
-mode= name= shell= modules= approved=no replace=no
+mode= name= shell= modules= runtime_choice= approved=no replace=no plugin= asked=no
 while [ "$#" -gt 0 ]; do
   case $1 in
     --new|--upgrade)
@@ -20,8 +20,10 @@ while [ "$#" -gt 0 ]; do
     --shell|--with)
       option=$1; [ "$#" -ge 2 ] || fail "$1 needs a value"
       if [ "$option" = --shell ]; then shell=$2; else modules=$2; fi; shift 2 ;;
+    --runtime) [ "$#" -ge 2 ] || fail "$1 needs a value"; runtime_choice=$2; shift 2 ;;
     --yes) approved=yes; shift ;;
     --replace-alias) replace=yes; shift ;;
+    --claude-plugin) plugin=yes; shift ;;
     *) fail "unknown option: $1" ;;
   esac
 done
@@ -41,10 +43,38 @@ if [ "$mode" = upgrade ]; then
 fi
 if [ -z "$name" ]; then ask "Name of $mode profile:"; name=$answer; fi
 if [ -z "$shell" ]; then ask 'Shell [bash/zsh/none]:'; shell=$answer; fi
-if [ -z "$modules" ]; then ask 'Optional modules [wiki,hermes,mcp or none]:'; modules=$answer; fi
-runtime=$(command -v pi) || fail "pi is not installed; install Pi separately"
+if [ -z "$modules" ]; then ask 'Optional modules [wiki,hermes,mcp,computer-use or none]:'; modules=$answer; asked=yes; fi
+case ,$modules, in
+  *,computer-use,*)
+    # A refused platform exits before the first write. --with computer-use is the yes to desktop control.
+    [ "$(uname -s)" = Linux ] || fail "computer-use supports Linux only. The computer-use module for macOS is not chosen yet; see docs/guides/modules.md#computer-use"
+    if [ "$asked" = yes ]; then
+      ask 'computer-use lets the agent read your screen and send input to your desktop. Install it? [yes/no]:'
+      [ "$answer" = yes ] || fail "cancelled"
+    fi ;;
+esac
+# The Pi runtime: --runtime, else the choice in the launcher of an upgrade, else a question, else pi.
+if [ -z "$runtime_choice" ] && [ "$mode" = upgrade ]; then
+  case $name in
+    '' | *[!a-z0-9-]*) ;;
+    *)
+      launcher=$HOME/.local/bin/$name
+      if [ -f "$launcher" ] && grep -qxF "# tenant-pi launcher: $name" "$launcher"; then
+        runtime_choice=$(sed -n 's/^# tenant-pi runtime: //p' "$launcher" | head -n 1)
+      fi ;;
+  esac
+fi
+if [ -z "$runtime_choice" ] && [ "$approved" != yes ] && command -v pi >/dev/null 2>&1 && command -v pi-bolt >/dev/null 2>&1; then
+  ask 'Pi runtime [pi/pi-bolt]:'; runtime_choice=$answer
+fi
+runtime_choice=${runtime_choice:-pi}
+case $runtime_choice in
+  pi | pi-bolt) runtime=$(command -v "$runtime_choice") || fail "$runtime_choice is not installed; install it separately" ;;
+  /*) runtime=$runtime_choice ;;
+  *) fail "runtime must be pi, pi-bolt or an absolute path" ;;
+esac
 case $runtime in /*) ;; *) runtime=$(cd "$(dirname "$runtime")" && pwd -P)/${runtime##*/} ;; esac
-export kit mode name shell modules runtime replace
+export kit mode name shell modules runtime_choice runtime replace
 # Python handles JSON and shell quoting; prompts remain plain POSIX sh.
 helper() {
 python3 - "$1" <<'PY'
@@ -56,6 +86,9 @@ import shlex
 import shutil
 import sys
 import tempfile
+
+
+PLUGIN = 'computer-use-linux@computer-use-linux'
 
 
 def fail(message):
@@ -99,15 +132,22 @@ try:
     modules = os.environ['modules'].split(',')
     if modules == ['none']:
         modules = []
-    if any(module not in ('wiki', 'hermes', 'mcp', 'questions') for module in modules):
-        fail('unknown optional module; use wiki,hermes,mcp or none')
+    if any(module not in ('wiki', 'hermes', 'mcp', 'computer-use', 'questions') for module in modules):
+        fail('unknown optional module; use wiki,hermes,mcp,computer-use or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
     # questions is mandatory; accept its old --with name without installing twice.
     specs = ['npm:' + manifest['components'][module]['source']['spec']
              for module in dict.fromkeys([*modules, 'questions'])]
+    choice = os.environ['runtime_choice']
+    if any(ord(c) < 32 or ord(c) == 127 for c in choice):
+        fail('runtime path has a control character')
     runtime = Path(os.environ['runtime'])
     if not runtime.is_file() or not os.access(runtime, os.X_OK):
-        fail('pi must be an executable file')
+        fail('runtime must be an executable file: ' + str(runtime))
+    # Herdr knows a Pi agent by the name of the started file. The Pi-Bolt installer links
+    # pi-bolt to a release file named pi, so the launcher starts that file.
+    if choice == 'pi-bolt' and runtime.resolve().name == 'pi':
+        runtime = runtime.resolve()
     launcher = home / '.local/bin' / name
     startup = home / '.bashrc' if shell == 'bash' else Path(os.environ.get('ZDOTDIR') or str(home)) / '.zshrc'
     if not startup.is_absolute():
@@ -115,7 +155,7 @@ try:
     start = '# >>> tenant-pi ' + name + ' >>>'
     end = '# <<< tenant-pi ' + name + ' <<<'
     launcher_mark = '# tenant-pi launcher: ' + name
-    launch_text = '\n'.join(['#!/bin/sh', launcher_mark,
+    launch_text = '\n'.join(['#!/bin/sh', launcher_mark, '# tenant-pi runtime: ' + choice,
         'export PI_CODING_AGENT_DIR=' + shlex.quote(str(profile)),
         'unset PI_CODING_AGENT_SESSION_DIR',
         'export PATH=' + shlex.quote(str(runtime.parent)) + ':"$PATH"',
@@ -189,8 +229,33 @@ try:
         packages.append(desired)
     changed = before != settings
     models = (kit / 'config/models.example.json').read_text()
+    # Claude Code gets the skills that the manifest declares for the package, not each folder with a SKILL.md.
+    folder = home / '.claude/skills'
+    skills = [kit / 'packages/tenantext' / item for component in manifest['components'].values()
+              if component['source'] == {'kind': 'tree', 'path': 'packages/tenantext'}
+              for item in component['resources']['skills']]
+
+    def claude_links():
+        # Replace a broken link or a link into this clone; keep a link to another skill source.
+        names = [skill.name for skill in skills]
+        for skill_name in names:
+            if names.count(skill_name) > 1:
+                fail('two declared skills have the name ' + skill_name + '; one Claude skill link cannot carry both')
+        for skill in skills:
+            dest = folder / skill.name
+            if not (skill / 'SKILL.md').is_file():
+                yield skill, dest, 'warning: the manifest declares ' + str(skill) + ' but it has no SKILL.md; no link'
+            elif not dest.exists() and not dest.is_symlink():
+                yield skill, dest, None
+            elif dest.is_symlink() and (not dest.is_dir() or dest.resolve().is_relative_to(kit.resolve())):
+                yield skill, dest, None
+            elif dest.is_symlink():
+                yield skill, dest, 'skipped: ' + str(dest) + ' links to another place: ' + str(dest.resolve())
+            else:
+                yield skill, dest, 'skipped: ' + str(dest) + ' exists and is not a link'
     if action == 'plan':
         print('profile: ' + name + '\npath: ' + str(profile))
+        print('runtime: ' + choice + ' (' + str(runtime) + ')')
         print('launch: ' + shlex.quote(str(launcher)) if shell != 'none' else 'launch: PI_CODING_AGENT_DIR=' + shlex.quote(str(profile)) + ' ' + shlex.quote(str(runtime)))
         if shell != 'none':
             print('alias: ' + name + '\nlauncher: ' + str(launcher) + '\nstartup: ' + str(startup))
@@ -203,14 +268,10 @@ try:
             print('+ ' + json.dumps(packages, ensure_ascii=True))
         for spec in specs:
             print('install module: ' + spec)
+        if 'computer-use' in modules and (home / '.claude').is_dir() and shutil.which('claude'):
+            print('Claude Code plugin: ' + PLUGIN + ' (asked separately; --claude-plugin is the yes)')
         if (home / '.claude').is_dir():
-            folder = home / '.claude/skills'
-            links = []
-            for file in sorted((kit / 'packages/tenantext/skills').glob('*/SKILL.md')) + sorted((kit / 'packages/tenantext/skills').glob('*/*/SKILL.md')):
-                dest = folder / file.parent.name
-                if (not dest.exists() and not dest.is_symlink()) or (dest.is_symlink() and
-                        (not dest.is_dir() or dest.resolve().is_relative_to(kit.resolve()))):
-                    links.append(file.parent.name)
+            links = [dest.name for _, dest, skipped in claude_links() if not skipped]
             print('Claude skill links: ' + str(len(links)) + '\ntarget: ' + str(folder))
             for link in links:
                 print('link: ' + link)
@@ -232,6 +293,39 @@ try:
             for spec in specs:
                 print('Installing: ' + spec, flush=True)
                 subprocess.run([str(runtime), 'install', spec], env=env, check=True)
+    elif action == 'links':
+        folder.mkdir(parents=True, exist_ok=True)
+        for skill, dest, skipped in claude_links():
+            if skipped:
+                print(skipped, file=sys.stderr)
+                continue
+            if dest.is_symlink():
+                dest.unlink()
+            dest.symlink_to(skill)
+            print('link:    ' + str(dest))
+    elif action == 'plugin':
+        # Compare the installed Claude Code plugin with the kit pin; report a difference, never hide it.
+        import subprocess
+        pin = manifest['components']['computer-use']['source']['spec'].rsplit('@', 1)[1]
+        listed = subprocess.run(['claude', 'plugin', 'list', '--json'], capture_output=True, text=True)
+        if listed.returncode:
+            fail('`claude plugin list --json` exited ' + str(listed.returncode) + '; kit pin ' + pin)
+        try:
+            items = json.loads(listed.stdout)
+            entry = next((item for item in items if item['id'] == PLUGIN), None)
+        except (ValueError, TypeError, KeyError) as error:
+            fail('cannot parse `claude plugin list --json` (' + type(error).__name__ + ': ' + str(error)
+                 + '); kit pin ' + pin)
+        version = None if entry is None else entry.get('version')
+        if entry is None:
+            print('plugin:  ' + PLUGIN + ' is not in `claude plugin list`; kit pin ' + pin)
+        elif not isinstance(version, str):
+            fail(PLUGIN + ' in `claude plugin list --json` has no version; kit pin ' + pin)
+        elif version == pin:
+            print('plugin:  ' + PLUGIN + ' ' + version + ' equals the kit pin')
+        else:
+            print('plugin:  ' + PLUGIN + ' ' + version + ' differs from the kit pin ' + pin
+                  + '; see docs/guides/modules.md#computer-use')
     elif action == 'alias' and shell != 'none':
         startup.parent.mkdir(parents=True, exist_ok=True)
         launcher.parent.mkdir(parents=True, exist_ok=True)
@@ -266,29 +360,49 @@ if [ "$approved" != yes ]; then
   ask 'Apply the shown profile and shell changes? [yes/no]:'
   [ "$answer" = yes ] || fail "cancelled"
 fi
+# The Claude Code plugin needs its own yes; --yes does not give it. Without a terminal, no plugin.
+case ,$modules, in
+  *,computer-use,*)
+    if [ ! -d "$HOME/.claude" ]; then
+      plugin=
+    elif ! command -v claude >/dev/null 2>&1; then
+      echo "plugin:  no claude command on PATH, so no Claude Code plugin"
+      plugin=
+    elif [ -z "$plugin" ]; then
+      # A subshell: a failed redirection of a special built-in would end this shell.
+      if (true <"${INSTALL_TEST_TTY:-/dev/tty}") 2>/dev/null; then
+        ask "Install the Claude Code plugin computer-use-linux too? Each new Claude Code session then gets the desktop tools. [yes/no]:"
+        plugin=$answer
+      else
+        echo "plugin:  no terminal and no --claude-plugin, so no Claude Code plugin"
+      fi
+    fi ;;
+  *) plugin= ;;
+esac
 helper profile || { echo 'install: profile step failed; alias unchanged' >&2; exit 1; }
+plugin_failed=no
+if [ "$plugin" = yes ]; then
+  # On a rerun the marketplace exists and its add can fail; continue only when the list names it.
+  if claude plugin marketplace add agent-sh/computer-use-linux; then :
+  elif claude plugin marketplace list 2>/dev/null | grep -q computer-use-linux; then
+    echo "plugin:  the marketplace computer-use-linux exists"
+  else
+    plugin_failed=yes
+  fi
+  if [ "$plugin_failed" = no ] && claude plugin install computer-use-linux@computer-use-linux; then
+    helper plugin || plugin_failed=yes
+  else
+    plugin_failed=yes
+  fi
+fi
 profile=$HOME/.pi/profiles/$name
 if [ -d "$HOME/.claude" ]; then
-  mkdir -p "$HOME/.claude/skills"
-  for file in "$kit"/packages/tenantext/skills/*/SKILL.md "$kit"/packages/tenantext/skills/*/*/SKILL.md; do
-    [ -f "$file" ] || continue
-    skill=${file%/SKILL.md}
-    dest=$HOME/.claude/skills/${skill##*/}
-    if [ ! -e "$dest" ] && [ ! -L "$dest" ]; then
-      ln -s "$skill" "$dest"
-      echo "link:    $dest"
-    elif [ -L "$dest" ]; then
-      # Replace a broken link or a link into this clone; keep a link to another skill source.
-      real=$(cd "$dest" 2>/dev/null && pwd -P) || real=
-      case $real/ in
-        / | "$kit"/*) ln -sfn "$skill" "$dest"; echo "link:    $dest" ;;
-        *) echo "skipped: $dest links to another place: $real" >&2 ;;
-      esac
-    else
-      echo "skipped: $dest exists and is not a link" >&2
-    fi
-  done
+  helper links || { echo 'install: Claude skill links failed after profile success; alias unchanged' >&2; exit 1; }
 else
   echo "skills:  no ~/.claude directory, so no Claude Code skill link"
 fi
 helper alias || { echo 'install: alias setup failed after profile success' >&2; exit 1; }
+if [ "$plugin_failed" = yes ]; then
+  echo 'install: the Claude Code plugin step failed; the profile and the alias are in place' >&2
+  exit 1
+fi

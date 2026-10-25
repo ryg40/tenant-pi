@@ -30,11 +30,18 @@ export interface IntegrationSnapshot extends StatusSnapshot {
   failedNames?: string[];
 }
 export interface LimitsWindow { name: string; percent?: number; unavailable: boolean; resetsAt?: number; remaining?: number; entitlement?: number }
+/**
+ * The saved subscription period end of a Codex account: cached evidence, never a billing date. `endsAt` is absent when the source
+ * gave no valid date. `providerCheckedAt` is the provider's last check; `collectedAt` is only the local read.
+ */
+export interface LimitsPeriod { source: "token-file"; endsAt?: number; providerCheckedAt?: number; collectedAt?: number }
 export interface LimitsAccount {
   label: string; order: number; state: StatusState; windows: LimitsWindow[];
   /** Allowlisted Codex plan, e.g. `pro_lite`. */ plan?: string;
   /** `false`: the account is configured but has no login. The footer shows `no login` and raises no alert. */
   login?: false;
+  /** Codex accounts with a token file only. Kept apart from the windows and their reset times. */
+  period?: LimitsPeriod;
 }
 export interface LimitsSnapshot extends StatusSnapshot {
   /** Stable identity order: Codex1, Codex2, ... Never sorted by severity, percent, route, or refresh order. */

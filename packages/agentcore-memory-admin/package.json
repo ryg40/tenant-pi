@@ -8,8 +8,8 @@
   "bin": {"agentcore-memory-registry": "./bin/registry.mjs"},
   "scripts": {"test": "node --test tests/"},
   "dependencies": {
-    "@aws-sdk/client-bedrock-agentcore": "3.1154.0",
-    "@aws-sdk/client-iam": "3.1154.0",
-    "@aws-sdk/client-sts": "3.1154.0"
+    "@aws-sdk/client-bedrock-agentcore": "3.1156.0",
+    "@aws-sdk/client-iam": "3.1156.0",
+    "@aws-sdk/client-sts": "3.1156.0"
   }
 }

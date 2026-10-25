@@ -68,7 +68,7 @@ A "gitleaks:allow" or "betterleaks:allow" comment does not hide a finding, also 
 8. Do not write a token or a host value into a tracked file, also not into a test. Build it at run time from parts, as `tests/test_scan.sh` does.
 9. Do not use `gitleaks:allow`, `betterleaks:allow`, `.gitleaksignore`, `.betterleaksignore` or a baseline to accept a finding. Correct the content, or add a narrow content allowlist (rules 1 and 2).
 
-`.gitleaks.toml` keeps the rule set of gitleaks v8.28.0 under Betterleaks. Its header lists the differences from the default configuration. A change of the rule set is a separate decision. For that change, take the default configuration of the new rule set, apply the differences of the header again, and run `sh tests/test_scan.sh`.
+`.gitleaks.toml` keeps the rule set of gitleaks v8.30.1 under Betterleaks. Its header lists the differences from the default configuration. A change of the rule set is a separate decision. For that change, take the default configuration of the new rule set, apply the differences of the header again, and run `sh tests/test_scan.sh`.
 
 ## Scanner
 

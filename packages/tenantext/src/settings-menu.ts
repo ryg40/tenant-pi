@@ -1,10 +1,12 @@
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { ensureSettings as ensureFooterSettings, healthUrl, loadLocalSettings, saveSettings as saveFooterSettings, type Settings } from "../extensions/ops-footer/settings.ts";
 import { ensureSettings as ensureMainSettings, loadSettings as loadMainSettings, saveSettings as saveMainSettings, type TenantextSettings } from "./settings.ts";
+import { loadSettings as loadNextPromptSettings, saveSettings as saveNextPromptSettings } from "./next-prompt-settings.ts";
 
 export interface SettingsMenuActions {
   mainChanged: (settings: TenantextSettings) => void;
   footerChanged: () => void;
+  nextPromptChanged?: (enabled: boolean) => void;
 }
 
 const numbers: Record<string, [number, number, string]> = {
@@ -27,12 +29,14 @@ export async function settingsMenu(ctx: ExtensionContext, actions: SettingsMenuA
   catch { ctx.ui.notify("Cannot initialize Tenantext settings files.", "error"); return; }
   let main = loadMainSettings();
   let footer = await loadLocalSettings(); // Do not show or save environment endpoint overrides.
+  let nextPrompt = loadNextPromptSettings().settings;
   while (true) {
     const items: { key: string; label: string }[] = [
       ...flags.map(([key, label]) => ({ key, label: `${label}: ${
         key === "rules" || key === "guard" || key === "decisions" ? main[key] ? "on" : "off" : footer[key] ? "on" : "off"}` })),
       ...Object.entries(numbers).map(([key, [, , label]]) => ({ key, label: `${label}: ${footer[key as keyof Settings]}` })),
       ...endpoints.map(([key, label]) => ({ key: `healthUrls.${key}`, label: `${label}: ${footer.healthUrls[key] ? "configured" : "unset"}` })),
+      { key: "nextPrompt", label: `Next-prompt suggestion: ${nextPrompt.enabled ? "on" : "off"}` },
     ];
     const selected = await ctx.ui.select("Tenantext settings (Esc to close)", items.map(item => item.label));
     if (!selected) return;
@@ -61,6 +65,11 @@ export async function settingsMenu(ctx: ExtensionContext, actions: SettingsMenuA
         }
         const next = { ...footer, [key]: value };
         await saveFooterSettings(next, undefined, true); footer = next; actions.footerChanged();
+      } else if (key === "nextPrompt") {
+        const value = await ctx.ui.select(key, ["on", "off"]);
+        if (!value) continue;
+        const next = { ...nextPrompt, enabled: value === "on" };
+        saveNextPromptSettings(next); nextPrompt = next; actions.nextPromptChanged?.(next.enabled);
       } else if (key === "healthUrls.OK" || key === "healthUrls.OV") {
         const source = key.endsWith("OK") ? "OK" : "OV";
         const text = await ctx.ui.input(`${key} (blank clears; Esc keeps current value)`, "http://host/health");

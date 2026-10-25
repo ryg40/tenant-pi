@@ -539,7 +539,7 @@ const onOff = (on: boolean) => on ? "on" : "off";
 export const sourceLabel = (item: Pick<ResourceItem, "source" | "override">) => item.override ? "override" : item.source;
 
 /** The text after an MCP row that the project file changes. The component does not read the trust state of the project. */
-function mcpNote(item: ResourceItem): string {
+export function mcpNote(item: ResourceItem): string {
 	if (item.projectState?.by === "override") return ` (project override: ${onOff(item.projectState.enabled)} in a trusted project; user file: ${onOff(item.enabled)})`;
 	if (item.projectState) return ` (replaced by the project server in a trusted project; user file: ${onOff(item.enabled)})`;
 	if (!item.override) return "";

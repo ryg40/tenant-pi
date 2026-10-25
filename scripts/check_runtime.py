@@ -5,7 +5,9 @@ It runs no shell, no network request, no install and no other command. It writes
 temporary directory and removes it. The output echoes a version token only; other process
 output never enters a result or a diagnostic.
 
-Run from the kit root: `python3 scripts/check_runtime.py [--pi PATH] [--node PATH] [--python PATH]`.
+Run from the kit root: `python3 scripts/check_runtime.py [--pi PATH | --launcher PATH] [--node PATH]
+[--python PATH]`. `--launcher` reads the runtime path from the `exec` line of a kit launcher.
+Pi-Bolt prints the Pi version first; the check compares that and reports the Pi-Bolt version.
 It prints one JSON object. The exit code is 0 when each tool matches (Pi may be `untested_in_range`),
 1 otherwise, and 2 for a refusal, which goes to standard error.
 """
@@ -14,6 +16,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -37,6 +40,9 @@ MAX_TOKEN = 40
 # build (`+abc`). Free text after the numbers is not a version.
 VERSION = re.compile(r"(?:[A-Za-z][A-Za-z0-9._-]{0,31} )?v?((\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?"
                      r"(-[0-9A-Za-z.-]+|[a-z]+\d+)?(?:\+[0-9A-Za-z.-]*)?)\Z")
+# Pi-Bolt: `1.4.0 (Pi-Bolt 1.0.2, linux-x64, JIT off)`. The build text is not echoed.
+BOLT = re.compile(r"(\S{1,40}) \(Pi-Bolt (\S{1,40}), [0-9A-Za-z_., -]{1,40}\)\Z")
+LAUNCHER_MARK = "# tenant-pi launcher: "
 
 
 def _triple(parts):
@@ -54,15 +60,51 @@ def parse_version(output):
     return found.group(1), _triple(found.groups()[1:4]), found.group(5) is not None
 
 
-def pi_status(found, runtime, bounds):
-    """Separate the exact tested token from an accepted, untested version."""
+def parse_pi_version(output):
+    """Return `(Pi version as parse_version gives it, Pi-Bolt token or None)`, or None.
+
+    Pi prints its version alone; Pi-Bolt prints the Pi version, then its own in parentheses.
+    """
+    found = parse_version(output)
+    if found:
+        return found, None
+    lines = output[:MAX_OUTPUT].decode("ascii", "replace").strip().splitlines() if isinstance(output, bytes) else []
+    bolt = BOLT.match(lines[0].strip()) if lines else None
+    if not bolt:
+        return None
+    pi, build = parse_version(bolt.group(1).encode()), parse_version(bolt.group(2).encode())
+    return (pi, build[0]) if pi and build else None
+
+
+def pi_status(found, runtime, bounds, bolt=None):
+    """Separate the exact tested token from an accepted, untested version.
+
+    A Pi-Bolt that carries the tested Pi but is not the tested Pi-Bolt release is untested.
+    """
     token, version, prerelease = found
     if token == runtime["piVersion"]:
-        return "match"
+        return "match" if bolt in (None, runtime.get("piBoltVersion")) else "untested_in_range"
     return "untested_in_range" if in_range(version, bounds, prerelease) else "mismatch"
 
 
-def _probe(path, env, run):
+def launcher_runtime(path):
+    """The runtime path of a kit launcher: the argument of its `exec` line."""
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        fail("launcher_unreadable", "check-runtime.launcher")
+    for line in lines if len(lines) > 1 and lines[1].startswith(LAUNCHER_MARK) else ():
+        if line.startswith("exec "):
+            try:
+                words = shlex.split(line)
+            except ValueError:
+                break
+            if len(words) == 3 and words[2] == "$@" and os.path.isabs(words[1]):
+                return words[1]
+    fail("not_a_launcher", "check-runtime.launcher")
+
+
+def _probe(path, env, run, parse=parse_version):
     """Run `<path> --version` once. Return the parsed version, or a status name."""
     try:
         done = run([path, "--version"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -73,14 +115,14 @@ def _probe(path, env, run):
         return "unparsed"
     if done.returncode != 0:
         return "unparsed"
-    return parse_version(done.stdout or done.stderr) or "unparsed"
+    return parse(done.stdout or done.stderr) or "unparsed"
 
 
 def _probe_pi(path, environ, run):
     """Pi reads its agent directory at start, so point it at an empty directory and remove that."""
     empty = tempfile.mkdtemp(prefix="tenant-pi-check-runtime-")
     try:
-        return _probe(path, {**environ, "PI_CODING_AGENT_DIR": empty}, run)
+        return _probe(path, {**environ, "PI_CODING_AGENT_DIR": empty}, run, parse_pi_version)
     finally:
         try:
             shutil.rmtree(empty)
@@ -115,9 +157,14 @@ def check(runtime, paths=None, *, run=subprocess.run, which=shutil.which, enviro
         if isinstance(found, str):
             result["status"] = found
             continue
+        bolt = None
+        if key == "pi":
+            found, bolt = found
         token, version, prerelease = found
         result["installed"] = token
-        result["status"] = (pi_status(found, runtime, bounds[key]) if key == "pi" else
+        if bolt:
+            result["piBolt"] = {"installed": bolt, "tested": runtime.get("piBoltVersion")}
+        result["status"] = (pi_status(found, runtime, bounds[key], bolt) if key == "pi" else
                             "match" if in_range(version, bounds[key], prerelease) else "mismatch")
     return report
 
@@ -132,11 +179,18 @@ def main(argv=None):
     for key, command, _ in TOOLS:
         parser.add_argument("--" + key, metavar="PATH",
                             help=f"absolute path of the {command} executable (default: {command} on PATH)")
+    parser.add_argument("--launcher", metavar="PATH",
+                        help="absolute path of a kit launcher; its runtime replaces --pi")
     args = parser.parse_args(argv)
     try:
         paths = {key: getattr(args, key) for key, _, _ in TOOLS if getattr(args, key) is not None}
         for key, path in paths.items():
             absolute(path, "check-runtime." + key)
+        if args.launcher is not None:
+            absolute(args.launcher, "check-runtime.launcher")
+            if "pi" in paths:
+                fail("one_of_pi_and_launcher", "check-runtime.launcher")
+            paths["pi"] = launcher_runtime(args.launcher)
         data = load(ROOT / "config/manifest.json")
         manifest(data)
         report = check(data["runtime"], paths)

@@ -1,12 +1,14 @@
 # OpenViking Memory Extension for Pi Coding Agent
 
-> Vendored from a fork of OpenViking's `examples/pi-coding-agent-extension`, at fork commit `5f25a844` (`5f25a8445fe0c36db4ca72cc5430bd3ed1166914`), package version 0.4.9. This is not a commit of the public `volcengine/OpenViking` repository. Its upstream merge base is `b20f192e` (`b20f192e61393e10fc9945306edf69fc25a58abe`). The 14 fork-edited files and five behaviour changes appear in [Local fork: differences](#local-fork-differences).
+> Vendored from a fork of OpenViking's `examples/pi-coding-agent-extension`: fork commit `5f25a844` (`5f25a8445fe0c36db4ca72cc5430bd3ed1166914`), merged by the kit with upstream commit `a07c02cd2` (`a07c02cd25f597e5806759c272d367f1d6b0132f`), package version 0.4.21. The fork commit is not a commit of the public `volcengine/OpenViking` repository. Its upstream merge base is `df32bf6e` (`df32bf6e50a40843438f9491a26069ca4bd08f1f`, package version 0.4.9). The 11 fork-edited files and four behaviour changes appear in [Local fork: differences](#local-fork-differences).
 >
-> The upstream `examples/` directory uses Apache-2.0; its `LICENSE` is vendored here. The OpenViking repository root uses AGPL-3.0. The `shared/` directory contains generated copies from `examples/memory-plugin-shared/lib/` at the fork commit, with a generated-file header on each file. Kit changes are this banner, README link and licence corrections, the shortened fork section, and the added `LICENSE`. The kit also guards user-only recall in `index.ts` for Pi 1.2.0, adds `tests/lifecycle.test.mjs`, updates user-event fixtures in `tests/handshake-once.test.mjs`, and makes the loopback helper in `tests/recall-deferred.test.mjs` local. Update through the kit; see its `docs/memory-modules.md`. The kit profile declares this package, so the upstream installation steps below do not apply to the kit copy.
+> The upstream `examples/` directory uses Apache-2.0; its `LICENSE` is vendored here. The OpenViking repository root uses AGPL-3.0. The `shared/` directory contains generated copies from `examples/memory-plugin-shared/lib/` at upstream commit `a07c02cd2`, with a generated-file header on each file. Kit changes are this banner, README link and licence corrections, the shortened fork section, and the added `LICENSE`. The kit also guards user-only recall in `index.ts` for Pi 1.2.0, adds `tests/lifecycle.test.mjs`, updates user-event fixtures in `tests/handshake-once.test.mjs`, and makes the loopback helper in `tests/recall-deferred.test.mjs` local. It pins `@modelcontextprotocol/client` 2.3.1 in `package.json` and `package-lock.json`. At the merge with upstream 0.4.21 the kit keeps `resumeArchiveInject` on unless a configuration layer sets it (`loadLocalConfig` in `config.ts`), and adds two test stubs that the fork's own upstream merge also uses: a `getSession` stub in `tests/sync-barrier.test.mjs` and the Working Memory acknowledgement in `tests/takeover-session-manager.test.mjs`. Update through the kit; see its `docs/memory-modules.md`. The kit profile declares this package, so the upstream installation steps below do not apply to the kit copy.
 >
 > `DESIGN.md` is the unchanged upstream design document. Its relative links, `examples/...` paths, issue numbers, release references and repository references refer to the public `volcengine/OpenViking` repository. Its line 17 ("default on") describes upstream context takeover; this fork defaults takeover and tool-result capture off, not automatic turn capture. Bare issue and pull request numbers elsewhere in this package also refer to that upstream repository.
 >
 > The default relay URL in `scripts/e2e-live.mjs` is an upstream value; the kit does not run the live-server scripts. The fixture date `2026-09-21` in `tests/fixtures/mcp-tools-list.json` records an upstream capture, not a kit host observation.
+
+> **Working memory is now opt-in.** Update installed plugins separately from the OV server, then restart the host. Existing explicit settings still take precedence. The upstream guide `docs/en/guides/working-memory-default-off.md` in the OpenViking repository covers native history, re-enabling WM, and old-conversation handoffs.
 
 Long-term semantic memory and context takeover for [pi](https://github.com/earendil-works/pi) sessions, powered by [OpenViking](https://github.com/volcengine/OpenViking). Recall happens automatically before every prompt, capture happens after every turn, and OpenViking can own long-term context by replacing committed history with an archive overview in pi's `context` hook.
 
@@ -36,11 +38,13 @@ curl http://localhost:1933/health   # or your remote URL
 
 ### 2. Install the extension
 
-For an upstream checkout only, run its shared installer from the OpenViking repository root:
+pi shares the unified installer with the other memory plugins. It asks which harnesses to install and for your OpenViking credentials:
 
 ```bash
-bash examples/memory-plugin-shared/install.sh --harness pi
+curl -fsSL https://openviking.ai/install | bash
 ```
+
+From a repository checkout, `bash examples/memory-plugin-shared/install.sh --harness pi` installs the checkout's extension instead.
 
 The installer installs the locked npm dependencies in a temporary directory before replacing the extension at `~/.pi/agent/extensions/openviking`, which is one of pi's auto-discovery roots, so pi loads it on the next `pi` invocation — no `packages` entry is needed. (Registering the same path with `pi install` would load it twice, so the installer avoids that and clears any stale entry left by older versions.)
 
@@ -191,13 +195,11 @@ integrations should configure category `quotas` when they need exact ceilings.
 | `captureToolResults`     | `false`    | Local fork: tool result output is dropped from captured turns unless this is `true`. Tool inputs and outputs have common credential fields, bearer values and `--api-key`-style arguments redacted either way |
 | `captureToolMaxChars`    | `1000000`  | Guard cap on one tool part's `tool_output`; the server externalizes oversized output |
 | `commitTokenThreshold`   | `20000`    | Pending-token threshold for client-driven commit                         |
-| `commitKeepRecentCount`  | `10`       | Live tail kept after commit                                              |
+| `commitKeepRecentCount`  | `10`       | Not read: commits outside takeover archive every captured message (`keep_recent_count` 0); takeover sends the exact message count of the turns it keeps |
 
 ### Context takeover
 
-Takeover is disabled by default in this local fork, for additive safety: it
-runs only when a configuration layer sets `takeoverEnabled` (or
-`OPENVIKING_TAKEOVER`). When enabled, OpenViking commits archived history, reads the
+Takeover is disabled by default; Pi manages compaction. When explicitly enabled, OpenViking commits archived history, reads the
 overview of that exact archive, then the `context` hook replaces covered
 conversation turns with a synthetic `[OpenViking Session Context]` user message
 while keeping the recent live tail. The boundary advances only after every
@@ -219,7 +221,7 @@ filtered or truncated the original Pi transcript.
 
 | Field                    | Default    | Description                                                              |
 |--------------------------|------------|--------------------------------------------------------------------------|
-| `takeoverEnabled`        | `false`    | Let OpenViking own long-term context through the `context` hook, only with an explicit opt-in (local fork; upstream default `true`). Env: `OPENVIKING_TAKEOVER` |
+| `takeoverEnabled`        | `false`    | Let OpenViking own long-term context through the `context` hook. Env: `OPENVIKING_TAKEOVER` |
 | `takeoverTokenThreshold` | `30000`    | Synced-token pressure that triggers commit and boundary advance           |
 | `takeoverKeepRecentTurns`| `3`        | Recent user turns retained in full fidelity                              |
 | `takeoverOverviewBudget` | `3000`     | Token budget for the injected archive overview                           |
@@ -312,16 +314,17 @@ Tool capture preserves structured tool parts with bounded inputs and outputs. Th
 
 The extension keeps no tool catalogue of its own. At session start it asks the server's `/mcp` endpoint for `tools/list` and registers one pi tool per descriptor it gets back, named `openviking_` + the server's own name, with the server's description and argument schema. A server that gains, drops or re-documents a tool changes pi's tool surface at the next session, with no extension release.
 
-Against a current server, that is these 15:
+Against a current server, that is these 16:
 
 | Tool                        | Description                                                             |
 |-----------------------------|-------------------------------------------------------------------------|
 | `openviking_find`           | Fast ranked retrieval across memories, resources and skills             |
 | `openviking_search`         | Deep retrieval with session context and intent analysis; `mode="context"` returns an assembled block |
 | `openviking_read`           | Read one or more `viking://` file URIs, with line-based `offset`/`limit` |
+| `openviking_download`       | Get a one-time URL for fetching a file's original bytes with `curl`     |
 | `openviking_list`           | List one sorted page under a `viking://` directory                      |
 | `openviking_tree`           | Show a recursive directory tree, optionally with abstracts              |
-| `openviking_remember`       | Store messages as long-term memory and commit them for extraction       |
+| `openviking_remember`       | Submit messages for long-term memory extraction; returns the background extraction `task_id` right away |
 | `openviking_write`          | Write text to a `viking://` file                                        |
 | `openviking_edit`           | Replace an exact string in an existing `viking://` file                 |
 | `openviking_add_resource`   | Ingest a URL, repository or local file as a resource                    |
@@ -364,7 +367,7 @@ A failed handshake never fails startup: recall, session sync and takeover keep w
 
 ## Local fork: differences
 
-The fork commit `5f25a844` differs from upstream merge base `b20f192e` in 14 files, relative to `examples/pi-coding-agent-extension/`:
+The fork commit `5f25a844` differs from upstream merge base `df32bf6e` in 11 files, relative to `examples/pi-coding-agent-extension/`:
 
 - `README.md`
 - `config.ts`
@@ -373,29 +376,38 @@ The fork commit `5f25a844` differs from upstream merge base `b20f192e` in 14 fil
 - `lib/capture-utils-local.mjs`
 - `package-lock.json`
 - `package.json`
-- `skills/openviking-memory/SKILL.md`
-- `skills/openviking-skills/SKILL.md`
-- `skills/ov-experience-memory/SKILL.md`
 - `sync.ts`
 - `tests/capture-adapter.test.mjs`
 - `tests/config.test.mjs`
 - `tests/sync-barrier.test.mjs`
 
-The fork changes five behaviours:
+The fork changes four behaviours:
 
-- `takeoverEnabled` defaults to `false` (`loadLocalConfig` in `config.ts`).
-  Takeover runs only when a configuration layer or `OPENVIKING_TAKEOVER` turns
-  it on. `loadConfig` itself stays equal to the shared loader.
+- `takeoverEnabled` stays `false` unless a configuration layer or
+  `OPENVIKING_TAKEOVER` turns it on (`loadLocalConfig` in `config.ts`). Since
+  upstream 0.4.10 the shared default is `false` too. `loadConfig` itself stays
+  equal to the shared loader.
 - Tool result output is not captured unless `captureToolResults` is `true`, and
   credential fields and values in tool inputs and outputs are redacted
-  (`lib/capture-utils-local.mjs`, used by `lib/capture-adapter.mjs`).
+  (`lib/capture-utils-local.mjs`, used by `lib/capture-adapter.mjs`). Since
+  upstream 0.4.21, `s` rules of `captureFilters` also rewrite tool inputs and
+  outputs.
 - `captureMode: "keyword"` keeps a turn only when it matches a durable-memory
   trigger (`lib/capture-utils-local.mjs`).
 - Additive mode (takeover off) persists its capture watermark as an
   `ov-sync-watermark` custom entry, so a `pi -c` process does not resend the
   whole branch, and `ensureSession` reads the session with `auto_create` and
   fails closed when the server cannot create or read it (`sync.ts`, `index.ts`).
-- The extension discovers three bundled skills through `resources_discover` when `mcpEnabled` is on.
+
+The kit adds one default at the merge with upstream 0.4.21:
+`resumeArchiveInject` stays `true` unless a configuration layer or
+`OPENVIKING_RESUME_ARCHIVE_INJECT` sets it (`loadLocalConfig` in `config.ts`).
+In additive mode the newest archive overview is then still added to the prompt
+after a resume or a compaction, as in package version 0.4.9. The upstream
+default is `false`.
+
+The extension discovers three bundled skills through `resources_discover` when
+`mcpEnabled` is on; this is upstream behaviour.
 
 The fork also raises the Node minimum to 24 and pins `@modelcontextprotocol/client` to an exact version in `package.json`.
 That client follows a redirect of the `/mcp` endpoint only within the same origin, so the configured address must be the final one. The REST calls use the redirect rules of `fetch`.

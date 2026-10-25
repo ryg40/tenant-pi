@@ -11,7 +11,7 @@ COMPONENT = ROOT / "packages/tenantext/skills/knowledge-skills"
 # The skills of the component: the skill names of its manifest entry.
 NAMES = {Path(skill).name for skill in
          json.loads((ROOT / "config/manifest.json").read_text())["components"]["knowledge-skills"]["resources"]["skills"]}
-PIN = "776760f49d5b3b5c24921165b6c1ea17e8990fd5"
+PIN = "66571d24bdfd08faae2a5e91849b01f9686a2a9c"
 
 
 class KnowledgeSkillsTests(unittest.TestCase):

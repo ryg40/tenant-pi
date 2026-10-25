@@ -31,7 +31,7 @@ The suggestion clears when an agent run starts, when a session starts or changes
 Check these conditions in order. These checks do not enable anything.
 
 1. Check the package extension selection in the active Pi profile. It must load `extensions/next-prompt/index.ts`; any filters must permit it. See [One extension](../README.md#one-extension).
-2. Check the DUMMIES state for Pi with `/skill:dummies status`. The Pi state must be on; the state of another harness does not count.
+2. Check the DUMMIES state for Pi with `/skill:dummies status`. The Pi state must be on; the state of another harness does not count. `install.sh --dummies` turns it on; see [DUMMIES](../../../docs/guides/modules.md#dummies).
 3. Check `Next-prompt suggestion` in `/tenantext settings`. Its `enabled` setting must be `true`.
 4. Check the session role and mode. Only a coordinator in the interactive terminal (`tui`) qualifies.
 5. Check that the run settled without an abort. Pi must be idle with no queued message.

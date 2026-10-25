@@ -35,8 +35,23 @@ Facts that hold for every component:
 - `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider (source reading). Switch them off with `/resources` when you do not agree to that.
 - `herdr-relay` needs the herdr skill at `~/.agents/skills/herdr`, or the folder in `HERDR_SKILL_HOME`.
 - `next-prompt` shows the next action of the final dummies report as faint text in the empty editor of a coordinator session. It makes no model call and no request; see [its document](../../packages/tenantext/docs/next-prompt.md).
+  It needs DUMMIES on for Pi; see [DUMMIES](#dummies).
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [providers](providers.md).
+
+## DUMMIES
+
+The `dummies` skill is installed with the kit and is off by default. `install.sh --dummies`, or a yes to its question, turns it on for the profile. After the profile step, the installer runs the script of the skill:
+
+```sh
+PI_CODING_AGENT_DIR=<profile> python3 <clone>/packages/tenantext/skills/coordinator-skills/dummies/scripts/state.py on --harness pi --autostart
+```
+
+- The state file `~/.config/dummies-skill/state.json` (in `XDG_CONFIG_HOME` when it is set) records on or off for each harness. Every Pi profile of the user shares it.
+- The autostart block is a marked block in the instruction file of the profile: the first that exists of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md` and `CLAUDE.MD`, in the order of `state.py`. When none exists, the script creates `AGENTS.md`. It appends the block when the file has no block. Each new coordinator session reads the block and starts the report form.
+- A repeat install finds the block and changes neither file.
+- The completion report shows the line of `state.py status` and the file that got the block.
+- The installer never turns DUMMIES off and does not change the Claude Code state or `~/.claude/CLAUDE.md`. For Claude Code, run `state.py on --harness claude --autostart`. To turn DUMMIES off for Pi, run the same line with `off --harness pi`. It turns Pi off for every profile and removes the block from every profile that got one.
 
 ## The Tenantext path
 

@@ -11,7 +11,7 @@ ask() {
   IFS= read -r answer <&3 || fail "cancelled"
   exec 3>&-
 }
-mode= name= shell= modules= runtime_choice= approved=no replace=no plugin= asked=no
+mode= name= shell= modules= runtime_choice= approved=no replace=no plugin= dummies= asked=no
 while [ "$#" -gt 0 ]; do
   case $1 in
     --new|--upgrade)
@@ -24,6 +24,7 @@ while [ "$#" -gt 0 ]; do
     --yes) approved=yes; shift ;;
     --replace-alias) replace=yes; shift ;;
     --claude-plugin) plugin=yes; shift ;;
+    --dummies) dummies=yes; shift ;;
     *) fail "unknown option: $1" ;;
   esac
 done
@@ -53,6 +54,11 @@ case ,$modules, in
       [ "$answer" = yes ] || fail "cancelled"
     fi ;;
 esac
+# DUMMIES needs its own yes, as the Claude Code plugin: --dummies or a yes here. --yes does not give it.
+if [ -z "$dummies" ] && [ "$asked" = yes ]; then
+  ask 'DUMMIES reports: a coordinator session ends each reply with a compact report for a junior developer, and next-prompt drafts the next action. Turn it on for Pi? All your profiles share the switch; the autostart block goes into this profile. [y/N]'
+  case $answer in y | Y | yes | Yes) dummies=yes ;; *) dummies= ;; esac
+fi
 # The Pi runtime: --runtime, else the choice in the launcher of an upgrade, else a question, else pi.
 if [ -z "$runtime_choice" ] && [ "$mode" = upgrade ]; then
   case $name in
@@ -74,7 +80,7 @@ case $runtime_choice in
   *) fail "runtime must be pi, pi-bolt or an absolute path" ;;
 esac
 case $runtime in /*) ;; *) runtime=$(cd "$(dirname "$runtime")" && pwd -P)/${runtime##*/} ;; esac
-export kit mode name shell modules runtime_choice runtime replace
+export kit mode name shell modules runtime_choice runtime replace dummies
 # Python handles JSON and shell quoting; prompts remain plain POSIX sh.
 helper() {
 python3 - "$1" <<'PY'
@@ -268,6 +274,8 @@ try:
             print('+ ' + json.dumps(packages, ensure_ascii=True))
         for spec in specs:
             print('install module: ' + spec)
+        if os.environ.get('dummies') == 'yes':
+            print('DUMMIES: on for Pi, shared by all profiles of this user; autostart block in the instruction file of the profile, else a new AGENTS.md')
         if 'computer-use' in modules and (home / '.claude').is_dir() and shutil.which('claude'):
             print('Claude Code plugin: ' + PLUGIN + ' (asked separately; --claude-plugin is the yes)')
         if (home / '.claude').is_dir():
@@ -380,6 +388,17 @@ case ,$modules, in
   *) plugin= ;;
 esac
 helper profile || { echo 'install: profile step failed; alias unchanged' >&2; exit 1; }
+profile=$HOME/.pi/profiles/$name
+# The skill's own script turns DUMMIES on for Pi and writes the autostart block into the profile.
+dummies_failed=no dummies_on= dummies_status=
+if [ "$dummies" = yes ]; then
+  state=$kit/packages/tenantext/skills/coordinator-skills/dummies/scripts/state.py
+  if dummies_on=$(PI_CODING_AGENT_DIR=$profile python3 "$state" on --harness pi --autostart) &&
+     dummies_status=$(PI_CODING_AGENT_DIR=$profile python3 "$state" status --harness pi); then :
+  else
+    dummies_failed=yes
+  fi
+fi
 plugin_failed=no
 if [ "$plugin" = yes ]; then
   # On a rerun the marketplace exists and its add can fail; continue only when the list names it.
@@ -395,13 +414,20 @@ if [ "$plugin" = yes ]; then
     plugin_failed=yes
   fi
 fi
-profile=$HOME/.pi/profiles/$name
 if [ -d "$HOME/.claude" ]; then
   helper links || { echo 'install: Claude skill links failed after profile success; alias unchanged' >&2; exit 1; }
 else
   echo "skills:  no ~/.claude directory, so no Claude Code skill link"
 fi
 helper alias || { echo 'install: alias setup failed after profile success' >&2; exit 1; }
+if [ -n "$dummies_status" ]; then
+  printf '%s\n' "$dummies_status"
+  printf '%s\n' "$dummies_on" | grep '^autostart: ' || :
+fi
+if [ "$dummies_failed" = yes ]; then
+  echo 'install: the DUMMIES step failed; the profile and the alias are in place' >&2
+  exit 1
+fi
 if [ "$plugin_failed" = yes ]; then
   echo 'install: the Claude Code plugin step failed; the profile and the alias are in place' >&2
   exit 1

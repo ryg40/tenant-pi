@@ -89,7 +89,8 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
             path.write_text('private custom bytes')
         before = self.snapshot()
         result = self.interactive([('Profile action', 'upgrade'), ('Name of upgrade', 'demo'),
-                                   ('Shell', 'bash'), ('Optional modules', 'wiki'), ('Apply', 'yes')])
+                                   ('Shell', 'bash'), ('Optional modules', 'wiki'), ('DUMMIES', 'n'),
+                                   ('Apply', 'yes')])
         self.success(result)
         # The report names the profile path and the startup file; its wording may change.
         for text in (str(self.profile), str(self.home / '.bashrc')):
@@ -314,6 +315,25 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.success(self.run_install('--upgrade', 'demo', '--shell', 'none', '--with', 'computer-use',
                                       '--yes', '--claude-plugin'))
         self.assertTrue((self.home / 'claude-calls').exists())
+
+    def test_dummies_runs_the_skill_script_for_the_profile_only_on_its_yes(self):
+        # A fake state.py records its call; the real one would write the state file of the tester.
+        kit = self.kit_copy(self.base / 'kit')
+        scripts = kit / 'packages/tenantext/skills/coordinator-skills/dummies/scripts'
+        scripts.mkdir(parents=True)
+        (scripts / 'state.py').write_text('''import json, os, sys
+with open(os.path.join(os.environ['HOME'], 'state-calls'), 'a') as f:
+    f.write(json.dumps({'args': sys.argv[1:], 'profile': os.environ.get('PI_CODING_AGENT_DIR')}) + '\\n')
+print('dummies: on for pi | autostart: AGENTS.md')
+''')
+        calls = self.home / 'state-calls'
+        self.success(self.install(shell='none', script=kit / 'install.sh'))
+        self.assertFalse(calls.exists())
+        self.success(self.run_install('--upgrade', 'demo', '--shell', 'none', '--with', 'none', '--yes', '--dummies',
+                                      script=kit / 'install.sh'))
+        recorded = [json.loads(line) for line in calls.read_text().splitlines()]
+        self.assertEqual(['on', '--harness', 'pi', '--autostart'], recorded[0]['args'])
+        self.assertEqual({str(self.profile)}, {call['profile'] for call in recorded})
 
     def test_symlink_profiles_cannot_target_live_or_clone(self):
         self.profile.parent.mkdir(parents=True)

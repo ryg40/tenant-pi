@@ -81,6 +81,8 @@ The module question and `--with` accept `wiki`, `hermes`, `mcp` and `computer-us
 - `--with computer-use` is your yes to desktop control. After `computer-use` as an answer to the module question, the script asks about desktop control before the install. A no stops the script before its first write.
 - When `~/.claude` exists and the `claude` command is on `PATH`, the Claude Code plugin of the module needs a separate yes: `--claude-plugin`, or a yes to its own question. `--yes` does not give it. See [the Claude Code plugin](docs/guides/modules.md#claude-code-plugin).
 
+`--dummies` turns on DUMMIES reports for the profile: a coordinator session ends each reply with a compact report for a junior developer, and `next-prompt` drafts the next action. It needs its own yes: `--dummies`, or a yes to its question. The question comes only when the installer asks the module question; a run with `--with` on the command line needs `--dummies`. `--yes` does not give it, and a no changes nothing. See [DUMMIES](docs/guides/modules.md#dummies).
+
 The script writes absent templates from `config/`. It refuses the live profile `~/.pi/agent` and each directory inside the clone. The settings template names `<clone>/packages/tenantext` as a local package and the question extension. The models template has no provider.
 
 `--runtime pi|pi-bolt|<absolute path>` selects the Pi runtime of the profile. The script looks up `pi` and `pi-bolt` on `PATH`. Without the option, an upgrade keeps the runtime of its launcher. Else the script asks when `pi` and `pi-bolt` are both on `PATH` and `--yes` is absent. Else it uses `pi`. To switch an existing profile, run an upgrade with the option:

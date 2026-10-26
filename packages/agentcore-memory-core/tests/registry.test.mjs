@@ -10,7 +10,7 @@ test("the fixture registry holds the four example people and the two example pro
   const valid = validateRegistry(registry);
   assert.deepEqual(valid.people.map((person) => [person.actorId, person.pin]),
     [["alice", "XYZ1000"], ["bruno", "XYZ1001"], ["chen", "XYZ1002"], ["dana", "XYZ1003"]]);
-  assert.ok(valid.people.every((person) => person.email.endsWith("@example.com")));
+  assert.ok(valid.people.every((person) => person.email.split("@")[1] === "example.com"));
   assert.deepEqual(valid.projects.map((project) => project.projectId), ["example-project", "example-site"]);
   assert.equal(valid.memory.memoryId, "mem-EXAMPLE");
 });

@@ -141,9 +141,9 @@ test("okknow doctor states map to the OpenKnowledge row; no origin gives no row;
     ["unreachable", 1, "error", true], ["auth-failed", 1, "error", true], ["other", 1, "error", true]];
   for (const [word, code, kind, alert] of cases) {
     // The check details can name the origin; the row keeps only the state word.
-    const row = okRow(new MemoryTracker(), okknowState(code, JSON.stringify({ state: word, checks: [{ detail: "https://ok.example.com" }] })));
+    const row = okRow(new MemoryTracker(), okknowState(code, JSON.stringify({ state: word, checks: [{ detail: "origin-marker-7f3a" }] })));
     assert.equal(row?.kind, kind, word); assert.equal(row?.alert, alert, word);
-    assert.ok(!row!.text.includes("example.com"));
+    assert.ok(!row!.text.includes("origin-marker-7f3a"));
   }
   assert.equal(okknowState(0, "not json"), "error");
   const tracker = new MemoryTracker();

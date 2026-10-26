@@ -16,6 +16,10 @@ One glossary for the repository. See [the glossary](GLOSSARY.md).
 
 The kit has no `.okf/` bundle. The tag `kit-legacy/20261021` keeps the old frozen record.
 
+### Test literals
+
+GitHub code scanning flags these test patterns on the public mirror. A test uses no host- or URL-shaped literal in a substring check (`in`, `includes`, `startsWith`, `endsWith`, `indexOf`); use a plain marker or compare the whole value. A test server copies no request data into a response header, and a test writes no credential-shaped literal in clear text.
+
 ## Local session files
 
 Terms: the coordinator is the agent session that talks to the owner; a worker is an agent session started for one task; a pane is the terminal window of a session; a worktree is a second checkout of the repository; the main checkout is the clone that holds `.git`.

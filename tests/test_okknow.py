@@ -15,7 +15,7 @@ USER, PASSWORD = 'canary-user-7f3a', 'canary-pass-9d41e2'
 
 
 class Server:
-    """A loopback HTTP server that records each request; `redirect` answers 307 to that URL."""
+    """A loopback HTTP server that records each request; `redirect` answers 307 to a fixed path on that origin."""
 
     def __init__(self, test, redirect=None):
         self.requests = []
@@ -30,7 +30,7 @@ class Server:
                 owner.requests.append((self.command, self.path, 'Authorization' in self.headers))
                 if redirect:
                     self.send_response(307)
-                    self.send_header('Location', redirect + self.path)
+                    self.send_header('Location', redirect + '/moved')
                 else:
                     self.send_response(401 if self.path == '/mcp' else 200)
                 self.send_header('content-length', '0')

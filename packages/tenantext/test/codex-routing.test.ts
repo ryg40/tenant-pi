@@ -61,16 +61,18 @@ test("configuration fails closed without revealing supplied values", () => {
 	}
 });
 
-test("three supported aliases copy GPT-6 metadata without direct OAuth endpoints", () => {
+test("supported aliases copy metadata without direct OAuth endpoints", () => {
 	const models = gatewayModels();
 	assert.deepEqual(models.map((model) => model.id), Object.keys(ALIASES).map((alias) => `codex-auto/${alias}`));
-	for (const [index, id] of Object.values(ALIASES).entries()) {
+	for (const [index, [alias, id]] of Object.entries(ALIASES).entries()) {
 		const exact = canonicalCodexProvider.getModels().find((model) => model.id === id);
 		const source = exact ?? canonicalCodexProvider.getModels().find((model) => model.id === "gpt-6-astra")!;
-		for (const field of ["contextWindow", "maxTokens", "reasoning", "thinkingLevelMap", "input", "inputLimits"] as const) assert.deepEqual(models[index][field], source[field]);
-		assert.deepEqual(models[index].cost, exact ? exact.cost : FALLBACK_API_PRICES[id.replace("gpt-6-", "") as keyof typeof FALLBACK_API_PRICES]);
+		if (exact || alias !== "terra") {
+			for (const field of ["contextWindow", "maxTokens", "reasoning", "thinkingLevelMap", "input", "inputLimits"] as const) assert.deepEqual(models[index][field], source[field]);
+		}
+		assert.deepEqual(models[index].cost, exact ? exact.cost : FALLBACK_API_PRICES[alias as keyof typeof FALLBACK_API_PRICES]);
 		assert.ok(models[index].cost.input > 0 && models[index].cost.output > 0);
-		assert.match(models[index].name, /^GPT-6 /);
+		assert.match(models[index].name, /^GPT-6(?:\.1)? /);
 		assert.equal(models[index].api, "openai-completions");
 		assert.ok(!("baseUrl" in models[index]));
 		assert.ok(!("headers" in models[index]));
@@ -80,10 +82,18 @@ test("three supported aliases copy GPT-6 metadata without direct OAuth endpoints
 test("uncataloged aliases use published API-equivalent estimates instead of zero", (t) => {
 	const astra = canonicalCodexProvider.getModels().find((entry) => entry.id === "gpt-6-astra")!;
 	t.mock.method(canonicalCodexProvider, "getModels", () => [astra]);
-	for (const [index, alias] of ["luna", "sol", "astra"].entries()) {
-		const expected = alias === "astra" ? astra.cost : FALLBACK_API_PRICES[alias as "luna" | "sol"];
+	for (const [index, alias] of Object.keys(ALIASES).entries()) {
+		const expected = alias === "astra" ? astra.cost : FALLBACK_API_PRICES[alias as keyof typeof FALLBACK_API_PRICES];
 		assert.deepEqual(gatewayModels()[index].cost, expected);
 	}
+	const terra = gatewayModels().find((model) => model.id === "codex-auto/terra")!;
+	assert.equal(ALIASES.terra, "gpt-6.1-terra");
+	assert.equal(terra.contextWindow, 272000);
+	assert.equal(terra.maxTokens, 128000);
+	assert.deepEqual(terra.input, ["text", "image"]);
+	assert.equal(terra.thinkingLevelMap?.off, "none");
+	assert.equal(terra.thinkingLevelMap?.xhigh, "xhigh");
+	assert.equal(terra.thinkingLevelMap?.max, "max");
 });
 
 test("extension keeps direct providers and commands when gateway is missing", async (t) => {
@@ -146,7 +156,7 @@ test("registered response hook validates selected accounts and ignores unrelated
 	const h = harness();
 	const states: NonNullable<CodexStatusSnapshot["routing"]>[] = [];
 	assert.equal(registerGateway(h.api, (state) => states.push(state)), true);
-	assert.equal(h.providers.get(GATEWAY_PROVIDER)?.models?.length, 3);
+	assert.ok(h.providers.get(GATEWAY_PROVIDER)?.models?.some((model) => model.id === "codex-auto/terra"));
 	await h.fire("after_provider_response", { status: 200, headers: { "x-codex-account": "codex2" } });
 	assert.equal(states.at(-1)?.selectedAccount, "codex2");
 	assert.equal(states.at(-1)?.state, "unknown");
@@ -498,7 +508,7 @@ test("collection deadline aborts an unresponsive collector", async (t) => {
 	await h.fire("session_shutdown");
 });
 
-test("Pi runtime lists the three supported aliases with saved provider authentication", async () => {
+test("Pi runtime lists supported aliases with saved provider authentication", async () => {
 	const credentials = new InMemoryCredentialStore();
 	await credentials.modify(GATEWAY_PROVIDER, async () => ({ type: "api_key", key: "fixture-only" }));
 	const runtime = await ModelRuntime.create({ credentials, modelsPath: null, allowModelNetwork: false });
@@ -506,7 +516,8 @@ test("Pi runtime lists the three supported aliases with saved provider authentic
 		baseUrl: model.baseUrl, api: "openai-completions", models: gatewayModels(),
 		streamSimple: (current, context, options) => gatewayStream(current as Model<"openai-completions">, context, options),
 	});
-	assert.equal((await runtime.getAvailable(GATEWAY_PROVIDER)).length, 3);
+	assert.deepEqual((await runtime.getAvailable(GATEWAY_PROVIDER)).map((entry) => entry.id).sort(),
+		Object.keys(ALIASES).map((alias) => `codex-auto/${alias}`).sort());
 	assert.equal(runtime.getModels("openai-codex").length, canonicalCodexProvider.getModels().length);
 	const result = await runtime.streamSimple(runtime.getModel(GATEWAY_PROVIDER, model.id)!, history, { fetch: async () => sse(), maxRetries: 0 }).result();
 	assert.equal(result.stopReason, "toolUse");

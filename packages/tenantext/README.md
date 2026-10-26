@@ -217,8 +217,8 @@ Expired credentials need provider-owned refresh or login. Reports show no token 
 
 Automatic routes use the optional `litellm-codex` provider. Set `TENANTEXT_LITELLM_BASE_URL` outside Git.
 Supply `TENANTEXT_LITELLM_API_KEY`, or save a separate gateway API key in Pi's credential storage.
-The supported model IDs are `codex-auto/luna`, `codex-auto/sol`, and `codex-auto/astra`.
-GPT-6 Terra is excluded because ChatGPT Codex rejects `gpt-6-terra` for subscription accounts.
+The supported model IDs are `codex-auto/luna`, `codex-auto/sol`, `codex-auto/astra`, and `codex-auto/terra`.
+Terra targets `gpt-6.1-terra`, not the older unavailable `gpt-6-terra` ID.
 Each request sends complete active history. The gateway applies its own account policy and can fall back once.
 Fallback cannot succeed when both accounts are exhausted.
 See [Codex routing](docs/codex-routing.md) for configuration, explicit account routes, and verification limits.

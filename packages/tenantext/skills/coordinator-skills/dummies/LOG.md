@@ -4,7 +4,7 @@
 
 ## The outcome report
 
-When the work is complete, end your last message with one outcome report. It replaces the report of that turn. Claude Code and Pi use the compact form of `REPORT.md` section 3, in compact report syntax 2 of `REPORT.md` section 6. Give the `added:` line of the page entry above it.
+When the work is complete, end your last message with one outcome report. It replaces the report of that turn. Claude Code and Pi use the compact form of `REPORT.md` section 3, in compact report syntax 2 of `REPORT.md` section 6. Give the `added:` line of the page entry above it. With `log: off` in the output of `state.py`, there is no page entry and no `added:` line; the outcome report stays.
 
 ```markdown
 **OUTCOME** The plan is settled; live changes wait for approval
@@ -36,6 +36,8 @@ The page `DUMMIES` is the human session log of a project: one entry for each ses
 The page keeps its own schema: the four labels and the Markdown tables below. Compact report syntax 2 is the chat contract only. It does not apply to the page, and a program that reads a report never reads the page.
 
 ## Add the entry of this session
+
+Skip this section when the output of `state.py` shows `log: off`. The user sets the switch with `python3 D/state.py log on|off`.
 
 Write only the body. The script makes the entry heading, `### <Mon D, YYYY, H:MM AM|PM> <zone> | Agent: <agent> | Model: <model> | <summary>`, with the time in the zone of the page and the model of the session data. It adds the entry directly below the entries heading, reads the page back and proves that each older entry is unchanged.
 
@@ -78,6 +80,7 @@ EOF
 | Exit | Meaning | What to do |
 | --- | --- | --- |
 | 0 | A line `added: ...` | Give the user that line. |
+| 0 | The line `log: off, no entry` | The user turned the page log off. Give no `added:` line. |
 | 0 | The line ends with `new entries of other writers: <n>` | Another session added `<n>` entries between the read and the write of the script. Read the page. Change nothing. |
 | 2 | The body or an argument is refused | Correct what the message names. Run the command again. When a line is refused as a credential and holds none, write it in other words. |
 | 3 | The `okknow` command failed | Give the user the message. Do not write the page in another way. |

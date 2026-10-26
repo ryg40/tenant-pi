@@ -3,10 +3,12 @@
 
 The state is one small file for each user, outside each repository:
 `dummies-skill/state.json` in `XDG_CONFIG_HOME`, or in `~/.config`. It holds one
-value for each harness, `claude` and `pi`. No file means off. A relative
+value for each harness, `claude` and `pi`, and one shared value `log` for the
+entry of `page.py add` on the page DUMMIES. No file means off, with the log on. A relative
 `XDG_CONFIG_HOME` is not used. A state file that is a link is not used.
 
 Usage: state.py [status|on|off] [--harness pi|claude] [--autostart]
+       state.py log on|off
 
     status   print one line: the state of this harness and of the other one, the
              autostart file, the Herdr role of the pane and the state file
@@ -18,6 +20,9 @@ Usage: state.py [status|on|off] [--harness pi|claude] [--autostart]
     off      set the state to off and remove each autostart block of the harness.
              After `on --autostart` and then `off`, the instruction file has the
              same bytes as before. `off` removes a file only when `on` created it
+    log on|off
+             set the page log for both harnesses. With the log off, `page.py add`
+             writes no entry. The report and the outcome report stay. Default: on
 
 Exit codes: 0 done; 1 a fault of the script; 2 wrong arguments, or the harness
 is not known; 3 the state file is not valid, not readable, not writable or a
@@ -35,7 +40,7 @@ import sys
 # A run of the script leaves no cache directory in the skill directory.
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dummies_lib import HARNESSES, Stop, detect_harness, herdr_agent, home, short, write_text  # noqa: E402
+from dummies_lib import HARNESSES, Stop, detect_harness, herdr_agent, home, short, state_path, write_text  # noqa: E402
 
 ROLES = ("coordinator", "researcher", "scout", "worker", "reviewer")
 BEGIN = "<!-- dummies-autostart:begin -->"
@@ -50,15 +55,6 @@ INSTRUCTION_NAMES = {"claude": ("CLAUDE.md",), "pi": PI_CONTEXT_FILES}
 RECORDS = ("autostart", "created")
 # The autostart block names this file, not the skill text: a harness loads the skill text only for the user.
 REPORT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "REPORT.md")
-
-
-def state_path(env=None):
-    env = os.environ if env is None else env
-    base = env.get("XDG_CONFIG_HOME") or ""
-    # A relative value is not valid: it names a place below the current directory.
-    if not os.path.isabs(base):
-        base = os.path.join(home(), ".config")
-    return os.path.join(base, "dummies-skill", "state.json")
 
 
 def refuse_link(path):
@@ -91,6 +87,8 @@ def load_state(path):
         if not isinstance(files, dict) or not all(
                 isinstance(value, list) and all(isinstance(one, str) for one in value) for value in files.values()):
             raise Stop(3, not_valid(path, f"{key} is not a list of files for each harness"))
+    if data.get("log", "on") not in ("on", "off"):
+        raise Stop(3, not_valid(path, "the value of log is not on or off"))
     return data
 
 
@@ -286,7 +284,7 @@ def status_line(data, harness, path, agent, env=None):
         role_text = f"{role} (Herdr): a task session does not use dummies"
     present = "" if os.path.isfile(path) else " (absent)"
     return (f"dummies: {data.get(harness, 'off')} for {harness} | {other}: {data.get(other, 'off')} | "
-            f"autostart: {autostart} | role: {role_text} | state file: {short(path)}{present}")
+            f"autostart: {autostart} | log: {data.get('log', 'on')} | role: {role_text} | state file: {short(path)}{present}")
 
 
 def save(path, data):
@@ -297,8 +295,20 @@ def save(path, data):
         raise Stop(3, f"state file not writable: {short(path)}: {type(error).__name__}") from None
 
 
-def run(word, named=None, autostart=False, env=None, out=print):
+def set_log(value, env=None, out=print):
+    """Save the shared page log switch. It needs no harness: both harnesses write the same page."""
+    path = state_path(env)
+    data = load_state(path)
+    was = data.get("log", "on")
+    data["log"] = value
+    save(path, data)
+    out(f"log: {value} (was {was}) | state file: {short(path)}")
+
+
+def run(word, named=None, autostart=False, env=None, out=print, log=None):
     env = os.environ if env is None else env
+    if word == "log":
+        return set_log(log, env, out)
     agent = herdr_agent(env)
     harness = detect_harness(named, env, agent)
     if harness is None:
@@ -374,17 +384,20 @@ def run(word, named=None, autostart=False, env=None, out=print):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="state.py", description="Turn the dummies skill on or off for one harness.")
-    parser.add_argument("word", nargs="?", default="status", choices=("status", "on", "off"))
+    parser.add_argument("word", nargs="?", default="status", choices=("status", "on", "off", "log"))
+    parser.add_argument("value", nargs="?", choices=("on", "off"), help="with log: on or off")
     parser.add_argument("--harness", choices=HARNESSES)
     parser.add_argument("--autostart", action="store_true",
                         help="with on: add the autostart block to the user instruction file of the harness")
     args = parser.parse_args(argv)
     if args.autostart and args.word != "on":
         parser.error("--autostart goes with on")
+    if (args.word == "log") != (args.value is not None):
+        parser.error("log takes on or off, and only log takes a second word")
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
     try:
-        run(args.word, args.harness, args.autostart)
+        run(args.word, args.harness, args.autostart, log=args.value)
     except Stop as stop:
         print(f"state.py: {stop}", file=sys.stderr)
         return stop.code

@@ -9,14 +9,24 @@ export { ACCOUNT_NAME };
 
 export const GATEWAY_PROVIDER = "litellm-codex";
 // The gateway maps the short name sol to the newest Sol, gpt-6.1-sol. The pinned names do not move.
-export const ALIASES = { luna: "gpt-6-luna", sol: "gpt-6.1-sol", astra: "gpt-6-astra" } as const;
+export const ALIASES = { luna: "gpt-6-luna", sol: "gpt-6.1-sol", astra: "gpt-6-astra", terra: "gpt-6.1-terra" } as const;
 // USD per million tokens from the Pi GPT-6 catalog; current API prices are not verified.
 // These are API-equivalent estimates, not charges to a Codex subscription.
-export const FALLBACK_API_PRICES = {
+export const FALLBACK_API_PRICES: Record<keyof typeof ALIASES, Model<"openai-completions">["cost"]> = {
 	luna: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 	sol: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
 	astra: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+	// https://developers.openai.com/api/docs/models/gpt-6.1-terra (2026-10-26).
+	terra: { input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25,
+		tiers: [{ inputTokensAbove: 272000, input: 2, output: 7.5, cacheRead: 0.1, cacheWrite: 2.5 }] },
 } as const;
+const TERRA_METADATA = {
+	reasoning: true, input: ["text", "image"] as ("text" | "image")[],
+	// The API advertises 1.05M; keep the Codex limit conservative until its catalog confirms it.
+	contextWindow: 272000, maxTokens: 128000,
+	thinkingLevelMap: { off: "none", minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: "max" },
+	cost: FALLBACK_API_PRICES.terra,
+};
 export const CONTINUATION_ERROR = "Codex gateway rejected an account-scoped continuation (HTTP 409; client error). Send full history or use an explicit account route.";
 export const GATEWAY_ERROR = "Codex gateway request failed. Check configuration, account limits, and gateway availability.";
 
@@ -63,9 +73,10 @@ export function gatewayModels() {
 		const source = exact ?? catalog.find((model) => model.id === "gpt-6-astra");
 		if (!source) throw new Error("Codex gateway catalog is unavailable. Update Pi.");
 		const { provider: _provider, api: _api, baseUrl: _url, headers: _headers, compat: _compat, ...metadata } = source;
+		if (!exact && alias === "terra") Object.assign(metadata, TERRA_METADATA);
 		const label = alias.charAt(0).toUpperCase() + alias.slice(1);
-		return { ...structuredClone(metadata), id: `codex-auto/${alias}`, name: `GPT-6 ${label} (automatic)`,
-			cost: exact ? structuredClone(exact.cost) : { ...FALLBACK_API_PRICES[alias as keyof typeof ALIASES] },
+		return { ...structuredClone(metadata), id: `codex-auto/${alias}`, name: alias === "terra" ? "GPT-6.1 Terra (automatic)" : `GPT-6 ${label} (automatic)`,
+			cost: exact ? structuredClone(exact.cost) : structuredClone(FALLBACK_API_PRICES[alias as keyof typeof ALIASES]),
 			api: "openai-completions" as const,
 			compat: { supportsStore: false, supportsReasoningEffort: true, thinkingFormat: "openai" as const, supportsOpenAIGrammarTools: false } };
 	});

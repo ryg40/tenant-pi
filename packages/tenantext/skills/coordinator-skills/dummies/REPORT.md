@@ -83,7 +83,7 @@ Report in the same turn after a failure, a surprise, a change of the plan or of 
 
 ## 5. The end of the work
 
-When the work is complete, read `LOG.md` beside this file before your last message. The work is complete each time a task of the user is done and you give your final answer for it. First add the entry of this session to the page `DUMMIES`, as `LOG.md` says. Then end your last message with the outcome report of `LOG.md`: the compact form of section 3 with an `OUTCOME` line. It replaces the report of that turn. Without `okknow`, the outcome report works; `LOG.md` says what to tell the user.
+When the work is complete, read `LOG.md` beside this file before your last message. The work is complete each time a task of the user is done and you give your final answer for it. First add the entry of this session to the page `DUMMIES`, as `LOG.md` says. When the state check of section 2 shows `log: off`, add no entry and give no `added:` line. Then end your last message with the outcome report of `LOG.md`: the compact form of section 3 with an `OUTCOME` line. It replaces the report of that turn. Without `okknow`, the outcome report works; `LOG.md` says what to tell the user.
 
 ## 6. Compact report syntax 2
 

@@ -23,9 +23,9 @@ test("Node child loader resolves gateway aliases with slash and thinking suffix"
 		assert.deepEqual(loaded.errors, []);
 		const runtime = await ModelRuntime.create({ modelsPath: null, allowModelNetwork: false });
 		for (const entry of loaded.runtime.pendingProviderRegistrations) runtime.registerProvider(entry.name, entry.config);
-		const resolved = resolveCliModel({ cliModel: "litellm-codex/codex-auto/luna:xhigh", modelRuntime: runtime });
+		const resolved = resolveCliModel({ cliModel: "litellm-codex/codex-auto/terra:xhigh", modelRuntime: runtime });
 		assert.equal(resolved.error, undefined);
-		assert.equal(resolved.model?.id, "codex-auto/luna");
+		assert.equal(resolved.model?.id, "codex-auto/terra");
 		assert.equal(resolved.thinkingLevel, "xhigh");
 	} finally {
 		if (oldUrl === undefined) delete process.env.TENANTEXT_LITELLM_BASE_URL;

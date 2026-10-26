@@ -26,6 +26,30 @@ def short(path):
     return "~" + path[len(base):] if base and (path == base or path.startswith(base + os.sep)) else path
 
 
+def state_path(env=None):
+    """The state file of the user: `dummies-skill/state.json` in `XDG_CONFIG_HOME`, or in `~/.config`."""
+    env = os.environ if env is None else env
+    base = env.get("XDG_CONFIG_HOME") or ""
+    # A relative value is not valid: it names a place below the current directory.
+    if not os.path.isabs(base):
+        base = os.path.join(home(), ".config")
+    return os.path.join(base, "dummies-skill", "state.json")
+
+
+def log_state(env=None):
+    """`on` or `off`: the shared page log switch of `state.py log`. No file, a link or a file that is not valid
+    keeps the default, on."""
+    path = state_path(env)
+    try:
+        if os.path.islink(path):
+            return "on"
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return "on"
+    return "off" if isinstance(data, dict) and data.get("log") == "off" else "on"
+
+
 def write_text(path, text, follow=True):
     """Write a file through a temporary file in the same directory, with each line end as the text has it.
 

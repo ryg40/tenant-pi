@@ -1505,6 +1505,14 @@ class PageTests(Sandbox):
                 self.assertEqual(6, result.returncode)
                 self.assertIn("the page is absent: projects/my-repo-v2/DUMMIES.", result.stderr)
 
+    def test_with_the_log_off_add_runs_no_okknow_command_and_writes_nothing(self):
+        config = str(self.work / "config")
+        self.assertEqual(0, self.run_script(STATE, "log", "off", XDG_CONFIG_HOME=config).returncode)
+        result = self.add("First result", XDG_CONFIG_HOME=config)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual([], self.calls())
+        self.assertEqual([], list((self.ok / "pages").rglob("*")))
+
     def test_a_local_file_that_the_user_named_needs_no_okknow(self):
         log = self.work / "notes/DUMMIES.md"
         log.parent.mkdir()

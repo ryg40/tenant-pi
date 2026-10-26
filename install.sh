@@ -274,6 +274,11 @@ try:
             print('+ ' + json.dumps(packages, ensure_ascii=True))
         for spec in specs:
             print('install module: ' + spec)
+        # Pi-Bolt runs on Bun, so the qmd index of the wiki opens SQLite with bun:sqlite. On macOS
+        # that SQLite loads the sqlite-vec extension only from a Homebrew SQLite at these paths.
+        brew_sqlite = ('/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib', '/usr/local/opt/sqlite/lib/libsqlite3.dylib')
+        if 'wiki' in modules and choice == 'pi-bolt' and sys.platform == 'darwin' and not any(Path(p).exists() for p in brew_sqlite):
+            print('note: wiki vector search on Pi-Bolt needs Homebrew SQLite: brew install sqlite; see docs/guides/macos.md#optional-modules')
         if os.environ.get('dummies') == 'yes':
             print('DUMMIES: on for Pi, shared by all profiles of this user; autostart block in the instruction file of the profile, else a new AGENTS.md')
         if 'computer-use' in modules and (home / '.claude').is_dir() and shutil.which('claude'):

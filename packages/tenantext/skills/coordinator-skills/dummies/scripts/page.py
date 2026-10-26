@@ -34,6 +34,9 @@ A zone is a label and a fixed UTC offset, for example "UTC (UTC+00:00)".
 The variable DUMMIES_NOW (an ISO time) replaces the clock. It is for tests only:
 when it is set, each heading has that time and not the time of the write.
 
+With the log off (`state.py log off`), `add` writes nothing, runs no okknow
+command, prints `log: off, no entry` and exits 0.
+
 Exit codes: 0 done; 1 a fault of the script; 2 wrong arguments or a refused
 input; 3 the okknow command failed; 4 the okknow command is not on the path;
 5 the session has an entry already; 6 the page is absent; 7 a new page needs a
@@ -54,7 +57,7 @@ import sys
 # A run of the script leaves no cache directory in the skill directory.
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dummies_lib import HARNESSES, Stop, detect_harness, herdr_agent, home, short, write_text  # noqa: E402
+from dummies_lib import HARNESSES, Stop, detect_harness, herdr_agent, home, log_state, short, write_text  # noqa: E402
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE = os.path.join(SKILL_DIR, "page-template.md")
@@ -790,6 +793,10 @@ def prove(before, after, heading):
 
 
 def command_add(args):
+    # The switch of the user comes first: with the log off, add needs no knowledge base and no session data.
+    if log_state() == "off":
+        print("log: off, no entry")
+        return
     store, name, project = target(args)
     summary = clean(args.summary or "")
     if not summary or len(summary.split()) > SUMMARY_WORDS:

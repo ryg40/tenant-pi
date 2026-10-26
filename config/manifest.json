@@ -856,6 +856,53 @@
           "fact": "The tools observe and act on the live desktop of the user. Screenshots and accessibility trees that a tool returns go into the conversation and so to the model provider. A loaded extension does not prove that a tool works on a given desktop."
         }
       ]
+    },
+    "okknow": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/okknow"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "okknow",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/okknow"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "OKKNOW_ORIGIN",
+        "OPENKNOWLEDGE_USERNAME",
+        "OPENKNOWLEDGE_PASSWORD"
+      ],
+      "gaps": [
+        {
+          "code": "server_required",
+          "fact": "The module needs an OpenKnowledge server of the user with HTTP Basic authentication in front of /mcp and the document API. The kit installs no server and writes no credential; the user exports OPENKNOWLEDGE_USERNAME and OPENKNOWLEDGE_PASSWORD."
+        },
+        {
+          "code": "platform_unverified",
+          "fact": "No macOS run of install.sh --with okknow, of okknow setup or of the CLI against a server. The Linux checks of the kit run the CLI and the installer offline with a scratch home and no server."
+        },
+        {
+          "code": "mcp_header_unverified",
+          "fact": "The mcp-adapter.json entry uses the header command form !<path> auth-header, read in the source of pi-mcp-adapter 7.0.0 (the kit pin): a leading ! runs the command in a shell with a 10-second limit and uses its trimmed output. No session with that adapter connected to the server through that entry."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skill with the kit pin. The profile-load step of scripts/pi_update.py qualify installs no optional module."
+        },
+        {
+          "code": "guard_not_wired",
+          "fact": "scripts/okknow-guard acts only on a server host whose config names the content directory. The installer wires it into no Claude Code hook and no Pi extension."
+        }
+      ]
     }
   }
 }

@@ -15,7 +15,7 @@ Read the knowledge sources in this order:
 
 1. The `<openviking-context>` block that the session injects.
 2. OpenViking `search` with `mode=context`.
-3. OpenKnowledge through the `okknow` skill: `okknow search` and the pages under `projects/<project>/`.
+3. OpenKnowledge through the `okknow` skill: `okknow search` and the pages under `projects/<project>/`. With no `okknow` command, skip this step and say nothing about it.
 4. In Pi only: the LLM-WIKI tools `wiki_search` and `wiki_recall`.
 
 ## Process

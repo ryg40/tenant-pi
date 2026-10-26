@@ -61,6 +61,7 @@ PUBLISH_DIRS = (
     ("packages/agentcore-memory-core", ("node_modules/",)),
     ("packages/agentcore-claude", ("node_modules/",)),
     ("packages/agentcore-memory-admin", ("node_modules/",)),
+    ("packages/okknow", ()),
 )
 # Optional list of repository-relative files or directory prefixes ending in "/".
 # The list excludes itself. A portable copy has neither the list nor its excluded files.

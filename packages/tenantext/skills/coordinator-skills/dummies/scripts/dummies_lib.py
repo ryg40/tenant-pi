@@ -1,6 +1,7 @@
 """Shared helpers of the dummies skill scripts. Python 3.11 standard library only."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -26,14 +27,48 @@ def short(path):
     return "~" + path[len(base):] if base and (path == base or path.startswith(base + os.sep)) else path
 
 
-def state_path(env=None):
-    """The state file of the user: `dummies-skill/state.json` in `XDG_CONFIG_HOME`, or in `~/.config`."""
+def config_dir(env=None):
+    """The directory `dummies-skill` of the user in `XDG_CONFIG_HOME`, or in `~/.config`."""
     env = os.environ if env is None else env
     base = env.get("XDG_CONFIG_HOME") or ""
     # A relative value is not valid: it names a place below the current directory.
     if not os.path.isabs(base):
         base = os.path.join(home(), ".config")
-    return os.path.join(base, "dummies-skill", "state.json")
+    return os.path.join(base, "dummies-skill")
+
+
+def state_path(env=None):
+    """The state file of the user: `dummies-skill/state.json` in `XDG_CONFIG_HOME`, or in `~/.config`."""
+    return os.path.join(config_dir(env), "state.json")
+
+
+def local_log_path(project, page="DUMMIES", env=None):
+    """The local log file of a project on a host with no okknow command: `dummies-skill/logs/<project>/<page>.md`.
+
+    It is in the config directory of the user and not in a repository. Both harnesses of the user share it.
+    """
+    return os.path.join(config_dir(env), "logs", project, page.rsplit("/", 1)[-1] + ".md")
+
+
+def project_slug(cwd=None):
+    """The name of the directory of the repository, of the main checkout for a worktree, as a slug.
+
+    None when the directory is not in a Git repository: the name of such a directory is no project.
+    """
+    name = os.path.basename(os.path.abspath(cwd or os.getcwd()))
+    try:
+        done = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=cwd, capture_output=True, text=True, timeout=10)
+        if done.returncode != 0:
+            return None
+        common = os.path.abspath(os.path.join(cwd or os.getcwd(), done.stdout.strip()))
+        if os.path.basename(common) == ".git":
+            name = os.path.basename(os.path.dirname(common))
+        else:
+            top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, capture_output=True, text=True, timeout=10)
+            name = os.path.basename(top.stdout.strip()) or name
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return re.sub(r"[^a-z0-9_-]+", "-", name.lower()).strip("-") or "project"
 
 
 def log_state(env=None):
@@ -50,10 +85,11 @@ def log_state(env=None):
     return "off" if isinstance(data, dict) and data.get("log") == "off" else "on"
 
 
-def write_text(path, text, follow=True):
+def write_text(path, text, follow=True, mode=None):
     """Write a file through a temporary file in the same directory, with each line end as the text has it.
 
-    A link stays a link: its target is written. With `follow` false the path itself is replaced.
+    A link stays a link: its target is written. With `follow` false the path itself is replaced. A `mode`
+    sets the mode of the file; else a file keeps its mode, and a new file gets the mode of the umask.
     """
     path = os.path.realpath(path) if follow else path
     directory = os.path.dirname(path)
@@ -62,7 +98,9 @@ def write_text(path, text, follow=True):
     try:
         with os.fdopen(handle, "w", encoding="utf-8", newline="") as out:
             out.write(text)
-        if os.path.exists(path):
+        if mode is not None:
+            os.chmod(temporary, mode)
+        elif os.path.exists(path):
             shutil.copymode(path, temporary)
         else:
             mask = os.umask(0)

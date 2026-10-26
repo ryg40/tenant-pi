@@ -3,12 +3,13 @@ import { anthropicStatus, codexStatus, copilotStatus, HealthAdapter, integration
 import { collectSession } from "./collector.ts";
 import { GitAdapter } from "./git.ts";
 import { MemoryTracker, vikingCounters } from "./memory.ts";
+import { OKKNOW_CACHE_MS } from "./okknow.ts";
 import { themePaint } from "./paint.ts";
 import { defaultLayout, hasRowsAbove, isLayoutName, layoutNames, layouts, type LayoutName } from "./layouts/index.ts";
 import { detailedReport, FooterRenderer } from "./render.ts";
 import { defaults, ensureSettings, loadSettings, saveSettings, settingsPath, type Settings } from "./settings.ts";
 import { ANTHROPIC_REFRESH, ANTHROPIC_STATUS, CODEX_REFRESH, CODEX_STATUS, COPILOT_REFRESH, COPILOT_STATUS, INTEGRATION_STATUS, OWNERSHIP, OWNERSHIP_QUERY,
-  type AgentState, type ContextService, type DashboardSnapshot, type IntegrationSnapshot, type IntegrationSource } from "./types.ts";
+  type AgentState, type ContextService, type DashboardSnapshot, type IntegrationSnapshot, type IntegrationSource, type OkknowState } from "./types.ts";
 
 export interface RuntimeDependencies {
   context: (pi: ExtensionAPI) => ContextService;
@@ -57,6 +58,8 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
   let topWidget = false;
   let shown: { width: number; lines: string[] } | undefined, shownAbove: { width: number; lines: string[] } | undefined;
   let gitFlight = false, gitQueued = false, lastGit = 0;
+  // The okknow state: one background doctor run at a time, cached for OKKNOW_CACHE_MS.
+  let okknow: OkknowState | undefined, okknowAt = 0, okknowFlight = false;
   const memory = new MemoryTracker();
   const integrations = new Map<IntegrationSource, IntegrationSnapshot>();
   const published = new Map<IntegrationSource, IntegrationSnapshot>();
@@ -85,7 +88,7 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
     const values = statuses?.() ?? new Map<string, string>();
     data.extensionStatuses = values.size;
     data.languageStatus = languageStatus(values.get("tenantext"));
-    data.memory = memory.snapshot(values, pi.getActiveTools());
+    data.memory = memory.snapshot(values, pi.getActiveTools(), okknow);
     data.conflict = pi.getCommands().some(command => command.source === "extension" &&
       /(?:^|[:/@])pi-powerline-footer(?:$|[/@])/.test(command.sourceInfo.source)) || values.has("powerline");
     const next = publicStatuses(values);
@@ -127,9 +130,15 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
     pi.events.emit(CODEX_REFRESH, undefined);
     pi.events.emit(COPILOT_REFRESH, undefined);
     pi.events.emit(ANTHROPIC_REFRESH, undefined);
-    if (healthFlight) return;
     const currentGeneration = generation;
     const adapter = health;
+    if (adapter.okknow && !okknowFlight && Date.now() - okknowAt >= OKKNOW_CACHE_MS) {
+      okknowFlight = true; okknowAt = Date.now();
+      void adapter.okknow().then(state => {
+        if (!closed && generation === currentGeneration) { okknow = state; refreshStatuses(); bump(); }
+      }).catch(() => {}).finally(() => { if (generation === currentGeneration) okknowFlight = false; });
+    }
+    if (healthFlight) return;
     healthFlight = Promise.all((["OK", "OV"] as const).map(async source => {
       const url = settings.healthUrls[source];
       if (!url) return;
@@ -154,7 +163,7 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
   function stopCollectors() {
     clearInterval(timer); timer = undefined; generation++;
     git?.dispose(); health?.dispose(); git = undefined; health = undefined; healthFlight = undefined;
-    gitFlight = false; gitQueued = false; lastGit = 0;
+    gitFlight = false; gitQueued = false; lastGit = 0; okknowFlight = false;
   }
   function enable() {
     if (!ctx || !started || closed || active || ctx.mode !== "tui") { announce(); return; }
@@ -271,7 +280,7 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
     refreshLocal();
   }));
   cleanups.push(pi.on("tool_execution_start", (event, next) => {
-    ctx = next; memory.start(event.toolCallId, event.toolName); refreshLocal();
+    ctx = next; memory.start(event.toolCallId, event.toolName, event.args); refreshLocal();
   }));
   cleanups.push(pi.on("tool_execution_end", (event, next) => {
     ctx = next; memory.end(event.toolCallId, event.toolName, event.isError, event.result); refreshLocal(); refreshGit();

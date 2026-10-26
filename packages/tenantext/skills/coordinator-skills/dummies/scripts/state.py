@@ -22,7 +22,10 @@ Usage: state.py [status|on|off] [--harness pi|claude] [--autostart]
              same bytes as before. `off` removes a file only when `on` created it
     log on|off
              set the page log for both harnesses. With the log off, `page.py add`
-             writes no entry. The report and the outcome report stay. Default: on
+             writes no entry. The report and the outcome report stay. Default: on.
+             Status shows the target of the log: `log: on (okknow)`, or with no
+             okknow command on the path `log: on (local file <path>)`, the local
+             log of the project in the config directory of the user
 
 Exit codes: 0 done; 1 a fault of the script; 2 wrong arguments, or the harness
 is not known; 3 the state file is not valid, not readable, not writable or a
@@ -35,12 +38,14 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 
 # A run of the script leaves no cache directory in the skill directory.
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dummies_lib import HARNESSES, Stop, detect_harness, herdr_agent, home, short, state_path, write_text  # noqa: E402
+from dummies_lib import (HARNESSES, Stop, detect_harness, herdr_agent, home, local_log_path,  # noqa: E402
+                         project_slug, short, state_path, write_text)
 
 ROLES = ("coordinator", "researcher", "scout", "worker", "reviewer")
 BEGIN = "<!-- dummies-autostart:begin -->"
@@ -283,8 +288,13 @@ def status_line(data, harness, path, agent, env=None):
     else:
         role_text = f"{role} (Herdr): a task session does not use dummies"
     present = "" if os.path.isfile(path) else " (absent)"
+    log = data.get("log", "on")
+    if log == "on":
+        project = project_slug()
+        log = ("on (okknow)" if shutil.which("okknow") else
+               f"on (local file {short(local_log_path(project or '<project>', env=env))})")
     return (f"dummies: {data.get(harness, 'off')} for {harness} | {other}: {data.get(other, 'off')} | "
-            f"autostart: {autostart} | log: {data.get('log', 'on')} | role: {role_text} | state file: {short(path)}{present}")
+            f"autostart: {autostart} | log: {log} | role: {role_text} | state file: {short(path)}{present}")
 
 
 def save(path, data):

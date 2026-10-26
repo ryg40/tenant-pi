@@ -184,7 +184,8 @@ function serviceGroup(s: IntegrationSnapshot, settings: Settings, now: number): 
 /** Small colored groups for row 4. Healthy, zero-value, and implementation facts stay in the report. */
 export function serviceGroups(data: DashboardSnapshot, settings: Settings, now: number): Group[] {
   const order = ["work", "OK", "OV", "MCP", "Hermes", "Wiki"];
-  const sorted = data.integrations.filter(s => !(s.source === "OV" && data.memory?.ov) && !(s.source === "Wiki" && data.memory?.wiki))
+  const sorted = data.integrations.filter(s => !(s.source === "OV" && data.memory?.ov) && !(s.source === "Wiki" && data.memory?.wiki)
+    && !(s.source === "OK" && data.memory?.ok?.state))
     .sort((a, b) => order.indexOf(a.source) - order.indexOf(b.source));
   const groups = sorted.flatMap(s => serviceGroup(s, settings, now));
   const flagged = /([1-9][0-9]*) flagged/.exec(data.languageStatus ?? "");
@@ -234,6 +235,19 @@ export function memoryGroups(data: DashboardSnapshot, now: number): MemoryGroup[
     rows.push({ key: `memory:wiki:${status}:${failed}`, text: [prefix, status, modelText, action, hint].filter(Boolean).join(" · "),
       compact: [prefix, shortModel, alert ? (failed ? "tool failed" : status) : undefined, hint ?? action].filter(Boolean).join(" · "),
       minimal: [prefix, shortModel, alert ? (failed ? "tool failed" : status) : undefined, hint].filter(Boolean).join(" · "), glyph, alert, kind: error ? "error" : alert ? "warning" : "accent" });
+  }
+  const ok = data.memory?.ok;
+  if (ok) {
+    const failed = !ok.running.length && Boolean(ok.failed);
+    const status = { connected: "connected", "no-credentials": "no credentials", unreachable: "unreachable", "auth-failed": "auth failed", error: "error" }[ok.state ?? "error"];
+    const known = ok.state !== undefined;
+    const error = failed || ok.state === "unreachable" || ok.state === "auth-failed" || ok.state === "error";
+    const warning = ok.state === "no-credentials";
+    const glyph = error ? "✗" : warning ? "⚠" : known ? "✓" : "?";
+    const shown = known ? status : "unknown";
+    rows.push({ key: `memory:ok:${shown}:${failed}`, text: [`OpenKnowledge ${glyph} ${shown}`, activity(ok)].join(" · "),
+      compact: `OK ${glyph} ${shown} · ${activity(ok)}`, minimal: `OK ${glyph} ${shown}`, glyph, alert: error || warning,
+      kind: error ? "error" : warning ? "warning" : "accent" });
   }
   return rows;
 }

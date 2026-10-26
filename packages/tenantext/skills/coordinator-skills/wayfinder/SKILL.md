@@ -139,10 +139,10 @@ Before a decision, read the facts in this order:
 
 1. The injected `<openviking-context>` block of the session.
 2. OpenViking `search` with `mode=context`.
-3. OpenKnowledge through the `okknow` skill: `okknow search` and the pages under `projects/<project>/`.
+3. OpenKnowledge through the `okknow` skill: `okknow search` and the pages under `projects/<project>/`. With no `okknow` command, skip this step and say nothing about it.
 4. In Pi only, the LLM-WIKI tools `wiki_search` and `wiki_recall`.
 
-Write targets: the resolution comment on the ticket is canonical. After a decision, append one line (a summary of at most 80 characters) to the OpenKnowledge page `projects/<project>/handoffs` through `okknow`. Use OpenViking `remember` only for a standing preference of the user.
+Write targets: the resolution comment on the ticket is canonical. After a decision, append one line (a summary of at most 80 characters) to the OpenKnowledge page `projects/<project>/handoffs` through `okknow`, when the `okknow` command is present. Use OpenViking `remember` only for a standing preference of the user.
 
 ## Fog of war
 

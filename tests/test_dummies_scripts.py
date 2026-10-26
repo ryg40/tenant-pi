@@ -271,7 +271,7 @@ class Sandbox(unittest.TestCase):
     def run_script(self, script, *args, stdin=None, okknow=True, **extra):
         # Keep real entry-point, exit-code and stdin coverage in these five tests.
         smoke = {"test_wrong_arguments_exit_2", "test_no_file_means_off_and_status_writes_nothing",
-                 "test_without_okknow_each_command_stops_with_exit_4_and_writes_nothing",
+                 "test_without_okknow_add_writes_one_entry_in_the_local_file_of_the_user",
                  "test_a_failure_of_okknow_is_exit_3", "test_a_local_file_that_the_user_named_needs_no_okknow"}
         if self._testMethodName in smoke:
             return subprocess.run([sys.executable, str(script), *args], input=stdin, capture_output=True, encoding="utf-8",
@@ -812,14 +812,16 @@ class PageTests(Sandbox):
 
     # --- no knowledge base ---
 
-    def test_without_okknow_each_command_stops_with_exit_4_and_writes_nothing(self):
-        for args in (("heading",), ("init", "--zone", "UTC"), ("add", "--summary", "S"), ("recent",), ("check",)):
-            with self.subTest(command=args[0]):
-                result = self.page(*args, "--project", "demo", stdin=BODY, okknow=False)
-                self.assertEqual(4, result.returncode, result.stdout)
-                self.assertIn("no knowledge base: the okknow command is not on the path. Tell the user.", result.stderr)
-                self.assertEqual("", result.stdout)
-        self.assertEqual([], [path for path in self.work.rglob("*.md")])
+    def test_without_okknow_add_writes_one_entry_in_the_local_file_of_the_user(self):
+        result = self.page("add", "--summary", "S", "--project", "demo", stdin=BODY, okknow=False)
+        self.assertEqual(0, result.returncode, result.stderr)
+        log = self.home / ".config/dummies-skill/logs/demo/DUMMIES.md"
+        self.assertIn("added: ~/.config/dummies-skill/logs/demo/DUMMIES.md | ", result.stdout)
+        self.assertEqual(1, sum(line.startswith("### ") for line in log.read_text(encoding="utf-8").splitlines()))
+        self.assertEqual((0o700, 0o600), (log.parent.stat().st_mode & 0o777, log.stat().st_mode & 0o777))
+        # No file in the current directory or in a repository: the one file is in the config directory of the user.
+        self.assertEqual([log], sorted(self.work.rglob("*.md")))
+        self.assertIn("| entries: 1", self.page("recent", "--project", "demo", okknow=False).stdout)
 
     @slow
     def test_a_failure_of_okknow_is_exit_3(self):

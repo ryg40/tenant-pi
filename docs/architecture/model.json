@@ -1718,6 +1718,20 @@
      ]
     },
     {
+     "id": "okknow",
+     "component": "okknow",
+     "group": "g-c-skills",
+     "label": "okknow",
+     "kind": "comp-skills",
+     "summary": "Optional: the okknow skill and CLI for one OpenKnowledge server of the user, MCP first, then the CLI. install.sh --with okknow links the CLI and runs its setup wizard.",
+     "inputs": "an OpenKnowledge server; OKKNOW_ORIGIN or okknow setup; OPENKNOWLEDGE_USERNAME and OPENKNOWLEDGE_PASSWORD in the environment",
+     "consent": "your agreement to requests to that server",
+     "doc": "docs/guides/modules.md#okknow",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
      "id": "herdr",
      "component": "herdr",
      "group": "g-c-herdr",

@@ -71,7 +71,7 @@ Keep the clone in its place. The profile names `packages/tenantext` inside it.
 
 The script offers an upgrade of an existing named profile or a new alternate profile in `~/.pi/profiles/<name>`. It asks for shell setup and optional modules, then shows the proposed changes for approval. The inherited `PI_CODING_AGENT_DIR` is only a suggestion. Without a terminal, supply every choice through the flags in `install.sh`.
 
-The module question and `--with` accept `wiki`, `hermes`, `mcp` and `computer-use`, separated by commas, or `none`:
+The module question and `--with` accept `wiki`, `hermes`, `mcp`, `computer-use` and `okknow`, separated by commas, or `none`:
 
 ```sh
 ./install.sh --new main --shell bash --with computer-use --yes
@@ -79,6 +79,7 @@ The module question and `--with` accept `wiki`, `hermes`, `mcp` and `computer-us
 
 - `computer-use` is for Linux only. On another platform the script stops before its first write, and names the open choice of a macOS module.
 - `--with computer-use` is your yes to desktop control. After `computer-use` as an answer to the module question, the script asks about desktop control before the install. A no stops the script before its first write.
+- `okknow` adds the package `<clone>/packages/okknow` to the profile, links the CLI to `~/.local/bin/okknow` and runs its setup wizard. Without a terminal, set `OKKNOW_ORIGIN` to the origin of your OpenKnowledge server. See [okknow](docs/guides/modules.md#okknow).
 - When `~/.claude` exists and the `claude` command is on `PATH`, the Claude Code plugin of the module needs a separate yes: `--claude-plugin`, or a yes to its own question. `--yes` does not give it. See [the Claude Code plugin](docs/guides/modules.md#claude-code-plugin).
 
 `--dummies` turns on DUMMIES reports for the profile: a coordinator session ends each reply with a compact report for a junior developer, and `next-prompt` drafts the next action. It needs its own yes: `--dummies`, or a yes to its question. The question comes only when the installer asks the module question; a run with `--with` on the command line needs `--dummies`. `--yes` does not give it, and a no changes nothing. See [DUMMIES](docs/guides/modules.md#dummies).
@@ -128,6 +129,7 @@ The script prints one line for each manifest that it corrects, and nothing when 
 | `hermes` | Write [the Hermes config file](docs/memory-modules.md#the-hermes-config-file); without it, the package defaults make model calls of their own. | Stores memory of the sessions in `<profile>/pi-hermes-memory/`. |
 | `wiki` | Read [an existing vault](docs/memory-modules.md#an-existing-vault). | Uses the personal vault `~/.llm-wiki` of the account, or `$WIKI_HOME/.llm-wiki`. An existing vault stays as it is. With the default settings, text of the vault goes into each prompt and so to the model provider. |
 | `computer-use` | Read [computer use](docs/guides/modules.md#computer-use). The module needs Linux, a graphical session with AT-SPI accessibility, and network access for its binary download. | The official computer-use module of the kit for Linux. Its tools read the accessibility tree, take screenshots and send input to your desktop. Screen content goes into the conversation and so to the model provider. |
+| `okknow` | An OpenKnowledge server of your own, and `OPENKNOWLEDGE_USERNAME` and `OPENKNOWLEDGE_PASSWORD` in your shell. Install it with `install.sh --with okknow`; it has no `pi install` line. See [okknow](docs/guides/modules.md#okknow). | The skill and the CLI `okknow` for that one server, over MCP first, then the CLI. The kit skills `dummies`, `research`, `to-spec`, `to-tickets` and `get-status` use it. |
 | `openviking` | `npm ci --ignore-scripts` in `<clone>/packages/openviking-pi`, and an OpenViking server that you set up. | Sends session content to that server and recalls it. See [OpenViking](docs/memory-modules.md#openviking-what-the-vendored-source-does). |
 | `agentcore` | `npm ci --ignore-scripts` in `<clone>/packages/agentcore-memory-core`, and the AWS resources of the owner. | Recalls and proposes memories in AWS AgentCore Memory. Start Pi with `AGENTCORE_MEMORY_CONFIG_FILE`; see [start and setup](docs/memory-modules.md#start-and-setup). |
 

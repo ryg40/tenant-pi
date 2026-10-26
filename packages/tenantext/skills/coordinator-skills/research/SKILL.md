@@ -14,4 +14,4 @@ Its job:
 
 Your job, when the reply arrives:
 
-3. Post the findings as a comment on the research ticket; `docs/agents/issue-tracker.md` gives the operation. When the findings are long, put them on an OpenKnowledge page under `projects/<project>/` through the `okknow` skill and link the page from the comment. The findings never go to a file on `main`. With no ticket, give the findings to the user in the session.
+3. Post the findings as a comment on the research ticket; `docs/agents/issue-tracker.md` gives the operation. When the findings are long and the `okknow` command is present, put them on an OpenKnowledge page under `projects/<project>/` through the `okknow` skill and link the page from the comment. The findings never go to a file on `main`. With no ticket, give the findings to the user in the session.

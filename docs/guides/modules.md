@@ -78,6 +78,7 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 - **Agent fan-out**: no subagents module exists. Use the Herdr skill of `packages/tenantext`. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.
 - **Questions** (`questions`): the Pi extension with the `ask_user_question` tool, in the core install. It needs an interactive session. Without it, a skill asks in plain text. It is not an extension for Claude Code.
 - **Computer use** (`computer-use`): control of the desktop on Linux. Ask about desktop control before you install it. Read [computer use](#computer-use) first.
+- **OpenKnowledge** (`okknow`): the skill and the CLI for one OpenKnowledge server of the user. Read [okknow](#okknow) first.
 
 ## Computer use
 
@@ -140,6 +141,34 @@ Each new Pi pane of a profile with the module, and each new Claude Code pane wit
 
 The pin moves in three places: the manifest spec, the line of each Pi profile, and the Claude Code plugin. `pi update --extensions` does not move the exact spec of a profile line. [The computer-use version](../../UPDATE.md#the-computer-use-version) gives the steps.
 
+## okknow
+
+The `okknow` module is the in-tree package `packages/okknow`: the skill `okknow` and its CLI `scripts/okknow`, for one OpenKnowledge (OK) server of the user. Its manifest status is `unverified`; the manifest gaps name the open facts. The kit installs no OK server.
+
+Several kit skills use it when it is present: the log page of `dummies` (its script `page.py` runs the `okknow` command), `research`, `to-spec`, `to-tickets`, `wayfinder`, `retro` and `get-status`. Without it, each of them skips the OpenKnowledge step.
+
+The package is separate from `packages/tenantext`, because Pi loads every skill of a package entry. A separate package keeps the skill out of a profile without the module.
+
+`install.sh --with okknow` does these steps:
+
+1. It adds `<clone>/packages/okknow` to the `packages` list of the profile settings. Pi then loads the skill.
+2. It links `~/.local/bin/okknow` to the CLI of the clone. It keeps another file or link of that name. When `~/.local/bin` is not on `PATH`, the profile launcher adds it at the end of `PATH`.
+3. When `~/.claude` exists, it links the skill to `~/.claude/skills/okknow`, as for the other kit skills.
+4. It runs the setup wizard `okknow setup`. With `OKKNOW_ORIGIN` set, it runs `okknow setup --origin "$OKKNOW_ORIGIN" --yes`: that run sends no credential (the installer does not pass `--probe-auth`) and keeps every key of an existing config. When the config has a different origin, the installer stops before its first write; run `okknow setup --origin <url> --yes --replace-origin` to replace it. When a user config exists and `OKKNOW_ORIGIN` is not set, it keeps that config. Else it runs the wizard in the terminal. Without a terminal, `OKKNOW_ORIGIN` or a config, it stops before its first write. The plan of the installer prints the origin.
+5. With the `mcp` module too, it adds the server `okknow` to `<profile>/mcp-adapter.json`. Its header is `Authorization: !<home>/.local/bin/okknow auth-header`: the adapter runs the CLI for the header at connect time. An existing `okknow` entry with another header stays.
+
+The wizard asks for the origin of your OK server: `https://<host>[:port]`, or `http://127.0.0.1:<port>` for a server on the same computer. It suggests no default. It checks the form, then probes the origin without credentials and prints one line for each check: `reachable` and `mcp`. Then it asks `Send OPENKNOWLEDGE_USERNAME/PASSWORD to <origin>? [y/N]`; only after a yes does it run the `authenticated` check. With `--yes`, it sends the credentials only with `--probe-auth`. It names each missing credential variable. Then it writes `~/.config/okknow/config.json` (mode 0600). It sets the origin and keeps every other key of an existing config. With `--yes`, it refuses an origin that differs from the saved origin unless `--replace-origin` is given. A failed probe does not stop the write; run `okknow doctor` later. `okknow setup --check` prints the state of the saved origin in words and sends no credential.
+
+The CLI talks only to the configured origin. It refuses another origin from `--origin`, `OKKNOW_ORIGIN` or `OPENKNOWLEDGE_ORIGIN`, refuses redirects and ignores proxy variables. With no origin configured, each command exits 4 before any request.
+
+The kit writes no credential. Keep `OPENKNOWLEDGE_USERNAME` and `OPENKNOWLEDGE_PASSWORD` in the environment of the shell that starts the agent, for example in its startup file or from a password manager. The CLI reads them at run time.
+
+Claude Code MCP is a separate step; [the okknow details](../../packages/okknow/skills/okknow/references/details.md#install-with-the-kit) give the `claude mcp add-json` line with a header helper.
+
+A server host keeps the content directory of the server on its disk. There, `okknow setup --volume <dir>` turns on the checks of that directory in `okknow doctor` and the write guard `scripts/okknow-guard`. A client has no such directory; see [the okknow details](../../packages/okknow/skills/okknow/references/details.md#server-host).
+
+To remove the module: delete the `packages/okknow` entry from the profile settings, the link `~/.local/bin/okknow`, the link `~/.claude/skills/okknow` and the `okknow` entry of `<profile>/mcp-adapter.json`.
+
 ## Claude Code
 
 The Pi profile is the reference. The Claude Code form of the kit carries each component that has a Claude Code form, and nothing else.
@@ -149,6 +178,7 @@ The Pi profile is the reference. The Claude Code form of the kit carries each co
 | `tenantext` | The `SessionStart` hook of the Simplified English rules, and `/ste` | The `tenantext` plugin |
 | `herdr` | The skill, and `/spawn_agent` | The skill: a link of `install.sh`, or the plugin. The command: the plugin |
 | `herdr-relay`, `coordinator-skills`, `knowledge-skills`, `tracker-site` | The skills | The links of `install.sh`, or the plugin |
+| `okknow` | The skill; the MCP server is a step of the user | The link of `install.sh --with okknow` |
 | `agentcore` | The plugin `packages/agentcore-claude` | `claude --plugin-dir`; see [in-tree packages](../packages.md) |
 | `computer-use` | The plugin of the package | [The Claude Code plugin](#claude-code-plugin) |
 

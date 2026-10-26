@@ -1,5 +1,5 @@
 import { safeText } from "./adapters.ts";
-import type { MemoryActivity, MemorySnapshot } from "./types.ts";
+import type { MemoryActivity, MemorySnapshot, OkknowState } from "./types.ts";
 
 const operations: Record<string, string> = {
   viking_search: "search", viking_read: "read", viking_browse: "browse", viking_remember: "remember",
@@ -39,7 +39,15 @@ export function wikiStatus(value?: string): { state: "ok" | "error" | "unknown";
   return { state: "unknown" };
 }
 
-type Source = "ov" | "wiki";
+/** An okknow MCP call: a direct tool `okknow_<tool>`, or the adapter proxy `mcp({ tool: "okknow_<tool>" })` or `mcp({ connect: "okknow" })`. */
+export function okknowOperation(name: string, args?: unknown): string | undefined {
+  const input = args && typeof args === "object" ? args as { tool?: unknown; connect?: unknown } : {};
+  const tool = name.startsWith("okknow_") ? name : name === "mcp" && typeof input.tool === "string" && input.tool.startsWith("okknow_") ? input.tool : undefined;
+  if (tool) { const op = tool.slice("okknow_".length); return /^[a-z][a-z_]{0,23}$/.test(op) ? op.replace(/_/g, " ") : "call"; }
+  return name === "mcp" && input.connect === "okknow" ? "connect" : undefined;
+}
+
+type Source = "ov" | "wiki" | "ok";
 /** Tool activity is not a connectivity probe or a claim that detached work completed. */
 export class MemoryTracker {
   private running = new Map<string, { source: Source; operation: string }>();
@@ -47,8 +55,9 @@ export class MemoryTracker {
   private suggestCapture = false;
 
   reset(): void { this.running.clear(); this.last = {}; this.suggestCapture = false; }
-  start(id: string, name: string): void {
+  start(id: string, name: string, args?: unknown): void {
     if (operations[name]) this.running.set(id, { source: name.startsWith("viking_") ? "ov" : "wiki", operation: operations[name] });
+    else { const op = okknowOperation(name, args); if (op) this.running.set(id, { source: "ok", operation: op }); }
   }
   end(id: string, name: string, isError: boolean, result?: unknown): void {
     const active = this.running.get(id);
@@ -61,20 +70,21 @@ export class MemoryTracker {
   }
   settle(): void {
     this.running.clear();
-    for (const source of ["ov", "wiki"] as const) {
+    for (const source of ["ov", "wiki", "ok"] as const) {
       if (this.last[source]?.failed) delete this.last[source];
     }
   }
   reminder(): void { this.suggestCapture = true; }
-  snapshot(statuses: ReadonlyMap<string, string>, tools: readonly string[]): MemorySnapshot {
+  snapshot(statuses: ReadonlyMap<string, string>, tools: readonly string[], okknow?: OkknowState): MemorySnapshot {
     const activity = (source: Source): MemoryActivity => ({
       running: [...this.running.values()].filter(v => v.source === source).map(v => v.operation), ...this.last[source],
     });
-    const ov = activity("ov"), wiki = activity("wiki");
+    const ov = activity("ov"), wiki = activity("wiki"), ok = activity("ok");
     const hasOv = statuses.has("openviking") || tools.some(t => t.startsWith("viking_")) || ov.running.length || ov.last;
     const hasWiki = statuses.has("llm-wiki") || statuses.has("llm-wiki-model") || tools.includes("wiki_recall") || wiki.running.length || wiki.last;
     return {
       ...(hasOv ? { ov: { ...ov, ...vikingCounters(statuses.get("openviking")) } } : {}),
+      ...(okknow || ok.running.length || ok.last ? { ok: { ...ok, ...(okknow ? { state: okknow } : {}) } } : {}),
       ...(hasWiki ? { wiki: { ...wiki, ...wikiStatus(statuses.get("llm-wiki")), ...wikiModel(statuses.get("llm-wiki-model")), suggestCapture: this.suggestCapture } } : {}),
     };
   }

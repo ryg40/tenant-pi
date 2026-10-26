@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+"""okknow-guard: block agent writes into the content directory of an OpenKnowledge server.
+
+For a server host only: it acts when the okknow config (`okknow setup --volume <dir>`) names the
+content directory of the server. Without that entry it allows every call. One source for a
+Claude Code PreToolUse hook and a Pi tool_call hook.
+Input on stdin: a Claude hook payload {tool_name, tool_input, cwd} or the Pi form
+{tool, input, cwd}. Exit 2 with a reason on stderr blocks the call. Exit 0 allows it.
+Any internal error allows the call (fail open) so a guard bug cannot stop a session.
+Reads of the volume stay allowed. Writes go through MCP `okknow` or the `okknow` CLI.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import shlex
+import stat
+import sys
+from pathlib import Path
+
+
+def _absolute_env(name: str) -> Path | None:
+    # A relative value is ignored, as the XDG rule says.
+    value = os.environ.get(name) or ""
+    return Path(value) if os.path.isabs(value) else None
+
+
+def _config() -> dict:
+    # The same rule as okknow: a regular file of this user that no group or other user can write.
+    path = _absolute_env("OKKNOW_CONFIG") or (
+        _absolute_env("XDG_CONFIG_HOME") or Path.home() / ".config") / "okknow" / "config.json"
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return {}
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or (hasattr(os, "getuid") and info.st_uid != os.getuid()) \
+                or info.st_mode & 0o022:
+            return {}
+        with os.fdopen(fd, "r") as stream:
+            fd = -1
+            data = json.loads(stream.read())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+_CFG = _config()
+_VOL = _CFG.get("volume")
+VOLUME = os.path.normpath(_VOL) if isinstance(_VOL, str) and _VOL.startswith("/") else ""
+CONTAINER = _CFG.get("container") if isinstance(_CFG.get("container"), str) else "openknowledge"
+REASON = ("okknow-guard: blocked a write into the OpenKnowledge content directory ({what}). "
+          "Direct file writes bypass the collaboration server. Write through the MCP server "
+          "`okknow` or the `okknow` CLI instead (see the okknow skill). Reads stay allowed.")
+
+FILE_TOOLS = {"write", "edit", "multiedit", "notebookedit", "str_replace_based_edit_tool"}
+TARGET_LAST = {"cp", "rsync", "install", "ln", "scp"}
+TARGET_ANY = {"mv", "rm", "rmdir", "unlink", "shred", "touch", "mkdir", "truncate", "chmod", "chown",
+              "chgrp", "tee", "patch", "setfacl", "chattr", "mkfifo", "mknod"}
+INPLACE = {"sed", "perl", "ruby"}
+INTERP = re.compile(r"\b(python[0-9.]*|node|deno|bun|perl|ruby|php)\b")
+INTERP_WRITE = re.compile(
+    r"open\([^)]*['\"][wax+]|write_text|write_bytes|unlink|rmtree|os\.remove|rename|os\.replace|"
+    r"shutil\.(copy|move)|writeFile|appendFile|rmSync|unlinkSync|renameSync|makedirs|os\.mkdir|mkdirSync|"
+    r"copyFile|>\s*[\"']?/")
+GIT_WRITE = {"commit", "checkout", "reset", "restore", "clean", "stash", "add", "rm", "mv", "merge",
+             "rebase", "pull", "apply", "am", "cherry-pick", "revert", "switch", "init", "gc", "prune",
+             "update-index", "update-ref", "worktree", "branch", "tag", "push", "fetch"}
+REDIR = re.compile(r"(?<![0-9&<>])(?:[0-9]?)>{1,2}\|?(?![&>])\s*([^\s;&|<>]+)")
+
+
+def vol_real() -> str:
+    return os.path.realpath(VOLUME)
+
+
+def in_volume(path: str, cwd: str) -> bool:
+    if not path:
+        return False
+    p = os.path.expanduser(path)
+    if not os.path.isabs(p):
+        p = os.path.join(cwd, p)
+    p = os.path.normpath(p)
+    real = os.path.realpath(p)
+    for cand in (p, real):
+        if cand == VOLUME or cand.startswith(VOLUME + "/") or cand == vol_real() or cand.startswith(vol_real() + "/"):
+            return True
+    return False
+
+
+def split_segments(cmd: str) -> list[str]:
+    # Split on ; && || | and newlines outside quotes (good enough for a guard).
+    out, cur, quote, i = [], [], None, 0
+    while i < len(cmd):
+        c = cmd[i]
+        if quote:
+            cur.append(c)
+            if c == quote:
+                quote = None
+            elif c == "\\" and quote == '"' and i + 1 < len(cmd):
+                cur.append(cmd[i + 1]); i += 1
+        elif c in "'\"":
+            quote = c; cur.append(c)
+        elif c == "\\" and i + 1 < len(cmd):
+            cur.append(c); cur.append(cmd[i + 1]); i += 1
+        elif c in ";\n|&":
+            if c == "&" and i + 1 < len(cmd) and cmd[i + 1] == ">":
+                cur.append(c)  # &> redirect
+            elif c == "|" and cur and cur[-1] == ">":
+                cur.append(c)  # >| redirect
+            elif c == "&" and cur and cur[-1] in "<>":
+                cur.append(c)  # >&2
+            else:
+                out.append("".join(cur)); cur = []
+        else:
+            cur.append(c)
+        i += 1
+    out.append("".join(cur))
+    return [s.strip() for s in out if s.strip()]
+
+
+def strip_heredocs(cmd: str) -> str:
+    """Drop heredoc bodies: their text is data, not commands."""
+    lines, out, i = cmd.split("\n"), [], 0
+    while i < len(lines):
+        out.append(lines[i])
+        delims = re.findall(r"(?<!<)<<(?!<)-?\s*['\"]?([A-Za-z_][A-Za-z0-9_]*)['\"]?", lines[i])
+        i += 1
+        for d in delims:
+            while i < len(lines) and lines[i].strip() != d:
+                i += 1
+            i += 1
+    return "\n".join(out)
+
+
+def redirect_targets(seg: str) -> list[str]:
+    """Targets of unquoted > >> >| &> redirects. Quoted text is not a redirect."""
+    try:
+        lex = shlex.shlex(seg, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        toks = list(lex)
+    except ValueError:
+        return [m.group(1).strip("'\"") for m in REDIR.finditer(seg)]
+    return [toks[i + 1] for i, t in enumerate(toks[:-1]) if t in (">", ">>", ">|", "&>", "&>>")]
+
+
+def expand(tok: str, env: dict) -> str:
+    return re.sub(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?", lambda m: env.get(m.group(1), m.group(0)), tok)
+
+
+def check_bash(cmd: str, cwd: str) -> str | None:
+    # Interpreter scripts (python -c, heredocs) that name the volume and write.
+    if VOLUME in cmd and INTERP.search(cmd) and INTERP_WRITE.search(cmd):
+        return "interpreter script writes near the volume path"
+    env: dict = {}
+    for seg in split_segments(strip_heredocs(cmd)):
+        for target in redirect_targets(seg):
+            target = expand(target, env)
+            if target != "/dev/null" and in_volume(target, cwd):
+                return f"redirect to {target}"
+        try:
+            toks = shlex.split(seg, comments=True)
+        except ValueError:
+            if VOLUME in seg and re.search(
+                    r"\b(" + "|".join(sorted(TARGET_ANY | TARGET_LAST)) + r")\b|>", seg):
+                return "unparsed command with a write verb and the volume path"
+            continue
+        toks = [expand(t, env) for t in toks]
+        while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
+            name, _, val = toks[0].partition("=")
+            env[name] = val
+            toks = toks[1:]
+        while toks and toks[0] in ("sudo", "env", "nice", "nohup", "time", "command", "exec", "xargs", "doas"):
+            toks = toks[1:]
+            while toks and (toks[0].startswith("-") or "=" in toks[0]):
+                toks = toks[1:]
+        if not toks:
+            continue
+        verb = os.path.basename(toks[0])
+        args = [t for t in toks[1:] if not t.startswith("-")]
+        if verb in ("sh", "bash", "zsh", "dash", "ksh") and any(re.fullmatch(r"-[a-z]*c[a-z]*", t) for t in toks[1:]):
+            flag = next(i for i, t in enumerate(toks) if i and re.fullmatch(r"-[a-z]*c[a-z]*", t))
+            if flag + 1 < len(toks):
+                inner = check_bash(toks[flag + 1], cwd)
+                if inner:
+                    return inner
+            continue
+        if verb == "eval":
+            inner = check_bash(" ".join(toks[1:]), cwd)
+            if inner:
+                return inner
+            continue
+        if verb == "cd":
+            cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(args[0]))) if args else os.path.expanduser("~")
+            continue
+        if verb == "docker":
+            sub = [t for t in toks[1:] if not t.startswith("-")]
+            if sub[:1] == ["cp"] and sub[-1:] and sub[-1].startswith(CONTAINER + ":"):
+                return f"docker cp into {sub[-1]}"
+            if sub[:1] == ["exec"] and CONTAINER in sub[1:3] and re.search(
+                    r"(?<![0-9&])>|\b(rm|mv|cp|tee|touch|mkdir|sed\s+-i|truncate|ln|chmod|chown)\b", seg):
+                return "docker exec that writes inside the container"
+            continue
+        if verb in TARGET_LAST and args and in_volume(args[-1], cwd):
+            return f"{verb} into {args[-1]}"
+        if verb in TARGET_ANY and any(in_volume(a, cwd) for a in args):
+            return f"{verb} on a volume path"
+        if verb in INPLACE and any(t.startswith("-i") or t == "--in-place" for t in toks[1:]) \
+                and any(in_volume(a, cwd) for a in args):
+            return f"{verb} -i on a volume path"
+        if verb == "dd" and any(t.startswith("of=") and in_volume(t[3:], cwd) for t in toks[1:]):
+            return "dd of= a volume path"
+        if verb == "find" and any(in_volume(a, cwd) for a in args) and re.search(
+                r"-delete\b|-exec(dir)?\s+(rm|mv|cp|sed|tee|truncate|chmod|chown)\b", seg):
+            return "find that changes volume files"
+        if verb == "tar" and re.search(r"(^|\s)-?[a-zA-Z]*x", " ".join(toks[1:2])) and (
+                in_volume(".", cwd) or any(in_volume(a, cwd) for a in args)):
+            return "tar extract into the volume"
+        if verb in ("unzip", "7z", "bsdtar") and (in_volume(".", cwd) or any(in_volume(a, cwd) for a in args)):
+            return f"{verb} into the volume"
+        if verb == "git":
+            gsub = [t for t in toks[1:] if not t.startswith("-")]
+            gcwd = cwd
+            if "-C" in toks:
+                gcwd = os.path.join(cwd, toks[toks.index("-C") + 1]) if toks.index("-C") + 1 < len(toks) else cwd
+                gsub = [t for t in gsub if t != toks[toks.index("-C") + 1]]
+            if gsub and gsub[0] in GIT_WRITE and in_volume(".", gcwd):
+                return f"git {gsub[0]} in the volume repository"
+    return None
+
+
+def decide(payload: dict) -> str | None:
+    tool = str(payload.get("tool_name") or payload.get("tool") or "").lower()
+    inp = payload.get("tool_input") or payload.get("input") or {}
+    cwd = payload.get("cwd") or os.getcwd()
+    if tool in FILE_TOOLS:
+        for key in ("file_path", "path", "notebook_path"):
+            if isinstance(inp.get(key), str) and in_volume(inp[key], cwd):
+                return f"{tool} {inp[key]}"
+        return None
+    if tool in ("bash", "shell"):
+        return check_bash(str(inp.get("command") or ""), cwd)
+    return None
+
+
+def main() -> int:
+    if not VOLUME:
+        return 0  # a client: no content directory on this host
+    try:
+        payload = json.load(sys.stdin)
+        what = decide(payload)
+    except Exception:  # fail open: a guard bug must not stop the session
+        return 0
+    if what:
+        print(REASON.format(what=what), file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

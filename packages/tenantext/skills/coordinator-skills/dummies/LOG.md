@@ -31,13 +31,13 @@ Tell the users of the service about the wait before the change.
 
 ## The log page
 
-The page `DUMMIES` is the human session log of a project: one entry for each session, the newest first. It is the page `projects/<project>/DUMMIES` of OpenKnowledge. The script `page.py` reads and writes it through the `okknow` command only. `<project>` is the name of the repository directory; `--project <slug>` names another project. Outside a Git repository, `--project <slug>` is necessary.
+The page `DUMMIES` is the human session log of a project: one entry for each session, the newest first. It is the page `projects/<project>/DUMMIES` of OpenKnowledge. The script `page.py` reads and writes it through the `okknow` command only. On a host with no `okknow` command, the log is the local file DUMMIES.md of the user in the directory `<XDG_CONFIG_HOME or ~/.config>/dummies-skill/logs/<project>`, shared by Claude Code and Pi. Each command of `page.py` uses it then, and `state.py` shows it as `log: on (local file <path>)`. `<project>` is the name of the repository directory; `--project <slug>` names another project. Outside a Git repository, `--project <slug>` is necessary.
 
 The page keeps its own schema: the four labels and the Markdown tables below. Compact report syntax 2 is the chat contract only. It does not apply to the page, and a program that reads a report never reads the page.
 
 ## Add the entry of this session
 
-Skip this section when the output of `state.py` shows `log: off`. The user sets the switch with `python3 D/state.py log on|off`.
+Skip this section when the output of `state.py` shows `log: off`. The user sets the switch with `python3 D/state.py log on|off`. A host with no `okknow` command has no knowledge base: that is normal, and the entry goes to the local file.
 
 Write only the body. The script makes the entry heading, `### <Mon D, YYYY, H:MM AM|PM> <zone> | Agent: <agent> | Model: <model> | <summary>`, with the time in the zone of the page and the model of the session data. It adds the entry directly below the entries heading, reads the page back and proves that each older entry is unchanged.
 
@@ -79,14 +79,13 @@ EOF
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | A line `added: ...` | Give the user that line. |
+| 0 | A line `added: ...` | Give the user that line. It names the page, or the path of the local file. |
 | 0 | The line `log: off, no entry` | The user turned the page log off. Give no `added:` line. |
 | 0 | The line ends with `new entries of other writers: <n>` | Another session added `<n>` entries between the read and the write of the script. Read the page. Change nothing. |
 | 2 | The body or an argument is refused | Correct what the message names. Run the command again. When a line is refused as a credential and holds none, write it in other words. |
-| 3 | The `okknow` command failed | Give the user the message. Do not write the page in another way. |
-| 4 | No `okknow` command | Tell the user that no knowledge base is present. Write a log file only when the user names its path: then add `--file <path>` to each command. Never choose a path in a repository yourself: an untracked file can fail a check of the repository. |
+| 3 | The `okknow` command or the file failed | Give the user the message. Do not write the page in another way. |
 | 5 | This session has an entry | Stop. Earlier entries stay as they are. For a correction, or for later work of the same session, add a new entry with `--again`. The summary of a correction starts with `Correction:`. |
-| 7 | A new page needs a zone | Ask the user one time for the zone. Then run `python3 D/page.py init --zone "<label> (UTC+HH:MM)"`, for example `"UTC (UTC+00:00)"`. With no answer, use `--zone UTC`. Then run `add` again. |
+| 7 | A new page needs a zone | The local file takes the zone of the system clock, so this code comes from `okknow` or `--file` only. Ask the user one time for the zone. Then run `python3 D/page.py init --zone "<label> (UTC+HH:MM)"`, for example `"UTC (UTC+00:00)"`. With no answer, use `--zone UTC`. Then run `add` again. |
 | 8 | The page does not follow the contract | Run `python3 D/page.py check`. Give the user the findings. Do not repair the page without the user. |
 | 9 | The write is not proven | Give the user the message. Read the page. Do not write again. |
 

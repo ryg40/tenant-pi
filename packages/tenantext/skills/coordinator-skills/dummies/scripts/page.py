@@ -35,13 +35,15 @@ The variable DUMMIES_NOW (an ISO time) replaces the clock. It is for tests only:
 when it is set, each heading has that time and not the time of the write.
 
 With the log off (`state.py log off`), `add` writes nothing, runs no okknow
-command, prints `log: off, no entry` and exits 0.
+command, prints `log: off, no entry` and exits 0. With no okknow command and no
+`--file`, each command uses the local log of the project:
+`<XDG_CONFIG_HOME or ~/.config>/dummies-skill/logs/<project>/DUMMIES.md`
+(directory 0700, file 0600). A new local log takes the zone of the system clock.
 
 Exit codes: 0 done; 1 a fault of the script; 2 wrong arguments or a refused
-input; 3 the okknow command failed; 4 the okknow command is not on the path;
-5 the session has an entry already; 6 the page is absent; 7 a new page needs a
-zone from the user; 8 the page does not follow the contract; 9 the write is not
-proven.
+input; 3 the okknow command or the file failed; 5 the session has an entry
+already; 6 the page is absent; 7 a new page needs a zone from the user; 8 the
+page does not follow the contract; 9 the write is not proven.
 Python 3.11 standard library only.
 """
 import argparse
@@ -57,7 +59,8 @@ import sys
 # A run of the script leaves no cache directory in the skill directory.
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dummies_lib import HARNESSES, Stop, detect_harness, herdr_agent, home, log_state, short, write_text  # noqa: E402
+from dummies_lib import (HARNESSES, Stop, detect_harness, herdr_agent, home, local_log_path, log_state,  # noqa: E402
+                         project_slug, short, write_text)
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE = os.path.join(SKILL_DIR, "page-template.md")
@@ -159,11 +162,6 @@ class Okknow:
 
     name = "okknow"
 
-    def __init__(self):
-        if not shutil.which("okknow"):
-            raise Stop(4, "no knowledge base: the okknow command is not on the path. Tell the user. "
-                          "Write no log file, unless the user names a path for --file.")
-
     def _run(self, arguments, text=None):
         try:
             done = subprocess.run(["okknow", *arguments], input=text, capture_output=True, encoding="utf-8",
@@ -236,12 +234,15 @@ class Okknow:
 
 
 class LocalFile:
-    """One local file that the user named."""
+    """One local file: a file that the user named, or the local log of the project on a host with no okknow."""
 
     name = "file"
 
-    def __init__(self, path):
+    def __init__(self, path, private=False):
         self.path = os.path.abspath(os.path.expanduser(path))
+        # The local log of the project: its directory is 0700, the file is 0600, and a new file takes the zone
+        # of the system clock.
+        self.private = private
 
     def read(self, page):
         try:
@@ -254,7 +255,11 @@ class LocalFile:
 
     def _write(self, text):
         try:
-            write_text(self.path, text)
+            if self.private:
+                directory = os.path.dirname(self.path)
+                os.makedirs(directory, mode=0o700, exist_ok=True)
+                os.chmod(directory, 0o700)
+            write_text(self.path, text, mode=0o600 if self.private else None)
         except OSError as error:
             raise Stop(3, f"the file is not writable: {short(self.path)}: {type(error).__name__}") from None
 
@@ -274,7 +279,15 @@ class LocalFile:
         self._write(changed)
 
     def zones(self, page):
-        return []
+        return [("the system clock", system_zone())] if self.private else []
+
+
+def system_zone():
+    """The zone of the system clock now, as a label and a fixed offset. UTC when its name is no valid label."""
+    moment = now().astimezone()
+    offset = int(moment.utcoffset().total_seconds() // 60)
+    text = "%s (UTC%s%02d:%02d)" % (moment.tzname(), "-" if offset < 0 else "+", abs(offset) // 60, abs(offset) % 60)
+    return text if parse_zone(text) else "UTC (UTC+00:00)"
 
 
 def page_name(path):
@@ -570,27 +583,6 @@ def session_facts(args, env=None):
             "session": clean(session).replace(" ", "-") if session else "unknown"}
 
 
-def project_slug(cwd=None):
-    """The name of the directory of the repository, of the main checkout for a worktree, as a slug.
-
-    None when the directory is not in a Git repository: the name of such a directory is no project.
-    """
-    name = os.path.basename(os.path.abspath(cwd or os.getcwd()))
-    try:
-        done = subprocess.run(["git", "rev-parse", "--git-common-dir"], cwd=cwd, capture_output=True, text=True, timeout=10)
-        if done.returncode != 0:
-            return None
-        common = os.path.abspath(os.path.join(cwd or os.getcwd(), done.stdout.strip()))
-        if os.path.basename(common) == ".git":
-            name = os.path.basename(os.path.dirname(common))
-        else:
-            top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd, capture_output=True, text=True, timeout=10)
-            name = os.path.basename(top.stdout.strip()) or name
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return re.sub(r"[^a-z0-9_-]+", "-", name.lower()).strip("-") or "project"
-
-
 def target(args):
     """(store, page name, project slug) of the arguments."""
     project = args.project or project_slug()
@@ -606,6 +598,10 @@ def target(args):
         raise Stop(2, "the page name is not valid: it has no `-` at its start, no `..` part and no white space")
     if args.file:
         return LocalFile(args.file), short(os.path.abspath(os.path.expanduser(args.file))), project
+    if not shutil.which("okknow"):
+        # A host with no knowledge base keeps the log in the config directory of the user, never in a repository.
+        path = local_log_path(project, page)
+        return LocalFile(path, private=True), short(path), project
     return Okknow(), page, project
 
 

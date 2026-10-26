@@ -3,6 +3,8 @@ import { test } from "node:test";
 import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { MemoryTracker, vikingCounters, wikiModel, wikiStatus } from "../extensions/ops-footer/memory.ts";
+import { okknowState } from "../extensions/ops-footer/okknow.ts";
+import { memoryGroups } from "../extensions/ops-footer/view.ts";
 import { ansiPaint, plainPaint } from "../extensions/ops-footer/paint.ts";
 import { dashboardSections, detailedReport } from "../extensions/ops-footer/render.ts";
 import { defaults } from "../extensions/ops-footer/settings.ts";
@@ -127,4 +129,26 @@ test("session wiki models follow model selection and absent labels stay unknown"
   assert.match(detailedReport(data, contextStub(), NOW), /model unknown/);
   const rows = dashboardSections(data, contextStub(), defaults, 140, ansiPaint, NOW).below;
   assert.ok(rows.every(row => !stripVTControlCharacters(row).includes("PRIVATE")));
+});
+
+test("okknow doctor states map to the OpenKnowledge row; no origin gives no row; okknow MCP calls mark activity", () => {
+  const okRow = (tracker: MemoryTracker, state?: ReturnType<typeof okknowState>) =>
+    memoryGroups({ ...healthy(), memory: tracker.snapshot(new Map(), [], state) }, NOW).find(g => g.key.startsWith("memory:ok:"));
+  assert.equal(okknowState(4, ""), undefined);
+  assert.equal(okknowState(1, JSON.stringify({ state: "not-configured" })), undefined);
+  assert.equal(okRow(new MemoryTracker(), undefined), undefined);
+  const cases: [string, number, string, boolean][] = [["connected", 0, "accent", false], ["no-credentials", 1, "warning", true],
+    ["unreachable", 1, "error", true], ["auth-failed", 1, "error", true], ["other", 1, "error", true]];
+  for (const [word, code, kind, alert] of cases) {
+    // The check details can name the origin; the row keeps only the state word.
+    const row = okRow(new MemoryTracker(), okknowState(code, JSON.stringify({ state: word, checks: [{ detail: "https://ok.example.com" }] })));
+    assert.equal(row?.kind, kind, word); assert.equal(row?.alert, alert, word);
+    assert.ok(!row!.text.includes("example.com"));
+  }
+  assert.equal(okknowState(0, "not json"), "error");
+  const tracker = new MemoryTracker();
+  tracker.start("a", "mcp", { tool: "okknow_search", args: {} }); tracker.start("b", "okknow_exec");
+  assert.deepEqual(tracker.snapshot(new Map(), []).ok?.running, ["search", "exec"]);
+  tracker.end("a", "mcp", false); tracker.end("b", "okknow_exec", false);
+  assert.equal(tracker.snapshot(new Map(), [], "connected").ok?.last, "exec");
 });

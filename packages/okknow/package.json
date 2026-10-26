@@ -1,0 +1,16 @@
+{
+  "name": "okknow",
+  "version": "1.1.0",
+  "description": "The okknow skill and CLI: one configured path to the OpenKnowledge server of the user, over MCP and the document API.",
+  "license": "MIT",
+  "private": true,
+  "keywords": [
+    "pi-package",
+    "pi"
+  ],
+  "pi": {
+    "skills": [
+      "./skills"
+    ]
+  }
+}

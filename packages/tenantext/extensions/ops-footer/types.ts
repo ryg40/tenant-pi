@@ -61,8 +61,12 @@ export interface MemoryActivity {
   last?: string;
   failed?: boolean;
 }
+/** The one word of `okknow --json doctor` that the OpenKnowledge row shows. */
+export type OkknowState = "connected" | "no-credentials" | "unreachable" | "auth-failed" | "error";
 export interface MemorySnapshot {
   ov?: MemoryActivity & { added?: number; pendingTokens?: number; threshold?: number };
+  /** Present when okknow has an origin, or when the session called an okknow MCP tool. */
+  ok?: MemoryActivity & { state?: OkknowState };
   wiki?: MemoryActivity & { state: StatusState; model?: string; sessionModel?: boolean; recalled?: number; suggestCapture: boolean };
 }
 export interface DashboardSnapshot {

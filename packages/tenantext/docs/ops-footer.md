@@ -15,7 +15,7 @@ All rows are the Pi footer below the editor. Layout v4 sets no widget. In layout
 | 3 Location and repository | Directory name, branch, original `pwd`, changed `cwd`, and Git facts on the left. Right: agent state, `queued`, duration, session name, `@host`, and the `/ops-footer report` hint | From 40 columns |
 | 4 Context bar | Proportional `sys`, `prompt`, `assistant`, `think`, `tools`, and `free` blocks; threshold markers; totals inside the bar | Always |
 | 5 and later: Quota | One row per configured account: `Codex1`, `Codex2`, `Codex3`, then `Claude`, then `Copilot`. A Copilot-only machine has one Copilot row | When quotas exist and the row budget permits |
-| Right of the quota rows: Memory | OpenViking connectivity and activity; LLM Wiki status, assigned model, and manual capture advice below it. In layout v3 this place is directly below the costs | When either integration is present |
+| Right of the quota rows: Memory | OpenViking connectivity and activity; LLM Wiki status, assigned model, and manual capture advice below it; OpenKnowledge (okknow) state and activity below that. In layout v3 this place is directly below the costs | When an integration is present |
 | Last: Services and alerts | Failed or stale services, MCP problems, pending prompts, blocked work, reviews, deployments, flagged output, footer conflict | When it has content |
 
 A healthy session with two Codex accounts shows five rows below the editor at 138 columns: model, directory, bar, `Codex1`, `Codex2`. Below 40 columns the footer shows one compact row and then the bar. Below 20 columns it shows the bar only.
@@ -116,7 +116,7 @@ In layout v3, Pi keeps widgets above the editor in the order extensions add them
 
 ### Memory status stack
 
-OpenViking sits on the right of the first quota row, below the bar (in layout v3: below session costs). LLM Wiki sits directly below OpenViking.
+OpenViking sits on the right of the first quota row, below the bar (in layout v3: below session costs). LLM Wiki sits directly below OpenViking. OpenKnowledge sits below LLM Wiki.
 At 100 columns or more, these rows share space with quota accounts when both columns fit.
 At narrower widths, memory gets separate right-aligned rows within `maximumRows`.
 
@@ -129,6 +129,11 @@ At narrower widths, memory gets separate right-aligned rows within `maximumRows`
 | `LLM Wiki · active · example-provider/example-model` | Known wiki status and its published assigned model |
 | `model unknown` | No valid `llm-wiki-model` label; the footer does not guess the configuration |
 | `suggest wiki_retro` | Manual advice after a successful `write` or `edit`, or a wiki capture reminder |
+| `OpenKnowledge ✓ connected` (narrow: `OK ✓ connected`) | `okknow --json doctor` passed: the configured origin answered MCP with the credentials |
+| `OK ⚠ no credentials`, `OK ✗ unreachable`, `OK ✗ auth failed`, `OK ✗ error` | The `state` word of the doctor. No row when okknow has no origin or no CLI |
+| `OK · search running`, `exec returned` | Observed `okknow_*` MCP calls, direct or through the `mcp` proxy tool |
+
+The OpenKnowledge row comes from the `okknow` CLI (on `PATH`, else `~/.local/bin/okknow`). The footer runs `okknow --json doctor` in the background at the external poll, at most once in 5 minutes, and stops a run after 30 seconds. It reads only the `state` word. The CLI sends the credentials only to its configured origin; the footer sends no request of its own and shows no origin or credential.
 
 #### Memory label states
 

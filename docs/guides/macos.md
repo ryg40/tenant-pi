@@ -118,6 +118,20 @@ Follow [the optional modules](../../INSTALL.md#optional-modules) unchanged. Run 
 
 Do not run the `computer-use` line on macOS. Its package supports Linux only. `install.sh --with computer-use` stops on macOS before its first write. The computer-use module for macOS is not chosen yet; see [computer use](modules.md#computer-use).
 
+For OpenKnowledge, install the `okknow` module into an existing profile. Set the origin of your own OpenKnowledge server and the two credential variables in `~/.zshrc` first, then start a new shell:
+
+```sh
+export OKKNOW_ORIGIN='https://ok.example.com'
+export OPENKNOWLEDGE_USERNAME='<user>'
+export OPENKNOWLEDGE_PASSWORD='<password>'
+```
+
+```sh
+./install.sh --upgrade <profile> --with okknow
+```
+
+Add `mcp` to `--with` (`--with mcp,okknow`) for the MCP server `okknow` of the profile. The installer links `~/.local/bin/okknow` and runs `okknow setup`, which probes the origin and writes `~/.config/okknow/config.json`. Without `OKKNOW_ORIGIN`, the wizard asks for the origin in the terminal. Then run `okknow doctor`; its last line must be `doctor: PASS`. See [okknow](modules.md#okknow). Not verified on macOS: the install, the wizard and the CLI.
+
 The packages `pi-hermes-memory` and `wiki` use the native module `better-sqlite3`. Observed with `better-sqlite3` 13.0.3 and npm 11.19.0 on Linux x64: the package holds prebuilt binaries for `darwin-arm64`, `darwin-x64`, Linux and Windows. It has no install script, so npm compiles nothing. The binaries use Node-API, so one binary loads in Node 24 (`NODE_MODULE_VERSION` 137) and in the Node 26 of Pi-Bolt 1.0.4 (147). Not verified on macOS: the `darwin-arm64` binary loads.
 
 The `wiki` package indexes and searches with `@tobilu/qmd`. Under Pi-Bolt, which runs on Bun, qmd opens SQLite with `bun:sqlite` and not with `better-sqlite3`. Observed on Linux x64: that SQLite loads the vector extension `sqlite-vec`. The qmd source states: on macOS, `bun:sqlite` uses the SQLite of the system, and that build cannot load an extension. qmd then looks for a Homebrew SQLite at `/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib` or `/usr/local/opt/sqlite/lib/libsqlite3.dylib`. Without it, wiki vector search fails with `sqlite-vec extension is unavailable`; keyword search still works. With `--runtime pi-bolt --with wiki`, `install.sh` prints a note when neither file exists. For a Pi-Bolt profile with `wiki`, install Homebrew SQLite:

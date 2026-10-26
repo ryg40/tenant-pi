@@ -1,0 +1,793 @@
+#!/usr/bin/env python3
+"""okknow: the command-line path to one OpenKnowledge (OK) server of the user.
+
+It talks only to the configured origin, over MCP (/mcp) and the document API. The origin comes
+from the user config file (written by `okknow setup`) or from OKKNOW_ORIGIN; with both, they must
+be equal. Credentials come from OPENKNOWLEDGE_USERNAME / OPENKNOWLEDGE_PASSWORD at run time.
+It never follows redirects, never uses a proxy, and never prints a credential
+(except `auth-header`, which only writes to a pipe for an agent harness).
+`okknow setup` sends a credential only after a yes, or with --yes only with --probe-auth.
+
+Exit codes: 0 success, 1 tool error or not found, 2 refused before any network request,
+3 network or authentication error, 4 no origin configured.
+"""
+from __future__ import annotations
+
+import argparse
+import base64
+import datetime as _dt
+import ipaddress
+import json
+import os
+import re
+import shlex
+import stat
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+
+
+def _absolute_env(name: str) -> Path | None:
+    """An absolute path from the environment; a relative value is ignored, as the XDG rule says."""
+    value = os.environ.get(name) or ""
+    return Path(value) if os.path.isabs(value) else None
+
+
+CONFIG_FILE = _absolute_env("OKKNOW_CONFIG") or (
+    _absolute_env("XDG_CONFIG_HOME") or Path.home() / ".config") / "okknow" / "config.json"
+BACKUP_DIR = (_absolute_env("XDG_CACHE_HOME") or Path.home() / ".cache") / "okknow" / "backups"
+TIMEOUT = float(os.environ.get("OKKNOW_TIMEOUT", "60"))
+CLIENT = {"name": "okknow-cli", "version": "1.1.0"}
+SUMMARY_MAX = 80
+NOT_CONFIGURED = 4
+CREDENTIALS = ("OPENKNOWLEDGE_USERNAME", "OPENKNOWLEDGE_PASSWORD")
+
+
+class OkError(Exception):
+    """`kind` names a network failure for `doctor --json`: "unreachable" or "auth"."""
+    def __init__(self, msg: str, code: int = 1, kind: str | None = None):
+        super().__init__(msg)
+        self.code = code
+        self.kind = kind
+
+
+# --- configuration: fail before any network request ---------------------------
+
+def origin_form(value: str) -> str:
+    """The normal form of an origin: https, or http for a loopback host only; no path, user or query."""
+    try:
+        u = urllib.parse.urlsplit(value.strip())
+        port = u.port
+    except ValueError:
+        raise OkError(f"refused origin {value!r}: not a URL.", 2) from None
+    host = (u.hostname or "").lower()
+    if u.scheme not in ("https", "http") or not host or u.username or u.password \
+            or u.path not in ("", "/") or u.query or u.fragment:
+        raise OkError(f"refused origin {value!r}: give scheme, host and port only, "
+                      "for example https://ok.example.com.", 2)
+    if u.scheme == "http" and not _loopback(host):
+        raise OkError(f"refused origin {value!r}: http is allowed only for a loopback host "
+                      "(127.0.0.1, ::1, localhost). Use https.", 2)
+    netloc = f"[{host}]" if ":" in host else host
+    return f"{u.scheme}://{netloc}" + (f":{port}" if port else "")
+
+
+def _loopback(host: str) -> bool:
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def read_config() -> dict:
+    # The origin decides where the Basic header goes, so only a regular file of this user that no
+    # other user can change counts. A link is refused (O_NOFOLLOW).
+    try:
+        fd = os.open(CONFIG_FILE, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        raise OkError(f"cannot read {CONFIG_FILE}: {e.__class__.__name__} (a link is refused). "
+                      "Run `okknow setup`.", 2) from None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or (hasattr(os, "getuid") and info.st_uid != os.getuid()) \
+                or info.st_mode & 0o022:
+            raise OkError(f"refused {CONFIG_FILE}: it must be a regular file of this user that no group or "
+                          "other user can write (chmod 600). No request was sent.", 2)
+        with os.fdopen(fd, "r") as stream:
+            fd = -1
+            data = json.loads(stream.read())
+    except (OSError, ValueError) as e:
+        raise OkError(f"cannot read {CONFIG_FILE}: {e.__class__.__name__}. Run `okknow setup`.", 2) from None
+    finally:
+        if fd >= 0:
+            os.close(fd)
+    if not isinstance(data, dict):
+        raise OkError(f"{CONFIG_FILE} is not a JSON object. Run `okknow setup`.", 2)
+    return data
+
+
+def configured_origin() -> str:
+    """The one origin that this run may talk to, from the config file or OKKNOW_ORIGIN."""
+    saved = read_config().get("origin") or ""
+    env = os.environ.get("OKKNOW_ORIGIN") or ""
+    if not saved and not env:
+        raise OkError(f"no OpenKnowledge origin is configured. Run `okknow setup`, or set OKKNOW_ORIGIN. "
+                      "No request was sent.", NOT_CONFIGURED)
+    origins = {origin_form(v) for v in (saved, env) if v}
+    if len(origins) > 1:
+        raise OkError(f"OKKNOW_ORIGIN differs from the origin in {CONFIG_FILE}. Unset one, or run "
+                      "`okknow setup` again. No request was sent.", 2)
+    return origins.pop()
+
+
+def volume() -> str | None:
+    """The content directory of the server on this host, only on a server host; else None."""
+    value = read_config().get("volume")
+    return os.path.normpath(value) if isinstance(value, str) and value.startswith("/") else None
+
+
+def credentials() -> tuple[str | None, list[str]]:
+    user, password = (os.environ.get(n) for n in CREDENTIALS)
+    missing = [n for n, v in zip(CREDENTIALS, (user, password)) if not v]
+    return (None if missing else "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()), missing
+
+
+def config(origin_flag: str | None) -> tuple[str, str]:
+    origin = configured_origin()
+    for name, other in (("--origin", origin_flag), ("OPENKNOWLEDGE_ORIGIN", os.environ.get("OPENKNOWLEDGE_ORIGIN"))):
+        if other and origin_form(other) != origin:
+            raise OkError(f"refused origin from {name}: okknow only talks to the configured origin {origin}. "
+                          "No request was sent.", 2)
+    auth, missing = credentials()
+    if missing:
+        raise OkError(f"missing credentials: {', '.join(missing)} not set. Export them in the shell that "
+                      "starts the agent. No request was sent.", 2)
+    return origin, auth
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise OkError(f"refused redirect ({code}) to {newurl!r}. okknow does not follow redirects.", 3)
+
+
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+
+
+def http(origin: str, auth: str, method: str, path: str, body: bytes | None = None,
+         headers: dict | None = None) -> tuple[int, dict, bytes]:
+    req = urllib.request.Request(origin + path, data=body, method=method)
+    req.add_header("Authorization", auth)
+    for k, v in (headers or {}).items():
+        req.add_header(k, v)
+    try:
+        with _OPENER.open(req, timeout=TIMEOUT) as r:
+            return r.status, {k.lower(): v for k, v in r.headers.items()}, r.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            raise OkError("401 from OpenKnowledge: credentials rejected.", 3, "auth")
+        return e.code, {k.lower(): v for k, v in (e.headers or {}).items()}, e.read()
+    except urllib.error.URLError as e:
+        raise OkError(f"cannot reach {origin}: {e.reason}", 3, "unreachable")
+    except OSError as e:
+        raise OkError(f"cannot reach {origin}: {e.__class__.__name__}", 3, "unreachable")
+
+
+# --- MCP over streamable HTTP --------------------------------------------------
+
+class Mcp:
+    def __init__(self, origin: str, auth: str):
+        self.origin, self.auth, self.sid, self.n = origin, auth, None, 0
+        init = self.rpc("initialize", {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": CLIENT})
+        self.server = init.get("serverInfo", {})
+        self.rpc("notifications/initialized", None, notify=True)
+
+    def rpc(self, method: str, params, notify: bool = False):
+        msg = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            msg["params"] = params
+        if not notify:
+            self.n += 1
+            msg["id"] = self.n
+        headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+        if self.sid:
+            headers["mcp-session-id"] = self.sid
+        status, h, raw = http(self.origin, self.auth, "POST", "/mcp", json.dumps(msg).encode(), headers)
+        self.sid = h.get("mcp-session-id") or self.sid
+        if status >= 400:
+            raise OkError(f"MCP {method} returned HTTP {status}: {raw[:300].decode(errors='replace')}", 3)
+        if notify:
+            return None
+        text = raw.decode()
+        if "text/event-stream" in h.get("content-type", ""):
+            data = [l[5:].strip() for l in text.splitlines() if l.startswith("data:")]
+            text = data[-1] if data else "{}"
+        reply = json.loads(text)
+        if "error" in reply:
+            raise OkError(f"MCP {method} error: {reply['error'].get('message')}")
+        return reply.get("result", {})
+
+    def call(self, tool: str, args: dict) -> dict:
+        return self.rpc("tools/call", {"name": tool, "arguments": args})
+
+    def close(self):
+        if self.sid:
+            try:
+                http(self.origin, self.auth, "DELETE", "/mcp", None, {"mcp-session-id": self.sid})
+            except OkError:
+                pass
+
+
+def result_text(res: dict) -> str:
+    return "".join(c.get("text", "") for c in res.get("content", []) if c.get("type") == "text")
+
+
+def check_tool(res: dict, what: str) -> dict:
+    if res.get("isError"):
+        raise OkError(f"{what} failed: {result_text(res).strip()[:800]}")
+    return res
+
+
+# --- helpers -------------------------------------------------------------------
+
+def doc_name(doc: str) -> str:
+    doc = doc.strip().lstrip("/")
+    vol = volume()
+    if vol and (doc + "/").startswith(vol.lstrip("/") + "/"):
+        raise OkError("give a document name such as research/futuretech/index, not a volume path.", 2)
+    if ".." in doc.split("/") or not doc:
+        raise OkError(f"invalid document name {doc!r}.", 2)
+    return re.sub(r"\.mdx?$", "", doc)
+
+
+def fetch_doc(origin: str, auth: str, name: str) -> str | None:
+    status, _, raw = http(origin, auth, "GET", "/api/document?docName=" + urllib.parse.quote(name, safe=""))
+    if status == 404:
+        return None
+    if status != 200:
+        raise OkError(f"read {name} returned HTTP {status}: {raw[:300].decode(errors='replace')}", 3)
+    body = json.loads(raw)
+    if body.get("docName") != name:
+        raise OkError(f"read {name}: server answered for {body.get('docName')!r}.", 3)
+    return body.get("content", "")
+
+
+def leaked_secret(text: str) -> bool:
+    pw = os.environ.get("OPENKNOWLEDGE_PASSWORD") or ""
+    return (len(pw) >= 6 and pw in text) or bool(re.search(r"Authorization:\s*Basic\s+[A-Za-z0-9+/=]{8,}", text))
+
+
+def has_type(text: str) -> bool:
+    m = re.match(r"---\r?\n(.*?)\r?\n---\r?\n", text, re.S)
+    return bool(m and re.search(r"^type:\s*\S", m.group(1), re.M))
+
+
+def emit(obj, as_json: bool, text: str | None = None):
+    if as_json:
+        print(json.dumps(obj, indent=1, ensure_ascii=False))
+    else:
+        sys.stdout.write(text if text is not None else json.dumps(obj, indent=1, ensure_ascii=False))
+        if text is None or not text.endswith("\n"):
+            sys.stdout.write("\n")
+
+
+# --- commands ------------------------------------------------------------------
+
+def cmd_read(a, origin, auth):
+    name = doc_name(a.doc)
+    if a.context:
+        m = Mcp(origin, auth)
+        try:
+            res = check_tool(m.call("exec", {"command": "cat " + shlex.quote(name + ".md")}), "read")
+        finally:
+            m.close()
+        return emit(res.get("structuredContent", res), a.json, result_text(res))
+    content = fetch_doc(origin, auth, name)
+    if content is None:
+        raise OkError(f"not found: {name}")
+    emit({"docName": name, "content": content}, a.json, content)
+
+
+def cmd_ls(a, origin, auth):
+    path = (a.dir or ".").strip().lstrip("/") or "."
+    m = Mcp(origin, auth)
+    try:
+        res = check_tool(m.call("exec", {"command": "ls " + shlex.quote(path)}), "ls")
+    finally:
+        m.close()
+    text = result_text(res)
+    if text.startswith("stderr:"):
+        raise OkError(text.strip())
+    emit(res.get("structuredContent", res), a.json, text)
+
+
+def cmd_search(a, origin, auth):
+    m = Mcp(origin, auth)
+    try:
+        res = check_tool(m.call("search", {"query": " ".join(a.query), "limit": a.limit}), "search")
+    finally:
+        m.close()
+    emit(res.get("structuredContent", res), a.json, result_text(res))
+
+
+def cmd_write(a, origin, auth):
+    name = doc_name(a.doc)
+    summary = (a.summary or "").strip()
+    if not summary:
+        raise OkError("--summary is required (agent, model, project, intent).", 2)
+    if len(summary) > SUMMARY_MAX:
+        raise OkError(f"--summary is {len(summary)} characters; the limit is {SUMMARY_MAX}.", 2)
+    content = sys.stdin.read() if a.file == "-" else Path(a.file).read_text()
+    if leaked_secret(content) or leaked_secret(summary):
+        raise OkError("refused: the content or summary contains a credential. No request was sent.", 2)
+    position = "append" if a.append else "prepend" if a.prepend else "replace"
+    current = fetch_doc(origin, auth, name)
+    if current is not None and position == "replace" and not a.replace:
+        raise OkError(f"{name} exists. Read it first, then pass --replace (full rewrite) or --append.", 2)
+    if position == "replace" and not a.no_type_check and not has_type(content):
+        raise OkError("refused: a page needs frontmatter with `type:` (use --no-type-check to override).", 2)
+    backup = None
+    if current is not None and position == "replace":
+        # A page copy is private from its first byte: a 0700 directory and a new 0600 file.
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(BACKUP_DIR, 0o700)
+        stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        backup = BACKUP_DIR / f"{name.replace('/', '__')}.{stamp}.md"
+        fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(fd, "w") as stream:
+            stream.write(current)
+    args = {"document": {"path": name, "content": content, "position": position}, "summary": summary}
+    m = Mcp(origin, auth)
+    try:
+        res = m.call("write", args)
+        wait = re.search(r"Concurrent overwrite refused.*?Retry after (\d+)s", result_text(res), re.S)
+        if res.get("isError") and wait:
+            # The server refuses a replace right after another write. Retry once, and only
+            # when the page still equals what we read (a small compare-and-swap).
+            time.sleep(min(int(wait.group(1)), 15) + 1)
+            if fetch_doc(origin, auth, name) != current:
+                raise OkError(f"{name} changed since it was read. Read it again before --replace.")
+            res = m.call("write", args)
+        check_tool(res, "write")
+    finally:
+        m.close()
+    out = res.get("structuredContent", {"text": result_text(res)})
+    if backup:
+        out = {**out, "backup": str(backup)} if isinstance(out, dict) else out
+    emit(out, a.json, f"wrote {name} ({position})" + (f"; previous version saved to {backup}" if backup else "")
+         + "".join(f"\nwarning: {w}" for w in _warnings(out)))
+
+
+def _warnings(out) -> list:
+    doc = out.get("document", {}) if isinstance(out, dict) else {}
+    return [w.get("kind", str(w)) if isinstance(w, dict) else str(w) for w in doc.get("warnings", []) or []]
+
+
+def cmd_rm(a, origin, auth):
+    name = doc_name(a.doc)
+    if not a.yes:
+        raise OkError(f"delete is irreversible from the CLI. Re-run with --yes to delete {name}.", 2)
+    m = Mcp(origin, auth)
+    try:
+        res = check_tool(m.call("delete", {"document": name}), "delete")
+    finally:
+        m.close()
+    emit(res.get("structuredContent", res), a.json, f"deleted {name}")
+
+
+def cmd_asset(a, origin, auth):
+    src = Path(a.file)
+    data = src.read_bytes()
+    if len(data) > 8 * 1024 * 1024:
+        raise OkError("asset is larger than 8 MiB; split or shrink it.", 2)
+    dest = a.dest.strip().lstrip("/")
+    if ".." in dest.split("/") or "." not in dest.rsplit("/", 1)[-1]:
+        raise OkError("destination must be a content path with an extension, for example images/diagram.png.", 2)
+    m = Mcp(origin, auth)
+    try:
+        args = {"asset": {"path": dest, "content": base64.b64encode(data).decode()}}
+        if a.summary:
+            args["summary"] = a.summary[:SUMMARY_MAX]
+        res = check_tool(m.call("write", args), "asset put")
+    finally:
+        m.close()
+    emit(res.get("structuredContent", res), a.json, f"uploaded {dest} ({len(data)} bytes)")
+
+
+def cmd_tools(a, origin, auth):
+    m = Mcp(origin, auth)
+    try:
+        tools = m.rpc("tools/list", {}).get("tools", [])
+    finally:
+        m.close()
+    emit([t["name"] for t in tools], a.json,
+         "\n".join(f"{t['name']:<17} {(t.get('description') or '').splitlines()[0][:90]}" for t in tools))
+
+
+def cmd_call(a, origin, auth):
+    args = json.loads(sys.stdin.read() if a.args == "-" else (a.args or "{}"))
+    m = Mcp(origin, auth)
+    try:
+        res = m.call(a.tool, args)
+    finally:
+        m.close()
+    emit(res, True)
+    if res.get("isError"):
+        raise OkError(f"{a.tool} returned isError", 1)
+
+
+def cmd_auth_header(a, origin, auth):
+    # For agent harness header helpers only (Claude Code headersHelper, pi-mcp-adapter "!cmd").
+    # Claude Code names the server URL; pi-mcp-adapter names none, so there only the pipe rule holds.
+    # The header is always for the configured origin. See references/details.md.
+    if sys.stdout.isatty():
+        raise OkError("auth-header writes a credential; it only writes to a pipe read by an agent harness.", 2)
+    url = os.environ.get("CLAUDE_CODE_MCP_SERVER_URL")
+    if url and not url.startswith(origin + "/"):
+        raise OkError(f"refused: header requested for {url!r}, not {origin}.", 2)
+    sys.stdout.write(json.dumps({"Authorization": auth}) if a.json else auth)
+
+
+def other_ok_processes(vol: str, lock_host: str | None) -> tuple[list, list]:
+    """Return (volume_conflicts, other_host_servers). Container processes are expected."""
+    pat = re.compile(r"open-knowledge|@inkeep/open-knowledge|/ok\.sh\b|(^|/)ok\s+(mcp|start|serve|cowork)\b")
+    conflicts, others = [], []
+    me = os.getpid()
+    for p in Path("/proc").iterdir():
+        if not p.name.isdigit() or int(p.name) == me:
+            continue
+        try:
+            cmd = (p / "cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace").strip()
+            if not cmd or not pat.search(cmd) or "okknow" in cmd:
+                continue
+            cgroup = (p / "cgroup").read_text()
+            if lock_host and f"docker-{lock_host}" in cgroup:
+                continue
+            try:
+                cwd = os.readlink(p / "cwd")
+            except OSError:
+                cwd = "?"
+        except (OSError, PermissionError):
+            continue
+        row = {"pid": int(p.name), "cwd": cwd, "cmd": cmd[:160]}
+        (conflicts if (cwd.startswith(vol) or vol in cmd) else others).append(row)
+    return conflicts, others
+
+
+def cmd_doctor(a, origin_flag):
+    checks, ok = [], True
+
+    def rec(name, passed, detail):
+        nonlocal ok
+        ok &= passed is not False
+        checks.append({"check": name, "status": {True: "pass", False: "FAIL", None: "warn"}[passed], "detail": detail})
+
+    try:
+        origin, auth = config(origin_flag)
+        rec("credentials", True, "OPENKNOWLEDGE_USERNAME/PASSWORD set; origin " + origin)
+    except OkError as e:
+        rec("credentials", False, str(e))
+        state = "not-configured" if e.code == NOT_CONFIGURED else "no-credentials" if credentials()[1] else "refused"
+        _doctor_out(checks, False, a.json, state)
+        return e.code if e.code == NOT_CONFIGURED else 1
+    # state: one word for a status line (the ops footer): connected, unreachable, auth-failed, error.
+    state = "connected"
+    try:
+        m = Mcp(origin, auth)
+        tools = m.rpc("tools/list", {}).get("tools", [])
+        m.close()
+        rec("mcp", True, f"{origin}/mcp answered initialize and tools/list ({len(tools)} tools)")
+        name, ver = m.server.get("name"), m.server.get("version")
+        rec("server", name == "open-knowledge", f"{name} {ver}")
+    except OkError as e:
+        rec("mcp", False, str(e))
+        state = {"unreachable": "unreachable", "auth": "auth-failed"}.get(e.kind or "", "error")
+    status = probe_unauthenticated(origin)
+    rec("auth-required", status == 401 if isinstance(status, int) else None,
+        f"/mcp without credentials -> HTTP {status}" if isinstance(status, int) else f"could not test: {status}")
+    vol = volume()
+    if vol:
+        # Only on a server host: the config names the content directory of the server.
+        lock_host = None
+        try:
+            lock_host = json.loads(Path(vol, ".ok/local/server.lock").read_text()).get("hostname")
+            rec("server-lock", True, f"server.lock owner is {lock_host}")
+        except (OSError, ValueError) as e:
+            rec("server-lock", None, f"cannot read server.lock ({e.__class__.__name__}); process check is less precise")
+        if Path("/proc").is_dir():
+            conflicts, others = other_ok_processes(vol, lock_host)
+            rec("single-server", not conflicts,
+                "no host OpenKnowledge process uses the volume" if not conflicts else json.dumps(conflicts))
+            if others:
+                rec("other-ok-processes", None, "host OpenKnowledge processes outside the volume: " + json.dumps(others))
+    return _doctor_out(checks, ok, a.json, state if ok or state != "connected" else "error")
+
+
+def probe_unauthenticated(origin: str):
+    """The HTTP status of a POST to /mcp without credentials, or the text of the failure."""
+    try:
+        req = urllib.request.Request(origin + "/mcp", data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json"})
+        with _OPENER.open(req, timeout=10) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+    except (urllib.error.URLError, OkError, OSError) as e:
+        return str(getattr(e, "reason", e))
+
+
+# --- setup: the wizard that writes the user config -------------------------------
+
+def _ask(question: str) -> str:
+    sys.stderr.write(question + " ")
+    sys.stderr.flush()
+    line = sys.stdin.readline()
+    if not line:
+        raise OkError("setup cancelled: no answer.", 1)
+    return line.strip()
+
+
+def probe_open(origin: str) -> list[tuple[str, bool | None, str]]:
+    """The two checks without credentials: reachable and the MCP endpoint."""
+    try:
+        req = urllib.request.Request(origin + "/", method="GET")
+        with _OPENER.open(req, timeout=10) as r:
+            rows = [("reachable", True, f"{origin}/ -> HTTP {r.status}")]
+    except urllib.error.HTTPError as e:
+        rows = [("reachable", True, f"{origin}/ -> HTTP {e.code}")]
+    except (urllib.error.URLError, OkError, OSError) as e:
+        return [("reachable", False, f"cannot reach {origin}: {getattr(e, 'reason', e)}"), ("mcp", None, "not tested")]
+    status = probe_unauthenticated(origin)
+    if status == 401:
+        rows.append(("mcp", True, "/mcp answers and asks for credentials (HTTP 401)"))
+    elif isinstance(status, int) and status < 400 or status in (400, 405, 406):
+        rows.append(("mcp", True, f"/mcp answers without credentials (HTTP {status})"))
+    else:
+        rows.append(("mcp", False, f"/mcp -> {'HTTP ' + str(status) if isinstance(status, int) else status}"))
+    return rows
+
+
+def probe_auth(origin: str, auth: str) -> tuple[str, bool | None, str]:
+    """The one check that sends the credentials: MCP initialize and tools/list."""
+    try:
+        m = Mcp(origin, auth)
+        tools = m.rpc("tools/list", {}).get("tools", [])
+        m.close()
+        return "authenticated", True, f"initialize and tools/list answered ({len(tools)} tools)"
+    except OkError as e:
+        return "authenticated", False, str(e)
+
+
+def _print_rows(rows) -> None:
+    for name, passed, detail in rows:
+        print(f"{ {True: 'pass', False: 'FAIL', None: 'skip'}[passed]:<5} {name:<14} {detail}")
+
+
+def write_config(data: dict) -> None:
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, name = tempfile.mkstemp(prefix=".config-", dir=CONFIG_FILE.parent)
+    with os.fdopen(fd, "w") as stream:
+        stream.write(json.dumps(data, indent=2) + "\n")
+    os.chmod(name, 0o600)
+    os.replace(name, CONFIG_FILE)
+
+
+def _same_origin(saved: str, origin: str) -> bool:
+    try:
+        return origin_form(saved) == origin
+    except OkError:
+        return False
+
+
+def _guard_replace(a, saved: str, origin: str) -> None:
+    """--yes keeps a saved origin; only --replace-origin replaces it. Before any request."""
+    if saved and not _same_origin(saved, origin) and a.yes and not a.replace_origin:
+        raise OkError(f"refused: {CONFIG_FILE} has the origin {saved}, not {origin}. setup --yes keeps a saved "
+                      "origin; pass --replace-origin to replace it. Nothing was sent or written.", 2)
+
+
+def cmd_setup(a) -> int:
+    interactive = not a.yes
+    if interactive and not sys.stdin.isatty():
+        raise OkError("setup needs a terminal; without one, run `okknow setup --origin <url> --yes`.", NOT_CONFIGURED)
+    current = read_config()
+    saved = current.get("origin") if isinstance(current.get("origin"), str) else ""
+    origin = a.origin or (None if interactive else os.environ.get("OKKNOW_ORIGIN"))
+    if not origin and not interactive:
+        raise OkError("no origin: pass --origin <url> or set OKKNOW_ORIGIN. Nothing was written.", NOT_CONFIGURED)
+    while True:
+        if not origin:
+            hint = saved or os.environ.get("OKKNOW_ORIGIN")
+            print("The origin of your own OpenKnowledge server: https://<host>[:port], or "
+                  "http://127.0.0.1:<port> for a server on this computer.", file=sys.stderr)
+            origin = _ask(f"OpenKnowledge origin [{hint}]:" if hint else "OpenKnowledge origin:") or hint or ""
+        try:
+            origin = origin_form(origin)
+            break
+        except OkError as e:
+            if not interactive:
+                raise
+            print(f"okknow: {e}", file=sys.stderr)
+            origin = None
+    _guard_replace(a, saved, origin)
+    print(f"origin: {origin}")
+    rows = []
+    if not a.no_probe:
+        # First the checks without credentials; the credentials go out only after a yes.
+        rows = probe_open(origin)
+        _print_rows(rows)
+        auth, missing = credentials()
+        if missing:
+            row = ("authenticated", None, "not tested: " + ", ".join(missing) + " not set")
+        elif rows[0][1] is False:
+            row = ("authenticated", None, "not tested: the origin is not reachable")
+        elif interactive:
+            send = _ask(f"Send OPENKNOWLEDGE_USERNAME/PASSWORD to {origin}? [y/N]").lower() in ("y", "yes")
+            row = probe_auth(origin, auth) if send else ("authenticated", None, "not tested: credentials not sent")
+        elif a.probe_auth:
+            row = probe_auth(origin, auth)
+        else:
+            row = ("authenticated", None, "not tested: credentials not sent (add --probe-auth)")
+        rows.append(row)
+        _print_rows([row])
+    _, missing = credentials()
+    for name in missing:
+        print(f"missing: {name}. Export it in the startup file of your shell (~/.zshrc or ~/.bashrc), "
+              f"for example: export {name}='...'. okknow never stores it.")
+    # Keep every key of the config (volume, container and others); set only the origin and the volume.
+    data = dict(current)
+    if saved and not _same_origin(saved, origin):
+        print(f"note: replaces the origin {saved} of {CONFIG_FILE}")
+    data["origin"] = origin
+    if a.volume:
+        data["volume"] = os.path.normpath(a.volume)
+    if interactive and _ask(f"Write {CONFIG_FILE}? [y/N]").lower() not in ("y", "yes"):
+        print("setup: nothing written")
+        return 1
+    write_config(data)
+    failed = sum(1 for _, passed, _ in rows if passed is False)
+    print(f"setup: wrote {CONFIG_FILE}" + (f"; {failed} probe check(s) failed" if failed else ""))
+    return 0
+
+
+def cmd_check(a) -> int:
+    """setup --check: the state of the origin in words, without credentials and without a write."""
+    current = read_config()
+    saved = current.get("origin") if isinstance(current.get("origin"), str) else ""
+    env = os.environ.get("OKKNOW_ORIGIN") or ""
+    value, source = (a.origin, "--origin") if a.origin else (env, "OKKNOW_ORIGIN") if env else (saved, str(CONFIG_FILE))
+    if not value:
+        raise OkError("no OpenKnowledge origin is configured. Run `okknow setup`, or set OKKNOW_ORIGIN. "
+                      "No request was sent.", NOT_CONFIGURED)
+    origin = origin_form(value)
+    _guard_replace(a, saved, origin)
+    print(f"origin       {origin} (from {source})")
+    if saved and not _same_origin(saved, origin):
+        print(f"saved        {saved} in {CONFIG_FILE}; `setup --yes` keeps it unless --replace-origin")
+    failed = False
+    if not a.no_probe:
+        for name, passed, detail in probe_open(origin):
+            word = {True: "yes: ", False: "no: ", None: ""}[passed]
+            print(f"{'MCP' if name == 'mcp' else name:<12} {word}{detail}")
+            failed |= passed is False
+    _, missing = credentials()
+    print("credentials  " + ("set (OPENKNOWLEDGE_USERNAME, OPENKNOWLEDGE_PASSWORD)" if not missing else
+                             "missing: " + ", ".join(missing) + "; export them in ~/.zshrc or ~/.bashrc"))
+    print("check: " + ("the origin does not answer; see `okknow setup`" if failed else
+                       "the origin form is valid; no request was sent" if a.no_probe else
+                       "set the missing credentials, then run `okknow doctor`" if missing else
+                       "ready; `okknow doctor` sends the credentials and tests them"))
+    return 3 if failed else 0
+
+
+def _doctor_out(checks, ok, as_json, state):
+    if as_json:
+        print(json.dumps({"ok": ok, "state": state, "checks": checks}, indent=1))
+    else:
+        for c in checks:
+            print(f"{c['status']:<5} {c['check']:<19} {c['detail']}")
+        print("doctor: " + ("PASS" if ok else "FAIL"))
+    return 0 if ok else 1
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(prog="okknow", description=__doc__.splitlines()[0])
+    ap.add_argument("--origin", help="must equal the configured origin; any other origin is refused")
+    ap.add_argument("--json", action="store_true", help="print JSON")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("read", help="print a document (exact content)")
+    p.add_argument("doc")
+    p.add_argument("--context", action="store_true", help="MCP exec cat: adds frontmatter, backlinks, history")
+    p = sub.add_parser("ls", help="list a folder")
+    p.add_argument("dir", nargs="?")
+    p = sub.add_parser("search", help="ranked full-text search")
+    p.add_argument("query", nargs="+")
+    p.add_argument("--limit", type=int, default=20)
+    p = sub.add_parser("write", help="write a document from a file (- for stdin)")
+    p.add_argument("doc")
+    p.add_argument("file")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--append", action="store_true")
+    g.add_argument("--prepend", action="store_true")
+    g.add_argument("--replace", action="store_true", help="required to overwrite an existing document")
+    p.add_argument("--summary", required=True, help="<=80 chars: agent, model, project, intent")
+    p.add_argument("--no-type-check", action="store_true")
+    p = sub.add_parser("rm", help="delete a document")
+    p.add_argument("doc")
+    p.add_argument("--yes", action="store_true")
+    p = sub.add_parser("asset", help="asset put <file> <dest>")
+    asub = p.add_subparsers(dest="asset_cmd", required=True)
+    q = asub.add_parser("put")
+    q.add_argument("file")
+    q.add_argument("dest")
+    q.add_argument("--summary")
+    sub.add_parser("tools", help="list MCP tools")
+    p = sub.add_parser("call", help="raw MCP tool call: call <tool> '<json>' (or - for stdin)")
+    p.add_argument("tool")
+    p.add_argument("args", nargs="?")
+    sub.add_parser("doctor", help="check credentials, /mcp, version, and on a server host the single server")
+    p = sub.add_parser("setup", help="ask for the origin, probe it once, write the user config")
+    p.add_argument("--origin", dest="setup_origin", help="the origin of your OpenKnowledge server")
+    p.add_argument("--volume", help="server host only: the content directory of the server")
+    p.add_argument("--yes", action="store_true", help="no questions; write the config; keep a saved origin")
+    p.add_argument("--replace-origin", action="store_true", help="with --yes: replace a different saved origin")
+    p.add_argument("--probe-auth", action="store_true", help="with --yes: send the credentials in the probe")
+    p.add_argument("--no-probe", action="store_true", help="send no request")
+    p.add_argument("--check", action="store_true",
+                   help="print the state of the origin (--origin, OKKNOW_ORIGIN or the config) without "
+                        "credentials; write nothing")
+    sub.add_parser("origin", help="print the configured origin")
+    sub.add_parser("auth-header", help=argparse.SUPPRESS)
+    a = ap.parse_args(argv)
+    try:
+        if a.cmd == "doctor":
+            return cmd_doctor(a, a.origin)
+        if a.cmd == "setup":
+            # `okknow --origin X setup` and `okknow setup --origin X` are the same; two values must agree.
+            if a.origin and a.setup_origin and origin_form(a.origin) != origin_form(a.setup_origin):
+                raise OkError("two different --origin values. Give one. Nothing was sent or written.", 2)
+            a.origin = a.setup_origin or a.origin
+            return cmd_check(a) if a.check else cmd_setup(a)
+        if a.cmd == "origin":
+            print(configured_origin())
+            return 0
+        origin, auth = config(a.origin)
+        {"read": cmd_read, "ls": cmd_ls, "search": cmd_search, "write": cmd_write, "rm": cmd_rm,
+         "asset": cmd_asset, "tools": cmd_tools, "call": cmd_call, "auth-header": cmd_auth_header}[a.cmd](a, origin, auth)
+        return 0
+    except OkError as e:
+        print(f"okknow: {e}", file=sys.stderr)
+        return e.code
+    except BrokenPipeError:
+        # The reader closed the pipe (`okknow read ... | head`): a normal end, not an error.
+        _quiet_stdout()
+        return 0
+    except (OSError, ValueError) as e:
+        print(f"okknow: {e.__class__.__name__}: {e}", file=sys.stderr)
+        return 2
+
+
+def _quiet_stdout() -> None:
+    # Python flushes stdout at exit; point it at /dev/null so a closed pipe stays quiet.
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError):
+        pass
+
+
+if __name__ == "__main__":
+    code = main()
+    try:
+        sys.stdout.flush()
+    except BrokenPipeError:
+        _quiet_stdout()
+    sys.exit(code)

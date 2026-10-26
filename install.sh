@@ -44,7 +44,7 @@ if [ "$mode" = upgrade ]; then
 fi
 if [ -z "$name" ]; then ask "Name of $mode profile:"; name=$answer; fi
 if [ -z "$shell" ]; then ask 'Shell [bash/zsh/none]:'; shell=$answer; fi
-if [ -z "$modules" ]; then ask 'Optional modules [wiki,hermes,mcp,computer-use or none]:'; modules=$answer; asked=yes; fi
+if [ -z "$modules" ]; then ask 'Optional modules [wiki,hermes,mcp,computer-use,okknow or none]:'; modules=$answer; asked=yes; fi
 case ,$modules, in
   *,computer-use,*)
     # A refused platform exits before the first write. --with computer-use is the yes to desktop control.
@@ -52,6 +52,18 @@ case ,$modules, in
     if [ "$asked" = yes ]; then
       ask 'computer-use lets the agent read your screen and send input to your desktop. Install it? [yes/no]:'
       [ "$answer" = yes ] || fail "cancelled"
+    fi ;;
+esac
+# okknow: the origin comes from OKKNOW_ORIGIN, an existing user config or the wizard in a terminal.
+okknow_cli=$kit/packages/okknow/skills/okknow/scripts/okknow
+case ,$modules, in
+  *,okknow,*)
+    if [ -n "${OKKNOW_ORIGIN:-}" ]; then
+      # No request: the form of the origin, and setup --yes keeps a different saved origin.
+      python3 "$okknow_cli" setup --check --no-probe --yes >/dev/null || fail "OKKNOW_ORIGIN is refused (see the line above); see docs/guides/modules.md#okknow"
+    elif python3 "$okknow_cli" origin >/dev/null 2>&1; then :
+    elif ! (true <"${INSTALL_TEST_TTY:-/dev/tty}") 2>/dev/null || [ ! -c "${INSTALL_TEST_TTY:-/dev/tty}" ]; then
+      fail "missing choice: the okknow origin (set OKKNOW_ORIGIN, or run in a terminal)"
     fi ;;
 esac
 # DUMMIES needs its own yes, as the Claude Code plugin: --dummies or a yes here. --yes does not give it.
@@ -138,12 +150,15 @@ try:
     modules = os.environ['modules'].split(',')
     if modules == ['none']:
         modules = []
-    if any(module not in ('wiki', 'hermes', 'mcp', 'computer-use', 'questions') for module in modules):
-        fail('unknown optional module; use wiki,hermes,mcp,computer-use or none')
+    if any(module not in ('wiki', 'hermes', 'mcp', 'computer-use', 'okknow', 'questions') for module in modules):
+        fail('unknown optional module; use wiki,hermes,mcp,computer-use,okknow or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
-    # questions is mandatory; accept its old --with name without installing twice.
+    # questions is mandatory; accept its old --with name without installing twice. okknow is a tree package.
     specs = ['npm:' + manifest['components'][module]['source']['spec']
-             for module in dict.fromkeys([*modules, 'questions'])]
+             for module in dict.fromkeys([*modules, 'questions']) if module != 'okknow']
+    okknow_package = kit / manifest['components']['okknow']['source']['path']
+    okknow_script = okknow_package / 'skills/okknow/scripts/okknow'
+    okknow_link = home / '.local/bin/okknow'
     choice = os.environ['runtime_choice']
     if any(ord(c) < 32 or ord(c) == 127 for c in choice):
         fail('runtime path has a control character')
@@ -161,10 +176,13 @@ try:
     start = '# >>> tenant-pi ' + name + ' >>>'
     end = '# <<< tenant-pi ' + name + ' <<<'
     launcher_mark = '# tenant-pi launcher: ' + name
+    # With the okknow CLI link of the kit, the launcher puts its directory at the end of PATH.
+    okknow_path = ['export PATH="$PATH":' + shlex.quote(str(okknow_link.parent))] if (
+        okknow_link.is_symlink() and okknow_link.resolve() == okknow_script.resolve()) else []
     launch_text = '\n'.join(['#!/bin/sh', launcher_mark, '# tenant-pi runtime: ' + choice,
         'export PI_CODING_AGENT_DIR=' + shlex.quote(str(profile)),
         'unset PI_CODING_AGENT_SESSION_DIR',
-        'export PATH=' + shlex.quote(str(runtime.parent)) + ':"$PATH"',
+        'export PATH=' + shlex.quote(str(runtime.parent)) + ':"$PATH"', *okknow_path,
         'exec ' + shlex.quote(str(runtime)) + ' "$@"', ''])
     block = start + '\nalias ' + name + '=' + shlex.quote(shlex.quote(str(launcher))) + '\n' + end + '\n'
     old = ''
@@ -218,21 +236,22 @@ try:
     packages = settings.setdefault('packages', [])
     if not isinstance(packages, list):
         fail('settings packages must be a list')
-    desired = str(kit / 'packages/tenantext')
-    found = False
-    for index, entry in enumerate(packages):
-        source = entry.get('source') if isinstance(entry, dict) else entry
-        if not isinstance(source, str):
-            continue
-        resolved = (profile / source).resolve()
-        if source == desired or resolved == Path(desired).resolve() or source.rstrip('/').endswith('/packages/tenantext'):
-            found = True
-            if isinstance(entry, dict):
-                entry['source'] = desired
-            else:
-                packages[index] = desired
-    if not found:
-        packages.append(desired)
+    for desired in [str(kit / 'packages/tenantext')] + ([str(okknow_package)] if 'okknow' in modules else []):
+        found = False
+        tail = '/packages/' + Path(desired).name
+        for index, entry in enumerate(packages):
+            source = entry.get('source') if isinstance(entry, dict) else entry
+            if not isinstance(source, str):
+                continue
+            resolved = (profile / source).resolve()
+            if source == desired or resolved == Path(desired).resolve() or source.rstrip('/').endswith(tail):
+                found = True
+                if isinstance(entry, dict):
+                    entry['source'] = desired
+                else:
+                    packages[index] = desired
+        if not found:
+            packages.append(desired)
     changed = before != settings
     models = (kit / 'config/models.example.json').read_text()
     # Claude Code gets the skills that the manifest declares for the package, not each folder with a SKILL.md.
@@ -240,6 +259,17 @@ try:
     skills = [kit / 'packages/tenantext' / item for component in manifest['components'].values()
               if component['source'] == {'kind': 'tree', 'path': 'packages/tenantext'}
               for item in component['resources']['skills']]
+    if 'okknow' in modules:
+        skills += [okknow_package / item for item in manifest['components']['okknow']['resources']['skills']]
+
+    def okknow_link_state():
+        # Make or replace only a link of this kit; keep another okknow command.
+        if not okknow_link.exists() and not okknow_link.is_symlink():
+            return None
+        if okknow_link.is_symlink() and (not okknow_link.exists() or okknow_link.resolve().is_relative_to(kit.resolve())):
+            return None
+        return 'skipped: ' + str(okknow_link) + ' exists and is not a link of this kit'
+    adapter_path = profile / 'mcp-adapter.json'
 
     def claude_links():
         # Replace a broken link or a link into this clone; keep a link to another skill source.
@@ -279,6 +309,19 @@ try:
         brew_sqlite = ('/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib', '/usr/local/opt/sqlite/lib/libsqlite3.dylib')
         if 'wiki' in modules and choice == 'pi-bolt' and sys.platform == 'darwin' and not any(Path(p).exists() for p in brew_sqlite):
             print('note: wiki vector search on Pi-Bolt needs Homebrew SQLite: brew install sqlite; see docs/guides/macos.md#optional-modules')
+        if 'okknow' in modules:
+            print('okknow: package ' + str(okknow_package))
+            print('okknow: CLI link ' + str(okknow_link) + (' (' + okknow_link_state() + ')' if okknow_link_state() else ''))
+            import subprocess
+            saved = subprocess.run([sys.executable, str(okknow_script), 'origin'], capture_output=True, text=True)
+            if os.environ.get('OKKNOW_ORIGIN'):
+                print('okknow: origin ' + os.environ['OKKNOW_ORIGIN'] + ' (from OKKNOW_ORIGIN; the probe sends no credentials)')
+            elif saved.returncode == 0:
+                print('okknow: origin ' + saved.stdout.strip() + ' (kept from the user config)')
+            else:
+                print('okknow: origin: the setup wizard asks for it')
+            if 'mcp' in modules:
+                print('okknow: MCP server okknow in ' + str(adapter_path))
         if os.environ.get('dummies') == 'yes':
             print('DUMMIES: on for Pi, shared by all profiles of this user; autostart block in the instruction file of the profile, else a new AGENTS.md')
         if 'computer-use' in modules and (home / '.claude').is_dir() and shutil.which('claude'):
@@ -316,6 +359,49 @@ try:
                 dest.unlink()
             dest.symlink_to(skill)
             print('link:    ' + str(dest))
+    elif action == 'okknow-cli':
+        state = okknow_link_state()
+        if state:
+            print(state, file=sys.stderr)
+        else:
+            okknow_link.parent.mkdir(parents=True, exist_ok=True)
+            if okknow_link.is_symlink():
+                okknow_link.unlink()
+            okknow_link.symlink_to(okknow_script)
+            print('okknow:  ' + str(okknow_link))
+        found = shutil.which('okknow')
+        if not found or Path(found).resolve() != okknow_script.resolve():
+            print('okknow:  ' + ('the okknow on PATH is ' + found if found else str(okknow_link.parent) + ' is not on PATH')
+                  + '; the profile launcher adds ' + str(okknow_link.parent) + ' at the end of PATH')
+    elif action == 'okknow-mcp':
+        # Only the command of a header helper enters the file, never a credential.
+        import subprocess
+        command = str(okknow_link) if not okknow_link_state() else str(okknow_script)
+        done = subprocess.run([sys.executable, str(okknow_script), 'origin'], capture_output=True, text=True)
+        if done.returncode:
+            print('okknow:  no origin configured, so no MCP entry; run okknow setup, then install.sh again')
+            sys.exit(0)
+        header = '!' + shlex.quote(command) + ' auth-header'
+        entry = {'type': 'http', 'url': done.stdout.strip() + '/mcp', 'headers': {'Authorization': header},
+                 'lifecycle': 'lazy', 'requestTimeoutMs': 60000}
+        if adapter_path.is_symlink():
+            fail('refusing a symlink mcp-adapter.json')
+        data = json.loads(adapter_path.read_text()) if adapter_path.exists() else {}
+        servers = data.setdefault('mcpServers', {}) if isinstance(data, dict) else None
+        if not isinstance(servers, dict):
+            fail('mcp-adapter.json has no mcpServers object')
+        old = servers.get('okknow')
+        ours = isinstance(old, dict) and str(old.get('headers', {}).get('Authorization', '')).endswith(' auth-header')
+        if old == entry:
+            print('okknow:  MCP entry okknow unchanged')
+        elif old is not None and not ours:
+            print('skipped: ' + str(adapter_path) + ' has its own okknow entry', file=sys.stderr)
+        else:
+            if adapter_path.exists():
+                backup(adapter_path)
+            servers['okknow'] = entry
+            put(adapter_path, json.dumps(data, indent=2) + '\n')
+            print('okknow:  MCP entry okknow in ' + str(adapter_path))
     elif action == 'plugin':
         # Compare the installed Claude Code plugin with the kit pin; report a difference, never hide it.
         import subprocess
@@ -394,6 +480,20 @@ case ,$modules, in
 esac
 helper profile || { echo 'install: profile step failed; alias unchanged' >&2; exit 1; }
 profile=$HOME/.pi/profiles/$name
+# okknow: the CLI link, then the setup wizard writes the user config, then the MCP entry.
+okknow_failed=no
+case ,$modules, in
+  *,okknow,*)
+    helper okknow-cli || okknow_failed=yes
+    if [ -n "${OKKNOW_ORIGIN:-}" ]; then
+      python3 "$okknow_cli" setup --origin "$OKKNOW_ORIGIN" --yes || okknow_failed=yes
+    elif python3 "$okknow_cli" origin >/dev/null 2>&1; then
+      echo "okknow:  keeps the origin $(python3 "$okknow_cli" origin) of the user config"
+    else
+      python3 "$okknow_cli" setup <"${INSTALL_TEST_TTY:-/dev/tty}" || okknow_failed=yes
+    fi
+    case ,$modules, in *,mcp,*) helper okknow-mcp || okknow_failed=yes ;; esac ;;
+esac
 # The skill's own script turns DUMMIES on for Pi and writes the autostart block into the profile.
 dummies_failed=no dummies_on= dummies_status=
 if [ "$dummies" = yes ]; then
@@ -428,6 +528,10 @@ helper alias || { echo 'install: alias setup failed after profile success' >&2; 
 if [ -n "$dummies_status" ]; then
   printf '%s\n' "$dummies_status"
   printf '%s\n' "$dummies_on" | grep '^autostart: ' || :
+fi
+if [ "$okknow_failed" = yes ]; then
+  echo 'install: an okknow step failed; the profile and the alias are in place. Run okknow setup' >&2
+  exit 1
 fi
 if [ "$dummies_failed" = yes ]; then
   echo 'install: the DUMMIES step failed; the profile and the alias are in place' >&2

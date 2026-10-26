@@ -26,7 +26,7 @@ The user has asked for a **retrospective**. You are suggesting improvements to t
 
 5. Create one issue for each accepted finding with the create operation of `docs/agents/issue-tracker.md` (sections "Generic operations" and "Publication safety"). The issue carries the label `ready-for-agent`. When the finding needs the user of the installation, it carries `needs-approval` instead.
 
-6. Append one line to the OpenKnowledge page `projects/<project>/handoffs` through the `okknow` skill: a summary of the retro of at most 80 characters.
+6. Append one line to the OpenKnowledge page `projects/<project>/handoffs` through the `okknow` skill: a summary of the retro of at most 80 characters. With no `okknow` command, skip this step and say nothing about it.
 
 ## Reference
 

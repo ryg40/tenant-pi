@@ -42,13 +42,16 @@ export const isRecallableText = (text: string): boolean => {
   );
 };
 
-// The busy timeout comes first: two sessions that open a new store at the same time then wait for each other.
-const SCHEMA = `
-  PRAGMA busy_timeout = 5000;
-  PRAGMA journal_mode = WAL;
+const BUSY_TIMEOUT = 5000;
+// The connection settings; they take no lock. The WAL switch and the schema come after them.
+const PRAGMAS = `
+  PRAGMA busy_timeout = ${BUSY_TIMEOUT};
   PRAGMA synchronous = NORMAL;
   PRAGMA foreign_keys = ON;
   PRAGMA secure_delete = ON;
+`;
+// Runs inside `BEGIN IMMEDIATE`: the busy handler covers that lock, but not a read that turns into a write.
+const SCHEMA = `
   CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS inputs (
     id INTEGER PRIMARY KEY,
@@ -117,7 +120,9 @@ export class RecallStore {
     const file = join(dir, DATABASE_NAME);
     this.db = new DatabaseSync(file);
     chmodSync(file, 0o600); // before WAL: the -wal and -shm files take the mode of the main file
-    this.db.exec(SCHEMA);
+    this.db.exec(PRAGMAS);
+    this.switchToWal();
+    this.transaction(() => this.db.exec(SCHEMA));
     this.insertInput = this.db.prepare(
       "INSERT INTO inputs(text, timestamp, cwd, session_file, source) VALUES (?, ?, ?, ?, 'interactive')",
     );
@@ -133,6 +138,23 @@ export class RecallStore {
       SELECT r.text, r.timestamp, r.cwd, r.session_file FROM recall_fts f JOIN recall_items r ON r.id = f.rowid
       WHERE recall_fts MATCH ? AND instr(lower(r.text), lower(?)) > 0 ORDER BY r.latest_input_id DESC LIMIT ?
     `);
+  }
+
+  /**
+   * Sets WAL mode. Two connections that open a new store at the same time can both get `SQLITE_BUSY`
+   * at once, without the busy handler (deadlock avoidance), so this tries again until the busy timeout.
+   */
+  private switchToWal(): void {
+    const deadline = Date.now() + BUSY_TIMEOUT;
+    for (;;) {
+      try {
+        this.db.exec("PRAGMA journal_mode = WAL");
+        return;
+      } catch (error) {
+        if (((error as { errcode?: number }).errcode ?? 0) % 256 !== 5 || Date.now() >= deadline) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5 + Math.random() * 20);
+      }
+    }
   }
 
   private transaction<T>(work: () => T): T {

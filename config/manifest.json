@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "runtime": {
     "piVersion": "1.4.0",
-    "piBoltVersion": "1.0.2",
+    "piBoltVersion": "1.0.4",
     "piAcceptedRange": ">=1.4.0 <1.5",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
@@ -459,6 +459,51 @@
         }
       ]
     },
+    "cross-session-recall": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/cross-session-recall/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "CROSS_SESSION_RECALL_DIR"
+      ],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin. A manual load under Pi-Bolt 1.0.3 (Pi 1.4.0) proved that node:sqlite is available there."
+        },
+        {
+          "code": "tui_unverified",
+          "fact": "No test runs the extension in the interactive terminal of Pi. The package test composes it with next-prompt on a fake editor and proves that parallel writers lose no input."
+        },
+        {
+          "code": "shared_store",
+          "fact": "The store is the one of the base Pi profile of the user, in the home directory, unless CROSS_SESSION_RECALL_DIR names another. The owner confirms the shared store at acceptance."
+        },
+        {
+          "code": "inputs_in_clear",
+          "fact": "Each stored input is clear text, readable by the user only (directory 0700, files 0600). A pasted secret stays until /recall-clear."
+        },
+        {
+          "code": "user_copy_stand_down",
+          "fact": "The kit copy stands down at load time when the agent directory has a user copy at extensions/cross-session-recall.ts or extensions/cross-session-recall/index.ts; the user copy then owns the store and the commands. A profile with an extensions list loads the kit copy only when the list names extensions/cross-session-recall/index.ts."
+        }
+      ]
+    },
     "coordinator-skills": {
       "source": {
         "kind": "tree",
@@ -486,6 +531,7 @@
           "skills/coordinator-skills/retro",
           "skills/coordinator-skills/get-status",
           "skills/coordinator-skills/dummies",
+          "skills/coordinator-skills/off-the-rails",
           "skills/coordinator-skills/writing-for-agents"
         ],
         "prompts": [],
@@ -585,7 +631,7 @@
     "mcp": {
       "source": {
         "kind": "npm",
-        "spec": "pi-mcp-adapter"
+        "spec": "pi-mcp-adapter@7.0.0"
       },
       "status": "tested",
       "requires": [
@@ -653,7 +699,7 @@
     "hermes": {
       "source": {
         "kind": "npm",
-        "spec": "pi-hermes-memory"
+        "spec": "pi-hermes-memory@0.9.11"
       },
       "status": "tested",
       "requires": [
@@ -674,7 +720,7 @@
     "wiki": {
       "source": {
         "kind": "npm",
-        "spec": "@zosmaai/pi-llm-wiki"
+        "spec": "@zosmaai/pi-llm-wiki@0.12.5"
       },
       "status": "tested",
       "requires": [
@@ -719,7 +765,7 @@
         },
         {
           "code": "server_required",
-          "fact": "The extension needs an OpenViking server with viking://~ home alias support. The endpoint and the key resolve from OPENVIKING_* variables, ~/.openviking/ovcli.conf or ~/.openviking/ov.conf; the kit writes none of them and has no field for them. Context takeover, off by default, trims history only when the server confirms Working Memory for the commit; OpenViking v0.5.0 and later do."
+          "fact": "The extension needs an OpenViking server with viking://~ home alias support. The endpoint and the key resolve from OPENVIKING_* variables, ~/.openviking/ovcli.conf or ~/.openviking/ov.conf; the kit writes none of them and has no field for them. Context takeover, off by default, trims history only when the server confirms Working Memory for the commit; OpenViking v0.5.0 and later do. OpenViking v0.5.2 and later answer a root key on /mcp with HTTP 403, so the openviking_* tools need a user or admin key."
         },
         {
           "code": "package_runtime_unverified",
@@ -769,7 +815,7 @@
     "computer-use": {
       "source": {
         "kind": "npm",
-        "spec": "@agent-sh/computer-use-linux@0.7.24"
+        "spec": "@agent-sh/computer-use-linux@0.7.27"
       },
       "status": "unverified",
       "requires": [
@@ -791,11 +837,11 @@
       "gaps": [
         {
           "code": "platform_linux_only",
-          "fact": "The package.json of version 0.7.24 limits os to linux and cpu to x64 and arm64, and its postinstall script stops on another platform. The kit has no computer-use module for macOS; that choice is open."
+          "fact": "The package.json of version 0.7.27 limits os to linux and cpu to x64 and arm64, and its postinstall script stops on another platform. The kit has no computer-use module for macOS; that choice is open."
         },
         {
           "code": "package_source_unreviewed",
-          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. The extension source and the release binaries were not reviewed."
+          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. A file comparison with the tarball of version 0.7.27 found changes only in package.json, the README files, the skill and the extension, which adds the read-only tool get_tree_page; npm/install.js is unchanged. The extension source and the release binaries were not reviewed."
         },
         {
           "code": "release_download_required",

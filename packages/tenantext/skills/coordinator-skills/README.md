@@ -30,6 +30,8 @@ Start a new session, or run `/reload` in Pi, to load the skills.
 
 `wayfinder` reads the tracker document `docs/agents/issue-tracker.md` of the repository. Without that file it stops. `wayfinder`, `research`, `prototype` and `get-status` start Herdr panes with the kit skill `herdr`. They name knowledge sources and review tools that the kit does not install: OpenViking, OpenKnowledge with the `okknow` skill, the LLM-WIKI tools of Pi, the `walkr` skill, `pidesktop` and an artifact server.
 
+`off-the-rails` reads the tracker document, the merges and the session notes under `.local/`, and scores the open work for the critical path to a running version in dev. It is read-only; it posts one comment only on the word of the user.
+
 `pr` names `pidesktop` for a screenshot. `show-me` names the `walkr` skill and `pidesktop` for the review of an HTML artifact. The kit does not install them. Without them, use the text forms and Mermaid.
 
 `dummies` keeps its log page through the `okknow` command of OpenKnowledge, and it reads the role of a pane from the `herdr` CLI. The kit installs neither. Without the `okknow` command the report and the outcome block still work, and no log is written. The `okknow` command is a host tool, a command-line path to OpenKnowledge that the kit does not ship: `dummies/scripts/page.py` needs three forms of it (`okknow --json read <page>`, `okknow write <page> - --summary <text>` with and without `--append`, and `okknow call edit -`), and without it the option `--file <path>` keeps the log in a local file that the user names. A fourth form, `okknow call exec`, only looks for the zone of another `DUMMIES` page: when it fails, the script asks for the zone. The two scripts of `dummies` need Python 3.11 or later and no package. [The `dummies` switch](#the-dummies-switch) says how to turn it on.
@@ -139,7 +141,7 @@ To make the estimate again:
 
 ## Rules for a cross-skill call
 
-A skill that needs another skill says: "Load the <name> skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi." The case of the first letter is free. The rest is exact, with single spaces. `<name>` is a skill of this component, or the kit skill `herdr`. A skill that only the user starts is never loaded from another skill: `grill-me`, `to-spec`, `to-tickets`, `wayfinder`, `retro`, `get-status`, `dummies`.
+A skill that needs another skill says: "Load the <name> skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi." The case of the first letter is free. The rest is exact, with single spaces. `<name>` is a skill of this component, or the kit skill `herdr`. A skill that only the user starts is never loaded from another skill: `grill-me`, `to-spec`, `to-tickets`, `wayfinder`, `retro`, `get-status`, `dummies`, `off-the-rails`.
 
 The test `tests/test_skill_invariants.py` of the kit checks these rules in each `.md` file of a skill directory and in this file.
 

@@ -21,7 +21,7 @@ PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi update --extensions
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" node "$HOME/tenant-pi/scripts/patch_extension_peers.mjs"
 ```
 
-The first line moves each module without a version to the newest version of the registry. It does not change a module with an exact version. The second line corrects the host-provided peers again; see [host peer overrides](docs/host-peer-overrides.md).
+The first line moves each module without a version, such as a package that you added yourself, to the newest version of the registry. It does not change a module with an exact version: each npm module of the kit has one. After a kit update, `install.sh --upgrade <name> --with <modules>` installs the versions of `config/manifest.json`; see [the module versions](UPDATE.md#the-module-versions). The second line corrects the host-provided peers again; see [host peer overrides](docs/host-peer-overrides.md).
 
 ## Change the model or the login
 

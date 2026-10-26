@@ -1,0 +1,5 @@
+interface:
+  display_name: "Off the Rails"
+  short_description: "Critical-path score of the open work"
+policy:
+  allow_implicit_invocation: false

@@ -19,4 +19,4 @@ python3 D/state.py <word>
 | --- | --- |
 | The user gave `on`, `off` or `status` | Give the user the output. After `on`, ask one time if the autostart block that it prints goes into the file that it names. Run `python3 D/state.py on --autostart` only after a yes. After `off`, stop the report form in this session too. |
 | The output starts with `dummies: off` | Stop. Use no other part of this skill. One exception: the user asks where the project stands. Then give the log summary of `LOG.md` beside this file. |
-| The output starts with `dummies: on` | Read `REPORT.md` beside this file and apply it from its section 2. |
+| The output starts with `dummies: on` | Read `REPORT.md` beside this file and apply it from its section 3: you ran the state check, and sections 1 and 2 hold. |

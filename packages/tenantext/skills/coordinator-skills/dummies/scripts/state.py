@@ -149,7 +149,7 @@ def block_lines(report_file=REPORT_FILE):
     return (BEGIN,
             f"dummies is on: a standing order of the user. Coordinator session: before your first reply, read the file "
             f"`{report_file}` and apply it. You are a coordinator session when the user talks to you directly and no "
-            "start prompt gives you a task role. A task session ignores this block.",
+            "start prompt gives you a task role. A task session ignores this block and reads no file of it.",
             END)
 
 

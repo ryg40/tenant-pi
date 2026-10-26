@@ -44,7 +44,7 @@ The install line of the Pi-Bolt README installs it to `~/.pi-bolt` and links the
 curl -fsSL https://pi-bolt.opensec.in/install.sh | sh
 ```
 
-One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.4.0 (Pi-Bolt 1.0.2, linux-x64, JIT off)`. Use the Pi-Bolt release that carries `runtime.piVersion`. `runtime.piBoltVersion` in the manifest is the tested Pi-Bolt release. Check it:
+One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.4.0 (Pi-Bolt 1.0.4, linux-x64, JIT off)`. Use the Pi-Bolt release that carries `runtime.piVersion`. `runtime.piBoltVersion` in the manifest is the tested Pi-Bolt release. Check it:
 
 ```sh
 python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"
@@ -106,10 +106,10 @@ When `~/.claude` exists, the installer also links kit skills into `~/.claude/ski
 Each optional module is one `pi install` line. Use the `PI_CODING_AGENT_DIR` of the profile. Run only the lines of the modules that you want. With Pi-Bolt as the runtime, use `pi-bolt install` in place of `pi install`. Like Pi, it adds the package to the shared `packages` list of the profile. It uses `npm` on `PATH`, or its own built-in package manager when `npm` is absent. The launcher `~/.local/bin/<name> install <spec>` runs the runtime of the profile with the profile directory.
 
 ```sh
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.24
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter@7.0.0
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory@0.9.11
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki@0.12.5
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.27
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/openviking-pi/index.ts"
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/agentcore-pi/index.ts"
 ```
@@ -131,7 +131,7 @@ The script prints one line for each manifest that it corrects, and nothing when 
 | `openviking` | `npm ci --ignore-scripts` in `<clone>/packages/openviking-pi`, and an OpenViking server that you set up. | Sends session content to that server and recalls it. See [OpenViking](docs/memory-modules.md#openviking-what-the-vendored-source-does). |
 | `agentcore` | `npm ci --ignore-scripts` in `<clone>/packages/agentcore-memory-core`, and the AWS resources of the owner. | Recalls and proposes memories in AWS AgentCore Memory. Start Pi with `AGENTCORE_MEMORY_CONFIG_FILE`; see [start and setup](docs/memory-modules.md#start-and-setup). |
 
-- An `npm:` line without a version installs the newest version of the registry. The question extension of the core install and the `computer-use` line have an exact version.
+- Each `npm:` line has the exact version that the kit reviewed, the `source.spec` of the module in `config/manifest.json`. The question extension of the core install has an exact version too. `pi update --extensions` does not move an exact version; see [the module versions](UPDATE.md#the-module-versions).
 - The `computer-use` line can print an `npm warn install-scripts` line that names `npm/install.js`. Observed with version 0.7.24: the script still ran and downloaded the binary.
 - `install.sh --with computer-use` installs the same spec, from `config/manifest.json`. Do not run the line on a platform other than Linux.
 - A `pi install` line loads each resource that the package declares. The `wiki` package declares a skill, prompt commands and an MCP server too; see [the wiki facts](docs/memory-modules.md#wiki-what-the-pinned-source-does) for a filter.

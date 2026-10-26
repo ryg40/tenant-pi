@@ -36,8 +36,8 @@ Errors use static codes, such as `exact_version: pi-update.version`. They do not
 
 Detection compares the pinned versions of `config/manifest.json` with the `latest` versions of the npm registry: the core package and each npm module.
 
-- An unpinned module has no stored version, so it cannot trigger exit 10.
-- The `questions` module has an exact version. Another registry version of it gives exit 10, and the core pin does not move for it. The exit stays 10 until the maintainer of the release reviews the newer version and moves its pin.
+- Each npm module of the manifest has an exact version: `mcp`, `hermes`, `wiki`, `questions` and `computer-use`.
+- Another registry version of any of them gives exit 10, and the core pin does not move for it. The exit stays 10 until the maintainer of the release reviews the newer version and edits its `source.spec`; see [the module versions](../UPDATE.md#the-module-versions).
 - `new` means that a pinned version differs. It is not a semantic version ordering check. A registry rollback can also set it.
 
 ## Notes

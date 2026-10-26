@@ -123,6 +123,18 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertEqual(2, self.install().returncode)
         self.assertEqual(before, self.snapshot())
 
+    def test_optional_npm_modules_install_an_exact_version(self):
+        # npm keeps the range of the profile for a spec without a version; an exact one replaces it.
+        names = ('mcp', 'hermes', 'wiki')
+        self.profile.mkdir(parents=True)
+        self.success(self.install(mode='upgrade', shell='none', modules=','.join(names)))
+        calls = [json.loads(line)['args'] for line in (self.profile / 'calls.jsonl').read_text().splitlines()]
+        requested = {args[1] for args in calls if args[0] == 'install'}
+        for name in names:
+            spec = 'npm:' + MANIFEST['components'][name]['source']['spec']
+            self.assertIn(spec, requested)
+            self.assertRegex(spec, r'@\d+\.\d+\.\d+$')
+
     def test_bash_alias_launcher_forwarding_and_repeat(self):
         rc = self.home / '.bashrc'
         rc.write_bytes(b'# own content\r\n# OWN=kept\r\n')

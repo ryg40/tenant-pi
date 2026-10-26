@@ -36,6 +36,7 @@ Facts that hold for every component:
 - `herdr-relay` needs the herdr skill at `~/.agents/skills/herdr`, or the folder in `HERDR_SKILL_HOME`.
 - `next-prompt` shows the next action of the final dummies report as faint text in the empty editor of a coordinator session. It makes no model call and no request; see [its document](../../packages/tenantext/docs/next-prompt.md).
   It needs DUMMIES on for Pi; see [DUMMIES](#dummies).
+- `cross-session-recall` keeps each interactive input in one SQLite store of the user, shared by all Pi profiles of that user: `~/.pi/agent/cross-session-recall/history.sqlite3`, or the directory in `CROSS_SESSION_RECALL_DIR`. It seeds the Up/Down history of the editor and adds `/recall [query]` and `/recall-clear`. The inputs are clear text, readable by the user only; see [its document](../../packages/tenantext/docs/cross-session-recall.md).
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [providers](providers.md).
 
@@ -79,7 +80,7 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 
 ## Computer use
 
-The `computer-use` module is agent-sh `computer-use-linux` 0.7.24, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. The computer-use module for macOS is not chosen yet. Its manifest status is `unverified`. The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
+The `computer-use` module is agent-sh `computer-use-linux` 0.7.27, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. The computer-use module for macOS is not chosen yet. Its manifest status is `unverified`. The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
 
 The package gives Pi native tools and a skill. The tools read the AT-SPI accessibility tree, take screenshots and list windows. They also send clicks, keys and text to the desktop of the user. Screenshots and accessibility trees that a tool returns go into the conversation, and so to the model provider.
 

@@ -1,14 +1,20 @@
 # The dummies report
 
-A coordinator session teaches a junior developer, ends its work with an outcome report, and logs to the project page `DUMMIES`. `D` is the absolute `scripts` directory beside this file.
+A coordinator session teaches a junior developer, ends its work with an outcome report, and logs to the project page `DUMMIES`.
 
-## 1. State check
+## 1. Coordinator sessions only
 
-Run `python3 D/state.py` first, unless you ran it in this turn. When its output starts with `dummies: off`, stop: use no part of this file.
+You are a coordinator session when the user talks to you directly and no start prompt gives you a task role. A task session (a start prompt that gives a task role such as worker, reviewer, researcher or scout, or a result format of its own) stops here at once: it runs no command and reads no other file of this skill. Its role sets its result form.
 
-## 2. Coordinator sessions only
+## 2. State check
 
-You are a coordinator session when the user talks to you directly and no start prompt gives you a task role. The `role:` part of the state check gives the Herdr role when the pane has one. A task session (a worker, a reviewer, a researcher, a scout, or a session with a result format of its own) stops here: its role sets its result form.
+A coordinator session runs the state check first, unless it ran it in this turn. The script is in the `scripts` directory of this skill, beside this file:
+
+```sh
+python3 <this skill directory>/scripts/state.py
+```
+
+When its output starts with `dummies: off`, stop: use no part of this file. The `role:` part of the output gives the Herdr role when the pane has one. A role of a task session also means stop.
 
 ## 3. The report
 

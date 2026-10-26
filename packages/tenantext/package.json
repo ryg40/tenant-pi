@@ -29,7 +29,8 @@
       "./extensions/doctor/index.ts",
       "./extensions/resources/index.ts",
       "./extensions/herdr-watch/index.ts",
-      "./extensions/next-prompt/index.ts"
+      "./extensions/next-prompt/index.ts",
+      "./extensions/cross-session-recall/index.ts"
     ],
     "skills": [
       "./skills"

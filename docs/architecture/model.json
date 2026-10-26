@@ -1416,7 +1416,7 @@
      "label": "MCP",
      "sub": "npm pi-mcp-adapter",
      "x": 430,
-     "y": 810,
+     "y": 884,
      "cols": 1,
      "tone": "service",
      "nodeW": 320
@@ -1426,7 +1426,7 @@
      "label": "Computer use",
      "sub": "npm @agent-sh/computer-use-linux; Linux only",
      "x": 820,
-     "y": 810,
+     "y": 884,
      "cols": 1,
      "tone": "live",
      "nodeW": 320
@@ -1517,6 +1517,20 @@
      "inputs": "dummies on, the next-prompt settings file",
      "consent": "none",
      "doc": "packages/tenantext/docs/next-prompt.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "cross-session-recall",
+     "component": "cross-session-recall",
+     "group": "g-c-tenantext",
+     "label": "cross-session-recall",
+     "kind": "comp-tenantext",
+     "summary": "Keeps each interactive input in one SQLite store of the user, seeds the Up/Down history of the editor with the newest distinct inputs, and adds /recall and /recall-clear. It makes no model call and no request.",
+     "inputs": "CROSS_SESSION_RECALL_DIR, else the store directory in the home",
+     "consent": "none",
+     "doc": "packages/tenantext/docs/cross-session-recall.md",
      "tags": [
       "not a detected installation"
      ]

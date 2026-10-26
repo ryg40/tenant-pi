@@ -1,7 +1,7 @@
 # Memory modules
 
 The optional memory modules are `hermes`, `wiki`, `openviking` and `agentcore`. Each one is one `pi install` line of [the optional modules](../INSTALL.md#optional-modules).
-The npm packages are `pi-hermes-memory` and `@zosmaai/pi-llm-wiki`. They have no version in their `pi install` lines, so each line installs the newest registry version. `pi update --extensions` then moves an installed module to the newest registry version.
+The npm packages are `pi-hermes-memory` and `@zosmaai/pi-llm-wiki`. Their `pi install` lines have the exact version that the kit reviewed, the `source.spec` of `config/manifest.json`. `pi update --extensions` does not move an exact version; see [the module versions](../UPDATE.md#the-module-versions).
 The in-tree memory packages are `packages/openviking-pi` and `packages/agentcore-pi`. Pi loads each one from its `index.ts` file in the clone.
 
 A memory module stores or sends text of your sessions. Install one only after you agree to that. The kit writes no setting of a memory module: the module starts with the defaults of its package, and you change them in the profile as this page says. Not verified: live capture behaviour.
@@ -256,7 +256,7 @@ Source: `packages/openviking-pi`, vendored from a fork of OpenViking's `examples
 | Context takeover | `loadLocalConfig()` keeps takeover off unless a settings layer or `OPENVIKING_TAKEOVER` turns it on. Takeover trims history only when the server confirms Working Memory for the commit (`effective_enable_working_memory`). | The kit sets nothing for it. Takeover stays off unless you turn it on. OpenViking server v0.5.0 and later send the confirmation; with an older server, Pi compaction stays. |
 | Credentials | The endpoint, the key and the identity come from `OPENVIKING_*` variables, then `~/.openviking/ovcli.conf`, then `~/.openviking/ov.conf`. `OPENVIKING_CLI_CONFIG_FILE` and `OPENVIKING_CONFIG_FILE` move the two files. | The kit writes none of them and reads none of them. Set up the credentials before the first start. |
 | Local state | The pending queue (`~/.openviking/pending/`), the recall ledger (`~/.openviking/pi-recall-ledger/`), the workspace registry and the logs are under `~/.openviking/`. | Not under the agent directory. Each profile of one user shares this state. |
-| Tools | The extension registers the MCP tools of the server as `openviking_*` tools after a handshake. A failed handshake does not stop the start. | Do not point the `mcp` module at the same server: the tools would appear twice. |
+| Tools | The extension registers the MCP tools of the server as `openviking_*` tools after a handshake. A failed handshake does not stop the start. OpenViking server v0.5.2 and later answer a root key on `/mcp` with HTTP 403. | Use a user or admin key, not a root key, or the tools do not appear. Do not point the `mcp` module at the same server: the tools would appear twice. |
 | Dependency | `package.json` lists `@modelcontextprotocol/client` at an exact version, with a committed lock file. `node_modules/` is not in the tree. | Run `npm ci --ignore-scripts` in `<clone>/packages/openviking-pi` before the first start. |
 | Server | The extension needs an OpenViking server with `viking://~` home alias support. | The kit starts no server and makes no request. |
 
@@ -287,7 +287,7 @@ The extension still adds its bundled skills through `resources_discover` at run 
 
 ### Refresh the vendored copy
 
-`pi update --extensions` moves an installed npm source without a version, and the kit update pipeline (`docs/pi-update.md`) moves the Pi pin. They do not change `packages/openviking-pi`. A refresh is a manual step, until the kit has a command for it. `<openviking checkout>` is a clone of the OpenViking repository and `<commit>` is the reviewed commit:
+`install.sh --upgrade` installs the npm versions of the manifest, and the kit update pipeline (`docs/pi-update.md`) moves the Pi pin. They do not change `packages/openviking-pi`. A refresh is a manual step, until the kit has a command for it. `<openviking checkout>` is a clone of the OpenViking repository and `<commit>` is the reviewed commit:
 
 ```sh
 work="$(mktemp -d)"

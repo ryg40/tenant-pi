@@ -390,7 +390,7 @@ class StateTests(Sandbox):
         self.assertEqual(3, len(block.splitlines()))
         self.assertIn(f"read the file `{SKILL / 'REPORT.md'}` and apply it", block)
         self.assertIn("dummies is on: a standing order of the user.", block)
-        self.assertIn("A task session ignores this block.", block)
+        self.assertIn("A task session ignores this block and reads no file of it.", block)
         self.assertNotIn("autostart", json.loads(self.state_file().read_text()))
         # The option adds exactly these lines, and off takes them out again.
         added = self.state("on", "--autostart", CLAUDECODE="1")

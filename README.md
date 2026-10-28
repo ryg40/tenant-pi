@@ -63,7 +63,7 @@ The kit uses the MIT license in [LICENSE](LICENSE).
 - The core install is `packages/tenantext` and the question extension at an exact version. The models template has no provider: a provider in `models.json` needs a literal base URL.
 - Each optional module is one `pi install` line of [the optional modules](INSTALL.md#optional-modules). Nothing is captured until you install a memory module.
 - No pi-subagents module exists. Agent fan-out uses the Herdr skill of `packages/tenantext`. The Herdr application is a host tool that the kit does not install.
-- The official computer-use module for Linux is `computer-use`: agent-sh `computer-use-linux` 0.7.27. The module for macOS is not chosen yet. See [computer use](docs/guides/modules.md#computer-use).
+- The official computer-use module for Linux is `computer-use`: agent-sh `computer-use-linux` 0.7.27. The module for macOS is `computer-use-macos`: `@amaster.ai/pi-computer-use` 0.1.32 with Cua Driver 0.37.0, not verified on a Mac. See [computer use](docs/guides/modules.md#computer-use) and [computer use on macOS](docs/guides/modules.md#computer-use-on-macos).
 - `packages/` holds the in-tree packages. See [the in-tree packages](docs/packages.md).
 - A source pin does not prove that a clean client can use a module.
 - `scripts/publish_portable.py` publishes the reviewed publish set as a portable snapshot branch.

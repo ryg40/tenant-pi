@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "runtime": {
     "piVersion": "1.4.0",
-    "piBoltVersion": "1.0.4",
+    "piBoltVersion": "1.0.6",
     "piAcceptedRange": ">=1.4.0 <1.5",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
@@ -837,7 +837,7 @@
       "gaps": [
         {
           "code": "platform_linux_only",
-          "fact": "The package.json of version 0.7.27 limits os to linux and cpu to x64 and arm64, and its postinstall script stops on another platform. The kit has no computer-use module for macOS; that choice is open."
+          "fact": "The package.json of version 0.7.27 limits os to linux and cpu to x64 and arm64, and its postinstall script stops on another platform. On macOS the kit offers the computer-use-macos component instead."
         },
         {
           "code": "package_source_unreviewed",
@@ -854,6 +854,53 @@
         {
           "code": "desktop_runtime_unverified",
           "fact": "The tools observe and act on the live desktop of the user. Screenshots and accessibility trees that a tool returns go into the conversation and so to the model provider. A loaded extension does not prove that a tool works on a given desktop."
+        }
+      ]
+    },
+    "computer-use-macos": {
+      "source": {
+        "kind": "npm",
+        "spec": "@amaster.ai/pi-computer-use@0.1.32"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "pi-computer-use",
+      "license": "Apache-2.0",
+      "resources": {
+        "extensions": [
+          "dist/index.js"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "platform_macos_only",
+          "fact": "The kit offers this component on macOS only. Version 0.1.32 declares no os field, but its desktop runtime for macOS is the optional dependency @amaster.ai/pi-computer-use-cua-driver-darwin-universal 0.1.4, which limits os to darwin. Its CuaDriver.app is a universal Mach-O binary for x86_64 and arm64 with the bundle ID com.trycua.driver and LSMinimumSystemVersion 13.0 (read from the registry tarball, not run). Linux keeps the computer-use component."
+        },
+        {
+          "code": "package_source_partly_reviewed",
+          "fact": "The registry tarball of 0.1.32 matches its registry SHA-512 integrity. Its package.json, README, config, launch code and approval code were read; the package and the runtime 0.1.4 have no install script. Not reviewed: the bundled driver binary, @amaster.ai/pi-shared 0.1.32, and @modelcontextprotocol/sdk, which the package takes as the range ^1.29.0, so the top-level pin does not freeze every dependency."
+        },
+        {
+          "code": "privacy_grant_required",
+          "fact": "The macOS Accessibility and Screen Recording grants go to the signed CuaDriver.app of the runtime package. The driver starts on the first computer_use tool call, and that call can show the macOS grant dialogs. The install and the extension load start no driver and request no grant. Not verified on a Mac: the code signature, the notarization and the grant flow."
+        },
+        {
+          "code": "telemetry_default_on",
+          "fact": "Cua Driver sends telemetry by default: the module comment of libs/cua-driver/rust/crates/cua-driver/src/telemetry.rs at the tag cua-driver-rs-v0.37.0 of github.com/trycua/cua says that routine telemetry is enabled unless an environment override or a persisted preference turns it off. The driver README at that tag does not mention telemetry. The extension starts the driver app through LaunchServices and passes it only CUA_DRIVER_PERCEPTION_CATALOG and CUA_DRIVER_RS_HOME, so a shell variable does not reach it. No opt-out for the bundled copy is proven."
+        },
+        {
+          "code": "tool_exposure_not_allowlist",
+          "fact": "The kit writes toolProfile core, confirmAppLaunch true and confirmDangerousActions true. The core profile is not an allowlist: the model can activate the deferred tool groups, which include run_script, clipboard, kill_app and install_extension. The app-launch confirmation covers the launch of an app, not each action on an app that runs already."
+        },
+        {
+          "code": "desktop_runtime_unverified",
+          "fact": "No test of the kit ran on a Mac. Not verified: the grants, input, screenshots, the background input, the display scope (main display only is not proven for driver 0.37.0), the behavior over SSH without a GUI session, and the load in Pi and Pi-Bolt on macOS. Read in the source of @amaster.ai/pi-shared 0.1.32 (dist/settings.js, loadPiSettings), not run: the extension reads the pi-computer-use block of settings.json in the profile directory that PI_CODING_AGENT_DIR names, and a key there wins over the same key in ~/.pi/agent/settings.json. Screenshots, accessibility text and typed text go into the conversation and so to the model provider."
         }
       ]
     },

@@ -44,13 +44,31 @@ if [ "$mode" = upgrade ]; then
 fi
 if [ -z "$name" ]; then ask "Name of $mode profile:"; name=$answer; fi
 if [ -z "$shell" ]; then ask 'Shell [bash/zsh/none]:'; shell=$answer; fi
-if [ -z "$modules" ]; then ask 'Optional modules [wiki,hermes,mcp,computer-use,okknow or none]:'; modules=$answer; asked=yes; fi
+# Each platform offers its own computer-use module: computer-use on Linux, computer-use-macos on macOS.
+desktop_module=computer-use
+[ "$(uname -s)" = Darwin ] && desktop_module=computer-use-macos
+# all means every optional module of this platform; it stands alone.
+optional_modules=wiki,hermes,mcp,$desktop_module,okknow
+if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, all or none]:"; modules=$answer; asked=yes; fi
+case ,$modules, in
+  ,all,) modules=$optional_modules ;;
+  *,all,*) fail "all stands alone; use $optional_modules, all or none" ;;
+esac
 case ,$modules, in
   *,computer-use,*)
     # A refused platform exits before the first write. --with computer-use is the yes to desktop control.
-    [ "$(uname -s)" = Linux ] || fail "computer-use supports Linux only. The computer-use module for macOS is not chosen yet; see docs/guides/modules.md#computer-use"
+    [ "$(uname -s)" = Linux ] || fail "computer-use supports Linux only. On macOS use computer-use-macos; see docs/guides/modules.md#computer-use"
     if [ "$asked" = yes ]; then
       ask 'computer-use lets the agent read your screen and send input to your desktop. Install it? [yes/no]:'
+      [ "$answer" = yes ] || fail "cancelled"
+    fi ;;
+esac
+case ,$modules, in
+  *,computer-use-macos,*)
+    # --with computer-use-macos is the yes to desktop control. The install starts no driver and requests no grant.
+    [ "$(uname -s)" = Darwin ] || fail "computer-use-macos supports macOS only. On Linux use computer-use; see docs/guides/modules.md#computer-use-on-macos"
+    if [ "$asked" = yes ]; then
+      ask 'computer-use-macos lets the agent read your screen and send input to your Mac. Screenshots, accessibility text and typed text go to the model provider. Cua Driver sends telemetry by default. macOS asks for the grants at the first desktop tool call. Install it? [yes/no]:'
       [ "$answer" = yes ] || fail "cancelled"
     fi ;;
 esac
@@ -92,7 +110,7 @@ case $runtime_choice in
   *) fail "runtime must be pi, pi-bolt or an absolute path" ;;
 esac
 case $runtime in /*) ;; *) runtime=$(cd "$(dirname "$runtime")" && pwd -P)/${runtime##*/} ;; esac
-export kit mode name shell modules runtime_choice runtime replace dummies
+export kit mode name shell modules runtime_choice runtime replace dummies optional_modules
 # Python handles JSON and shell quoting; prompts remain plain POSIX sh.
 helper() {
 python3 - "$1" <<'PY'
@@ -107,6 +125,8 @@ import tempfile
 
 
 PLUGIN = 'computer-use-linux@computer-use-linux'
+# The settings that install.sh writes for computer-use-macos: the bundled driver, the core tools, both confirmations.
+MACOS_DESKTOP_DEFAULTS = {'mode': 'bundled', 'toolProfile': 'core', 'confirmAppLaunch': True, 'confirmDangerousActions': True}
 
 
 def fail(message):
@@ -150,8 +170,9 @@ try:
     modules = os.environ['modules'].split(',')
     if modules == ['none']:
         modules = []
-    if any(module not in ('wiki', 'hermes', 'mcp', 'computer-use', 'okknow', 'questions') for module in modules):
-        fail('unknown optional module; use wiki,hermes,mcp,computer-use,okknow or none')
+    if any(module not in ('wiki', 'hermes', 'mcp', 'computer-use', 'computer-use-macos', 'okknow', 'questions')
+           for module in modules):
+        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', all or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
     # questions is mandatory; accept its old --with name without installing twice. okknow is a tree package.
     specs = ['npm:' + manifest['components'][module]['source']['spec']
@@ -252,6 +273,13 @@ try:
                     packages[index] = desired
         if not found:
             packages.append(desired)
+    if 'computer-use-macos' in modules:
+        # The safe defaults of the macOS desktop extension; a value that the user set stays.
+        desktop = settings.setdefault('pi-computer-use', {})
+        if not isinstance(desktop, dict):
+            fail('settings pi-computer-use must be an object')
+        for key, value in MACOS_DESKTOP_DEFAULTS.items():
+            desktop.setdefault(key, value)
     changed = before != settings
     models = (kit / 'config/models.example.json').read_text()
     # Claude Code gets the skills that the manifest declares for the package, not each folder with a SKILL.md.
@@ -298,12 +326,22 @@ try:
             print(block, end='')
         else:
             print('alias: none (shell setup disabled)\nstartup: none')
+        if choice == 'pi-bolt':
+            print('herdr: none (pi-bolt has its own Herdr reporter)')
+        elif shutil.which('herdr'):
+            print('herdr: Pi integration in ' + str(profile / 'extensions'))
         if settings_path.exists() and changed:
-            print('Proposed settings.json change (packages only):')
-            print('- ' + json.dumps(before.get('packages'), ensure_ascii=True))
-            print('+ ' + json.dumps(packages, ensure_ascii=True))
+            print('Proposed settings.json change:')
+            for key in ('packages', 'pi-computer-use'):
+                if before.get(key) != settings.get(key):
+                    print(key + ':')
+                    print('- ' + json.dumps(before.get(key), ensure_ascii=True))
+                    print('+ ' + json.dumps(settings.get(key), ensure_ascii=True))
         for spec in specs:
             print('install module: ' + spec)
+        if 'computer-use-macos' in modules:
+            print('settings pi-computer-use: ' + json.dumps(settings['pi-computer-use'], ensure_ascii=True)
+                  + ' (no driver start and no macOS grant during the install)')
         # Pi-Bolt runs on Bun, so the qmd index of the wiki opens SQLite with bun:sqlite. On macOS
         # that SQLite loads the sqlite-vec extension only from a Homebrew SQLite at these paths.
         brew_sqlite = ('/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib', '/usr/local/opt/sqlite/lib/libsqlite3.dylib')
@@ -480,6 +518,16 @@ case ,$modules, in
 esac
 helper profile || { echo 'install: profile step failed; alias unchanged' >&2; exit 1; }
 profile=$HOME/.pi/profiles/$name
+# Herdr reads the transcript path of a Pi pane from its Pi integration. Pi loads it from <profile>/extensions.
+# The step is best effort: a failure prints a warning and the install still exits 0.
+if [ "$runtime_choice" = pi-bolt ]; then
+  echo "herdr:   runtime pi-bolt has its own Herdr reporter, so no Herdr Pi integration"
+elif command -v herdr >/dev/null 2>&1; then
+  PI_CODING_AGENT_DIR=$profile herdr integration install pi ||
+    echo "herdr:   warning: the Herdr Pi integration step failed; the install continues" >&2
+else
+  echo "herdr:   no herdr command on PATH, so no Herdr Pi integration"
+fi
 # okknow: the CLI link, then the setup wizard writes the user config, then the MCP entry.
 okknow_failed=no
 case ,$modules, in

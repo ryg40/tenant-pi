@@ -162,6 +162,7 @@ The command must print `Verified OK`. Then compare the line of your archive in `
 
 1. Choose the new version. Change `BETTERLEAKS_VERSION` in `scripts/scan.sh`.
 2. Replace the pinned checksums above with the lines of the new `checksums.txt`. Replace the checksum of the extracted binary.
+   Change the version and the archive checksums in the Betterleaks step of `.github/workflows/checks.yml`. A development repository that keeps its own copy of the step gets the same change.
 3. Install the new binary with the steps above.
 4. Requalify: run `sh tests/test_scan.sh`. Each test must pass.
 

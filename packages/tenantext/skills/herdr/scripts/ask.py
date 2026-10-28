@@ -23,11 +23,13 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import (CONTRACT, agent_info, assistant_texts, clip, ensure_layout, error_code, exit_codes,  # noqa: E402
-                     herdr, line_count, read_record, require_herdr_env, screen_tail, session_file)
+from _common import (CONTRACT, DISK_NOTE, agent_info, assistant_texts, clip, ensure_layout, error_code,  # noqa: E402
+                     exit_codes, herdr, line_count, pi_disk_session, read_record, require_herdr_env,
+                     save_pi_session, screen_tail, session_file)
 
 EXIT = exit_codes("ask")
 NO_NEW_REPLY_LINE = CONTRACT["ask"]["no_new_reply_line"]
+NO_TRANSCRIPT_LINE = CONTRACT["ask"]["no_transcript_line"]
 # After agent_prompt_stalled, a turn can still start late, for example on the first turn of a new pane.
 STALL_SECONDS = 60
 
@@ -122,9 +124,10 @@ def wait_for_turn(target, info, path, offset, deadline):
     return True
 
 
-def settle(target, info, path, offset, deadline):
+def settle(target, info, path, offset, deadline, locate=None):
     """Wait until the pane settles or the deadline passes. Return (agent info, transcript, start line, new texts).
 
+    `locate(info)` finds the transcript on disk when Herdr gives no path; it returns (path, start line) or None.
     Pi auto-compaction sets done in the middle of a turn. A done or idle status with no new assistant text
     is not the end of the turn when the transcript shows a compaction after the prompt: wait again.
     """
@@ -139,6 +142,8 @@ def settle(target, info, path, offset, deadline):
         status = now.get("agent_status")
         new_path = session_file(now) or path
         start = offset if new_path == path else 0
+        if not new_path and locate:
+            new_path, start = locate(now) or (None, 0)
         texts = assistant_texts(new_path, start) if new_path else []
         compacting = status in ("done", "idle") and not texts and bool(new_path) and compacted(new_path, start)
         if time.time() < deadline and (status == "working" or compacting):
@@ -230,7 +235,13 @@ def main():
     # A timeout or a stall does not prove failure. Poll the state; never resend.
     if err == "agent_prompt_stalled" and wait_for_turn(target, info, path, offset, deadline):
         err = None  # the turn started late: wait for it as for any turn
-    now, new_path, offset, texts = settle(target, info, path, offset, deadline)
+    # Without a path from Herdr, a Pi pane's own session file on disk can hold the reply. See pi_disk_session.
+    # A stalled turn gets no locator: a file of another pane must not hide the NO TURN STARTED output.
+    locate = (lambda now: pi_disk_session(now, prompt, start)) if err is None else None
+    now, new_path, offset, texts = settle(target, info, path, offset, deadline, locate=locate)
+    from_disk = bool(new_path) and not path and not session_file(now)
+    if from_disk and prompt is not None:
+        save_pi_session(now, new_path)  # a later run without a prompt reads this file
     status = now.get("agent_status")
     elapsed = time.time() - start
 
@@ -250,6 +261,9 @@ def main():
         if err == "agent_prompt_stalled":
             print(f"NO TURN STARTED: Herdr wrote the prompt but saw no activity, also after {STALL_SECONDS} seconds more. "
                   "Read the screen before any other input.")
+        elif not new_path:
+            # Herdr knows the transcript only from the reporter of the harness; without it, or without the socket, no reply is readable.
+            print(f"{NO_TRANSCRIPT_LINE} (is the Herdr integration for the harness installed, or does the pane run without HERDR_SOCKET_PATH, as Pi-Bolt does?). The screen tail follows.")
         else:
             print(f"{NO_NEW_REPLY_LINE}. The screen tail follows.")
         print("--- screen tail ---")
@@ -257,6 +271,8 @@ def main():
         sys.exit(EXIT["no_turn"] if err == "agent_prompt_stalled" else EXIT["reply"])
 
     report(now, elapsed, f"transcript={new_path}")
+    if from_disk:
+        print(f"{DISK_NOTE}{new_path}")
     reply = texts[-1]
     if is_api_error(reply):
         fallback = transcript_fallback(new_path, offset)

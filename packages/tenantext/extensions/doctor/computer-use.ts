@@ -70,7 +70,7 @@ export async function computerUseChecks(options: ComputerUseOptions): Promise<Ch
 	const add = (id: string, status: Check["status"], message: string) => checks.push({ id, status, message });
 	const platform = options.platform ?? process.platform;
 	if (platform !== "linux") {
-		add("computer-use", "warn", `The profile lists ${PACKAGE}, which supports Linux only. No computer-use module for this platform is chosen yet.`);
+		add("computer-use", "warn", `The profile lists ${PACKAGE}, which supports Linux only. On macOS use the computer-use-macos module.`);
 		return checks;
 	}
 	const manifestSpec = record(record(record(record(readJson(options.manifest ?? kitManifest())).components)["computer-use"]).source).spec;
@@ -119,5 +119,63 @@ export async function computerUseChecks(options: ComputerUseOptions): Promise<Ch
 	if (blockers.length) add("computer-use-readiness", "warn", `Desktop control is not ready: ${blockers.length} blocker(s): ${list(blockers)}.${warnings.length ? ` Warnings: ${list(warnings)}.` : ""} ${setup}`);
 	else if (warnings.length) add("computer-use-readiness", "info", `Desktop control is ready, with ${warnings.length} warning(s): ${list(warnings)}.`);
 	else add("computer-use-readiness", "ok", "Desktop control is ready: the doctor of the package reports no blocker.");
+	return checks;
+}
+
+const MACOS_PACKAGE = "@amaster.ai/pi-computer-use";
+const MACOS_SPEC = /^npm:@amaster\.ai\/pi-computer-use(?:@(.+))?$/;
+const MACOS_RUNTIME = "@amaster.ai/pi-computer-use-cua-driver-darwin-universal";
+/** The settings that install.sh writes for computer-use-macos; the package uses the same defaults. */
+const MACOS_SAFE: Record<string, unknown> = { mode: "bundled", toolProfile: "core", confirmAppLaunch: true, confirmDangerousActions: true };
+
+/**
+ * Read-only checks of the computer-use-macos module of a profile: version against the kit pin, the bundled
+ * driver app, the safe settings. The checks start no driver and no app, so they request no macOS grant;
+ * the grants stay unchecked until the first computer_use tool call.
+ */
+export function macosComputerUseChecks(options: Omit<ComputerUseOptions, "arch" | "runDoctor">): Check[] {
+	const { dir } = options;
+	const settings = record(readJson(join(dir, "settings.json")));
+	const sources = (Array.isArray(settings.packages) ? settings.packages : [])
+		.map(entry => typeof entry === "string" ? entry : record(entry).source)
+		.filter((source): source is string => typeof source === "string");
+	const listed = sources.map(source => MACOS_SPEC.exec(source.trim())).find(Boolean);
+	if (!listed) return [];
+
+	const checks: Check[] = [];
+	const add = (id: string, status: Check["status"], message: string) => checks.push({ id, status, message });
+	if ((options.platform ?? process.platform) !== "darwin") {
+		add("computer-use-macos", "warn", `The profile lists ${MACOS_PACKAGE}, which the kit offers on macOS only. On Linux use the computer-use module.`);
+		return checks;
+	}
+	const manifestSpec = record(record(record(record(readJson(options.manifest ?? kitManifest())).components)["computer-use-macos"]).source).spec;
+	const pin = typeof manifestSpec === "string" ? manifestSpec.split("@").at(-1) : listed[1];
+	const pinSource = typeof manifestSpec === "string" ? "the kit pin" : "the version of the profile line";
+	const modules = join(dir, "npm", "node_modules");
+	const root = join(modules, ...MACOS_PACKAGE.split("/"));
+	const installed = record(readJson(join(root, "package.json"))).version;
+	if (typeof installed !== "string") {
+		add("computer-use-macos-version", "fail", `The profile lists ${MACOS_PACKAGE}, but ${root} has no installed package. Run install.sh --with computer-use-macos again.`);
+	} else if (!pin) {
+		add("computer-use-macos-version", "info", `${MACOS_PACKAGE} ${installed} is installed; no pin to compare with was found.`);
+	} else if (installed === pin) {
+		add("computer-use-macos-version", "ok", `${MACOS_PACKAGE} ${installed} equals ${pinSource}.`);
+	} else {
+		add("computer-use-macos-version", "warn", `${MACOS_PACKAGE} ${installed} is installed, but ${pinSource} is ${pin}. See UPDATE.md for a pin move.`);
+	}
+
+	// npm puts the optional runtime beside the package or inside it.
+	const driver = [join(root, "node_modules"), modules]
+		.map(base => join(base, ...MACOS_RUNTIME.split("/"), "bin", "CuaDriver.app", "Contents", "MacOS", "cua-driver"))
+		.find(executable);
+	if (driver) add("computer-use-macos-driver", "ok", `The bundled CuaDriver.app is in place: ${driver}.`);
+	else add("computer-use-macos-driver", "warn", `No bundled CuaDriver.app found in ${MACOS_RUNTIME}. The desktop tools fail until npm installs that optional runtime; see docs/guides/modules.md#computer-use-on-macos.`);
+
+	const own = record(settings["pi-computer-use"]);
+	const changed = Object.entries(MACOS_SAFE).filter(([key, value]) => key in own && own[key] !== value).map(([key]) => `${key}=${JSON.stringify(own[key])}`);
+	if (changed.length) add("computer-use-macos-settings", "warn", `The profile settings change the safe defaults of the desktop tools: ${changed.join(", ")}. The kit writes mode=bundled, toolProfile=core and both confirmations on.`);
+	else add("computer-use-macos-settings", "ok", "The desktop tools use the safe defaults: bundled driver, core tools, app-launch and dangerous-action confirmations.");
+
+	add("computer-use-macos-readiness", "info", "Not checked: the macOS Accessibility and Screen Recording grants. The doctor starts no driver; CuaDriver.app asks for the grants at the first computer_use tool call.");
 	return checks;
 }

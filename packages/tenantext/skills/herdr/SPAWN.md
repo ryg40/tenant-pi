@@ -23,9 +23,12 @@ for each. `spawn.py` removes no tool unless you add `--strict`, with one
 exception: the desktop tools.
 
 The read roles (`researcher`, `scout`, `reviewer`) start without the desktop
-tools of the computer-use module. A pi pane gets `--exclude-tools
-computer_use_linux_*`; a Claude Code pane gets `--disallowedTools
-mcp__plugin_computer-use-linux_computer-use-linux`. The `coordinator` and the
+tools of the computer-use modules. A pi pane gets `--exclude-tools
+computer_use_*`, which matches the Linux tools `computer_use_linux_*` and the
+macOS tools `computer_use_*`; a Claude Code pane gets `--disallowedTools
+mcp__plugin_computer-use-linux_computer-use-linux`. Pi does not register an
+excluded tool, so the deferred tool search of the macOS module cannot load it
+either (source reading of Pi 1.4.0). The `coordinator` and the
 `worker` keep them. These tools read the screen and send input to the desktop,
 and the screen content goes to the model provider; a read role does not need
 them. A pane without the module ignores the option (source reading for pi:
@@ -116,6 +119,24 @@ Pi-Bolt (the Pi coding agent compiled to one native executable) works as
 - In the pane, Pi-Bolt and the commands that it starts have no
   `HERDR_SOCKET_PATH`. The scripts of this skill then do not reorder the tabs
   that the pane creates.
+- Without the reporter, Herdr knows no transcript path of the pane. `ask.py`
+  with a prompt (also the watch of `herdr_spawn` or `herdr_watch_start` with a
+  prompt) then reads the session file of the pane on disk, in
+  `<agent dir>/sessions/--<cwd with / as ->--/`, when exactly one file of the
+  cwd matches. A file matches when a user entry ends with the prompt (a prompt
+  of 20 to 200 characters) or holds the whole prompt (a longer prompt).
+  `ask.py` keeps the path of that file in the pane record. `ask.py
+  --wait-only`, a wait-only watch and `last-reply.py` then read the file that
+  an earlier prompt in this pane found. They read it only when the record of
+  this pane id has the same agent name and a Pi harness, the file exists, and
+  its header `cwd` is the current cwd of the pane. They also refuse the file
+  when its header time is earlier than the pane record, or when another
+  session file of the same folder has a later header time (after `/new`,
+  `/resume` or a restart in the pane, or a later session in the same cwd).
+  A new `spawn.py` record for a reused pane id has no path. Else they still say "no transcript path".
+  The agent directories are `PI_CODING_AGENT_DIR` of the caller,
+  `~/.pi/agent` and `~/.pi/profiles/*`. A `sessionDir` setting of Pi or
+  `PI_CODING_AGENT_SESSION_DIR` moves the files out of reach of this search.
 
 Remove this workaround when Herdr knows `pi-bolt` or Pi-Bolt reports `pi`.
 
@@ -172,7 +193,7 @@ To hand your work to the next coordinator session:
 
 1. Write the handoff file: state of the work, open items, files, decisions. Use a path agreed with the user; Claude Code defines no handoff directory.
 2. Start the next coordinator: `python3 $S/spawn.py --harness <h> --role coordinator [--model m] [--thinking t] --cwd "$PWD"`. It appears below your pane with the next number.
-3. Send it the path of the handoff file with `ask.py`, and ask it to confirm what it will do next.
+3. Send it the path of the handoff file, and ask it to confirm what it will do next. In Pi, send it with `herdr_watch_start` (`herdr_spawn` refuses the role coordinator). Without the tool, send it with `ask.py`.
 4. Tell the user the name of the new coordinator. Do not close your own pane and do not close the new one.
 
 | Exit | Meaning | What to do |
@@ -242,9 +263,9 @@ When the pane finishes, a `<herdr-task-notification>` message starts a turn:
 
 ### Without the tool: `ask.py`
 
-Use the blocking `ask.py` only in Claude Code (there, run it in the background
-of the shell tool), in a session without the tools, or when the user says to
-wait for the reply or not to use the watch.
+Use the blocking `ask.py` only in Claude Code (there, call the `Bash` tool with
+`run_in_background: true`), in a session without the tools, or when the user
+says to wait for the reply or not to use the watch.
 
 ```bash
 python3 $S/ask.py <name> --file /tmp/<task>.md --timeout 600
@@ -256,7 +277,19 @@ raw transcript to the user.
 Fan-out in Pi: call `herdr_spawn` one time for each task, all in one turn. Then
 continue. The notifications arrive one by one, each with its pane ID.
 
-Fan-out without the tool. Start all agents first, then run the prompts in parallel in one shell call:
+Fan-out in Claude Code. Start all agents first. Then make one `Bash` call with
+`run_in_background: true` for each line below, all in one turn:
+
+```bash
+python3 $S/ask.py proj-scout-1    --file /tmp/scout.md    --timeout 600
+python3 $S/ask.py proj-reviewer-1 --file /tmp/reviewer.md --timeout 600
+```
+
+Each call reports when it ends. Continue with other work in the meantime.
+
+Fan-out in a session without the tools and without a background shell. Run
+the prompts in parallel in one blocking shell call, with a shell timeout above
+`--timeout`:
 
 ```bash
 python3 $S/ask.py proj-scout-1    --file /tmp/scout.md    --timeout 600 > /tmp/scout.out 2>&1 &

@@ -380,21 +380,26 @@ def openviking_check(steps, package, env):
                                     "node", str(probe)], timeout=90)
 
 
-def linux():
-    return sys.platform.startswith("linux")
+def computer_use_component():
+    """The computer-use component of this platform: `computer-use` on Linux, `computer-use-macos` on macOS, else None."""
+    if sys.platform.startswith("linux"):
+        return "computer-use"
+    return "computer-use-macos" if sys.platform == "darwin" else None
 
 
 def computer_use_install(steps, candidate):
-    """Install the pinned computer-use package into the qualify profile, as `pi install` lays it out.
+    """Install the pinned computer-use component of this platform into the qualify profile, as `pi install` lays it out.
 
-    `--ignore-scripts` keeps the release download of the package out of the run; the extension loads
-    without its binary. The package supports Linux only, so another platform records no install.
-    Returns the installed package directory, or None.
+    `--ignore-scripts` keeps the release download of the Linux package out of the run; the extension loads
+    without its binary. The macOS package has no install script and starts its driver only on the first
+    tool call, so the load requests no macOS grant. Another platform records no install.
+    Returns the component ID and the installed package directory, or None.
     """
-    spec = load(candidate / "config/manifest.json")["components"]["computer-use"]["source"]["spec"]
-    if not linux():
-        steps.record("computer-use-install", {"platform": sys.platform, "result": "not_applicable_linux_only"})
+    cid = computer_use_component()
+    if cid is None:
+        steps.record("computer-use-install", {"platform": sys.platform, "result": "not_applicable_platform"})
         return None
+    spec = load(candidate / "config/manifest.json")["components"][cid]["source"]["spec"]
     profile = steps.run / "home/.pi/profiles/qualify"
     if not steps.command("computer-use-install", npm_command(steps.run, "install", "--ignore-scripts", "--legacy-peer-deps",
                                                              "--prefix", str(profile / "npm"), "--", spec)):
@@ -403,14 +408,14 @@ def computer_use_install(steps, candidate):
     settings = json.loads(settings_path.read_text(encoding="utf-8"))
     settings["packages"].append("npm:" + spec)
     settings_path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
-    return profile / "npm/node_modules" / npm_parts(spec)[0]
+    return cid, profile / "npm/node_modules" / npm_parts(spec)[0]
 
 
 def profile_expected(candidate, computer_use=None):
     """The packages, extensions and skills that the profile-load step expects Pi to resolve.
 
-    With `computer_use`, the installed directory of that component, the set also holds its pinned
-    spec and the extension and the skill that the manifest names.
+    With `computer_use`, the component ID and the installed directory of that component, the set also
+    holds its pinned spec and the extensions and the skills that the manifest names.
     """
     package = candidate / "packages/tenantext"
     components = load(candidate / "config/manifest.json")["components"]
@@ -423,11 +428,12 @@ def profile_expected(candidate, computer_use=None):
                          for path in (package / "skills").glob(pattern)),
     }
     if computer_use:
-        resources = components["computer-use"]["resources"]
-        expected["packages"].append("npm:" + components["computer-use"]["source"]["spec"])
+        cid, directory = computer_use
+        resources = components[cid]["resources"]
+        expected["packages"].append("npm:" + components[cid]["source"]["spec"])
         expected["extensions"] = sorted([*expected["extensions"],
-                                         *(str(computer_use / item) for item in resources["extensions"])])
-        expected["skills"] = sorted([*expected["skills"], *(str(computer_use / item) for item in resources["skills"])])
+                                         *(str(directory / item) for item in resources["extensions"])])
+        expected["skills"] = sorted([*expected["skills"], *(str(directory / item) for item in resources["skills"])])
     return expected
 
 

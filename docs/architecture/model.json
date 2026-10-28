@@ -1424,7 +1424,7 @@
     {
      "id": "g-c-desktop",
      "label": "Computer use",
-     "sub": "npm @agent-sh/computer-use-linux; Linux only",
+     "sub": "npm @agent-sh/computer-use-linux (Linux); npm @amaster.ai/pi-computer-use (macOS)",
      "x": 820,
      "y": 884,
      "cols": 1,
@@ -1807,10 +1807,24 @@
      "group": "g-c-desktop",
      "label": "computer-use",
      "kind": "comp-desktop",
-     "summary": "The official Linux computer-use module of the kit: agent-sh computer-use-linux at an exact version. Its Pi tools read the accessibility tree, take screenshots and send input to the desktop of the user. No macOS module is chosen.",
+     "summary": "The official Linux computer-use module of the kit: agent-sh computer-use-linux at an exact version. Its Pi tools read the accessibility tree, take screenshots and send input to the desktop of the user. On macOS the kit offers computer-use-macos instead.",
      "inputs": "a graphical Linux session with AT-SPI; the release binary that the postinstall script downloads",
      "consent": "your agreement to desktop control and to screen content in the conversation",
      "doc": "docs/guides/modules.md#computer-use",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "computer-use-macos",
+     "component": "computer-use-macos",
+     "group": "g-c-desktop",
+     "label": "computer-use-macos",
+     "kind": "comp-desktop",
+     "summary": "The macOS computer-use module of the kit: the Pi extension @amaster.ai/pi-computer-use at an exact version with the bundled Cua Driver. Its Pi tools read the accessibility tree, take screenshots and send input to the Mac of the user. Not verified on a Mac.",
+     "inputs": "macOS 13 or later; the Accessibility and Screen Recording grants for CuaDriver.app, asked at the first tool call",
+     "consent": "your agreement to desktop control and to screen content and typed text in the conversation",
+     "doc": "docs/guides/modules.md#computer-use-on-macos",
      "tags": [
       "not a detected installation"
      ]

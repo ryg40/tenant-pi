@@ -21,6 +21,8 @@ export const LABEL_LIMIT = 80;
 export const PANE_LIMIT = 64;
 /** The status of that exit 0: the pane gave no reply. */
 export const NO_NEW_REPLY_STATUS = "no new reply, read the screen";
+/** The status of an exit 0 when Herdr gave no transcript path for the pane: the Herdr integration of the harness is missing. */
+export const NO_TRANSCRIPT_STATUS = "no transcript path, read the screen";
 /** spawn.py waits up to 60 seconds for the agent and runs `pi --list-models` once; this bound covers both. */
 export const SPAWN_TIMEOUT_SECONDS = 180;
 /** After a stop, spawn.py gets this many milliseconds to end on SIGTERM; then its process group gets SIGKILL. */
@@ -30,9 +32,9 @@ const CAPTURE_LIMIT = 65536;
 const KIT_SKILL = resolve(dirname(fileURLToPath(import.meta.url)), "../../skills/herdr");
 const KIT_SCRIPTS = join(KIT_SKILL, "scripts");
 
-/** The contract of the herdr skill (contract.json): the exit codes of ask.py and spawn.py and the marker line of ask.py. */
+/** The contract of the herdr skill (contract.json): the exit codes of ask.py and spawn.py and the marker lines of ask.py. */
 interface ExitCodes { [name: string]: { code: number; meaning: string } }
-interface Contract { ask: { exit: ExitCodes; no_new_reply_line: string }; spawn: { exit: ExitCodes } }
+interface Contract { ask: { exit: ExitCodes; no_new_reply_line: string; no_transcript_line: string }; spawn: { exit: ExitCodes } }
 const skillJson = (name: string): unknown => JSON.parse(readFileSync(join(KIT_SKILL, name), "utf8"));
 const CONTRACT = skillJson("contract.json") as Contract;
 const meanings = (codes: ExitCodes): Readonly<Record<number, string>> => Object.fromEntries(Object.values(codes).map(({ code, meaning }) => [code, meaning]));
@@ -43,6 +45,8 @@ export const EXIT_MEANING = meanings(CONTRACT.ask.exit);
 export const SPAWN_EXIT_MEANING = meanings(CONTRACT.spawn.exit);
 /** ask.py exits with 0 and prints this line when the transcript has no new reply. The screen tail follows it. */
 export const NO_NEW_REPLY_LINE = CONTRACT.ask.no_new_reply_line;
+/** ask.py exits with 0 and prints this line in place of the NO NEW REPLY line when Herdr gave no transcript path. */
+export const NO_TRANSCRIPT_LINE = CONTRACT.ask.no_transcript_line;
 
 export const HARNESSES = ["pi", "claude"] as const;
 /** The roles of roles.json of the herdr skill, in its order. */
@@ -125,19 +129,25 @@ export function closeCommand(scripts: string, pane: string): string {
 	return `python3 ${shellWord(join(scripts, "close.py"))} ${shellWord(pane)}`;
 }
 
-/** True when the status lines of the output of ask.py, before `--- reply ---` or `--- screen tail ---`, hold the NO NEW REPLY line. */
-export function noNewReply(output: string): boolean {
+/** True when the status lines of the output of ask.py, before `--- reply ---` or `--- screen tail ---`, hold the marker line. */
+function hasMarker(output: string, marker: string): boolean {
 	for (const line of output.split("\n")) {
 		if (line === "--- reply ---" || line === "--- screen tail ---") return false;
-		if (line.startsWith(NO_NEW_REPLY_LINE)) return true;
+		if (line.startsWith(marker)) return true;
 	}
 	return false;
+}
+
+/** True when the status lines of the output of ask.py hold the NO NEW REPLY line. */
+export function noNewReply(output: string): boolean {
+	return hasMarker(output, NO_NEW_REPLY_LINE);
 }
 
 /** The status word of an ended ask.py. `output` is its standard output: an exit 0 without a new reply has its own word. */
 export function statusOf(code: number | null | undefined, signal?: string | null, output = ""): string {
 	if (code === null || code === undefined) return signal ? `killed by signal ${signal}` : "unknown";
 	if (code === 0 && noNewReply(output)) return NO_NEW_REPLY_STATUS;
+	if (code === 0 && hasMarker(output, NO_TRANSCRIPT_LINE)) return NO_TRANSCRIPT_STATUS;
 	return EXIT_MEANING[code] ?? "unknown exit code, read the output files";
 }
 
@@ -571,7 +581,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		promptGuidelines: [
 			"Send a prompt to a pane that exists with herdr_watch_start, not with the blocking ask.py, unless the user says to wait for the reply or not to use the watch.",
 			"After herdr_spawn or herdr_watch_start, do not wait, sleep or poll for the reply. Continue with other work or end the turn; the reply arrives as a <herdr-task-notification> message.",
-			"Act on a <herdr-task-notification> by its status line: a reply, no new reply (read the screen), a pane blocked on a question, or a timeout while the pane still works.",
+			"Act on a <herdr-task-notification> by its status line: a reply, no new reply or no transcript path (read the screen), a pane blocked on a question, or a timeout while the pane still works.",
 			"To wait again for a pane that still works, for example after a timeout, call herdr_watch_start with wait_only true and no prompt. Never send the prompt again.",
 		],
 		parameters: Type.Object({

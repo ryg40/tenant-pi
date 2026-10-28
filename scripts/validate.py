@@ -101,6 +101,7 @@ REVIEWED_SOURCES = {
     "wiki": {"kind": "npm", "name": "@zosmaai/pi-llm-wiki"},
     "questions": {"kind": "npm", "name": "@juicesharp/rpiv-ask-user-question"},
     "computer-use": {"kind": "npm", "name": "@agent-sh/computer-use-linux"},
+    "computer-use-macos": {"kind": "npm", "name": "@amaster.ai/pi-computer-use"},
 }
 
 

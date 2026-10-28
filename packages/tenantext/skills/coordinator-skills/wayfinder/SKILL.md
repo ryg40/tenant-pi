@@ -100,7 +100,7 @@ Load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in P
 
 1. Write a **task file**. It names the ticket, the question and the result form. A reviewer task file names the ticket and its acceptance criteria. For a Pi pane it names `PI_CODING_AGENT_DIR` for any `pi` command, and the model or the cleared provider keys.
 2. Start a new pane of the matching role (`spawn.py`).
-3. Send the task: in Pi with `herdr_spawn` (it spawns, sends and watches, so steps 2 and 3 are one call); in Claude Code with one blocking `ask.py` in the background of the shell tool.
+3. Send the task: in Pi with `herdr_spawn` (it spawns, sends and watches, so steps 2 and 3 are one call); in Claude Code with one `ask.py` in a `Bash` call with `run_in_background: true`.
 4. Read the reply (`FINAL_COMPRESSED_CONTEXT`).
 5. Close the pane (`close.py`).
 

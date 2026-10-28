@@ -330,6 +330,15 @@ The computer-use checks run only when the profile settings list `npm:@agent-sh/c
 - `computer-use-readiness`: the blockers and warnings of the `readiness` block from `computer-use-linux doctor`. That command reads the desktop state.
 
 The checks never run the setup commands of the package, so they change no desktop setting. On a platform other than Linux, one warning replaces the three checks.
+
+The macOS computer-use checks run only when the profile settings list `npm:@amaster.ai/pi-computer-use`. They report four things:
+
+- `computer-use-macos-version`: the installed version in `<profile>/npm` against the pin of `computer-use-macos` in `config/manifest.json`.
+- `computer-use-macos-driver`: the bundled `CuaDriver.app` of the optional runtime package. The check looks for the file and does not start it.
+- `computer-use-macos-settings`: a warning when the `pi-computer-use` settings change `mode`, `toolProfile`, `confirmAppLaunch` or `confirmDangerousActions` from the values that `install.sh` writes.
+- `computer-use-macos-readiness`: an info line. The checks start no driver, so they ask for no macOS grant and do not report one.
+
+On a platform other than macOS, one warning replaces the four checks.
 These checks make no network request, access no credential field, and supply no automatic fix.
 
 | Diagnostic | Level | Meaning |
@@ -566,6 +575,8 @@ The `herdr` skill in [`skills/herdr/`](skills/herdr/SKILL.md) lets an agent cont
 | Start a new agent | `spawn.py` | Inputs: `--harness pi\|claude`, `--role`, `--model`, `--thinking` |
 | Close | `close.py` | Closes subagent panes that the skill started. Refuses all others. |
 | Look up | `resources.py` | The catalog of tools and skills with the location that is present on the machine |
+
+In Pi, use the tools of the `herdr-watch` extension in place of the blocking `ask.py`: `herdr_spawn` starts a new agent and sends its task, and `herdr_watch_start` prompts a pane that exists. Both return at once and deliver the reply later as a task notification, so the session stays interactive. In Claude Code, run `ask.py` in a `Bash` call with `run_in_background: true`. See [docs/herdr-watch.md](docs/herdr-watch.md).
 
 | Role | Focus | Usual file access | Session |
 | --- | --- | --- | --- |

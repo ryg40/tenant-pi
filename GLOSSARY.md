@@ -43,10 +43,10 @@ The comment at the top of `install.sh` states them. See [install.sh](INSTALL.md#
 
 **Computer-use module**:
 The optional module `computer-use`: the npm package `@agent-sh/computer-use-linux` at the exact version of `config/manifest.json`, for Linux only.
-Its tools read the screen and send input to the desktop of the user, so `install.sh` installs it only after a yes to desktop control. No module for macOS is chosen.
-See [computer use](docs/guides/modules.md#computer-use).
+Its tools read the screen and send input to the desktop of the user, so `install.sh` installs it only after a yes to desktop control. The module for macOS is `computer-use-macos`: the npm package `@amaster.ai/pi-computer-use` with Cua Driver, for macOS only.
+See [computer use](docs/guides/modules.md#computer-use) and [computer use on macOS](docs/guides/modules.md#computer-use-on-macos).
 _Avoid_: Desktop module, cua
 
 **Desktop tools**:
-The tools of the computer-use module: `computer_use_linux_*` in Pi, and the MCP server of the Claude Code plugin `computer-use-linux@computer-use-linux`.
+The tools of the computer-use modules: `computer_use_linux_*` (Linux) and `computer_use_*` (macOS) in Pi, and the MCP server of the Claude Code plugin `computer-use-linux@computer-use-linux`.
 The Herdr read roles start without them.

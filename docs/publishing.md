@@ -103,11 +103,12 @@ The components with the source kind `tree` in `config/manifest.json` point at di
 Continuous integration (CI) runs checks after a change.
 The GitHub workflow `.github/workflows/checks.yml` runs the full check set, `python3 scripts/check.py --all`, on each push and pull request. It has no branch filter.
 It runs one job on Linux and one job on macOS (Apple silicon). One failed job does not cancel the other job.
-Each job installs Node, the package dependencies and Pi at `runtime.piVersion` of `config/manifest.json`. It installs no Betterleaks, so the scan line says `skipped`.
+Each job installs Node, the package dependencies and Pi at `runtime.piVersion` of `config/manifest.json`. It also installs the Betterleaks archive of the pin and stops when the SHA-256 checksum of the archive differs from [the pinned checksum](secret-handling.md#pinned-checksums). The `scan` part of `check.py --all` then runs `scripts/scan.sh tree`.
 The workflow makes no model request, uploads no artifact and references no repository secret. It never publishes a snapshot or proposes a Pi update. The workflow file holds the action pins as full commit hashes.
 
 The maintainer creates the release entry of a tag only after both jobs of the run on its snapshot pass ([publish steps](guides/release-checklist.md#publish-steps)).
-The development remote runs no CI; the stamp of `check.py --all` is the check of development `main`. A GitHub run does not replace that stamp.
+The GitHub workflow runs both OS jobs. The maintainer's development repository runs only the Linux job, from a workflow file that this snapshot does not hold.
+The stamp of `check.py --all` is the check of development `main`. A CI run does not replace that stamp.
 
 A rerun uses the workflow from the original commit. A development change does not change an existing snapshot tag.
 Publish a new snapshot after approval to include a workflow fix; do not move an old tag.

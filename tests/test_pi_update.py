@@ -444,20 +444,23 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue(all(Path(name).is_relative_to(run / "kit/packages/openviking-pi") for name in tests["args"][1:]))
 
     def test_profile_load_installs_and_loads_the_computer_use_component(self):
-        expected = []
-        real = update.profile_expected
-        with patch.object(update, "linux", return_value=True), \
-                patch.object(update, "profile_expected", side_effect=lambda *args: expected.append(real(*args)) or expected[-1]):
-            report = self.qualify()
-        self.assertTrue(report["passed"], report)
-        component = MANIFEST["components"]["computer-use"]
-        spec = component["source"]["spec"]
-        self.assertTrue(any(spec in " ".join(command) for _, command, *_ in self.recorded))
-        [expected] = expected
-        self.assertIn("npm:" + spec, expected["packages"])
-        for kind in ("extensions", "skills"):
-            for item in component["resources"][kind]:
-                self.assertTrue(any(path.endswith(item) for path in expected[kind]), (kind, item))
+        # Linux qualifies computer-use, macOS computer-use-macos; each installs and loads its own pin.
+        for cid in ("computer-use", "computer-use-macos"):
+            with self.subTest(cid):
+                expected = []
+                real = update.profile_expected
+                with patch.object(update, "computer_use_component", return_value=cid), \
+                        patch.object(update, "profile_expected", side_effect=lambda *args: expected.append(real(*args)) or expected[-1]):
+                    report = self.qualify()
+                self.assertTrue(report["passed"], report)
+                component = MANIFEST["components"][cid]
+                spec = component["source"]["spec"]
+                self.assertTrue(any(spec in " ".join(command) for _, command, *_ in self.recorded))
+                [expected] = expected
+                self.assertIn("npm:" + spec, expected["packages"])
+                for kind in ("extensions", "skills"):
+                    for item in component["resources"][kind]:
+                        self.assertTrue(any(path.endswith(item) for path in expected[kind]), (kind, item))
 
     @slow
     def test_candidate_keeps_pages_unchanged_when_the_pin_moves(self):

@@ -5,7 +5,7 @@ import { agentDir } from "../../src/agent-dir.ts";
 import { readAnthropicMeter } from "../anthropic-usage/reader.ts";
 import { readCodexMeter } from "../codex-accounts/reader.ts";
 import { readCopilotMeter } from "../copilot-usage/reader.ts";
-import { computerUseChecks } from "./computer-use.ts";
+import { computerUseChecks, macosComputerUseChecks } from "./computer-use.ts";
 import { wikiEmbeddingChecks } from "./wiki.ts";
 
 /**
@@ -86,6 +86,7 @@ export async function runChecks(options: DoctorOptions = {}): Promise<Check[]> {
 
 	checks.push(...wikiEmbeddingChecks({ dir, cwd: options.cwd ?? process.cwd(), env, home: options.home }));
 	checks.push(...await computerUseChecks({ dir, env }));
+	checks.push(...macosComputerUseChecks({ dir, env }));
 
 	add("git", await which("git") ? "ok" : "warn", await which("git") ? "git is on PATH." : "git is not on PATH. The footer repository row stays empty.");
 

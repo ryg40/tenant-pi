@@ -53,8 +53,9 @@ CLAUDE_HERDR_TOOLS = (f"Skill Bash(python3 {HERE}/:*) Bash(herdr agent:*) "
                       "Bash(herdr pane neighbor:*) Bash(herdr pane get:*) Bash(herdr pane layout:*) "
                       "Bash(herdr tab list:*) Bash(herdr workspace list:*) Bash(herdr --skill) "
                       "Bash(jq:*) Bash(test:*) Bash(echo:*)")
-# The desktop tools of the computer-use module: the Pi extension and the server of the Claude Code plugin.
-PI_DESKTOP_TOOLS = "computer_use_linux_*"
+# The desktop tools of the computer-use modules: the Pi extensions (Linux computer_use_linux_*, macOS
+# computer_use_*) and the server of the Claude Code plugin.
+PI_DESKTOP_TOOLS = "computer_use_*"
 CLAUDE_DESKTOP_TOOLS = "mcp__plugin_computer-use-linux_computer-use-linux"
 
 

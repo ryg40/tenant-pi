@@ -1,7 +1,9 @@
 """Shared helpers for the herdr skill scripts. Standard library only."""
+import datetime
 import glob
 import json
 import os
+import pathlib
 import re
 import socket
 import subprocess
@@ -59,6 +61,238 @@ def session_file(info):
         return value if os.path.isfile(value) else None
     hits = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{value}.jsonl"))
     return hits[0] if hits else None
+
+
+# ---------------------------------------------------------------------------
+# Pi session files on disk, for a Pi pane that Herdr gives no transcript path
+# (Pi-Bolt runs without HERDR_SOCKET_PATH, so it reports no session).
+# ---------------------------------------------------------------------------
+PI_AGENTS = ("pi", "pi-bolt")
+# The prompt text that must be in the user entry. Pi can keep stray editor characters before it.
+# A prompt up to this length must end the user entry; a longer one must be in it.
+PROMPT_MATCH_CHARS = 200
+# A shorter prompt (such as "continue") is too common to identify a session.
+PROMPT_MIN_CHARS = 20
+# Slack for the clock of the file system and the timestamp of the entry.
+CLOCK_SLACK = 2
+
+
+def pi_session_dir_name(cwd):
+    """The folder name that Pi and Pi-Bolt give the sessions of a working directory.
+
+    The same rule as getDefaultSessionDirPath of Pi: drop one leading separator, then each / \\ : becomes -.
+    """
+    return "--" + re.sub(r"[/\\:]", "-", re.sub(r"^[/\\]", "", cwd)) + "--"
+
+
+def pi_agent_dirs():
+    """The agent directories where a Pi pane can write: the caller's, the default and the kit profiles."""
+    home = pathlib.Path.home()
+    dirs = [os.environ.get("PI_CODING_AGENT_DIR"), home / ".pi" / "agent"]
+    dirs += sorted((home / ".pi" / "profiles").glob("*"))
+    out = []
+    for d in dirs:
+        if not d:
+            continue
+        d = pathlib.Path(os.path.expanduser(str(d))).resolve()
+        if d not in out and d.is_dir():
+            out.append(d)
+    return out
+
+
+def _entry_epoch(entry):
+    try:
+        return datetime.datetime.fromisoformat(str(entry["timestamp"]).replace("Z", "+00:00")).timestamp()
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def _user_text(entry):
+    msg = entry.get("message")
+    if entry.get("type") != "message" or not isinstance(msg, dict) or msg.get("role") != "user":
+        return None
+    content = msg.get("content")
+    if isinstance(content, str):
+        return content
+    return "".join(p.get("text", "") for p in content or [] if isinstance(p, dict) and p.get("type") == "text")
+
+
+def _squash(text):
+    return " ".join(text.split())
+
+
+def _session_match(path, cwds, since, needle):
+    """Return the line after the matching user entry, or None.
+
+    The header must name one of `cwds`. A user entry written at or after `since` must end with the needle
+    (a short prompt) or hold it (a long prompt).
+    """
+    found = None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for n, line in enumerate(f):
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(d, dict):
+                    continue
+                if n == 0:
+                    if d.get("type") != "session" or os.path.realpath(str(d.get("cwd") or "")) not in cwds:
+                        return None
+                    continue
+                text = _user_text(d)
+                if text is not None and (needle in _squash(text) if len(needle) > PROMPT_MATCH_CHARS
+                                         else _squash(text).endswith(needle)):
+                    when = _entry_epoch(d)
+                    if when is not None and when >= since - CLOCK_SLACK:
+                        found = n + 1
+    except OSError:
+        return None
+    return found
+
+
+def find_pi_session(cwds, since, prompt, agent_dirs=None):
+    """Return (path, start line) of the one Pi session file of a pane, or None when it is not certain.
+
+    A candidate is a *.jsonl file in <agent dir>/sessions/<folder of the cwd>, modified at or after `since`
+    (epoch seconds), whose header names the cwd. With a prompt, the file must also hold a user entry
+    written at or after `since` that ends with the prompt (up to PROMPT_MATCH_CHARS characters) or holds
+    the whole prompt (a longer prompt); the start line is the line after it.
+    A prompt shorter than PROMPT_MIN_CHARS, no file or more than one file gives None.
+    """
+    real = {os.path.realpath(c) for c in cwds if c}
+    if not real:
+        return None
+    needle = _squash(prompt)
+    if len(needle) < PROMPT_MIN_CHARS:
+        return None
+    names = {pi_session_dir_name(c) for c in set(cwds) | real if c}
+    seen, hits = set(), []
+    for agent_dir in pi_agent_dirs() if agent_dirs is None else agent_dirs:
+        for name in names:
+            for path in pathlib.Path(agent_dir, "sessions", name).glob("*.jsonl"):
+                try:
+                    key = path.resolve()
+                    if key in seen or path.stat().st_mtime < since - CLOCK_SLACK:
+                        continue
+                except OSError:
+                    continue
+                seen.add(key)
+                line = _session_match(path, real, since, needle)
+                if line is not None:
+                    hits.append((str(path), line))
+    return hits[0] if len(hits) == 1 else None
+
+
+DISK_NOTE = "note: Herdr gave no transcript path; the reply below is from the Pi session file on disk: "
+
+
+def _pane_cwds(info):
+    return [c for c in (info.get("cwd"), info.get("foreground_cwd")) if c]
+
+
+def _header(path):
+    """The header of a Pi session file, or None."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            d = json.loads(f.readline())
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) and d.get("type") == "session" else None
+
+
+def _header_cwd(path):
+    """The realpath of the cwd in the header of a Pi session file, or None."""
+    d = _header(path)
+    return os.path.realpath(str(d["cwd"])) if d and d.get("cwd") else None
+
+
+def _newer_session(path, started):
+    """True when another session file of the same folder, in any agent directory, has a later header time.
+
+    After /new, /resume or a restart of the agent in the pane, that file is the current session of the pane.
+    A file of another pane in the same cwd that started later also counts: the caller then refuses.
+    """
+    folder = pathlib.Path(path).parent
+    me = pathlib.Path(path).resolve()
+    for d in {folder} | {pathlib.Path(a, "sessions", folder.name) for a in pi_agent_dirs()}:
+        for other in d.glob("*.jsonl"):
+            try:
+                if other.resolve() == me:
+                    continue
+            except OSError:
+                continue
+            when = _entry_epoch(_header(other) or {})
+            if when is not None and when > started:
+                return True
+    return False
+
+
+def save_pi_session(info, path):
+    """Keep the session file that a prompt matched in the pane record, for later runs without a prompt.
+
+    Only a record that spawn.py (or the first use of the skill) wrote for this pane gets it: the skill makes
+    no record for a pane that it did not start. spawn.py writes a whole new record, so a reused pane id loses it.
+    """
+    pane_id = (info or {}).get("pane_id")
+    record = read_record(pane_id) if pane_id else None
+    if not record or record.get("pane_id") != pane_id:
+        return
+    cwd = _header_cwd(path)
+    if cwd is None:
+        return
+    record["pi_session"] = {"pane_id": pane_id, "path": os.path.realpath(path), "cwd": cwd,
+                            "saved_at_epoch": time.time()}
+    if read_record(pane_id) is None:
+        return  # close.py removed the record meanwhile: do not bring it back
+    write_record(pane_id, record)
+
+
+def saved_pi_session(info):
+    """The session file that an earlier prompt in this pane matched, or None when it is not certain.
+
+    The record and the saved entry name this pane id, the agent name and the harness of the record and the
+    pane are the same and Pi, the file exists, and its header cwd is the current cwd of the pane.
+    The header time of the file is not earlier than the record (a pane id that a hand-started pane reuses),
+    and no other file of the same session folder has a later header time (_newer_session).
+    """
+    info = info or {}
+    pane_id = info.get("pane_id")
+    if not pane_id or info.get("agent") not in PI_AGENTS:
+        return None
+    record = read_record(pane_id) or {}
+    saved = record.get("pi_session")
+    if (not isinstance(saved, dict) or record.get("pane_id") != pane_id or saved.get("pane_id") != pane_id
+            or record.get("harness") not in PI_AGENTS or record.get("name") != info.get("name")):
+        return None
+    path = saved.get("path")
+    if not isinstance(path, str) or not os.path.isfile(path):
+        return None
+    cwd = _header_cwd(path)
+    if cwd is None or cwd != saved.get("cwd") or cwd not in {os.path.realpath(c) for c in _pane_cwds(info)}:
+        return None
+    started, created = _entry_epoch(_header(path) or {}), record.get("created_at_epoch")
+    if (started is None or not isinstance(created, (int, float)) or started < created - CLOCK_SLACK
+            or _newer_session(path, started)):
+        return None
+    return path
+
+
+def pi_disk_session(info, prompt=None, since=None):
+    """The session file on disk of a Pi pane that Herdr gives no transcript path: (path, start line) or None.
+
+    The file must hold the prompt in a user entry written at or after `since` (the send time).
+    Without a prompt (a wait-only run, last-reply.py) only the file that an earlier prompt in this pane
+    matched counts (saved_pi_session), from line 0: a search would be uncertain, because another Pi session
+    in the same cwd can be the only file.
+    """
+    if (info or {}).get("agent") not in PI_AGENTS:
+        return None
+    if prompt is None:
+        path = saved_pi_session(info)
+        return (path, 0) if path else None
+    return find_pi_session(_pane_cwds(info), since, prompt)
 
 
 def assistant_texts(path, start_line=0):
@@ -183,9 +417,20 @@ def read_record(pane_id):
 
 
 def write_record(pane_id, data):
-    os.makedirs(os.path.dirname(record_path(pane_id)), mode=0o700, exist_ok=True)
-    with open(record_path(pane_id), "w") as f:
-        json.dump(data, f)
+    """Write the whole record through a temporary file, so a reader never sees half a record."""
+    path = record_path(pane_id)
+    os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+    tmp = f"{path}.{os.getpid()}.tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def remove_record(pane_id):

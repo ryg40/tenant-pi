@@ -7,6 +7,7 @@ Status: offline implementation, not a qualified runtime. This document gives the
 | Part | What it is | How the kit handles it |
 | --- | --- | --- |
 | Herdr application | A host tool: the `herdr` command and its server. It is not an npm package and not a package of a profile. | The kit does not install, update or start it. |
+| Herdr Pi integration | The Pi extension `herdr-agent-state.ts` of Herdr. It reports the state and the transcript path of a Pi pane to Herdr. | When `herdr` is on `PATH` and the runtime is not Pi-Bolt, `install.sh` writes it into `<profile>/extensions`; see [the Herdr Pi integration](#the-herdr-pi-integration). |
 | Herdr skill | The skill directory `packages/tenantext/skills/herdr` of this kit. | The core install loads it in the profile, and `install.sh` links it into `~/.claude/skills`. The installer of the skill, `packages/tenantext/skills/herdr/install.sh`, is the separate option that also makes `~/.agents/skills/herdr`. |
 | Question extension | The npm package `@juicesharp/rpiv-ask-user-question`. It gives Pi the `ask_user_question` tool. | The settings template declares it at the exact version of `config/manifest.json`. Pi installs it at the first start. |
 
@@ -25,6 +26,28 @@ command -v herdr && herdr --version
 ```
 
 The command prints the path and the version of the installed Herdr, or nothing. Do not install a second copy, and do not run `herdr update` as a part of the setup. A present command does not prove a running server, a working session or a loaded skill. The manifest names no required Herdr version.
+
+## The Herdr Pi integration
+
+The scripts of the Herdr skill read the reply of a Pi pane from its transcript. Herdr knows the path of that transcript only when the Pi session reports it. The Herdr Pi integration does that report. Without a transcript path, `ask.py` prints `NO TRANSCRIPT PATH from Herdr for this pane` and the screen tail, and the `herdr-watch` status is `no transcript path, read the screen`. The cause can be a missing integration, a pane that runs without `HERDR_SOCKET_PATH` (Pi-Bolt), or a transcript file that does not exist yet.
+
+`herdr integration install pi` writes the integration into `$PI_CODING_AGENT_DIR/extensions`, else into `~/.pi/agent/extensions`. Pi loads each file of `<agent directory>/extensions` beside the packages of `settings.json`. A profile of the kit is its own agent directory, so the file of `~/.pi/agent` does not reach it.
+
+When `herdr` is on `PATH`, `install.sh` runs this for the selected profile, at each new install and each upgrade:
+
+```sh
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/<name>" herdr integration install pi
+```
+
+Herdr writes the file of its own version and replaces an older one. Without `herdr` on `PATH`, `install.sh` prints one `herdr:` line and skips the step. When the profile runtime is Pi-Bolt, `install.sh` also skips the step with one `herdr:` line: Pi-Bolt has its own Herdr reporter, and a second reporter could disagree with it on the agent name. When the command fails, `install.sh` prints a `herdr:` warning and still exits 0, because the profile and the alias are in place. After an update of Herdr, run an upgrade of the profile, or the command above. Check the result:
+
+```sh
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/<name>" herdr integration status | grep '^pi:'
+```
+
+The line must say `current`. In a running pane, `herdr agent get <pane>` must show an `agent_session` that is not null. Restart the Pi sessions of the profile after the step: Pi loads extensions at the start.
+
+Pi-Bolt panes are an exception. `spawn.py` starts them without `HERDR_SOCKET_PATH`, because Herdr 0.9.5 refuses the agent name `pi-bolt` of the built-in reporter of Pi-Bolt (see [the herdr skill](../packages/tenantext/skills/herdr/SPAWN.md)). The Herdr Pi integration also needs that variable, so these panes report no transcript path. The watch then gives `no transcript path, read the screen`.
 
 ## Verification results
 

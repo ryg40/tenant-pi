@@ -56,6 +56,10 @@
           "run": "pin=\"$(python3 -c 'import json; print(json.load(open(\"config/manifest.json\"))[\"runtime\"][\"piVersion\"])')\"\nnpm install --ignore-scripts --prefix \"$RUNNER_TEMP/pi\" -- @earendil-works/pi-coding-agent@\"${pin:?}\"\nG=\"$RUNNER_TEMP/pi/node_modules/@earendil-works\"\nmkdir -p packages/tenantext/node_modules/@earendil-works\nfor name in pi-coding-agent pi-ai pi-tui; do\n  source=\"$G/pi-coding-agent/node_modules/@earendil-works/$name\"\n  [ -d \"$source\" ] || source=\"$G/$name\"\n  ln -sfn \"$source\" \"packages/tenantext/node_modules/@earendil-works/$name\"\ndone\n"
         },
         {
+          "name": "Betterleaks at the pin of scripts/scan.sh",
+          "run": "set -eu\nversion=1.9.0\ncase \"$(uname -s)/$(uname -m)\" in\n  Linux/x86_64) platform=linux_x64; sum=f8b185a39ffcece2a1ca82bf3a4e7435cd81963ffd16b7a9128daf75f35f6de7; verify=\"sha256sum -c\" ;;\n  Darwin/arm64) platform=darwin_arm64; sum=83dd7eaab13d44a1e8e347a17064cdef153a1478db473276d41b38d55613d3f2; verify=\"shasum -a 256 -c\" ;;\n  *) echo \"no pinned Betterleaks archive for $(uname -s)/$(uname -m)\" >&2; exit 1 ;;\nesac\narchive=\"betterleaks_${version}_$platform.tar.gz\"\ndir=\"$RUNNER_TEMP/betterleaks\"\nmkdir -p \"$dir/bin\"\ncd \"$dir\"\ncurl -fsSLO \"https://github.com/betterleaks/betterleaks/releases/download/v$version/$archive\"\necho \"$sum  $archive\" | $verify\ntar -xzf \"$archive\" -C bin betterleaks\nbin/betterleaks version\necho \"$dir/bin\" >> \"$GITHUB_PATH\"\n"
+        },
+        {
           "name": "Offline checks",
           "run": "python3 scripts/check.py --all"
         }

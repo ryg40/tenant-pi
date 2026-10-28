@@ -60,6 +60,21 @@ class Workflows(unittest.TestCase):
         manifest = json.loads((ROOT / "config/manifest.json").read_text())
         self.assertNotIn(manifest["runtime"]["piVersion"], (ROOT / WORKFLOW).read_text())
 
+    def test_betterleaks_installs_at_the_pin_before_the_check(self):
+        # Without the binary the scan part says "skipped" and CI still passes.
+        pin = re.search(r"^BETTERLEAKS_VERSION=(\S+)$", (ROOT / "scripts/scan.sh").read_text(), re.M).group(1)
+        sums = re.findall(r"^\| `betterleaks_[\d.]+_(?:linux_x64|darwin_arm64)\.tar\.gz` \| `([0-9a-f]{64})` \|$",
+                          (ROOT / "docs/secret-handling.md").read_text(), re.M)
+        self.assertEqual(len(sums), 2)
+        for job in self.load()["jobs"].values():
+            runs = [step.get("run", "") for step in job["steps"]]
+            install = [index for index, run in enumerate(runs) if "betterleaks" in run]
+            self.assertEqual(len(install), 1)
+            self.assertLess(install[0], runs.index(CHECK))
+            self.assertEqual(re.findall(r"^version=(\S+)$", runs[install[0]], re.M), [pin])
+            for value in sums:
+                self.assertIn(value, runs[install[0]])
+
     def test_matrix_runs_linux_floor_and_macos(self):
         job = self.load()["jobs"]["offline"]
         manifest = json.loads((ROOT / "config/manifest.json").read_text())

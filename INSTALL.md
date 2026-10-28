@@ -44,7 +44,7 @@ The install line of the Pi-Bolt README installs it to `~/.pi-bolt` and links the
 curl -fsSL https://pi-bolt.opensec.in/install.sh | sh
 ```
 
-One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.4.0 (Pi-Bolt 1.0.4, linux-x64, JIT off)`. Use the Pi-Bolt release that carries `runtime.piVersion`. `runtime.piBoltVersion` in the manifest is the tested Pi-Bolt release. Check it:
+One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.4.0 (Pi-Bolt 1.0.6, linux-x64, JIT off)`. Use the Pi-Bolt release that carries `runtime.piVersion`. `runtime.piBoltVersion` in the manifest is the tested Pi-Bolt release. Check it:
 
 ```sh
 python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"
@@ -71,20 +71,29 @@ Keep the clone in its place. The profile names `packages/tenantext` inside it.
 
 The script offers an upgrade of an existing named profile or a new alternate profile in `~/.pi/profiles/<name>`. It asks for shell setup and optional modules, then shows the proposed changes for approval. The inherited `PI_CODING_AGENT_DIR` is only a suggestion. Without a terminal, supply every choice through the flags in `install.sh`.
 
-The module question and `--with` accept `wiki`, `hermes`, `mcp`, `computer-use` and `okknow`, separated by commas, or `none`:
+The module question and `--with` accept `wiki`, `hermes`, `mcp`, `computer-use`, `computer-use-macos` and `okknow`, separated by commas, or `all` or `none`. `all` means every optional module of your platform: `computer-use` on Linux, `computer-use-macos` on macOS. Without a terminal, `--with all` needs the okknow origin, as `--with okknow` does. Use `all` and `none` alone, not with other names:
 
 ```sh
 ./install.sh --new main --shell bash --with computer-use --yes
 ```
 
-- `computer-use` is for Linux only. On another platform the script stops before its first write, and names the open choice of a macOS module.
-- `--with computer-use` is your yes to desktop control. After `computer-use` as an answer to the module question, the script asks about desktop control before the install. A no stops the script before its first write.
+On a Mac, in zsh:
+
+```zsh
+./install.sh --new main --shell zsh --with computer-use-macos --yes
+```
+
+- `computer-use` is for Linux only, and `computer-use-macos` is for macOS only. The module question offers the module of your platform. On another platform the script stops before its first write.
+- `--with computer-use`, `--with computer-use-macos` or `--with all` is your yes to desktop control. After one of them or `all` as an answer to the module question, the script asks about desktop control before the install. A no stops the script before its first write.
+- `computer-use-macos` also writes the safe settings block `pi-computer-use` into the profile settings. See [computer use on macOS](docs/guides/modules.md#computer-use-on-macos).
 - `okknow` adds the package `<clone>/packages/okknow` to the profile, links the CLI to `~/.local/bin/okknow` and runs its setup wizard. Without a terminal, set `OKKNOW_ORIGIN` to the origin of your OpenKnowledge server. See [okknow](docs/guides/modules.md#okknow).
 - When `~/.claude` exists and the `claude` command is on `PATH`, the Claude Code plugin of the module needs a separate yes: `--claude-plugin`, or a yes to its own question. `--yes` does not give it. See [the Claude Code plugin](docs/guides/modules.md#claude-code-plugin).
 
 `--dummies` turns on DUMMIES reports for the profile: a coordinator session ends each reply with a compact report for a junior developer, and `next-prompt` drafts the next action. It needs its own yes: `--dummies`, or a yes to its question. The question comes only when the installer asks the module question; a run with `--with` on the command line needs `--dummies`. `--yes` does not give it, and a no changes nothing. See [DUMMIES](docs/guides/modules.md#dummies).
 
 The script writes absent templates from `config/`. It refuses the live profile `~/.pi/agent` and each directory inside the clone. The settings template names `<clone>/packages/tenantext` as a local package and the question extension. The models template has no provider.
+
+When the `herdr` command is on `PATH`, the script runs `herdr integration install pi` for the profile. Herdr writes its Pi reporter to `<profile>/extensions/herdr-agent-state.ts`. With it, the watch of a Pi pane gets the reply text. Without `herdr`, or with the runtime Pi-Bolt (it has its own Herdr reporter), the script prints one `herdr:` line and skips the step. A failed step prints a `herdr:` warning, and the install still exits 0. See [the Herdr Pi integration](docs/herdr-setup.md#the-herdr-pi-integration).
 
 `--runtime pi|pi-bolt|<absolute path>` selects the Pi runtime of the profile. The script looks up `pi` and `pi-bolt` on `PATH`. Without the option, an upgrade keeps the runtime of its launcher. Else the script asks when `pi` and `pi-bolt` are both on `PATH` and `--yes` is absent. Else it uses `pi`. To switch an existing profile, run an upgrade with the option:
 
@@ -111,6 +120,7 @@ PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter@7.0.
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory@0.9.11
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki@0.12.5
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.27
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@amaster.ai/pi-computer-use@0.1.32
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/openviking-pi/index.ts"
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/agentcore-pi/index.ts"
 ```
@@ -129,6 +139,7 @@ The script prints one line for each manifest that it corrects, and nothing when 
 | `hermes` | Write [the Hermes config file](docs/memory-modules.md#the-hermes-config-file); without it, the package defaults make model calls of their own. | Stores memory of the sessions in `<profile>/pi-hermes-memory/`. |
 | `wiki` | Read [an existing vault](docs/memory-modules.md#an-existing-vault). | Uses the personal vault `~/.llm-wiki` of the account, or `$WIKI_HOME/.llm-wiki`. An existing vault stays as it is. With the default settings, text of the vault goes into each prompt and so to the model provider. |
 | `computer-use` | Read [computer use](docs/guides/modules.md#computer-use). The module needs Linux, a graphical session with AT-SPI accessibility, and network access for its binary download. | The official computer-use module of the kit for Linux. Its tools read the accessibility tree, take screenshots and send input to your desktop. Screen content goes into the conversation and so to the model provider. |
+| `computer-use-macos` | Read [computer use on macOS](docs/guides/modules.md#computer-use-on-macos). The module needs macOS 13 or later. Status: not verified on a Mac. Cua Driver sends telemetry by default; see the [open gaps](docs/guides/modules.md#open-gaps). | The computer-use module of the kit for macOS: Cua Driver through a Pi extension. Its tools read the accessibility tree, take screenshots and send input to your Mac. Screen content and typed text go into the conversation and so to the model provider. macOS asks for the grants at the first tool call. |
 | `okknow` | An OpenKnowledge server of your own, and `OPENKNOWLEDGE_USERNAME` and `OPENKNOWLEDGE_PASSWORD` in your shell. Install it with `install.sh --with okknow`; it has no `pi install` line. See [okknow](docs/guides/modules.md#okknow). | The skill and the CLI `okknow` for that one server, over MCP first, then the CLI. The kit skills `dummies`, `research`, `to-spec`, `to-tickets` and `get-status` use it. |
 | `openviking` | `npm ci --ignore-scripts` in `<clone>/packages/openviking-pi`, and an OpenViking server that you set up. | Sends session content to that server and recalls it. See [OpenViking](docs/memory-modules.md#openviking-what-the-vendored-source-does). |
 | `agentcore` | `npm ci --ignore-scripts` in `<clone>/packages/agentcore-memory-core`, and the AWS resources of the owner. | Recalls and proposes memories in AWS AgentCore Memory. Start Pi with `AGENTCORE_MEMORY_CONFIG_FILE`; see [start and setup](docs/memory-modules.md#start-and-setup). |
@@ -136,6 +147,7 @@ The script prints one line for each manifest that it corrects, and nothing when 
 - Each `npm:` line has the exact version that the kit reviewed, the `source.spec` of the module in `config/manifest.json`. The question extension of the core install has an exact version too. `pi update --extensions` does not move an exact version; see [the module versions](UPDATE.md#the-module-versions).
 - The `computer-use` line can print an `npm warn install-scripts` line that names `npm/install.js`. Observed with version 0.7.24: the script still ran and downloaded the binary.
 - `install.sh --with computer-use` installs the same spec, from `config/manifest.json`. Do not run the line on a platform other than Linux.
+- Run the `computer-use-macos` line only on macOS. `install.sh --with computer-use-macos` installs the same spec and also writes the settings block `pi-computer-use`; the line alone uses the defaults of the package, which have the same values.
 - A `pi install` line loads each resource that the package declares. The `wiki` package declares a skill, prompt commands and an MCP server too; see [the wiki facts](docs/memory-modules.md#wiki-what-the-pinned-source-does) for a filter.
 - The `wiki` line prints an npm audit summary with a count of vulnerabilities. The output is expected. Do not run `npm audit fix` in the profile: it changes the installed packages, and it can undo the peer correction.
 - Observed with Pi 1.3.0: `pi install` of a local path writes the path relative to `<profile>` into `settings.json`. Keep the clone and the profile in their places.

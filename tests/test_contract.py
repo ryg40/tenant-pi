@@ -267,7 +267,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn(("wiki", "extensions/llm-wiki/index.ts"), entries)
         for cid, entry in entries:
             with self.subTest(cid=cid):
-                self.assertRegex(entry, r"\A(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.ts\Z")
+                self.assertRegex(entry, r"\A(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.(?:ts|js)\Z")
 
     def test_one_tree_component_per_extension_and_skill(self):
         data = kit_manifest()

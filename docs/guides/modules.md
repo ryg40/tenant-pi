@@ -78,11 +78,12 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 - **Agent fan-out**: no subagents module exists. Use the Herdr skill of `packages/tenantext`. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.
 - **Questions** (`questions`): the Pi extension with the `ask_user_question` tool, in the core install. It needs an interactive session. Without it, a skill asks in plain text. It is not an extension for Claude Code.
 - **Computer use** (`computer-use`): control of the desktop on Linux. Ask about desktop control before you install it. Read [computer use](#computer-use) first.
+- **Computer use on macOS** (`computer-use-macos`): control of the desktop on a Mac. Ask about desktop control before you install it. Read [computer use on macOS](#computer-use-on-macos) first.
 - **OpenKnowledge** (`okknow`): the skill and the CLI for one OpenKnowledge server of the user. Read [okknow](#okknow) first.
 
 ## Computer use
 
-The `computer-use` module is agent-sh `computer-use-linux` 0.7.27, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. The computer-use module for macOS is not chosen yet. Its manifest status is `unverified`. The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
+The `computer-use` module is agent-sh `computer-use-linux` 0.7.27, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. Its manifest status is `unverified`. For macOS, see [computer use on macOS](#computer-use-on-macos). The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
 
 The package gives Pi native tools and a skill. The tools read the AT-SPI accessibility tree, take screenshots and list windows. They also send clicks, keys and text to the desktop of the user. Screenshots and accessibility trees that a tool returns go into the conversation, and so to the model provider.
 
@@ -140,6 +141,63 @@ Each new Pi pane of a profile with the module, and each new Claude Code pane wit
 ### A new version
 
 The pin moves in three places: the manifest spec, the line of each Pi profile, and the Claude Code plugin. `pi update --extensions` does not move the exact spec of a profile line. [The computer-use version](../../UPDATE.md#the-computer-use-version) gives the steps.
+
+## Computer use on macOS
+
+The `computer-use-macos` module is the npm package `@amaster.ai/pi-computer-use` 0.1.32, a Pi extension for Cua Driver 0.37.0. On macOS, npm installs its optional runtime `@amaster.ai/pi-computer-use-cua-driver-darwin-universal` 0.1.4. That runtime holds `CuaDriver.app` of the upstream release, signed by upstream (bundle ID `com.trycua.driver`), as a universal binary for Apple silicon (arm64) and Intel (x86_64). The `Info.plist` of the app names macOS 13.0 as the minimum. Its manifest status is `unverified`.
+
+Status: not verified on a Mac. The checks of the kit are source checks only: the exact pin, the install into a profile, the default settings and the extension load. The qualification step of the update path installs and loads the module only when it runs on macOS. The live desktop qualification waits for a Mac check that the owner approves.
+
+The package gives Pi native `computer_use_*` tools. The tools list apps and windows, read the accessibility tree of a window, take screenshots, and send clicks, keys, text and drags to a window. Screenshots, accessibility text and the text that the agent types go into the conversation, and so to the model provider.
+
+Read the [open gaps](#open-gaps) before you install. Cua Driver sends telemetry by default, and no opt-out for the bundled copy is proven. The model can also activate the tool groups that the `core` profile hides.
+
+### Install
+
+1. Run `./install.sh --with computer-use-macos` in zsh (see [install.sh](../../INSTALL.md#run-installsh)). `--with computer-use-macos` is your yes to desktop control. After `computer-use-macos` as an answer to the module question, the script asks about desktop control first. On Linux the script stops before its first write.
+2. Type `/reload` in the Pi session. Pi loads the extension.
+3. Run `/tenantext-doctor`. It reports the installed version against the kit pin, the bundled `CuaDriver.app` and the settings. It starts no driver, so it does not check the macOS grants.
+
+The install and the extension load start no driver and ask for no macOS grant. The package has no install script. The extension starts `CuaDriver.app` through LaunchServices at the first `computer_use_*` tool call. That call asks macOS for the Accessibility and Screen Recording grants for `CuaDriver.app`, not for the terminal. Grants that exist already raise no new dialog.
+
+The installer writes this block into the profile settings. A value that you set already stays.
+
+```json
+{
+  "pi-computer-use": {
+    "mode": "bundled",
+    "toolProfile": "core",
+    "confirmAppLaunch": true,
+    "confirmDangerousActions": true
+  }
+}
+```
+
+The extension reads this block from the `settings.json` of the profile (`PI_CODING_AGENT_DIR`). A key there wins over the same key in `~/.pi/agent/settings.json`. A key that only `~/.pi/agent/settings.json` sets applies too. This fact comes from the source of `@amaster.ai/pi-shared` 0.1.32; it is not verified on a Mac.
+
+- `mode` `bundled`: the extension uses the driver of the runtime package. The kit installs no second Cua app.
+- `toolProfile` `core`: the model sees only the everyday tools at the start.
+- `confirmAppLaunch`: Pi asks you once for each app before the agent launches it.
+- `confirmDangerousActions`: Pi asks you before a high-risk tool, for example `kill_app`, `run_script`, or `install_extension` with `confirm:true`.
+
+The kit does not install the optional Cua Perception extension. The ordinary accessibility and screenshot tools do not need it.
+
+### Open gaps
+
+- Telemetry: Cua Driver sends telemetry by default. The extension passes only two variables to the driver app, so an opt-out variable in your shell does not reach it. No opt-out for the bundled copy is proven.
+- Display: main display only is not proven for driver 0.37.0. Prefer window-scoped captures.
+- SSH: not verified: the behavior over SSH without a logged-in GUI session.
+- Tool exposure: the `core` profile is not an allowlist. The model can activate the other tool groups itself, for example with `computer_use_tools` or the tool search of Pi. The app-launch confirmation covers the launch of an app, not each action on an app that runs already.
+- Background input: the driver sends input to a window in the background where it can. Some shortcuts and app controls can still bring a window to the front.
+- Signature: not verified on a Mac: the code signature and the notarization of `CuaDriver.app`.
+
+### Herdr panes on macOS
+
+The Herdr skill removes the `computer_use_*` tools from the read roles, as for the Linux module; see [Herdr panes](#herdr-panes). The macOS module has no Claude Code form in the kit.
+
+### A new version
+
+The pin moves in two places: the manifest spec and the line of each Pi profile. [The computer-use version](../../UPDATE.md#the-computer-use-version) gives the steps.
 
 ## okknow
 

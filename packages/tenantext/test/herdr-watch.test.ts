@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import herdrWatch, {
-	CUSTOM_TYPE, EXIT_MEANING, LABEL_LIMIT, NO_NEW_REPLY_STATUS, PANE_LIMIT, REPLY_LIMIT, SPAWN_KILL_GRACE_MS,
+	CUSTOM_TYPE, EXIT_MEANING, LABEL_LIMIT, NO_NEW_REPLY_STATUS, NO_TRANSCRIPT_LINE, NO_TRANSCRIPT_STATUS, PANE_LIMIT, REPLY_LIMIT, SPAWN_KILL_GRACE_MS,
 	findAskScript, findSkillScript, firstReplyLine, formatElapsed, lastJsonLine, noNewReply, oneLine, statusOf,
 } from "../extensions/herdr-watch/index.ts";
 
@@ -259,6 +259,11 @@ test("exit 0 with NO NEW REPLY gets its own status word; the same text inside a 
 	assert.equal(noNewReply("status line\n--- screen tail ---\nNO NEW REPLY in the transcript"), false);
 	assert.deepEqual([statusOf(0, null, none), statusOf(0, null, quoted), statusOf(0), statusOf(5, null, none)],
 		[NO_NEW_REPLY_STATUS, "reply", "reply", "no turn started, read the screen"]);
+});
+
+test("exit 0 without a transcript path from Herdr gets its own status word", () => {
+	const output = `pane=pane-t agent=pi status=done cwd=/work elapsed=3s\n${NO_TRANSCRIPT_LINE} (is the Herdr integration for the harness installed, or does the pane run without HERDR_SOCKET_PATH, as Pi-Bolt does?). The screen tail follows.\n--- screen tail ---\n> done\n`;
+	assert.deepEqual([statusOf(0, null, output), statusOf(5, null, output)], [NO_TRANSCRIPT_STATUS, "no turn started, read the screen"]);
 });
 
 test("the label and the pane are one line in the notification, without control characters, and have a length limit", async t => {

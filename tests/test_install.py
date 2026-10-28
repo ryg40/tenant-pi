@@ -307,6 +307,53 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertEqual(2, self.install(modules='computer-use').returncode)
         self.assertEqual({}, self.snapshot())
 
+    def test_computer_use_macos_on_another_platform_writes_nothing(self):
+        self.command('uname', 'echo Linux\n')
+        self.assertEqual(2, self.install(modules='computer-use-macos').returncode)
+        self.assertEqual({}, self.snapshot())
+
+    def test_all_means_the_modules_of_this_platform(self):
+        # A closed loopback port: the okknow wizard probe fails at once.
+        for platform, desktop, other in (('Linux', 'computer-use', 'computer-use-macos'),
+                                         ('Darwin', 'computer-use-macos', 'computer-use')):
+            with self.subTest(platform=platform):
+                self.command('uname', 'echo ' + platform + '\n')
+                self.success(self.install(mode='new' if platform == 'Linux' else 'upgrade', shell='none',
+                                          modules='all', env={'OKKNOW_ORIGIN': 'http://127.0.0.1:1'}))
+                calls = [json.loads(line)['args'] for line in (self.profile / 'calls.jsonl').read_text().splitlines()]
+                requested = {args[1] for args in calls if args[0] == 'install'}
+                for name in ('wiki', 'hermes', 'mcp', desktop):
+                    self.assertIn('npm:' + MANIFEST['components'][name]['source']['spec'], requested)
+                self.assertNotIn('npm:' + MANIFEST['components'][other]['source']['spec'], requested)
+                if platform == 'Linux':
+                    # The Darwin subtest shares this home, so only the first run proves the link.
+                    self.assertTrue((self.home / '.local/bin/okknow').is_symlink())
+                (self.profile / 'calls.jsonl').write_text('')
+
+    def test_all_with_another_name_writes_nothing(self):
+        result = self.install(modules='all,wiki')
+        self.assertEqual(2, result.returncode)
+        self.assertIn('stands alone', result.stderr)
+        self.assertEqual({}, self.snapshot())
+
+    def test_computer_use_macos_installs_its_pin_with_the_safe_settings(self):
+        self.command('uname', 'echo Darwin\n')
+        result = self.interactive([('Optional modules', 'computer-use-macos'), ('desktop', 'no')],
+                                  '--new', 'demo', '--shell', 'none', '--yes')
+        self.assertEqual(2, result.returncode)
+        self.assertEqual({}, self.snapshot())
+        self.success(self.install(shell='none', modules='computer-use-macos'))
+        spec = 'npm:' + MANIFEST['components']['computer-use-macos']['source']['spec']
+        self.assertIn(['install', spec], [json.loads(line)['args'] for line in (self.profile / 'calls.jsonl').read_text().splitlines()])
+        safe = {'mode': 'bundled', 'toolProfile': 'core', 'confirmAppLaunch': True, 'confirmDangerousActions': True}
+        self.assertEqual(safe, json.loads((self.profile / 'settings.json').read_text())['pi-computer-use'])
+        # An upgrade adds a missing default and keeps a value that the user set.
+        settings = json.loads((self.profile / 'settings.json').read_text())
+        settings['pi-computer-use'] = {'toolProfile': 'full'}
+        (self.profile / 'settings.json').write_text(json.dumps(settings))
+        self.success(self.install(mode='upgrade', shell='none', modules='computer-use-macos'))
+        self.assertEqual(safe | {'toolProfile': 'full'}, json.loads((self.profile / 'settings.json').read_text())['pi-computer-use'])
+
     def test_computer_use_and_its_plugin_need_their_own_yes(self):
         self.command('uname', 'echo Linux\n')
         self.command('claude', 'echo "$*" >> "$HOME/claude-calls"\necho "[]"\n')
@@ -346,6 +393,13 @@ print('dummies: on for pi | autostart: AGENTS.md')
         recorded = [json.loads(line) for line in calls.read_text().splitlines()]
         self.assertEqual(['on', '--harness', 'pi', '--autostart'], recorded[0]['args'])
         self.assertEqual({str(self.profile)}, {call['profile'] for call in recorded})
+
+    def test_herdr_pi_integration_goes_into_the_profile_only(self):
+        # The live agent directory of the environment must not get the reporter.
+        self.success(self.install(shell='none'))
+        self.command('herdr', 'echo "$PI_CODING_AGENT_DIR $*" >> "$HOME/herdr-calls"\n')
+        self.success(self.install(mode='upgrade', shell='none'))
+        self.assertEqual(str(self.profile) + ' integration install pi\n', (self.home / 'herdr-calls').read_text())
 
     def test_symlink_profiles_cannot_target_live_or_clone(self):
         self.profile.parent.mkdir(parents=True)

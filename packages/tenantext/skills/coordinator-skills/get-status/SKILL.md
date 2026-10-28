@@ -189,7 +189,7 @@ After it sends `go`, the sending session closes after up to 60 seconds, but only
 Wait for `go` after your PLAN reply. Then run the round under your coordinator role. Claim an issue before work when the tracker requires it. Use one pane per task and verify each result. Ask the user before a push, a deploy, a service restart, a secret change or data deletion. Report the round to the user in your own pane, or ask there when you need a decision.
 ```
 
-Send it with one blocking call, with the timeout of your shell tool above `--timeout`:
+Send it. In Pi, use `herdr_watch_start` with the task file as `prompt_file` and `timeout_seconds` 540; the reply arrives as a `<herdr-task-notification>`, and its `status:` line gives the exit code. In Claude Code, call the `Bash` tool with `run_in_background: true`. In a session without either, make one blocking call, with the timeout of your shell tool above `--timeout`:
 
 ```sh
 python3 $S/ask.py <coordinator name> --file /tmp/get-status/<slug>-<time>-task.md --timeout 540
@@ -197,9 +197,9 @@ python3 $S/ask.py <coordinator name> --file /tmp/get-status/<slug>-<time>-task.m
 
 | Reply | What to do |
 | --- | --- |
-| `MORE` | Answer each question; gather more when needed. Send the answers with `ask.py` and ask for `PLAN`. After two `MORE` rounds, answer what you can and write "gather the rest yourself, then reply PLAN". |
+| `MORE` | Answer each question; gather more when needed. Send the answers the same way and ask for `PLAN`. After two `MORE` rounds, answer what you can and write "gather the rest yourself, then reply PLAN". |
 | `PLAN` | Continue to section 6. Do not send `go` yet. |
-| exit 124 | The pane still works. Run `herdr agent wait <pane-id> --timeout 540000`, then `last-reply.py`. This wait is for `PLAN`, not for the round. |
+| exit 124 | The pane still works. In Pi, start `herdr_watch_start` with `wait_only: true` and no prompt. Without the tool, run `herdr agent wait <pane-id> --timeout 540000`, then `last-reply.py`. This wait is for `PLAN`, not for the round. |
 | exit 3, 4, 5, 6 | Follow the table in section A2 of the herdr skill. Report to the user and keep this pane open. |
 
 Without `PLAN`, report to the user, keep this pane open and send no `go`. Never close the new coordinator pane.
@@ -226,8 +226,8 @@ Use the exit code and the output together:
 
 | Exit | What to do |
 | --- | --- |
-| 0 | Confirm delivery only when the output has a `--- reply ---` line followed by a reply. It must have no line that starts `note: reply was an API error` or `NO NEW REPLY in the transcript`. Otherwise keep this pane open and report the output. |
-| 3 | Nothing was sent. Run `herdr agent wait <pane-id> --timeout 600000`, as section A2 of the herdr skill says. Use the pane ID from the output of `spawn.py` for `<pane-id>`. Set the timeout of your shell tool above 600 seconds for this wait. Then send `go` one more time with `ask.py`. Apply this table to that result, but do not retry again. |
+| 0 | Confirm delivery only when the output has a `--- reply ---` line followed by a reply. It must have no line that starts `note: reply was an API error`, `NO NEW REPLY in the transcript` or `NO TRANSCRIPT PATH from Herdr for this pane`. Otherwise keep this pane open and report the output. |
+| 3 | Nothing was sent. Wait until the pane settles, as section A2 of the herdr skill says. In Pi, start `herdr_watch_start` with `wait_only: true` and no prompt, and wait for its notification. Without the tool, run `herdr agent wait <pane-id> --timeout 600000`, with the timeout of your shell tool above 600 seconds. Use the pane ID from the output of `spawn.py` for `<pane-id>`. Then send `go` one more time with `ask.py`. Apply this table to that result, but do not retry again. |
 | 4 | Keep this pane open and show the screen text to the user. Do not answer the question or approval yourself. |
 | 5 | Keep this pane open and read the screen to find why no turn started. Report the output to the user. |
 | 6 | Keep this pane open and read the coordinator's commit for its record, as section A2 says. Report the API error output to the user. |

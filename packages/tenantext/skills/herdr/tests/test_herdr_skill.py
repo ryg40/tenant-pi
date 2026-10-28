@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -228,7 +229,12 @@ class Launch(IsolatedConfig):
         self.assertNotIn("FINAL_COMPRESSED_CONTEXT", spawn.system_prompt(r, CFG))
 
     def test_default_launch_removes_only_the_desktop_tools_of_read_roles(self):
-        desktop = {"pi": ("--exclude-tools", "computer_use_linux_*"),
+        # Pi matches `*` against the whole name; the pattern covers the Linux and the macOS extension.
+        pattern = re.compile("^" + ".*".join(map(re.escape, spawn.PI_DESKTOP_TOOLS.split("*"))) + "$")
+        for name in ("computer_use_linux_click", "computer_use_click", "computer_use_tools"):
+            self.assertRegex(name, pattern)
+        self.assertNotRegex("read", pattern)
+        desktop = {"pi": ("--exclude-tools", spawn.PI_DESKTOP_TOOLS),
                    "claude": ("--disallowedTools", "mcp__plugin_computer-use-linux_computer-use-linux")}
         for harness in ("pi", "claude"):
             for role in _common.ROLES:
@@ -257,7 +263,7 @@ class Launch(IsolatedConfig):
         self.assertIn("Edit Write NotebookEdit", args[args.index("--disallowedTools") + 1])
         r = spawn.resolve(opts(harness="pi", role="reviewer", strict=True), CFG)
         args = spawn.native_args(r, CFG, False, "t-reviewer-1", write=False)
-        self.assertEqual(set(args[args.index("--exclude-tools") + 1].split(",")), {"edit", "write", "computer_use_linux_*"})
+        self.assertEqual(set(args[args.index("--exclude-tools") + 1].split(",")), {"edit", "write", spawn.PI_DESKTOP_TOOLS})
         self.assertIn("Strict launch", spawn.system_prompt(r, CFG))
 
     def test_the_shipped_catalog_gives_no_mcp_server(self):

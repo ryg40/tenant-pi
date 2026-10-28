@@ -64,23 +64,29 @@ prompt with that tool. It returns at once, and the reply arrives later as a
 `<herdr-task-notification>` message. Its `status:` line gives the meaning of the
 exit code in the table below. Use the blocking call only in the cases of section B.
 
-Write the prompt to a file, then make one blocking call. For a prompt of one line, `--text "<prompt>"` replaces `--file`.
+In the prompt, state the task, the limits (read-only or not), and the shape of the answer.
+
+#### Without the tool: `ask.py`
+
+In Claude Code, in a session without the tools, or when the user says to wait,
+write the prompt to a file, then make one call of `ask.py`. For a prompt of one line, `--text "<prompt>"` replaces `--file`.
 
 ```bash
 python3 $S/ask.py <pane-id-or-name> --file /tmp/task.md --timeout 600
 ```
 
-Set the timeout of your shell tool above the `--timeout` value. In the prompt,
-state the task, the limits (read-only or not), and the shape of the answer.
+In Claude Code, call the `Bash` tool with `run_in_background: true`. The
+harness tells you when `ask.py` ends; then read its output. In the foreground,
+set the timeout of your shell tool above the `--timeout` value.
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | The reply is printed | Use the reply. Continue the task of the user. A line `note: reply was an API error` means that the text is the last assistant message that the agent wrote after the prompt, not a final reply. When the note ends with `; from before this prompt`, the text is from an earlier turn. A line `NO NEW REPLY in the transcript` means that the agent wrote no new reply: read the screen tail that follows it, and do not send the prompt again before you know why. The `herdr-watch` status of this case is `no new reply, read the screen`. |
-| 3 | The target works on another turn. Nothing was sent | `herdr agent wait <pane-id> --timeout 600000`, then call `ask.py` again. Or ask the user. |
+| 0 | The reply is printed | Use the reply. Continue the task of the user. A line `note: reply was an API error` means that the text is the last assistant message that the agent wrote after the prompt, not a final reply. When the note ends with `; from before this prompt`, the text is from an earlier turn. A line `NO NEW REPLY in the transcript` means that the agent wrote no new reply: read the screen tail that follows it, and do not send the prompt again before you know why. The `herdr-watch` status of this case is `no new reply, read the screen`. A line `NO TRANSCRIPT PATH from Herdr for this pane` means that Herdr knows no transcript of the pane, so `ask.py` cannot read the reply: read the screen tail. Possible causes: the Herdr integration of the harness is missing, the pane runs without `HERDR_SOCKET_PATH` (Pi-Bolt), or the transcript file does not exist yet. Tell the user. Its `herdr-watch` status is `no transcript path, read the screen`. For a Pi or Pi-Bolt pane with no transcript path, `ask.py` with a prompt first looks for the session file of the pane on disk, in `<agent dir>/sessions/--<cwd with / as ->--/`. It takes a file only when exactly one file of that cwd holds the sent prompt in a user entry written after the send. A prompt of up to 200 characters must end that entry; a longer prompt must be in it whole. A prompt shorter than 20 characters never matches. After a stall of Herdr, `ask.py` does not look on disk. `ask.py` keeps the path of a matched file in the pane record of the skill. `--wait-only` and `last-reply.py` read the file that an earlier prompt in this pane found, and no other file on disk. They read it only when the record of this pane id has the same agent name and a Pi harness, the file exists, and its header `cwd` is the current cwd of the pane. They also refuse the file when its header time is earlier than the pane record, or when another session file of the same folder has a later header time (after `/new`, `/resume` or a restart in the pane, or a later session in the same cwd). A new `spawn.py` record for a reused pane id has no path. Else, for a Pi-Bolt pane they still give `NO TRANSCRIPT PATH` and the screen. `last-reply.py` prints the same `note:` line after its `source=` line. When a file matches, the line `note: Herdr gave no transcript path; the reply below is from the Pi session file on disk: <path>` comes before the reply, and the status is `reply`. |
+| 3 | The target works on another turn. Nothing was sent | In Pi: `herdr_watch_start` with `wait_only: true` and no prompt; after its notification, send the prompt with `herdr_watch_start`. Without the tool: `herdr agent wait <pane-id> --timeout 600000`, then call `ask.py` again. Or ask the user. |
 | 4 | The target waits on a question or an approval | Show the screen text to the user. Do not answer it yourself. |
 | 5 | Herdr wrote the prompt but no turn started. After the stall of Herdr, `ask.py` waited up to 60 seconds more, inside `--timeout`, and never sent the prompt again | Read the screen. Do not send the prompt again before you know why. |
 | 6 | The reply is an API error and the transcript holds no other reply | Read the commit of the agent for its record. Send the task again only in a new pane. |
-| 124 | Time is up and the target still works | The prompt was delivered. Wait again, then use A3. |
+| 124 | Time is up and the target still works | The prompt was delivered. Do not send it again. In Pi: `herdr_watch_start` with `wait_only: true` and no prompt (A3). Without the tool: wait again, then use A3. |
 
 A compaction in the turn can set the status to done before the reply. When the transcript shows a compaction after the prompt and no new reply, `ask.py` waits again, until the timeout.
 
@@ -116,7 +122,7 @@ seconds, at most 180). Then the watch runs in the background. The reply
 arrives later as a `<herdr-task-notification>` message. For a pane that
 exists, use `herdr_watch_start`. Use the blocking `ask.py` only in these cases:
 
-- In Claude Code. There, run it in the background of the shell tool.
+- In Claude Code. There, call the `Bash` tool with `run_in_background: true`.
 - In a session without the tools.
 - When the user says to wait for the reply, or not to use the watch.
 

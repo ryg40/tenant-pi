@@ -1,5 +1,5 @@
 {
-  "comment": "The contract of the scripts of this skill: the exit codes of ask.py and spawn.py with a short meaning, and the marker line of ask.py. ask.py, spawn.py, the herdr-watch extension and the herdr-relay skill read this file. The roles are in roles.json. The tables in SKILL.md and SPAWN.md tell an agent what to do for each code.",
+  "comment": "The contract of the scripts of this skill: the exit codes of ask.py and spawn.py with a short meaning, and the marker lines of ask.py. ask.py, spawn.py, the herdr-watch extension and the herdr-relay skill read this file. The roles are in roles.json. The tables in SKILL.md and SPAWN.md tell an agent what to do for each code.",
   "ask": {
     "exit": {
       "reply": { "code": 0, "meaning": "reply" },
@@ -11,7 +11,8 @@
       "api_error": { "code": 6, "meaning": "API error, the transcript holds no other reply" },
       "timeout": { "code": 124, "meaning": "timeout, the pane still works" }
     },
-    "no_new_reply_line": "NO NEW REPLY in the transcript"
+    "no_new_reply_line": "NO NEW REPLY in the transcript",
+    "no_transcript_line": "NO TRANSCRIPT PATH from Herdr for this pane"
   },
   "spawn": {
     "exit": {

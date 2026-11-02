@@ -1416,7 +1416,7 @@
      "label": "MCP",
      "sub": "npm pi-mcp-adapter",
      "x": 430,
-     "y": 884,
+     "y": 958,
      "cols": 1,
      "tone": "service",
      "nodeW": 320
@@ -1517,6 +1517,20 @@
      "inputs": "dummies on, the next-prompt settings file",
      "consent": "none",
      "doc": "packages/tenantext/docs/next-prompt.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "command-rules",
+     "component": "command-rules",
+     "group": "g-c-tenantext",
+     "label": "command-rules",
+     "kind": "comp-tenantext",
+     "summary": "Blocks a shell command that matches a deny rule and gives the reason to the agent. The Claude Code plugin applies the same rules. It makes no model call and no request.",
+     "inputs": "the rule table in the package",
+     "consent": "none",
+     "doc": "docs/guides/modules.md",
      "tags": [
       "not a detected installation"
      ]

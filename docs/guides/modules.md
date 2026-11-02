@@ -36,6 +36,7 @@ Facts that hold for every component:
 - `herdr-relay` needs the herdr skill at `~/.agents/skills/herdr`, or the folder in `HERDR_SKILL_HOME`.
 - `next-prompt` shows the next action of the final dummies report as faint text in the empty editor of a coordinator session. It makes no model call and no request; see [its document](../../packages/tenantext/docs/next-prompt.md).
   It needs DUMMIES on for Pi; see [DUMMIES](#dummies).
+- `command-rules` blocks a shell command that matches a deny rule. The first rule denies `find / *` and sends the agent to `rg`. It makes no model call and no request.
 - `cross-session-recall` keeps each interactive input in one SQLite store of the user, shared by all Pi profiles of that user: `~/.pi/agent/cross-session-recall/history.sqlite3`, or the directory in `CROSS_SESSION_RECALL_DIR`. It seeds the Up/Down history of the editor and adds `/recall [query]` and `/recall-clear`. The inputs are clear text, readable by the user only; see [its document](../../packages/tenantext/docs/cross-session-recall.md).
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [providers](providers.md).
@@ -83,14 +84,14 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 
 ## Computer use
 
-The `computer-use` module is agent-sh `computer-use-linux` 0.7.35, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. Its manifest status is `unverified`. For macOS, see [computer use on macOS](#computer-use-on-macos). The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
+The `computer-use` module is agent-sh `computer-use-linux` 0.7.36, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. Its manifest status is `unverified`. For macOS, see [computer use on macOS](#computer-use-on-macos). The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
 
 The package gives Pi native tools and a skill. The tools read the AT-SPI accessibility tree, take screenshots and list windows. They also send clicks, keys and text to the desktop of the user. Screenshots and accessibility trees that a tool returns go into the conversation, and so to the model provider.
 
 The module needs these things:
 
 - Linux on x64 or arm64. The `package.json` of the package sets `os` to `linux`, so npm refuses another platform.
-- A graphical session with the AT-SPI accessibility bridge, and an input backend. The doctor tool of the package names each blocker. Its setup tools can turn on AT-SPI and install a GNOME Shell extension; they change the desktop settings of the user.
+- A graphical session with the AT-SPI accessibility bridge, and an input backend. On Wayland without a RemoteDesktop portal, `wtype` also sends `press_key` chords since 0.7.36 (from the package README, not run). The kit does not install it. The doctor tool of the package names each blocker. Its setup tools can turn on AT-SPI and install a GNOME Shell extension; they change the desktop settings of the user.
 - The postinstall download. The script `npm/install.js` of the npm package downloads the release binaries of the same version from GitHub. It checks each binary against its published `.sha256` file. The install needs network access.
 
 Without the downloaded binary, the extension looks for `COMPUTER_USE_LINUX_BIN`, then for `computer-use-linux` on `PATH` (source: the Pi setup reference of the package skill). To get the binary again, run `pi remove` with the same source, then the `computer-use` line again.
@@ -144,7 +145,7 @@ The pin moves in three places: the manifest spec, the line of each Pi profile, a
 
 ## Computer use on macOS
 
-The `computer-use-macos` module is the npm package `@amaster.ai/pi-computer-use` 0.1.34, a Pi extension for Cua Driver 0.37.0. On macOS, npm installs its optional runtime `@amaster.ai/pi-computer-use-cua-driver-darwin-universal` 0.1.4. That runtime holds `CuaDriver.app` of the upstream release, signed by upstream (bundle ID `com.trycua.driver`), as a universal binary for Apple silicon (arm64) and Intel (x86_64). The `Info.plist` of the app names macOS 13.0 as the minimum. Its manifest status is `unverified`.
+The `computer-use-macos` module is the npm package `@amaster.ai/pi-computer-use` 0.1.35, a Pi extension for Cua Driver 0.37.0. On macOS, npm installs its optional runtime `@amaster.ai/pi-computer-use-cua-driver-darwin-universal` 0.1.4. That runtime holds `CuaDriver.app` of the upstream release, signed by upstream (bundle ID `com.trycua.driver`), as a universal binary for Apple silicon (arm64) and Intel (x86_64). The `Info.plist` of the app names macOS 13.0 as the minimum. Its manifest status is `unverified`.
 
 Status: not verified on a Mac. The checks of the kit are source checks only: the exact pin, the install into a profile, the default settings and the extension load. The qualification step of the update path installs and loads the module only when it runs on macOS. The live desktop qualification waits for a Mac check that the owner approves.
 
@@ -173,7 +174,7 @@ The installer writes this block into the profile settings. A value that you set 
 }
 ```
 
-The extension reads this block from the `settings.json` of the profile (`PI_CODING_AGENT_DIR`). A key there wins over the same key in `~/.pi/agent/settings.json`. A key that only `~/.pi/agent/settings.json` sets applies too. This fact comes from the source of `@amaster.ai/pi-shared` 0.1.34; it is not verified on a Mac.
+The extension reads this block from the `settings.json` of the profile (`PI_CODING_AGENT_DIR`). A key there wins over the same key in `~/.pi/agent/settings.json`. A key that only `~/.pi/agent/settings.json` sets applies too. This fact comes from the source of `@amaster.ai/pi-shared` 0.1.35; it is not verified on a Mac.
 
 - `mode` `bundled`: the extension uses the driver of the runtime package. The kit installs no second Cua app.
 - `toolProfile` `core`: the model sees only the everyday tools at the start.

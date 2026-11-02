@@ -14,6 +14,7 @@ The Pi extensions that `pi.extensions` of `package.json` lists form the installa
 - **resources**: `/resources` lists extensions, skills, prompts and MCP servers, with enable controls and saved profiles.
 - **herdr-watch**: `herdr_spawn` starts a task session in a new Herdr pane and sends its task; `herdr_watch_start` prompts a pane that exists. Both wait on the pane in the background and deliver its reply as a task notification. See [docs/herdr-watch.md](docs/herdr-watch.md).
 - **next-prompt**: One faint next-action suggestion in the empty editor, read from the final dummies report; Tab takes it as a draft. See [docs/next-prompt.md](docs/next-prompt.md).
+- **command-rules**: Blocks a shell command that matches a deny rule of `claude-code/scripts/command-rules.mjs`. The first rule sends `find / ...` to `rg`. The Claude Code plugin applies the same rules.
 - **cross-session-recall**: Every interactive input in one SQLite store of the user; the newest distinct inputs seed Up/Down, `/recall [query]` searches all of them. See [docs/cross-session-recall.md](docs/cross-session-recall.md).
 
 The suite also ships the **tracker-site** skill: restart briefs that tell you where a repository stands after a long session or days away. It is a Python package in `tracker/`, not a Pi extension.
@@ -73,6 +74,7 @@ The suite loads these stable resources:
 | herdr-watch | `extensions/herdr-watch/index.ts` |
 | next-prompt | `extensions/next-prompt/index.ts` |
 | cross-session-recall | `extensions/cross-session-recall/index.ts` |
+| command-rules | `extensions/command-rules/index.ts` |
 | herdr skill | `skills/herdr/SKILL.md` |
 | coordinator skills (the table in [skills/coordinator-skills/README.md](skills/coordinator-skills/README.md)) | `skills/coordinator-skills/<skill>/SKILL.md` |
 | knowledge skills (the table in [skills/knowledge-skills/README.md](skills/knowledge-skills/README.md)) | `skills/knowledge-skills/<skill>/SKILL.md` |
@@ -530,6 +532,8 @@ Files:
 | `claude-code/hooks/hooks.json` | `SessionStart` hook, matcher `startup\|resume\|clear\|compact` |
 | `claude-code/scripts/session-start.mjs` | Emits the rule block as `additionalContext`, records the run, exits 0 on every path |
 | `claude-code/scripts/ste.mjs` | Backs `/ste` |
+| `claude-code/scripts/pre-tool-use.mjs` | `PreToolUse` hook for `Bash`. Denies a command that matches a rule, and allows the call on every failure |
+| `claude-code/scripts/command-rules.mjs` | The command rules and their matcher. The Pi extension `command-rules` imports this file |
 | `claude-code/scripts/rules.mjs` | Copy of `src/rules.ts`. A test asserts the two blocks are identical |
 | `claude-code/commands/spawn_agent.md` | Backs `/spawn_agent`. Copy of `skills/herdr/commands/spawn_agent.md`; a test asserts the two are identical |
 | `claude-code/build-skills.py` | Builds the generated `claude-code/skills/` from the skills that the kit manifest declares, with the licence texts |

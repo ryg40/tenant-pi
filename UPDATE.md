@@ -54,7 +54,7 @@ To move to a new Pi version, for example `1.4.0`:
 One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `runtime.piBoltVersion`.
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
-2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.0.8`. `pi-bolt update` installs the latest release, which can carry another Pi version.
+2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.0.9`. `pi-bolt update` installs the latest release, which can carry another Pi version.
 3. Set `runtime.piBoltVersion` in `config/manifest.json` to that release, in the same commit as the pin.
 4. Check the runtime of the profile. The report shows the Pi version and the Pi-Bolt release.
 

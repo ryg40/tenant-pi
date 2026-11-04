@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { denyReason } from "../claude-code/scripts/command-rules.mjs";
+import { COMMAND_RULES, denyReason } from "../claude-code/scripts/command-rules.mjs";
 import commandRules from "../extensions/command-rules/index.ts";
 
-const REASON = "Use rg instead of find";
+const REASON = COMMAND_RULES["find / *"].reason;
 const HOOK = fileURLToPath(new URL("../claude-code/scripts/pre-tool-use.mjs", import.meta.url));
 
 test("denies a whole-disk find, also inside a command list", () => {

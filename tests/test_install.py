@@ -135,6 +135,26 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
             self.assertIn(spec, requested)
             self.assertRegex(spec, r'@\d+\.\d+\.\d+$')
 
+    def test_mcp_with_mcp_codemode_is_refused_before_a_write(self):
+        before = self.snapshot()
+        self.assertNotEqual(0, self.install(modules='mcp,mcp-codemode').returncode)
+        self.assertEqual(before, self.snapshot())
+
+    def test_mcp_codemode_upgrade_removes_the_adapter_settings_and_keeps_the_server_files(self):
+        spec = 'npm:' + MANIFEST['components']['mcp']['source']['spec']
+        self.profile.mkdir(parents=True)
+        (self.profile / 'settings.json').write_text(json.dumps(
+            {'packages': [spec], 'extensions': ['-builtin:mcp', '-builtin:codemode', '-builtin:tool-search']}))
+        files = {self.profile / name: (name + ' {"mcpServers":{}}\n').encode() for name in ('mcp-adapter.json', 'mcp.json')}
+        for path, content in files.items():
+            path.write_bytes(content)
+        self.success(self.install(mode='upgrade', shell='none', modules='mcp-codemode'))
+        settings = json.loads((self.profile / 'settings.json').read_text())
+        self.assertNotIn(spec, settings['packages'])
+        self.assertEqual(['-builtin:tool-search'], settings['extensions'])
+        for path, content in files.items():
+            self.assertEqual(content, path.read_bytes())
+
     def test_bash_alias_launcher_forwarding_and_repeat(self):
         rc = self.home / '.bashrc'
         rc.write_bytes(b'# own content\r\n# OWN=kept\r\n')

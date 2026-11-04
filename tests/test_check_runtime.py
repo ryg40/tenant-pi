@@ -163,10 +163,11 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(set(STATUSES), {"match", "untested_in_range", "mismatch", "missing", "unparsed"})
 
     def test_prerelease_pi_is_a_mismatch_and_stderr_is_read_when_stdout_is_empty(self):
-        self.output["/bin/pi"] = Done((PIN + "-beta.1\n").encode())
+        prerelease = ".".join(map(str, LOWER)) + "-beta.1"
+        self.output["/bin/pi"] = Done((prerelease + "\n").encode())
         self.output["/bin/python3"] = Done(b"", b"Python 3.12.1\n")
         report = self.check()
-        self.assertEqual((PIN + "-beta.1", "mismatch"), (report["pi"]["installed"], report["pi"]["status"]))
+        self.assertEqual((prerelease, "mismatch"), (report["pi"]["installed"], report["pi"]["status"]))
         self.assertEqual(("3.12.1", "match"), (report["python"]["installed"], report["python"]["status"]))
 
     def test_manifest_pin_matches_and_each_earlier_pin_is_a_mismatch(self):

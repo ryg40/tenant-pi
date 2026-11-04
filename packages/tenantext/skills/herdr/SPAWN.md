@@ -125,9 +125,18 @@ Pi-Bolt (the Pi coding agent compiled to one native executable) works as
   `<agent dir>/sessions/--<cwd with / as ->--/`, when exactly one file of the
   cwd matches. A file matches when a user entry ends with the prompt (a prompt
   of 20 to 200 characters) or holds the whole prompt (a longer prompt).
+  Herdr shows the pane as idle and stalls on the prompt, so `ask.py` looks for
+  the file for up to 60 seconds after the stall and then follows the turn in
+  the file. The turn ends when the last message entry after the prompt is a
+  final assistant reply (text, no tool call, no `error` or `aborted` stop) and
+  the file has not changed for 5 seconds. A `custom_message` entry after the
+  reply means that a new turn can run. No file in that time gives exit 5; a
+  turn that still works at the timeout gives exit 124. Before it prints the
+  reply, `ask.py` checks the file again by the rule that found it; a file that
+  fails the check gives "no transcript path" and the screen.
   `ask.py` keeps the path of that file in the pane record. `ask.py
   --wait-only`, a wait-only watch and `last-reply.py` then read the file that
-  an earlier prompt in this pane found. They read it only when the record of
+  an earlier prompt in this pane found. `--wait-only` follows it by the same rule. They read it only when the record of
   this pane id has the same agent name and a Pi harness, the file exists, and
   its header `cwd` is the current cwd of the pane. They also refuse the file
   when its header time is earlier than the pane record, or when another

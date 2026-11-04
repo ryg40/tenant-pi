@@ -59,7 +59,7 @@ A shell that exports `PI_CODING_AGENT_DIR` changes every later `pi` command of t
 | Status | Fix |
 | --- | --- |
 | `untested_in_range` for `pi` | Keep the installed version and record it as untested. The kit tests ran on the tested version only. |
-| `untested_in_range` for `pi` with `piBolt` in the report | The Pi-Bolt release carries the tested Pi version, but `piBolt.installed` is not `piBolt.tested` (`runtime.piBoltVersion`). Keep it and record it as untested, or install the tested Pi-Bolt release. |
+| `untested_in_range` for `pi` with `piBolt` in the report | The Pi-Bolt release is inside the accepted range, but it carries a Pi other than the tested version, or `piBolt.installed` is not `piBolt.tested` (`runtime.piBoltVersion`). Keep it and record it as untested, or install the tested Pi-Bolt release. While the Pi pin is ahead of the Pi-Bolt pin, the tested release also reports this status, and that is the expected result. |
 | `missing` for `pi` | Install the pin with the line of [the prerequisites](../../INSTALL.md#prerequisites), or add its directory to `PATH` in the launching shell. |
 | `mismatch` for `pi` | Keep the other Pi and record the gap, or install the manifest pin (`runtime.piVersion`) under a prefix. Do not run the global install line as a default step: it replaces the other Pi for every profile. Example: an installed Pi `0.99.2` is a `mismatch`. |
 | `mismatch` for `node` | Select Node 24 with your version manager in the launching shell. |

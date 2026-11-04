@@ -44,7 +44,7 @@ The install line of the Pi-Bolt README installs it to `~/.pi-bolt` and links the
 curl -fsSL https://pi-bolt.opensec.in/install.sh | sh
 ```
 
-One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.4.0 (Pi-Bolt 1.0.9, linux-x64, JIT off)`. Use the Pi-Bolt release that carries `runtime.piVersion`. `runtime.piBoltVersion` in the manifest is the tested Pi-Bolt release. Check it:
+One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.4.0 (Pi-Bolt 1.0.9, linux-x64, JIT off)`. Use the Pi-Bolt release `runtime.piBoltVersion` of the manifest, the tested Pi-Bolt release. It can carry an older Pi than `runtime.piVersion`, and then `untested_in_range` is the expected result. Check it:
 
 ```sh
 python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"
@@ -71,7 +71,7 @@ Keep the clone in its place. The profile names `packages/tenantext` inside it.
 
 The script offers an upgrade of an existing named profile or a new alternate profile in `~/.pi/profiles/<name>`. It asks for shell setup and optional modules, then shows the proposed changes for approval. The inherited `PI_CODING_AGENT_DIR` is only a suggestion. Without a terminal, supply every choice through the flags in `install.sh`.
 
-The module question and `--with` accept `wiki`, `hermes`, `mcp`, `computer-use`, `computer-use-macos` and `okknow`, separated by commas, or `all` or `none`. `all` means every optional module of your platform: `computer-use` on Linux, `computer-use-macos` on macOS. Without a terminal, `--with all` needs the okknow origin, as `--with okknow` does. Use `all` and `none` alone, not with other names:
+The module question and `--with` accept `wiki`, `hermes`, `mcp`, `mcp-codemode`, `computer-use`, `computer-use-macos` and `okknow`, separated by commas, or `all` or `none`. `all` means every optional module of your platform, without `mcp-codemode`: `computer-use` on Linux, `computer-use-macos` on macOS. Without a terminal, `--with all` needs the okknow origin, as `--with okknow` does. Use `all` and `none` alone, not with other names:
 
 ```sh
 ./install.sh --new main --shell bash --with computer-use --yes
@@ -136,6 +136,7 @@ The script prints one line for each manifest that it corrects, and nothing when 
 | Module | Before the line | What it does |
 | --- | --- | --- |
 | `mcp` | Read the README of `pi-mcp-adapter` for its server file. | Connects MCP servers through the adapter. Pi has a built-in MCP client too; to use only the adapter, add `"-builtin:mcp"` to the `extensions` list of `<profile>/settings.json`. |
+| `mcp-codemode` | Install it with `install.sh --with mcp-codemode`, in a second profile; it has no `pi install` line. `--with all` leaves it out, and `install.sh` refuses it together with `mcp`. See [MCP with codemode](docs/guides/modules.md#mcp-with-codemode). | Connects MCP servers through Pi itself and activates `codemode`, for a comparison with the adapter. An upgrade removes the adapter package from the settings. |
 | `hermes` | Write [the Hermes config file](docs/memory-modules.md#the-hermes-config-file); without it, the package defaults make model calls of their own. | Stores memory of the sessions in `<profile>/pi-hermes-memory/`. |
 | `wiki` | Read [an existing vault](docs/memory-modules.md#an-existing-vault). | Uses the personal vault `~/.llm-wiki` of the account, or `$WIKI_HOME/.llm-wiki`. An existing vault stays as it is. With the default settings, text of the vault goes into each prompt and so to the model provider. |
 | `computer-use` | Read [computer use](docs/guides/modules.md#computer-use). The module needs Linux, a graphical session with AT-SPI accessibility, and network access for its binary download. | The official computer-use module of the kit for Linux. Its tools read the accessibility tree, take screenshots and send input to your desktop. Screen content goes into the conversation and so to the model provider. |

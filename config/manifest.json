@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runtime": {
-    "piVersion": "1.4.0",
+    "piVersion": "1.5.0",
     "piBoltVersion": "1.0.9",
-    "piAcceptedRange": ">=1.4.0 <1.5",
+    "piAcceptedRange": ">=1.4.0 <1.6",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
@@ -11,7 +11,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.4.0"
+        "spec": "@earendil-works/pi-coding-agent@1.5.0"
       },
       "status": "tested",
       "requires": [],
@@ -880,7 +880,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "The tools need a graphical Linux session with the AT-SPI accessibility bridge and an input backend that the doctor tool of the package reports ready. Since version 0.7.36 the binary lists windows through the wlr foreign toplevel protocol on wlroots compositors without a dedicated backend, and it sends press_key chords through wtype when no RemoteDesktop portal exists (from the README and the release notes, not run). The kit installs none of them; the kit doctor reports the readiness that the doctor of the package gives. The setup tools of the package change the desktop settings of the user."
+          "fact": "The tools need a graphical Linux session with the AT-SPI accessibility bridge and an input backend that the doctor tool of the package reports ready. Since version 0.7.36 the binary lists windows through the wlr foreign toplevel protocol on wlroots compositors without a dedicated backend, and it sends press_key chords through wtype when ydotool is absent and the session bus answers that it has no RemoteDesktop portal, as on wlroots compositors such as Sway, labwc, river or cage (from the README and the release notes, not run). The kit installs none of them; the kit doctor reports the readiness that the doctor of the package gives. The setup tools of the package change the desktop settings of the user."
         },
         {
           "code": "desktop_runtime_unverified",

@@ -295,6 +295,46 @@ def pi_disk_session(info, prompt=None, since=None):
     return find_pi_session(_pane_cwds(info), since, prompt)
 
 
+def pi_turn_done(path, start_line=0):
+    """The final reply of the turn in a Pi session file after start_line, or "" while the turn works.
+
+    The last message, compaction or custom_message entry must be a final reply: an assistant message with
+    text that calls no tool and did not fail (stopReason is not toolUse, error or aborted). Pi retries after a
+    failed attempt. A custom_message can start a new turn. Pi writes other entries (such as state-only custom
+    ones) after the reply; they do not count. The text is the one that assistant_texts gives for the message.
+    """
+    last = None
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for n, line in enumerate(f):
+                if n < start_line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(d, dict) and d.get("type") in ("message", "compaction", "custom_message"):
+                    last = d
+    except OSError:
+        return ""
+    msg = (last or {}).get("message") if (last or {}).get("type") == "message" else None
+    if (not isinstance(msg, dict) or msg.get("role") != "assistant"
+            or msg.get("stopReason") in ("toolUse", "error", "aborted")):
+        return ""
+    content = msg.get("content")
+    if isinstance(content, list) and any(isinstance(p, dict) and p.get("type") == "toolCall" for p in content):
+        return ""
+    return _message_text(content)
+
+
+def _message_text(content):
+    """The text of the content of a message, stripped."""
+    if isinstance(content, str):
+        return content.strip()
+    return "\n".join(p.get("text", "") for p in content or []
+                     if isinstance(p, dict) and p.get("type") == "text").strip()
+
+
 def assistant_texts(path, start_line=0):
     """Return assistant text messages found after start_line (0-based line count)."""
     out = []
@@ -312,16 +352,9 @@ def assistant_texts(path, start_line=0):
                     continue
                 if d.get("isSidechain"):
                     continue
-                content = msg.get("content")
-                if isinstance(content, str):
-                    text = content
-                else:
-                    text = "\n".join(
-                        p.get("text", "") for p in content or []
-                        if isinstance(p, dict) and p.get("type") == "text"
-                    )
-                if text.strip():
-                    out.append(text.strip())
+                text = _message_text(msg.get("content"))
+                if text:
+                    out.append(text)
     except OSError:
         pass
     return out

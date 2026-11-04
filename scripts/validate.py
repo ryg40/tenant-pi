@@ -338,7 +338,7 @@ def manifest(data):
     fields(runtime, ("piVersion", "piAcceptedRange", "nodeRange", "pythonRange"), ("piBoltVersion",), "manifest.runtime")
     if not isinstance(runtime["piVersion"], str) or not VERSION.fullmatch(runtime["piVersion"]):
         fail("exact_version", "manifest.runtime.piVersion")
-    # The tested Pi-Bolt release that carries `piVersion`; optional.
+    # The tested Pi-Bolt release, optional. It can carry an older Pi than `piVersion`.
     bolt = runtime.get("piBoltVersion")
     if "piBoltVersion" in runtime and (not isinstance(bolt, str) or not VERSION.fullmatch(bolt)):
         fail("exact_version", "manifest.runtime.piBoltVersion")

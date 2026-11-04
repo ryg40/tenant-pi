@@ -49,10 +49,18 @@ desktop_module=computer-use
 [ "$(uname -s)" = Darwin ] && desktop_module=computer-use-macos
 # all means every optional module of this platform; it stands alone.
 optional_modules=wiki,hermes,mcp,$desktop_module,okknow
-if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, all or none]:"; modules=$answer; asked=yes; fi
+# mcp-codemode is a choice for a comparison profile, so all leaves it out.
+if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, all or none]:"; modules=$answer; asked=yes; fi
 case ,$modules, in
   ,all,) modules=$optional_modules ;;
-  *,all,*) fail "all stands alone; use $optional_modules, all or none" ;;
+  *,all,*) fail "all stands alone; use $optional_modules, mcp-codemode, all or none" ;;
+esac
+case ,$modules, in
+  *,mcp-codemode,*)
+    # The adapter replaces the MCP support of Pi, so one profile cannot hold both.
+    case ,$modules, in
+      *,mcp,*) fail "choose one of mcp and mcp-codemode; see docs/guides/modules.md#mcp-with-codemode" ;;
+    esac ;;
 esac
 case ,$modules, in
   *,computer-use,*)
@@ -170,13 +178,14 @@ try:
     modules = os.environ['modules'].split(',')
     if modules == ['none']:
         modules = []
-    if any(module not in ('wiki', 'hermes', 'mcp', 'computer-use', 'computer-use-macos', 'okknow', 'questions')
+    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'questions')
            for module in modules):
-        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', all or none')
+        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, all or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
     # questions is mandatory; accept its old --with name without installing twice. okknow is a tree package.
+    # mcp-codemode has no package: Pi carries the MCP client and codemode.
     specs = ['npm:' + manifest['components'][module]['source']['spec']
-             for module in dict.fromkeys([*modules, 'questions']) if module != 'okknow']
+             for module in dict.fromkeys([*modules, 'questions']) if module not in ('okknow', 'mcp-codemode')]
     okknow_package = kit / manifest['components']['okknow']['source']['path']
     okknow_script = okknow_package / 'skills/okknow/scripts/okknow'
     okknow_link = home / '.local/bin/okknow'
@@ -280,6 +289,27 @@ try:
             fail('settings pi-computer-use must be an object')
         for key, value in MACOS_DESKTOP_DEFAULTS.items():
             desktop.setdefault(key, value)
+    if 'mcp-codemode' in modules:
+        # An adapter replaces the MCP support of Pi. Its server file stays for a move back.
+        adapter = manifest['components']['mcp']['source']['spec'].rsplit('@', 1)[0]
+
+        def is_adapter(entry):
+            source = entry.get('source') if isinstance(entry, dict) else entry
+            return isinstance(source, str) and source.rsplit('@', 1)[0] == 'npm:' + adapter
+        packages[:] = [entry for entry in packages if not is_adapter(entry)]
+        extensions = settings.get('extensions', [])
+        if not isinstance(extensions, list):
+            fail('settings extensions must be a list')
+        extensions[:] = [entry for entry in extensions if entry not in ('-builtin:mcp', '-builtin:codemode')]
+        tools = settings.get('defaultTools')
+        if tools is None:
+            settings['defaultTools'] = ['+codemode']
+        elif not isinstance(tools, list):
+            fail('settings defaultTools must be a list')
+        elif not {'+codemode', 'codemode'} & set(tools):
+            # A list of plain names replaces the defaults, and it takes no + entry.
+            additive = tools and all(isinstance(tool, str) and tool[:1] in ('+', '-') for tool in tools)
+            tools.append('+codemode' if additive else 'codemode')
     changed = before != settings
     models = (kit / 'config/models.example.json').read_text()
     # Claude Code gets the skills that the manifest declares for the package, not each folder with a SKILL.md.
@@ -298,6 +328,8 @@ try:
             return None
         return 'skipped: ' + str(okknow_link) + ' exists and is not a link of this kit'
     adapter_path = profile / 'mcp-adapter.json'
+    native_path = profile / 'mcp.json'
+    mcp_path = native_path if 'mcp-codemode' in modules else adapter_path
 
     def claude_links():
         # Replace a broken link or a link into this clone; keep a link to another skill source.
@@ -332,13 +364,18 @@ try:
             print('herdr: Pi integration in ' + str(profile / 'extensions'))
         if settings_path.exists() and changed:
             print('Proposed settings.json change:')
-            for key in ('packages', 'pi-computer-use'):
+            for key in ('packages', 'pi-computer-use', 'extensions', 'defaultTools'):
                 if before.get(key) != settings.get(key):
                     print(key + ':')
                     print('- ' + json.dumps(before.get(key), ensure_ascii=True))
                     print('+ ' + json.dumps(settings.get(key), ensure_ascii=True))
         for spec in specs:
             print('install module: ' + spec)
+        if 'mcp-codemode' in modules:
+            print('mcp-codemode: servers from ' + str(native_path) + '; no adapter package; settings defaultTools ' + json.dumps(settings['defaultTools']))
+            if adapter_path.exists() and not native_path.exists():
+                print('mcp-codemode: ' + str(adapter_path) + ' stays; to convert it, run: python3 ' + shlex.quote(str(kit / 'scripts/mcp_to_native.py'))
+                      + ' --from ' + shlex.quote(str(adapter_path)) + ' --to ' + shlex.quote(str(native_path)))
         if 'computer-use-macos' in modules:
             print('settings pi-computer-use: ' + json.dumps(settings['pi-computer-use'], ensure_ascii=True)
                   + ' (no driver start and no macOS grant during the install)')
@@ -358,8 +395,8 @@ try:
                 print('okknow: origin ' + saved.stdout.strip() + ' (kept from the user config)')
             else:
                 print('okknow: origin: the setup wizard asks for it')
-            if 'mcp' in modules:
-                print('okknow: MCP server okknow in ' + str(adapter_path))
+            if 'mcp' in modules or 'mcp-codemode' in modules:
+                print('okknow: MCP server okknow in ' + str(mcp_path))
         if os.environ.get('dummies') == 'yes':
             print('DUMMIES: on for Pi, shared by all profiles of this user; autostart block in the instruction file of the profile, else a new AGENTS.md')
         if 'computer-use' in modules and (home / '.claude').is_dir() and shutil.which('claude'):
@@ -420,26 +457,26 @@ try:
             print('okknow:  no origin configured, so no MCP entry; run okknow setup, then install.sh again')
             sys.exit(0)
         header = '!' + shlex.quote(command) + ' auth-header'
-        entry = {'type': 'http', 'url': done.stdout.strip() + '/mcp', 'headers': {'Authorization': header},
-                 'lifecycle': 'lazy', 'requestTimeoutMs': 60000}
-        if adapter_path.is_symlink():
-            fail('refusing a symlink mcp-adapter.json')
-        data = json.loads(adapter_path.read_text()) if adapter_path.exists() else {}
+        entry = {'type': 'http', 'url': done.stdout.strip() + '/mcp', 'headers': {'Authorization': header}}
+        entry |= {'timeout': 60} if mcp_path == native_path else {'lifecycle': 'lazy', 'requestTimeoutMs': 60000}
+        if mcp_path.is_symlink():
+            fail('refusing a symlink ' + mcp_path.name)
+        data = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
         servers = data.setdefault('mcpServers', {}) if isinstance(data, dict) else None
         if not isinstance(servers, dict):
-            fail('mcp-adapter.json has no mcpServers object')
+            fail(mcp_path.name + ' has no mcpServers object')
         old = servers.get('okknow')
         ours = isinstance(old, dict) and str(old.get('headers', {}).get('Authorization', '')).endswith(' auth-header')
         if old == entry:
             print('okknow:  MCP entry okknow unchanged')
         elif old is not None and not ours:
-            print('skipped: ' + str(adapter_path) + ' has its own okknow entry', file=sys.stderr)
+            print('skipped: ' + str(mcp_path) + ' has its own okknow entry', file=sys.stderr)
         else:
-            if adapter_path.exists():
-                backup(adapter_path)
+            if mcp_path.exists():
+                backup(mcp_path)
             servers['okknow'] = entry
-            put(adapter_path, json.dumps(data, indent=2) + '\n')
-            print('okknow:  MCP entry okknow in ' + str(adapter_path))
+            put(mcp_path, json.dumps(data, indent=2) + '\n')
+            print('okknow:  MCP entry okknow in ' + str(mcp_path))
     elif action == 'plugin':
         # Compare the installed Claude Code plugin with the kit pin; report a difference, never hide it.
         import subprocess
@@ -540,7 +577,7 @@ case ,$modules, in
     else
       python3 "$okknow_cli" setup <"${INSTALL_TEST_TTY:-/dev/tty}" || okknow_failed=yes
     fi
-    case ,$modules, in *,mcp,*) helper okknow-mcp || okknow_failed=yes ;; esac ;;
+    case ,$modules, in *,mcp,* | *,mcp-codemode,*) helper okknow-mcp || okknow_failed=yes ;; esac ;;
 esac
 # The skill's own script turns DUMMIES on for Pi and writes the autostart block into the profile.
 dummies_failed=no dummies_on= dummies_status=

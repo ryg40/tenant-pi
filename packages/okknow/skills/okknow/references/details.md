@@ -81,7 +81,7 @@ The CLI talks only to the configured origin. It refuses another origin from `--o
 | Claude Code skill | `~/.claude/skills/okknow`, a link into the clone, when `~/.claude` exists |
 | CLI | `~/.local/bin/okknow`, a link to `scripts/okknow` of this skill |
 | User config | Written by `okknow setup`, which the installer runs |
-| Pi MCP | With the `mcp` module: the server `okknow` in `<profile>/mcp-adapter.json`, header `Authorization: !<home>/.local/bin/okknow auth-header`, lazy |
+| Pi MCP | With the `mcp` module: the server `okknow` in `<profile>/mcp-adapter.json`, header `Authorization: !<home>/.local/bin/okknow auth-header`, lazy. With `mcp-codemode`: the same server and header in `<profile>/mcp.json`, connected at session start |
 
 The header command form `!<command>` is the one of pi-mcp-adapter 7.0.0 (the kit pin): the adapter runs the command in a shell at connect time, with a 10-second limit, and uses its trimmed standard output as the header value. `!!` starts a literal value.
 

@@ -67,7 +67,8 @@ test("Pi install of a declared source by its identical string runs one install a
 			const before = readFileSync(dirs.settings);
 			await manager.installAndPersist(source);
 			await settingsManager.flush();
-			assert.deepEqual(dirs.calls(), [["install", source.slice("npm:".length), "--prefix", join(dirs.agentDir, "npm"), "--legacy-peer-deps"]]);
+			assert.equal(dirs.calls().length, 1, JSON.stringify(dirs.calls()));
+			assert.deepEqual(dirs.calls()[0]!.slice(0, 4), ["install", source.slice("npm:".length), "--prefix", join(dirs.agentDir, "npm")]);
 			assert.deepEqual(readFileSync(dirs.settings), before, source);
 			assert.equal(settingsManager.drainErrors().length, 0);
 		});

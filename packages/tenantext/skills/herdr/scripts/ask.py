@@ -23,15 +23,18 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import (CONTRACT, DISK_NOTE, agent_info, assistant_texts, clip, ensure_layout, error_code,  # noqa: E402
-                     exit_codes, herdr, line_count, pi_disk_session, read_record, require_herdr_env,
-                     save_pi_session, screen_tail, session_file)
+from _common import (CONTRACT, DISK_NOTE, agent_info, assistant_texts, clip, ensure_layout,  # noqa: E402
+                     error_code, exit_codes, herdr, line_count, pi_disk_session, pi_turn_done, read_record,
+                     require_herdr_env, save_pi_session, screen_tail, session_file)
 
 EXIT = exit_codes("ask")
 NO_NEW_REPLY_LINE = CONTRACT["ask"]["no_new_reply_line"]
 NO_TRANSCRIPT_LINE = CONTRACT["ask"]["no_transcript_line"]
 # After agent_prompt_stalled, a turn can still start late, for example on the first turn of a new pane.
 STALL_SECONDS = 60
+# A Pi session file on disk (no Herdr status): the turn ends when the final reply is last and the file
+# has not changed for this long.
+QUIET_SECONDS = 5
 
 
 def parse(argv):
@@ -114,14 +117,48 @@ def turn_started(target, info, path, offset):
     return bool(new_path) and line_count(new_path) > (offset if new_path == path else 0)
 
 
-def wait_for_turn(target, info, path, offset, deadline):
-    """After a stall, poll up to STALL_SECONDS, inside the deadline, for a turn that starts late. Never resend."""
+def wait_for_turn(target, info, path, offset, deadline, find=None):
+    """After a stall, poll up to STALL_SECONDS, inside the deadline, for a turn that starts late. Never resend.
+
+    Return (started, disk). `find()` looks for the Pi session file on disk that holds the prompt; when it
+    finds one, disk is its (path, start line). Herdr gives a Pi-Bolt pane no status, so only the file shows the turn.
+    """
     end = min(deadline, time.time() + STALL_SECONDS)
-    while not turn_started(target, info, path, offset):
+    while True:
+        if turn_started(target, info, path, offset):
+            return True, None
+        disk = find() if find else None
+        if disk:
+            return True, disk
         if time.time() >= end:
-            return False
+            return False, None
         time.sleep(2)
-    return True
+
+
+def follow_pi_file(path, start, deadline, current):
+    """Follow a Pi session file until its turn ends. Return (state, reply).
+
+    The turn works while the last entry after line `start` is no final reply (pi_turn_done) or the file grows.
+    State "done" gives the final reply. Before it accepts the end, and at the deadline, `current()` checks that
+    the file is still the session of the pane: else state "gone". State "working" means the deadline passed.
+    """
+    seen, since = None, time.time()
+    while True:
+        try:
+            st = os.stat(path)
+            sig = (st.st_size, st.st_mtime_ns)
+        except OSError:
+            sig = None
+        reply = ""
+        if sig != seen:
+            seen, since = sig, time.time()
+        elif time.time() - since >= QUIET_SECONDS:
+            reply = pi_turn_done(path, start)
+        if reply or time.time() >= deadline:
+            if not current():
+                return "gone", None
+            return ("done", reply) if reply else ("working", None)
+        time.sleep(1)
 
 
 def settle(target, info, path, offset, deadline, locate=None):
@@ -233,22 +270,46 @@ def main():
     err = None if prompt is None else send(target, info, prompt, opts["timeout"], start)
 
     # A timeout or a stall does not prove failure. Poll the state; never resend.
-    if err == "agent_prompt_stalled" and wait_for_turn(target, info, path, offset, deadline):
-        err = None  # the turn started late: wait for it as for any turn
+    disk = None
+    if err == "agent_prompt_stalled":
+        # A Pi pane with no path from Herdr: the session file on disk that holds the prompt shows the turn.
+        find = (lambda: pi_disk_session(agent_info(target) or info, prompt, start)) if not path else None
+        started, disk = wait_for_turn(target, info, path, offset, deadline, find=find)
+        if started:
+            err = None  # the turn started late: wait for it as for any turn
     # Without a path from Herdr, a Pi pane's own session file on disk can hold the reply. See pi_disk_session.
     # A stalled turn gets no locator: a file of another pane must not hide the NO TURN STARTED output.
-    locate = (lambda now: pi_disk_session(now, prompt, start)) if err is None else None
+    locate = (lambda now: disk or pi_disk_session(now, prompt, start)) if err is None else None
     now, new_path, offset, texts = settle(target, info, path, offset, deadline, locate=locate)
     from_disk = bool(new_path) and not path and not session_file(now)
     if from_disk and prompt is not None:
         save_pi_session(now, new_path)  # a later run without a prompt reads this file
     status = now.get("agent_status")
+    working_on_disk = False
+    if from_disk and status not in ("working", "blocked"):
+        # Herdr gives no status of a turn in a file on disk (Pi-Bolt shows idle): follow the file to its end.
+        # The file must stay the session of the same pane by the rule that found it: no other file, no resend.
+        pane_id, found = now["pane_id"], (new_path, offset)
+
+        def current():
+            fresh = agent_info(target)
+            return bool(fresh) and fresh.get("pane_id") == pane_id and pi_disk_session(fresh, prompt, start) == found
+        state, reply = follow_pi_file(new_path, offset, deadline, current)
+        now = agent_info(target) or now
+        working_on_disk = state == "working"
+        texts = [reply] if reply else []  # the message that ended the turn is the reply
+        if state == "gone":
+            new_path, from_disk = None, False  # NO TRANSCRIPT PATH and the screen tail
     elapsed = time.time() - start
 
-    if status == "working":
-        report(now, elapsed, "")
+    if status == "working" or working_on_disk:
+        report(now, elapsed, f"transcript={new_path}" if working_on_disk else "")
         print("TIMED OUT: the prompt was delivered and the target still works. Do not send the prompt again.")
-        print(f"Wait more with `herdr agent wait {now['pane_id']} --timeout 600000`, then run last-reply.py {now['pane_id']}.")
+        if working_on_disk:
+            print(f"Wait more with `ask.py {now['pane_id']} --wait-only`; it follows the same session file.")
+        else:
+            print(f"Wait more with `herdr agent wait {now['pane_id']} --timeout 600000`, "
+                  f"then run last-reply.py {now['pane_id']}.")
         sys.exit(EXIT["timeout"])
     if status == "blocked":
         report(now, elapsed, "")

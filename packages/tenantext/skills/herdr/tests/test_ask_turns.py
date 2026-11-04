@@ -339,6 +339,103 @@ class PiSessionOnDisk(PiFiles, unittest.TestCase):
         self.assertTrue(out.endswith("--- reply ---\nStatus: complete\n"), out)
 
 
+class PiTurnOnDisk(PiFiles, unittest.TestCase):
+    """A Pi-Bolt pane: Herdr stalls and shows idle, so ask.py follows the session file that holds the prompt."""
+
+    PROMPT = "do the task of the worker"
+
+    def pane(self):
+        pane = Pane(self)
+        pane.agent_dirs = [self.agent_dir]
+        pane.info = lambda target: {"pane_id": "p-2", "agent": "pi", "agent_status": "idle", "cwd": self.cwd}
+        return pane
+
+    def step(self, epoch, final):
+        msg = self.said("assistant", "Status: complete" if final else "a first step", epoch)
+        msg["message"]["stopReason"] = "stop" if final else "toolUse"
+        return msg
+
+    def append(self, path, *entries):
+        with open(path, "a", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+
+    def test_a_reply_on_disk_after_a_stall_gives_exit_0_and_the_reply(self):
+        pane = self.pane()
+
+        def on_prompt():
+            def begin(p):
+                path = self.session("a", self.cwd, self.said("user", self.PROMPT, p.clock), self.step(p.clock, False))
+                p.at(90, lambda q: self.append(path, self.step(q.clock, True), {"type": "custom"}))
+            pane.at(5, begin)
+            return STALLED
+        pane.on_prompt = on_prompt
+        code, out = pane.run("--text", self.PROMPT, "--timeout", "600")
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out.endswith("--- reply ---\nStatus: complete\n"), out)
+
+    def test_a_matched_turn_that_still_works_at_the_deadline_gives_exit_124(self):
+        pane = self.pane()
+
+        def on_prompt():
+            pane.at(5, lambda p: self.session("a", self.cwd, self.said("user", self.PROMPT, p.clock),
+                                              self.step(p.clock, False)))
+            return STALLED
+        pane.on_prompt = on_prompt
+        code, out = pane.run("--text", self.PROMPT, "--timeout", "120")
+        self.assertEqual(code, ask.EXIT["timeout"], out)
+
+    def test_no_session_file_with_the_prompt_keeps_exit_5(self):
+        pane = self.pane()
+        self.session("b", self.cwd, self.said("user", "the task of another pane", pane.clock + 1),
+                     self.said("assistant", "the reply of another pane", pane.clock + 2))
+        pane.on_prompt = lambda: STALLED
+        code, out = pane.run("--text", self.PROMPT, "--timeout", "600")
+        self.assertEqual(code, ask.EXIT["no_turn"], out)
+
+    def test_a_failed_attempt_after_a_tool_preamble_is_no_final_reply(self):
+        pane = self.pane()
+
+        def on_prompt():
+            def begin(p):
+                failed = self.said("assistant", "", p.clock)
+                failed["message"].update(stopReason="error", errorMessage="overloaded")
+                path = self.session("a", self.cwd, self.said("user", self.PROMPT, p.clock), self.step(p.clock, False),
+                                    self.said("toolResult", "done", p.clock), failed)
+                p.at(30, lambda q: self.append(path, self.step(q.clock, True)))
+            pane.at(5, begin)
+            return STALLED
+        pane.on_prompt = on_prompt
+        code, out = pane.run("--text", self.PROMPT, "--timeout", "600")
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out.endswith("--- reply ---\nStatus: complete\n"), out)
+
+    def saved(self, pane, *entries):
+        _common.write_record("p-2", {"pane_id": "p-2", "harness": "pi", "created_at_epoch": 1.0})
+        self.addCleanup(_common.remove_record, "p-2")
+        path = self.session("a", self.cwd, *entries)
+        _common.save_pi_session(pane.info(None), path)
+        return path
+
+    def test_a_newer_session_during_a_wait_only_follow_drops_the_old_file(self):
+        pane = self.pane()
+        path = self.saved(pane, self.step(self.now + 2, False))
+        pane.at(5, lambda q: self.session("b", self.cwd, self.said("user", "a task after /new", q.clock),
+                                          started=self.now + 5))
+        pane.at(10, lambda q: self.append(path, self.said("assistant", "the stale reply", q.clock)))
+        _, out = pane.run("--wait-only", "--timeout", "600")
+        self.assertNotIn("the stale reply", out)
+
+    def test_a_custom_message_after_a_final_reply_waits_for_the_new_turn(self):
+        pane = self.pane()
+        path = self.saved(pane, self.said("assistant", "the previous reply", self.now + 2),
+                          {"type": "custom_message", "customType": "herdr-task-notification", "content": "go on"})
+        pane.at(30, lambda q: self.append(path, self.step(q.clock, True)))
+        code, out = pane.run("--wait-only", "--timeout", "600")
+        self.assertEqual(code, 0, out)
+        self.assertTrue(out.endswith("--- reply ---\nStatus: complete\n"), out)
+
+
 class SavedPiSession(PiFiles, unittest.TestCase):
     """After a prompt match, a run without a prompt reads the saved file of the same pane and cwd only."""
 

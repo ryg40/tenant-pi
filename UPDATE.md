@@ -33,7 +33,7 @@ The tested Pi version has one home: `runtime.piVersion` in `config/manifest.json
 
 To move to a new Pi version, for example `1.4.0`:
 
-1. Move the pin from the repository root. The command changes only `config/manifest.json`.
+1. Move the pin from the repository root. The command changes only `config/manifest.json`. A pin that no Pi-Bolt release carries keeps [`--range`](#with-pi-bolt-as-the-runtime): without it, `pin` resets the range and the tested Pi-Bolt release becomes a `mismatch`.
 
    ```sh
    PYTHONDONTWRITEBYTECODE=1 python3 scripts/pi_update.py pin --version 1.4.0
@@ -51,7 +51,9 @@ To move to a new Pi version, for example `1.4.0`:
 
 ### With Pi-Bolt as the runtime
 
-One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `runtime.piBoltVersion`.
+One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `runtime.piBoltVersion`. The Pi-Bolt pin can lag behind the Pi pin: a new Pi version can have no Pi-Bolt release yet.
+
+With no such release, keep `runtime.piBoltVersion` and give `pi_update.py pin` a `--range` that also holds the Pi version of that Pi-Bolt release, for example `--range ">=1.4.0 <1.6"`. Then `check_runtime.py` reports `untested_in_range` for that Pi-Bolt, not `mismatch`. When a Pi-Bolt release carries the pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
 2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.0.9`. `pi-bolt update` installs the latest release, which can carry another Pi version.

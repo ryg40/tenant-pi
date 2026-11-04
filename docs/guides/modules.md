@@ -75,6 +75,7 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 
 - **Memory** (`hermes`, `wiki`, `openviking`, `agentcore`): each one stores or sends text of the sessions. Ask about storage and recall before you install one. Read [memory modules](../memory-modules.md) first. With `wiki`, read [an existing vault](../memory-modules.md#an-existing-vault): the profile uses an existing vault as it is.
 - **MCP** (`mcp`): the adapter reads its server list from its own configuration file; see the README of `pi-mcp-adapter`. To use only the adapter, add `"-builtin:mcp"` to the `extensions` list of the profile settings. For the AWS MCP server and the AWS skills, see [Agent Toolkit for AWS](aws-agent-toolkit.md).
+- **MCP with codemode** (`mcp-codemode`): the MCP client and the `codemode` tool of Pi, without the adapter. Read [MCP with codemode](#mcp-with-codemode) first.
 - **Own packages and directories**: add a Pi package that you maintain with `pi install <path>`, or a skills directory to the `skills` list of the profile settings.
 - **Agent fan-out**: no subagents module exists. Use the Herdr skill of `packages/tenantext`. Pi inside Herdr is not qualified. The Herdr application is a host tool that the kit does not install. Read [Herdr and the question tool](../herdr-setup.md) first.
 - **Questions** (`questions`): the Pi extension with the `ask_user_question` tool, in the core install. It needs an interactive session. Without it, a skill asks in plain text. It is not an extension for Claude Code.
@@ -91,7 +92,7 @@ The package gives Pi native tools and a skill. The tools read the AT-SPI accessi
 The module needs these things:
 
 - Linux on x64 or arm64. The `package.json` of the package sets `os` to `linux`, so npm refuses another platform.
-- A graphical session with the AT-SPI accessibility bridge, and an input backend. On Wayland without a RemoteDesktop portal, `wtype` also sends `press_key` chords since 0.7.36 (from the package README, not run). The kit does not install it. The doctor tool of the package names each blocker. Its setup tools can turn on AT-SPI and install a GNOME Shell extension; they change the desktop settings of the user.
+- A graphical session with the AT-SPI accessibility bridge, and an input backend. When `ydotool` is absent and the session bus answers that it has no RemoteDesktop portal, as on wlroots compositors such as Sway, labwc, river or cage, `wtype` sends `press_key` chords since 0.7.36 (from the package README, not run). The kit does not install it. The doctor tool of the package names each blocker. Its setup tools can turn on AT-SPI and install a GNOME Shell extension; they change the desktop settings of the user.
 - The postinstall download. The script `npm/install.js` of the npm package downloads the release binaries of the same version from GitHub. It checks each binary against its published `.sha256` file. The install needs network access.
 
 Without the downloaded binary, the extension looks for `COMPUTER_USE_LINUX_BIN`, then for `computer-use-linux` on `PATH` (source: the Pi setup reference of the package skill). To get the binary again, run `pi remove` with the same source, then the `computer-use` line again.
@@ -200,6 +201,67 @@ The Herdr skill removes the `computer_use_*` tools from the read roles, as for t
 
 The pin moves in two places: the manifest spec and the line of each Pi profile. [The computer-use version](../../UPDATE.md#the-computer-use-version) gives the steps.
 
+## MCP with codemode
+
+The module `mcp-codemode` lets you compare the MCP support of Pi with `pi-mcp-adapter`. `codemode` is a Pi tool: the model writes a script that calls the other tools, and only the output of the script reaches the model.
+
+`install.sh` refuses `mcp` together with `mcp-codemode`, because the adapter replaces the MCP support of Pi. The value `all` does not include `mcp-codemode`.
+
+Install a second profile. The name `codemode` is an example:
+
+```sh
+sh install.sh --new codemode --shell bash --with mcp-codemode --yes
+```
+
+The module installs no package. It adds `+codemode` to `defaultTools` in the settings. On an upgrade, it removes the adapter package, `-builtin:mcp` and `-builtin:codemode` from the settings. It does not change `mcp.json` or `mcp-adapter.json`.
+
+Pi activates `codemode` by itself at session start when `mcp.json` has an enabled server with `codemode` exposure. `+codemode` keeps the tool active without such a server, for example before the conversion below, so a comparison profile keeps the setting.
+
+To go back:
+
+1. Run `install.sh --upgrade` with `--with mcp`. `codemode` stays in `defaultTools`.
+2. Add `"-builtin:mcp"` to `extensions` in `<profile>/settings.json`. Only the adapter writes this entry, once for each adapter version, so a profile that ran the adapter before does not get it again.
+3. Move `<profile>/mcp.json` aside if the adapter must not import it. Adapter 7.0.0 imports this file.
+
+Copy the servers of the adapter into the file of Pi:
+
+```sh
+python3 scripts/mcp_to_native.py --from "$HOME/.pi/profiles/main/mcp-adapter.json" --to "$HOME/.pi/profiles/codemode/mcp.json"
+```
+
+The script refuses a target that exists. It writes mode 0600 and prints no value. It prints each dropped field by name and each value that Pi reads in another way. Do these steps after the conversion:
+
+1. Read the printed lines. `lifecycle` has no native field, so Pi connects to each server when a session starts.
+2. Run `PI_CODING_AGENT_DIR="$HOME/.pi/profiles/codemode" pi mcp list`. Pi connects to each server and reports each invalid entry.
+
+Pi and the adapter read some values in different ways:
+
+| Form | Adapter | Pi |
+| --- | --- | --- |
+| `${NAME}` in `env` or `headers` | The value, or empty when `NAME` is not set | The value; the server does not connect when `NAME` is empty or not set |
+| `!command` as a whole value | The trimmed output | The same |
+| `${NAME:-text}` | The value, or `text` | Plain text, not expanded |
+| `$env:NAME`, `{env:NAME}` | The value | Not expanded in the same way; write `${NAME}` |
+| `$NAME`, `$$`, `$!` | Plain text | The value of `NAME`, `$`, `!` |
+| `!!text` | The plain text `!text` | A shell command; do not use it |
+| A variable in `command`, `args`, `url` or `cwd` | Expanded | Not expanded; only a leading `~/` is expanded in `command`, `args` and `cwd` |
+
+To hide the other tools from the model, so that it reaches them only through scripts, set `codemode.mode` in `<profile>/settings.json`. The value `only` also hides `read`, `bash`, `edit` and `write`:
+
+```json
+{
+  "codemode": { "mode": "only" }
+}
+```
+
+To compare the two profiles:
+
+1. Choose one prompt that needs an MCP tool, and one model.
+2. Run the prompt once in each profile, each time in a new session. The profiles must have the same servers.
+3. Export each session with `/export` to an HTML file, then compare the tool count. The export has the block System Prompt and, beside it, the list Available Tools.
+4. Compare the input tokens of the first turn and of the full session.
+5. Compare the results. A smaller token count has no value when the result is worse.
+
 ## okknow
 
 The `okknow` module is the in-tree package `packages/okknow`: the skill `okknow` and its CLI `scripts/okknow`, for one OpenKnowledge (OK) server of the user. Its manifest status is `unverified`; the manifest gaps name the open facts. The kit installs no OK server.
@@ -214,7 +276,7 @@ The package is separate from `packages/tenantext`, because Pi loads every skill 
 2. It links `~/.local/bin/okknow` to the CLI of the clone. It keeps another file or link of that name. When `~/.local/bin` is not on `PATH`, the profile launcher adds it at the end of `PATH`.
 3. When `~/.claude` exists, it links the skill to `~/.claude/skills/okknow`, as for the other kit skills.
 4. It runs the setup wizard `okknow setup`. With `OKKNOW_ORIGIN` set, it runs `okknow setup --origin "$OKKNOW_ORIGIN" --yes`: that run sends no credential (the installer does not pass `--probe-auth`) and keeps every key of an existing config. When the config has a different origin, the installer stops before its first write; run `okknow setup --origin <url> --yes --replace-origin` to replace it. When a user config exists and `OKKNOW_ORIGIN` is not set, it keeps that config. Else it runs the wizard in the terminal. Without a terminal, `OKKNOW_ORIGIN` or a config, it stops before its first write. The plan of the installer prints the origin.
-5. With the `mcp` module too, it adds the server `okknow` to `<profile>/mcp-adapter.json`. Its header is `Authorization: !<home>/.local/bin/okknow auth-header`: the adapter runs the CLI for the header at connect time. An existing `okknow` entry with another header stays.
+5. With the `mcp` module too, it adds the server `okknow` to `<profile>/mcp-adapter.json`. With `mcp-codemode`, it adds the server to `<profile>/mcp.json`. Its header is `Authorization: !<home>/.local/bin/okknow auth-header`: the adapter or Pi runs the CLI for the header at connect time. An existing `okknow` entry with another header stays.
 
 The wizard asks for the origin of your OK server: `https://<host>[:port]`, or `http://127.0.0.1:<port>` for a server on the same computer. It suggests no default. It checks the form, then probes the origin without credentials and prints one line for each check: `reachable` and `mcp`. Then it asks `Send OPENKNOWLEDGE_USERNAME/PASSWORD to <origin>? [y/N]`; only after a yes does it run the `authenticated` check. With `--yes`, it sends the credentials only with `--probe-auth`. It names each missing credential variable. Then it writes `~/.config/okknow/config.json` (mode 0600). It sets the origin and keeps every other key of an existing config. With `--yes`, it refuses an origin that differs from the saved origin unless `--replace-origin` is given. A failed probe does not stop the write; run `okknow doctor` later. `okknow setup --check` prints the state of the saved origin in words and sends no credential.
 
@@ -226,7 +288,7 @@ Claude Code MCP is a separate step; [the okknow details](../../packages/okknow/s
 
 A server host keeps the content directory of the server on its disk. There, `okknow setup --volume <dir>` turns on the checks of that directory in `okknow doctor` and the write guard `scripts/okknow-guard`. A client has no such directory; see [the okknow details](../../packages/okknow/skills/okknow/references/details.md#server-host).
 
-To remove the module: delete the `packages/okknow` entry from the profile settings, the link `~/.local/bin/okknow`, the link `~/.claude/skills/okknow` and the `okknow` entry of `<profile>/mcp-adapter.json`.
+To remove the module: delete the `packages/okknow` entry from the profile settings, the link `~/.local/bin/okknow`, the link `~/.claude/skills/okknow` and the `okknow` entry of `<profile>/mcp-adapter.json` or `<profile>/mcp.json`.
 
 ## Claude Code
 

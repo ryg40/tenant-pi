@@ -3,9 +3,9 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, 
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { StringEnum, Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Box, Text } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
 
 export const CUSTOM_TYPE = "herdr-watch";
 export const DEFAULT_TIMEOUT_SECONDS = 1500;
@@ -329,6 +329,11 @@ export function spawnArgs(params: Pick<SpawnParams, "harness" | "role" | "model"
 }
 
 /** `herdr_spawn` and `herdr_watch_start`: wait on a Herdr pane in the background; the reply arrives later as a task notification. */
+// A plain string enum, typed for `Type.Object`: the StringEnum of pi-ai has a pi-schema type outside Pi.
+function stringEnum<T extends readonly string[]>(values: T, options: { description: string }) {
+	return Type.Unsafe<T[number]>({ type: "string", enum: [...values], ...options });
+}
+
 export default function herdrWatch(pi: ExtensionAPI) {
 	const watches = new Map<string, Watch>();
 	let stateDir: string | undefined;
@@ -556,8 +561,8 @@ export default function herdrWatch(pi: ExtensionAPI) {
 				+ "A notification with a timeout or a blocked status has no close line: the pane still works or waits for the user, so do not close it.",
 		],
 		parameters: Type.Object({
-			harness: StringEnum(HARNESSES, { description: "The agent program: pi or claude" }),
-			role: StringEnum(ROLES, { description: "The role of the task session. coordinator is refused: a coordinator is a primary session." }),
+			harness: stringEnum(HARNESSES, { description: "The agent program: pi or claude" }),
+			role: stringEnum(ROLES, { description: "The role of the task session. coordinator is refused: a coordinator is a primary session." }),
 			model: Type.Optional(Type.String({ description: "pi: provider/model or a name that pi --list-models finds one time. claude: a model ID or a CLI alias. Omit it only when models.json of the herdr skill names a model for the role and the harness: without a model, spawn.py starts no pane and the call returns its exit 2." })),
 			thinking: Type.Optional(Type.String({ description: "off, minimal, low, medium, high, xhigh or max. Omit it for the level of models.json or of the harness." })),
 			cwd: Type.String({ description: "Absolute working directory of the new agent" }),

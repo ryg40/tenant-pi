@@ -117,7 +117,7 @@ Each optional module is one `pi install` line. Use the `PI_CODING_AGENT_DIR` of 
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter@7.0.0
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory@0.9.11
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory@0.10.0
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki@0.12.5
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.36
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@amaster.ai/pi-computer-use@0.1.35

@@ -730,7 +730,7 @@
     "hermes": {
       "source": {
         "kind": "npm",
-        "spec": "pi-hermes-memory@0.9.11"
+        "spec": "pi-hermes-memory@0.10.0"
       },
       "status": "tested",
       "requires": [

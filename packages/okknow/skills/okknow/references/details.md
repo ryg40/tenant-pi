@@ -83,7 +83,7 @@ The CLI talks only to the configured origin. It refuses another origin from `--o
 | User config | Written by `okknow setup`, which the installer runs |
 | Pi MCP | With the `mcp` module: the server `okknow` in `<profile>/mcp-adapter.json`, header `Authorization: !<home>/.local/bin/okknow auth-header`, lazy. With `mcp-codemode`: the same server and header in `<profile>/mcp.json`, connected at session start |
 
-The header command form `!<command>` is the one of pi-mcp-adapter 7.0.0 (the kit pin): the adapter runs the command in a shell at connect time, with a 10-second limit, and uses its trimmed standard output as the header value. `!!` starts a literal value.
+The header command form `!<command>` is the one of pi-mcp-adapter 7.0.0 and 7.0.1 (the kit pin): the adapter runs the command in a shell at connect time, with a 10-second limit, and uses its trimmed standard output as the header value. `!!` starts a literal value.
 
 `okknow auth-header` and the Pi adapter: Claude Code sets `CLAUDE_CODE_MCP_SERVER_URL` for a header helper, and `auth-header` refuses a URL that is not under the configured origin. pi-mcp-adapter sets no such variable, so for Pi the only rule is that standard output is not a terminal. Any process of the user that runs `okknow auth-header` into a pipe gets the header. That process already has the two credential variables in its environment, so it gets nothing new. The header is always for the configured origin: `auth-header` reads no origin from its caller.
 

@@ -56,7 +56,7 @@ One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `
 With no such release, keep `runtime.piBoltVersion` and give `pi_update.py pin` a `--range` that also holds the Pi version of that Pi-Bolt release, for example `--range ">=1.4.0 <1.6"`. Then `check_runtime.py` reports `untested_in_range` for that Pi-Bolt, not `mismatch`. When a Pi-Bolt release carries the pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
-2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.1.2`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
+2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.1.4`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
 3. Set `runtime.piBoltVersion` in `config/manifest.json` to that release, in the same commit as the pin.
 4. Check the runtime of the profile. The report shows the Pi version and the Pi-Bolt release.
 

@@ -44,7 +44,7 @@ The install line of the Pi-Bolt README installs it to `~/.pi-bolt` and links the
 curl -fsSL https://pi-bolt.opensec.in/install.sh | sh
 ```
 
-One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.5.0 (Pi-Bolt 1.1.2, linux-x64, JIT off)`. Use the Pi-Bolt release `runtime.piBoltVersion` of the manifest, the tested Pi-Bolt release. When the Pi-Bolt pin lags behind the Pi pin, it carries an older Pi than `runtime.piVersion`, and then `untested_in_range` is the expected result. Check it:
+One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.5.0 (Pi-Bolt 1.1.4, linux-x64, JIT off)`. Use the Pi-Bolt release `runtime.piBoltVersion` of the manifest, the tested Pi-Bolt release. When the Pi-Bolt pin lags behind the Pi pin, it carries an older Pi than `runtime.piVersion`, and then `untested_in_range` is the expected result. Check it:
 
 ```sh
 python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"

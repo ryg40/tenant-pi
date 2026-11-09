@@ -25,10 +25,10 @@ test("the Claude Code plugin ships the Herdr runtime and command without drift",
 	const copy = join(built, "herdr");
 	const expected = [
 		"SKILL.md", "SPAWN.md", "LAYOUT.md", "contract.json", "roles.json", "resources.json",
-		"resources.local.example.json", "models.example.json", "commands/spawn_agent.md",
+		"resources.local.example.json", "models.example.json", "commands/handoff_coordinator.md", "commands/spawn_agent.md",
 		"roles/contract.md", "roles/coordinator.md", "roles/researcher.md", "roles/reviewer.md",
 		"roles/scout.md", "roles/worker.md", "scripts/_common.py", "scripts/ask.py", "scripts/close.py",
-		"scripts/init.py", "scripts/last-reply.py", "scripts/mcp-bearer-helper.sh",
+		"scripts/handoff.py", "scripts/init.py", "scripts/last-reply.py", "scripts/mcp-bearer-helper.sh",
 		"scripts/panes.py", "scripts/resources.py", "scripts/spawn.py",
 	];
 	// Private model notes are absent from portable snapshots in both directories.
@@ -43,8 +43,10 @@ test("the Claude Code plugin ships the Herdr runtime and command without drift",
 	for (const path of expected) {
 		assert.deepEqual(readFileSync(join(copy, path)), readFileSync(join(source, path)), path);
 	}
-	assert.deepEqual(readFileSync(join(root, "..", "commands", "spawn_agent.md")),
-		readFileSync(join(source, "commands", "spawn_agent.md")));
+	for (const command of ["spawn_agent.md", "handoff_coordinator.md"]) {
+		assert.deepEqual(readFileSync(join(root, "..", "commands", command)),
+			readFileSync(join(source, "commands", command)), command);
+	}
 });
 
 function run(script: string, args: string[], stdin: string, dir: string): string {

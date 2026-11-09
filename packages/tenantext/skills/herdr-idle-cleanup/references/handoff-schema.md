@@ -188,5 +188,5 @@ Two settings keys of the settings file control `startup`:
 
 | Key | Values | Default |
 | --- | --- | --- |
-| `startup_assessment` | `all`: claim each matching record; `p1`: claim only P1 records; `off`: claim nothing and print nothing. `switch off` writes `off`; `switch on` writes `all` only after `off`, so a `p1` choice must be set again after an off | `all` |
+| `startup_assessment` | `all`: claim each matching record; `p1`: claim only P1 records; `off`: claim nothing and print nothing. `switch off` writes `off` and keeps the value before it (`all` or `p1`) in `startup_assessment_before_off`; `switch on` writes only after `off`: it restores the kept value (`all` when none is kept) and removes the kept key. The state of the switch is `startup_assessment` alone | `all` |
 | `startup_other_count` | `true`: with no claim, print one line with the count of open records of other repositories | `false` |

@@ -128,9 +128,9 @@ class PublishTests(_PublishCase):
     def test_upload_only_after_a_clean_scan_with_the_token_of_the_token_file(self):
         # A synthetic token that the kit scanner flags (rule github-pat), built at run time from parts.
         fake = "".join(("ghp", "_", "Zx9QwEr7TyUi3OpA", "s5DfGh1JkLz2XcVbNm4Q"))
-        secret = self.write("20261109-110000", HANDOFF + f'\napi = "{fake}"\n')
+        flagged = self.write("20261109-110000", HANDOFF + f'\napi = "{fake}"\n')
         lines = []
-        self.assertEqual(1, publish.publish(secret, self.dir, self.settings, do_upload=True, out=lines.append))
+        self.assertEqual(1, publish.publish(flagged, self.dir, self.settings, do_upload=True, out=lines.append))
         self.assertEqual([], self.server.requests)
         self.assertNotIn(fake, "\n".join(lines))
 

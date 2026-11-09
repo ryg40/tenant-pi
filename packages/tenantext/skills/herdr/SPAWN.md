@@ -211,16 +211,41 @@ works in.
 
 ### Coordinator handoff
 
-To hand your work to the next coordinator session:
+To hand your work to the next coordinator session, write the handoff file (state of the work, open items, files, decisions) at a path agreed with the user, then run one command:
 
-1. Write the handoff file: state of the work, open items, files, decisions. Use a path agreed with the user; Claude Code defines no handoff directory.
-2. Start the next coordinator: `python3 $S/spawn.py --harness <h> --role coordinator [--model m] [--thinking t] --cwd "$PWD"`. It appears below your pane with the next number.
-3. Send it the path of the handoff file, and ask it to confirm what it will do next. In Pi, send it with `herdr_watch_start` (`herdr_spawn` refuses the role coordinator). Without the tool, send it with `ask.py`.
-4. Tell the user the name of the new coordinator. Do not close your own pane and do not close the new one.
+```bash
+python3 $S/handoff.py --file <handoff.md> [--harness claude|pi] [--model m] [--thinking t] [--timeout 900]
+```
+
+In Claude Code, run it with `run_in_background: true`, because the wait can pass the 10-minute limit of a foreground call. In Pi, run it in `bash`.
+
+| Step | What `handoff.py` does |
+| --- | --- |
+| Checks | Inside Herdr, your pane is a coordinator, the file exists and is not empty. A failed check starts nothing. |
+| Panes | It appends the section "Open panes at the handoff" to the file: each open task pane of the workspace. A rerun replaces the section. |
+| Start | `spawn.py --role coordinator` with your inputs, else `models.json`. The harness defaults to yours. The new pane appears below yours with the next number. |
+| Confirm | `ask.py` sends the start prompt and waits for a reply line that starts with `HANDOFF-ACCEPTED` (the marker of `contract.json`). |
+| Success | It appends the record to `handoffs.jsonl` beside the file (`"status": "recorded"`), sends the second prompt with `ask.py --timeout 45`, prints one result line, and closes your pane by its ID. The second send succeeds on `ask.py` exit 124 (the turn still works) or exit 0 with a new reply. Exit 0 with the line `note: reply was an API error` before the reply is a failure. |
+| Failure | It closes nothing, leaves both panes open, and prints the cause with the pane ID and the name of the new pane. A failed second send appends one more line for the same handoff with `"status": "failed"` and the cause. |
+
+The command closes your own pane after a confirmed handoff; do not close it yourself. Stop your own background waits on task panes before you run it, or let the new coordinator collect those replies with `ask.py <pane-id> --wait-only`.
+
+| Exit of `handoff.py` | Meaning | What to do |
+| --- | --- | --- |
+| 0 | The handoff is recorded. Your pane closes | Nothing. The new coordinator continues. |
+| 2 | A check failed. Nothing was started | Read the line. Correct the file or the input, or run `init.py`. |
+| 3 | `spawn.py` failed, or its output has no pane ID | Read the line, as for the `spawn.py` exits below. Without a pane ID, look for the new pane with `panes.py`. |
+| 4 | The new coordinator stopped at a startup question | Show the question to the user (`herdr agent read <pane-id> --source visible`). |
+| 5 | No reply with the marker | Read the new pane with `last-reply.py <pane-id>`. Tell the user; both panes stay open. |
+| 6 | The record was not written | Tell the user the line; both panes stay open. |
+| 7 | The second prompt failed: the new coordinator waits on a question (`ask.py` exit 4), is busy, started no turn, gave no new reply, gave an API error (also exit 0 with the note `note: reply was an API error`), or `ask.py` did not end or did not start | Show the new pane to the user (`herdr agent read <pane-id> --source visible`); both panes stay open. |
+| 8 | Herdr did not close your pane | The handoff is done. Tell the user; stop work in this pane. |
+
+The exits of `spawn.py`:
 
 | Exit | Meaning | What to do |
 | --- | --- | --- |
-| 0 | The agent is ready | Go to step 4. |
+| 0 | The agent is ready | Send the task. |
 | 2 | An input is not valid, for example no model from the request or `models.json`. Nothing was started | Read the message. Correct the input: for a missing model, ask the user for one. |
 | 4 | The agent stopped at a startup question, for example folder trust | `herdr agent read <pane-id> --source visible`. Show the question to the user. Wait for the decision. |
 | 1 | The start failed. The new pane is closed again | Read the error. |

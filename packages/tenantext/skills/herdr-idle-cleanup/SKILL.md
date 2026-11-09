@@ -112,7 +112,7 @@ An optional JSON file at `${XDG_CONFIG_HOME:-~/.config}/herdr-idle-cleanup/setti
 | `protected_workspaces` | `--protect <name-or-id>` (adds to the list) | none |
 | `handoff_dir` | `scan --out <path of scan.json>` | `~/.local/share/tenant-pi/handoffs` |
 | `model_command` | needed by `--summarize` and `--model-rank` | none |
-| `startup_assessment` | `all`, `p1` or `off`. `/herdr-idle off` writes `off`; `/herdr-idle on` writes `all` after `off`, so set `p1` again after an off | `all` |
+| `startup_assessment` | `all`, `p1` or `off`. `/herdr-idle off` writes `off` and keeps the value before it in `startup_assessment_before_off`; `/herdr-idle on` restores that value (`all` when none is kept). The state of the switch is `startup_assessment` alone | `all` |
 | `startup_other_count` | `true` or `false` | `false` |
 | `secret_scan_command` | the scanner of `publish` | `scripts/scan.sh --level warn tree` of the kit, when the skill runs from a kit tree |
 | `publish_url` | the base URL of the artifact service for `--upload` | none |

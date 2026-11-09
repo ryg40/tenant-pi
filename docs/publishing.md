@@ -35,13 +35,30 @@ The publisher reads a matching stamp and prints its record. Otherwise, it runs t
 Run the full check set once per clean tree and client.
 Build with `--no-push`, inspect the snapshot, then run the publisher once to push after approval.
 Before the next build, publish that snapshot or delete its local `portable/*` tag after review.
-Local unpublished tags count as previous releases and can shorten the next changes list.
+The publisher stops on a local tag of an unpublished snapshot that descends from the published head. With `--skip-chain-check` it does not, and such a tag counts as the previous release: it changes the update lines and shortens the next changes list.
 
 ## History
 
 The public history only moves forward. Each snapshot has the previous snapshot as its parent, so a downstream repository merges a new snapshot with `git fetch` and `git merge`. The publisher has no option to replace or restart that history.
 Removing a value from a later snapshot does not remove it from history. Run the public reader review before each snapshot.
 A normal push to a divergent remote chain is refused.
+
+A new snapshot builds only on the published head. Before the long checks, the publisher reads the branch `--remote-branch` on the remote `--remote` (default `github/main`) with `git ls-remote`, at the push URL of the remote. It compares the result with the local `portable` and the local tags in one step, and again before it writes. These rules apply:
+
+| State of the local `portable` | Result |
+| --- | --- |
+| It is the published head | The build goes on. |
+| No local branch and no remote branch (first snapshot) | The build goes on. |
+| It has a commit that the remote does not have, for example a snapshot that the review rejected | The publisher stops before the long checks and before it writes a commit, a branch move or a tag. One line names the commit and the command that moves the branch back, for example `git branch -f portable <published head>`, and `git tag -d` for each local tag of an unpublished snapshot on the published head. |
+| It is behind or on another chain | The publisher stops in the same way. The command starts with `git fetch` when the published head is not in the local repository. |
+| It is the published head, but a local `portable/*` tag points at a commit that descends from the published head, for example the tag of a rejected snapshot | The publisher stops before the long checks. One line names each such tag and the command `git tag -d <tag>`. |
+| A local `portable/*` tag is on another chain, for example an old history that the published head does not contain | The build goes on. The tag does not stop it. |
+| The remote cannot be read (no network, no remote, no access) | The publisher stops before the long checks. |
+
+An unchanged tree writes nothing, so the push run after a `--no-push` build still works while the local branch is one snapshot ahead.
+The tag of that waiting build does not stop the push run. The tag of a rejected snapshot stops the next build that writes a new tree until you delete it: `git tag -d portable/<yyyymmdd>-<source sha>`.
+
+`--skip-chain-check` builds without reading the remote. Use it only for an offline build that you do not push, or when you checked by hand that the local `portable` is the published head. The publisher prints `chain check skipped` as a record.
 
 ## Adding a file to the portable set
 

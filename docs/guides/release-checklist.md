@@ -103,8 +103,10 @@ Each run needs a record with the exact commands, the versions, and each check as
    ```
 
    The publisher prints the matching stamp without repeating the check set. It prints the path of the draft notes, `notes: <path>`. Keep the notes outside the checkout.
+   The publisher first reads the published head of the remote. It stops before the long checks when the local `portable` is not that head, when a local `portable/*` tag points at an unpublished snapshot on that head, for example after a rejected snapshot, or when it cannot read the remote. Run the command that the stop line names, then build again. See [the history rules](../publishing.md#history) for `--skip-chain-check`.
 
 4. Inspect the snapshot: `git show portable --stat`. Check each new file against the [publish set rules](../publishing.md#adding-a-file-to-the-portable-set) and [the public reader rules](../publishing.md#public-reader-rules). Reviewers read each added file as readers without access to the private development repository: names, paths, tracker references, service choices, historical claims, licenses and provenance, not only scanner matches.
+   When the review rejects the snapshot, move the local `portable` back to the published head and delete the local tag of the snapshot before the next build. Until you do, each build of a changed publish set stops before the long checks. A push run of an unchanged tree passes with `no change` and pushes the rejected snapshot, so do not run it. The stop line names the commands: `git branch -f portable <published head>` and `git tag -d <tag>`.
 5. Run the publisher once to push, only after the maintainer approves the release:
 
    ```sh
@@ -118,6 +120,13 @@ Each run needs a record with the exact commands, the versions, and each check as
    Then check with `git ls-remote` that each remote resolves the tag to the snapshot commit. Check that the visibility of the publication repository matches the approved visibility; portable content does not imply a public repository.
 
 6. Wait for the CI run of the snapshot on GitHub: the workflow "Offline checks" ([continuous integration](../publishing.md#continuous-integration)). Both matrix jobs, Linux and macOS, must pass before you create the release entry. A failed job stops the release entry.
+   Then wait for the CodeQL run of the push, and list the open code-scanning alerts of the publication repository. This command only reads:
+
+   ```sh
+   gh api --paginate 'repos/<owner>/<repo>/code-scanning/alerts?state=open'
+   ```
+
+   No new open alert may exist before the release entry. Fix a new alert in a new snapshot, or record why it is a false positive and dismiss it on GitHub before the release entry.
 7. Review [the release notes](#release-notes) from the publisher after the last gate. Fill the placeholders and publish the entry on the tag. Keep the tested snapshot unchanged.
 8. Update the documentation site of the kit, if you maintain one: set the new tag in its version file and update the pages that changed.
 

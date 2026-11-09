@@ -27,8 +27,9 @@ switch   Turns the startup check (the claim and the assessment of `startup`) on 
          together, through the key startup_assessment, or prints its state. No argument means status.
 
 Settings file (optional): ${XDG_CONFIG_HOME:-~/.config}/herdr-idle-cleanup/settings.json with the keys
-idle_minutes, protected_workspaces, handoff_dir, model_command, startup_assessment, startup_other_count,
-secret_scan_command, publish_url, publish_token_file.
+idle_minutes, protected_workspaces, handoff_dir, model_command, startup_assessment,
+startup_assessment_before_off (written by switch), startup_other_count, secret_scan_command, publish_url,
+publish_token_file.
 A flag wins over the file.
 """
 import argparse
@@ -163,6 +164,12 @@ def settings_path():
     return os.path.join(base, "herdr-idle-cleanup", "settings.json")
 
 
+# `switch off` keeps the value before the off here, and `switch on` restores it. The state of the switch is
+# startup_assessment alone.
+BEFORE_OFF_KEY = "startup_assessment_before_off"
+BEFORE_OFF_VALUES = ("all", "p1")
+
+
 def load_settings(path=None):
     """The settings file as a dict. A missing file gives {}; an invalid file stops with its path and reason."""
     path = path or settings_path()
@@ -194,6 +201,9 @@ def load_settings(path=None):
         v = data.get("model_command")
         if v is not None and (not isinstance(v, list) or not v or not all(isinstance(x, str) and x for x in v)):
             problems.append("model_command is not a non-empty list of non-empty strings")
+        v = data.get(BEFORE_OFF_KEY)
+        if v is not None and v not in BEFORE_OFF_VALUES:
+            problems.append(f"{BEFORE_OFF_KEY} is not one of {', '.join(BEFORE_OFF_VALUES)}")
         v = data.get("secret_scan_command")
         if v is not None and (not isinstance(v, list) or not v or not all(isinstance(x, str) and x for x in v)):
             problems.append("secret_scan_command is not a non-empty list of non-empty strings")
@@ -694,7 +704,9 @@ def startup_assessment(settings):
 def write_switch(on, path=None):
     """Set startup_assessment for the switch and keep every other key. An invalid file stops with no write.
 
-    Off writes `off`. On writes `all` only when the value is `off`; `all`, `p1` or a missing key stay, with no write.
+    Off writes `off` and keeps the value before the off (`all` or `p1`) in startup_assessment_before_off; an off
+    that is already off keeps the kept value. On writes only when the value is `off`: it restores the kept value
+    (`all` when none is kept) and removes the kept key. `all`, `p1` or a missing key stay, with no write.
     The write goes through a temporary file and a rename in the directory of the real file, so a symlink stays.
     An existing file keeps its mode; a new directory gets 0700 and a new file 0600.
     """
@@ -702,8 +714,13 @@ def write_switch(on, path=None):
     data = load_settings(path)
     if on and startup_assessment(data) != "off":
         return data
-    startup_assessment(data)  # a bad value stops the write
-    data["startup_assessment"] = "all" if on else "off"
+    current = startup_assessment(data)  # a bad value stops the write
+    if on:
+        data["startup_assessment"] = data.pop(BEFORE_OFF_KEY, "all")
+    else:
+        if current != "off":
+            data[BEFORE_OFF_KEY] = current
+        data["startup_assessment"] = "off"
     real = os.path.realpath(path)
     try:
         mode = os.stat(real).st_mode & 0o7777

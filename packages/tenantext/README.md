@@ -456,7 +456,7 @@ Not verified: writing through the OpenKnowledge project API. The adapter only de
 
 ## Claude Code plugin
 
-`claude-code/` holds a Claude Code plugin. It applies the same rule block and ships `/spawn_agent`. After a build, it also carries the skills that `config/manifest.json` of the kit declares for this package. Claude Code has no per-turn system prompt hook, so the delivery of the rules differs:
+`claude-code/` holds a Claude Code plugin. It applies the same rule block and ships `/spawn_agent` and `/handoff_coordinator`. After a build, it also carries the skills that `config/manifest.json` of the kit declares for this package. Claude Code has no per-turn system prompt hook, so the delivery of the rules differs:
 
 | Pi extension | Claude Code plugin |
 | --- | --- |
@@ -470,7 +470,7 @@ The marketplace manifest is `packages/tenantext/.claude-plugin/marketplace.json`
 Its plugin source is the sibling `claude-code/` directory inside this package.
 
 The skill links that the kit `install.sh` writes into `~/.claude/skills` are the default form of these skills in Claude Code.
-The plugin is for the `SessionStart` hook, `/ste` and `/spawn_agent`.
+The plugin is for the `SessionStart` hook, `/ste`, `/spawn_agent` and `/handoff_coordinator`.
 When you have the links, skip the skill build: with both forms, Claude Code lists each skill twice, as `<name>` and as `tenantext:<name>`.
 The plugin skills are for a host that does not keep the kit clone, because the links point into the clone.
 
@@ -540,6 +540,7 @@ Files:
 | `claude-code/scripts/command-rules.mjs` | The command rules and their matcher. The Pi extension `command-rules` imports this file |
 | `claude-code/scripts/rules.mjs` | Copy of `src/rules.ts`. A test asserts the two blocks are identical |
 | `claude-code/commands/spawn_agent.md` | Backs `/spawn_agent`. Copy of `skills/herdr/commands/spawn_agent.md`; a test asserts the two are identical |
+| `claude-code/commands/handoff_coordinator.md` | Backs `/handoff_coordinator`. Copy of `skills/herdr/commands/handoff_coordinator.md`; a test asserts the two are identical |
 | `claude-code/build-skills.py` | Builds the generated `claude-code/skills/` from the skills that the kit manifest declares, with the licence texts |
 
 ## Develop
@@ -606,14 +607,14 @@ The skill ships no model choice. Optional `~/.config/herdr-skill/models.json` su
 `XDG_CONFIG_HOME` replaces `~/.config` when set. A named model skips the file; a requested thinking level wins.
 With no local choice, the harness uses its own default.
 
-The Claude Code plugin ships the skill and `/spawn_agent`; plugin users do not need the installer.
+The Claude Code plugin ships the skill, `/spawn_agent` and `/handoff_coordinator`; plugin users do not need the installer.
 Install at user level for Pi or Claude Code without the plugin:
 
 ```bash
 skills/herdr/install.sh
 ```
 
-The installer makes `~/.agents/skills/herdr` a link to `skills/herdr` of the checkout, links it into `~/.claude/skills/` and `~/.pi/agent/skills/`, and installs the `/spawn_agent` command. A real directory at `~/.agents/skills/herdr` moves to a backup name beside it first. A pull of the checkout updates the installed skill at once. Pi can find the skill in more than one place; its user directory has priority, so Pi loads the linked folder. The tools and skills of the roles are a catalog in `skills/herdr/resources.json`. Each entry has an ordered list of locations; the launch uses the first one that is present and leaves out an entry that is absent. A machine file at `~/.config/herdr-skill/resources.json` adds or replaces entries for one machine; `resources.local.example.json` shows the format. No entry is required: an entry that is absent does not stop a launch.
+The installer makes `~/.agents/skills/herdr` a link to `skills/herdr` of the checkout, links it into `~/.claude/skills/` and `~/.pi/agent/skills/`, and installs the `/spawn_agent` and `/handoff_coordinator` commands. A real directory at `~/.agents/skills/herdr` moves to a backup name beside it first. A pull of the checkout updates the installed skill at once. Pi can find the skill in more than one place; its user directory has priority, so Pi loads the linked folder. The tools and skills of the roles are a catalog in `skills/herdr/resources.json`. Each entry has an ordered list of locations; the launch uses the first one that is present and leaves out an entry that is absent. A machine file at `~/.config/herdr-skill/resources.json` adds or replaces entries for one machine; `resources.local.example.json` shows the format. No entry is required: an entry that is absent does not stop a launch.
 
 Tests need no Herdr server:
 

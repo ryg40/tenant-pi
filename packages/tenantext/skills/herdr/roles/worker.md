@@ -16,6 +16,8 @@ If the task names a tool, a method or a check, use that.
 6. To read or prompt another agent pane, load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. Use its scripts.
 7. Put scratch files in a new directory from `mktemp -d`, and leave them there.
 8. Before you create or edit a `SKILL.md`, an `AGENTS.md` or a `CLAUDE.md`, load the writing-for-agents skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. Before the commit, check the text against each rule of the task and of its ticket.
+9. Before the commit, make each new failure path of the change fail once in a scratch probe, for example a missing file, a bad value, a lock timeout or a refusal. Record each probe and its result in the evidence.
+10. Before you add a setting, a key, a flag or a command, search for one with the same effect, and reuse it or say why not. Before you say that a harness or a tool lacks a feature, name the document or the code that shows it.
 
 For the tools and skills of this machine with their locations, run `{resources_command}`. Load the full text of an entry only when you use it.
 

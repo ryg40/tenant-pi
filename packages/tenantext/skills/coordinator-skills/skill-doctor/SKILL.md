@@ -8,7 +8,7 @@ Grade the user's agent setup by scoring recent local agent conversations, then p
 
 The report can cover conversations in the current repository, conversations in selected projects, or all local conversations. It can evaluate project skills alone or project and global skills together.
 
-Everything runs locally. Never upload transcripts, session files, or any excerpt of them anywhere. The only shareable artifact is the report the user chooses to post.
+Everything runs locally. The collector also reads, read-only, the sessions on the user's own OpenViking server. Never upload transcripts, session files, or any excerpt of them anywhere. The only shareable artifact is the report the user chooses to post.
 
 Let `SKILL_ROOT` be the directory containing this SKILL.md.
 
@@ -48,7 +48,7 @@ Then ask **“Which skills should I evaluate?”** with:
 1. **Project skills + global skills** (recommended).
 2. **Project skills only**.
 
-For an all-conversations run, “Project skills” means skills from local git repositories inferred from the conversations' working directories. After these answers, proceed immediately.
+For an all-conversations run, “Project skills” means skills from local git repositories inferred from the conversations' working directories. OpenViking stores no working directory, so the collector finds no project skills for the sessions from OpenViking. For a project skill assessment, name `--repo` or `--skills-dir`. Zero discovered skills does not prove that a project has none. After these answers, proceed immediately.
 
 Never write artifacts into the user's repo. Create one fresh, collision-free scratch directory per run and use it as `REPORT_DIR` for every artifact:
 
@@ -74,8 +74,11 @@ python3 "$SKILL_ROOT/scripts/collect_sessions.py" \
 
 By default `--harness auto` scans every locally available supported source. Read `$SKILL_ROOT/references/supported-harnesses.md` for source identifiers, storage details, skill locations, and source-specific override flags.
 
+With `--source auto` (the default), the collector reads the Claude Code and Pi sessions from the OpenViking server, and the sessions of the other harnesses from their local files. It takes the server, the key, the account and the user from the `OPENVIKING_*` variables, `ovcli.conf` and the `server` section of `ov.conf`, in the order that `$SKILL_ROOT/references/supported-harnesses.md` gives. When no server is configured or the server does not answer (a connection error, a timeout, HTTP 5xx, a health reply with `healthy: false`), it reads the local files of every harness and prints one `note:` line with the reason. Every other OpenViking failure, for example a refused credential or a missing account, ends the run with one `error:` line and exit code 1. The `sources` entries of `inventory.json` and the `session source` output line name the source of each harness.
+
 Useful flags:
 
+- `--source VALUE`: `auto`, `openviking` (OpenViking only; exit code 1 when the server cannot serve the sessions), or `local` (the local session files only).
 - `--harness VALUE`: which local session sources to scan; use the reference's collector IDs.
 - `--repo PATH`: include a project; repeatable.
 - `--all-conversations`: do not filter conversations by project.
@@ -85,18 +88,30 @@ Useful flags:
 - `--skills-dir PATH`: nonstandard skill locations.
 - `--include-subagents`: include child or sidechain sessions.
 
-Read `$REPORT_DIR/inventory.json`. If `sessions_sampled` is 0, tell the user there is nothing recent to score in the selected conversation scope (suggest raising `--days` or choosing different projects) and stop. If `skills_found` is 0, continue: the report becomes a case for creating skills, and `skill_coverage` is 0.
+Read `$REPORT_DIR/inventory.json`. If `sessions_sampled` is 0 (the collector then exits with code 3), tell the user there is nothing recent to score in the selected conversation scope (suggest raising `--days` or choosing different projects) and stop. If `skills_found` is 0, continue: the report becomes a case for creating skills, and `skill_coverage` is 0.
 
 ## Step 2: Score each sampled transcript
 
-Scoring is based on efficiency, code quality, procedure compliance, and verbosity for the sessions sampled. Process datasets of 50 transcripts or fewer in a single batch. For datasets with more than 50 transcripts, use parallel batches (20 transcripts per batch recommended). Score batches in the current local agent process, or delegate only to local child agents that keep transcript contents on the user's machine. Pass the following rubrics as context:
+Scoring is based on efficiency, code quality, procedure compliance, and verbosity for the sessions sampled. Process datasets of 50 transcripts or fewer in one scoring run. For datasets with more than 50 transcripts, use parallel batches (20 transcripts per batch recommended). Score batches in the current local agent process, or delegate only to local child agents that keep transcript contents on the user's machine. Start each delegated scorer (a pane or a child agent) with a working directory outside the scored repository, so that the next collector run does not sample the scoring sessions as sessions of that repository. Pass the following rubrics as context:
 
 - `$SKILL_ROOT/scorers/efficiency.md`
 - `$SKILL_ROOT/scorers/code-quality.md`
 - `$SKILL_ROOT/scorers/procedure-compliance.md`
 - `$SKILL_ROOT/scorers/verbosity.md`
 
-Instructions: For each transcript in `$REPORT_DIR/transcripts/`, read it and judge it against all four rubrics. For each scorer record: label, numeric score (from the rubric's label table), and a 1 to 3 sentence reason citing specifics from the transcript. Apply the code-quality scorer only where the transcript shows code changes; otherwise record `insufficient_evidence` and exclude that result from the code-quality average and failed-conversation filter.
+Instructions: For each transcript in `$REPORT_DIR/transcripts/`, read it and judge it against all four rubrics. For each scorer record: label, numeric score (from the rubric's label table), and a 1 to 3 sentence reason citing specifics from the transcript. Apply the code-quality scorer only where the transcript shows code changes; otherwise record `insufficient_evidence` and exclude that result from the code-quality average and failed-conversation filter. A transcript without tool output (its header says `tool output: not available`) gives no evidence of errors; score what it shows and do not count missing output as zero errors.
+
+Record each transcript as one JSON line in `$REPORT_DIR/scores.jsonl`, with the ID of the transcript's `# Session` heading as `session_id`:
+
+```json
+{"session_id": "<id>", "efficiency": {"label": "", "score": 0.0, "reason": ""}, "code_quality": {}, "procedure_compliance": {}, "verbosity": {}}
+```
+
+Append the line right after you judge its transcript, one line at a time. Keep earlier lines as they are, and write only in the `REPORT_DIR` that your task names.
+
+After each line, run `python3 "$SKILL_ROOT/scripts/next_unscored.py" "$REPORT_DIR"`. It prints the count scored, a `note:` for a session ID with more than one line (the first line counts), and the next unscored transcript or `ALL SCORED`. A batch scorer adds the transcript paths of its batch after `"$REPORT_DIR"`, so that the script counts and names only those transcripts. On an `error:` line, fix only the line of `scores.jsonl` that it names.
+
+A scorer is done when its check prints `ALL SCORED`. End the turn or report status only then. With batches, the agent that runs the skill then runs the check without a list, and Step 2 is complete when that check prints `ALL SCORED`.
 
 ## Step 3: Aggregate
 
@@ -180,3 +195,17 @@ Finish every response with this exact summary, substituting the absolute `REPORT
 - Your agent skill report: file://$REPORT_DIR/report.html
 
 Want me to apply these suggestions to your skills?
+
+## Run on a schedule
+
+A scheduled job runs Step 1 with flags only. It sets the answers of Step 0 as flags:
+
+```bash
+REPORT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/skill-doctor-XXXXXXXX")"
+python3 "$SKILL_ROOT/scripts/collect_sessions.py" --source openviking \
+  --out "$REPORT_DIR" --repo "$REPO" --include-global-skills
+```
+
+The exit code tells the job the result: 0 means sampled sessions, 3 means no sampled session, 1 or 2 means an error. `--source openviking` reads the Claude Code and Pi sessions from OpenViking only and makes the job fail when the server does not answer; with `--source auto`, the job also reads the local files of the other harnesses, and of every harness when the server does not answer.
+
+Step 2 to Step 5 need an agent run, for example a headless agent session that gets this skill and `REPORT_DIR`. This skill has no scheduler.

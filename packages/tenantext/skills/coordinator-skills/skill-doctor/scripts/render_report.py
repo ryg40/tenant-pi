@@ -556,11 +556,14 @@ def main(argv=None):
         print(f"error: {report_path} not found", file=sys.stderr)
         sys.exit(1)
     r = json.loads(report_path.read_text())
-    r.setdefault("grade", grade_for(r["scores"]["overall"]))
+    # Kit change: one grade for the page and the output line, also for a null or empty "grade".
+    r["grade"] = r.get("grade") or grade_for(r["scores"]["overall"])
 
     out_path = report_path.parent / "report.html"
     out_path.write_text(render_page(r))
     print(f"report: {out_path.absolute().as_uri()}")
+    # Kit change: the grade on the output line, so that an agent does not search the page for it.
+    print(f"grade: {r['grade']} (overall {pct(r['scores']['overall'])}%)")
     if args.open_browser:
         if open_report(out_path):
             print("        opened in the default browser")

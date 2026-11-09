@@ -75,18 +75,109 @@ def check_snapshot_branch(root, branch):
         raise SystemExit("snapshot branch is checked out in a worktree")
 
 
-def snapshot(root, paths, source_ref, branch, *, message, identity=None, tag=None):
-    """Write a commit on `branch` whose tree is exactly `paths` as they are in `source_ref`.
+def published_head(root, remote, remote_branch):
+    """The commit of `remote_branch` on `remote`: a hash, "" when the branch does not exist, None when unreadable.
 
-    Returns (commit, tree, changed). Uses a temporary index; the working tree is untouched.
-    With `tag`, the branch and annotated tag refs update in one transaction, or neither updates.
-    The commit carries `identity` (default: `resolve_identity()`) and no signature.
-    The commit always has the previous snapshot as parent: the public history only moves forward.
+    The second value is the error text of an unreadable remote. The read uses the push URL of a
+    named remote, the URL that the push uses; a `remote` that is not a name is read as given.
     """
-    identity = resolve_identity() if identity is None else identity
+    ref = f"refs/heads/{remote_branch}"
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    named = subprocess.run(["git", "remote", "get-url", "--push", "--", remote], cwd=root,
+                           text=True, capture_output=True)
+    url = named.stdout.strip() if named.returncode == 0 and named.stdout.strip() else remote
+    try:
+        result = subprocess.run(["git", "ls-remote", "--heads", "--", url, ref], cwd=root, env=env,
+                                text=True, capture_output=True, timeout=60)
+    except subprocess.TimeoutExpired:
+        return None, "no answer in 60 s"
+    if result.returncode != 0:
+        lines = result.stderr.strip().splitlines()
+        return None, lines[0] if lines else f"exit status {result.returncode}"
+    heads = [line.split("\t", 1)[0] for line in result.stdout.splitlines() if line.endswith(f"\t{ref}")]
+    return (heads[0] if heads else ""), None
+
+
+def is_ancestor(root, older, newer):
+    return subprocess.run(["git", "merge-base", "--is-ancestor", older, newer], cwd=root,
+                          capture_output=True).returncode == 0
+
+
+def commit_known(root, commit):
+    return subprocess.run(["git", "cat-file", "-e", f"{commit}^{{commit}}"], cwd=root,
+                          capture_output=True).returncode == 0
+
+
+def unpublished_tags(root, published, keep=""):
+    """Local `portable/*` tags of unpublished snapshots on the published chain, sorted.
+
+    A tag is listed when its commit descends from the `published` head and is not that head:
+    the tag of a snapshot that was built on the published head and never pushed. `keep` is the
+    head of the local snapshot branch, a build that waits for its push; its tags are not listed.
+    Tags of another chain are not listed. With no published head ("") no tag is listed.
+    """
+    if not published:
+        return []
+    lines = git("for-each-ref", "--format=%(refname:short) %(*objectname) %(objectname)",
+                "refs/tags/portable/", root=root).splitlines()
+    stale = []
+    for line in lines:
+        name, commit = line.split()[:2]  # the peeled commit of an annotated tag, else the commit itself
+        if commit not in (published, keep) and is_ancestor(root, published, commit):
+            stale.append(name)
+    return sorted(stale)
+
+
+def chain_check(root, branch, tree, published, remote):
+    """Stop with one line unless a snapshot of `tree` can build on the published head.
+
+    The local `branch` must be the published head (or both are absent), or hold `tree` already on a
+    commit that contains the published head: a `--no-push` build that waits for its push.
+    No other local `portable/*` tag may point at an unpublished snapshot on the published head, so
+    that the tag of a rejected snapshot never becomes the previous release.
+    `remote` is the pair (remote, remote branch).
+    """
     check_snapshot_branch(root, branch)
-    if tag is not None:
-        git("check-ref-format", f"refs/tags/{tag}", root=root)
+    parent = git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}", root=root, check_call=False)
+    known = bool(published) and commit_known(root, published)
+    pending = bool(parent) and git("rev-parse", f"{parent}^{{tree}}", root=root) == tree and (
+        not published or (known and is_ancestor(root, published, parent)))
+    if parent != published and not pending:
+        line = chain_error(root, branch, parent, published, remote)
+        tags = unpublished_tags(root, published) if known else []
+        if tags:
+            line += f"; then delete the tags of unpublished snapshots: git tag -d {' '.join(tags)}"
+        raise SystemExit(line)
+    tags = unpublished_tags(root, published, keep=parent)
+    if tags:
+        raise SystemExit(f"local tag {', '.join(tags)} is an unpublished snapshot on the published head of "
+                         f"{'/'.join(remote)}; "
+                         f"no snapshot built; delete it: git tag -d {' '.join(tags)}")
+
+
+def chain_error(root, branch, parent, published, remote):
+    """One line for a local snapshot branch that is not the published head, with the command that moves it back.
+
+    `remote` is the pair (remote, remote branch).
+    """
+    label = "/".join(remote)
+    if not published:
+        return (f"local {branch} has commit {parent} and {label} has no branch; no snapshot built; "
+                f"check --remote and --remote-branch, then move it back: git branch -D {branch}")
+    move = f"git branch -f {branch} {published}"
+    known = commit_known(root, published)
+    if not known:
+        move = f"git fetch {remote[0]} {remote[1]} && {move}"
+    if parent and known and is_ancestor(root, published, parent):
+        state = f"has commit {parent} that {label} does not have"
+    else:
+        state = (f"is at {parent}" if parent else "does not exist") + \
+            f", not at the published head {published} of {label}"
+    return f"local {branch} {state}; no snapshot built; move it back: {move}"
+
+
+def snapshot_tree(root, paths, source_ref):
+    """The tree object of exactly `paths` as they are in `source_ref`, written with a temporary index."""
     with tempfile.TemporaryDirectory(prefix="tenant-pi-portable-") as temp:
         env = dict(os.environ, GIT_INDEX_FILE=str(Path(temp) / "index"))
         git("read-tree", "--empty", root=root, env=env)
@@ -98,10 +189,31 @@ def snapshot(root, paths, source_ref, branch, *, message, identity=None, tag=Non
             if kind != "blob" or mode not in ("100644", "100755"):
                 raise SystemExit(f"not a regular file in {source_ref}: {path}")
             git("update-index", "--add", "--cacheinfo", f"{mode},{blob},{path}", root=root, env=env)
-        tree = git("write-tree", root=root, env=env)
+        return git("write-tree", root=root, env=env)
+
+
+def snapshot(root, paths, source_ref, branch, *, message, identity=None, tag=None, published=None,
+             remote=("the remote", "main")):
+    """Write a commit on `branch` whose tree is exactly `paths` as they are in `source_ref`.
+
+    Returns (commit, tree, changed). Uses a temporary index; the working tree is untouched.
+    With `tag`, the branch and annotated tag refs update in one transaction, or neither updates.
+    The commit carries `identity` (default: `resolve_identity()`) and no signature.
+    The commit always has the previous snapshot as parent: the public history only moves forward.
+    With `published` (the head of the publication remote, "" for no branch), a new commit is
+    written only when `branch` is that head, so an unpublished snapshot never becomes a parent.
+    An unchanged tree writes nothing and passes, so an earlier `--no-push` build can still be pushed.
+    """
+    identity = resolve_identity() if identity is None else identity
+    check_snapshot_branch(root, branch)
+    if tag is not None:
+        git("check-ref-format", f"refs/tags/{tag}", root=root)
+    tree = snapshot_tree(root, paths, source_ref)
     parent = git("rev-parse", "--verify", "--quiet", f"refs/heads/{branch}^{{commit}}", root=root, check_call=False)
     if parent and git("rev-parse", f"{parent}^{{tree}}", root=root) == tree:
         return parent, tree, False
+    if published is not None and parent != published:
+        raise SystemExit(chain_error(root, branch, parent, published, remote))
     args = ["commit-tree", tree, "-m", message] + (["-p", parent] if parent else [])
     commit = git(*NO_SIGNATURE, *args, root=root, env=identity_env(identity))
     # Create objects first, then publish both refs atomically with an expected old branch value.
@@ -299,6 +411,8 @@ def main(argv=None):
     parser.add_argument("--remote-branch", default="main", help="branch name on the remote")
     parser.add_argument("--branch", default="portable", help="local snapshot branch: portable, portable-* or portable/*")
     parser.add_argument("--no-push", action="store_true", help="build and tag only")
+    parser.add_argument("--skip-chain-check", action="store_true",
+                        help="build without reading the published head of the remote (the maintainer checks the chain)")
     parser.add_argument("--class", dest="release_class", choices=("patch", "full"), default="patch",
                         help="release class (default: patch)")
     parser.add_argument("--notes", type=Path, help="notes output path (default: a new system temporary file)")
@@ -318,6 +432,21 @@ def main(argv=None):
         raise SystemExit("working tree not clean: commit or stash first; the snapshot comes from HEAD only")
     head = git("rev-parse", "HEAD")
     short = head[:7]
+    # Read the published head before the long checks: an unpublished snapshot must not become a parent.
+    label = f"{args.remote}/{args.remote_branch}"
+    if args.skip_chain_check:
+        published = None
+        print(f"chain check skipped: {label} not read", flush=True)
+    else:
+        published, error = published_head(ROOT, args.remote, args.remote_branch)
+        if published is None:
+            raise SystemExit(f"cannot read {label}: {error}; no snapshot built "
+                             "(--skip-chain-check builds without the check)")
+    # Compare before the long checks; snapshot() compares again before it writes.
+    paths = publish_files(publish_tracked(ROOT, head), root=ROOT, ref=head)
+    if published is not None:
+        chain_check(ROOT, args.branch, snapshot_tree(ROOT, paths, head), published,
+                    (args.remote, args.remote_branch))
     record = check_set(ROOT)
     tags_before = release_tags(ROOT)
     # The publish rules run here, not in the everyday check: first each public reader finding, then the publish set.
@@ -332,8 +461,8 @@ def main(argv=None):
                f"Exactly the reviewed publish set from scripts/publish_check.py at\n"
                f"source commit {head}. Only reviewed files are included.\n")
     tag = f"portable/{date.replace('-', '')}-{short}"
-    commit, tree, changed = snapshot(ROOT, publish_files(publish_tracked(ROOT, head), root=ROOT, ref=head),
-                                     head, args.branch, message=message, identity=identity, tag=tag)
+    commit, tree, changed = snapshot(ROOT, paths, head, args.branch, message=message, identity=identity, tag=tag,
+                                     published=published, remote=(args.remote, args.remote_branch))
     if changed:
         print(f"portable commit {commit[:7]} (tree {tree[:7]}), tag {tag}")
     else:

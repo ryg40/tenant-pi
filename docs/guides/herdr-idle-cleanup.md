@@ -80,7 +80,7 @@ The settings file is `${XDG_CONFIG_HOME:-~/.config}/herdr-idle-cleanup/settings.
 | `protected_workspaces` | Workspace names or IDs that never close. | none |
 | `handoff_dir` | The handoff directory. | `~/.local/share/tenant-pi/handoffs` |
 | `model_command` | An argv list for `harvest --summarize` and `--model-rank`. | none |
-| `startup_assessment` | `all`, `p1` or `off`. `/herdr-idle off` writes `off`, and `/herdr-idle on` writes `all` after `off`, so set `p1` again after an off. | `all` |
+| `startup_assessment` | `all`, `p1` or `off`. `/herdr-idle off` writes `off` and keeps the value before it in `startup_assessment_before_off`. `/herdr-idle on` restores that value, or writes `all` when none is kept. | `all` |
 | `startup_other_count` | Print the count of open entries of other repositories. | `false` |
 | `secret_scan_command` | An argv list of another scanner for `publish`. | `scripts/scan.sh` of the kit |
 | `publish_url` | The base URL of the artifact service. The upload API is in [the publication reference of `tracker-site`](../../packages/tenantext/skills/tracker-site/references/publication.md). | none |

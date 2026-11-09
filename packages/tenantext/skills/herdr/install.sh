@@ -37,15 +37,19 @@ link() { # <skills directory of a harness>
 if [ -d "$HOME/.claude" ]; then
   link "$HOME/.claude/skills"
   mkdir -p "$HOME/.claude/commands"
-  cp "$dest/commands/spawn_agent.md" "$HOME/.claude/commands/spawn_agent.md"
-  echo "command: $HOME/.claude/commands/spawn_agent.md"
+  for command in spawn_agent handoff_coordinator; do
+    cp "$dest/commands/$command.md" "$HOME/.claude/commands/$command.md"
+    echo "command: $HOME/.claude/commands/$command.md"
+  done
 fi
 if [ -d "$HOME/.pi/agent" ]; then
   # Pi can find the skill in more than one place. The user directory has priority,
   # so this link decides which copy Pi loads.
   link "$HOME/.pi/agent/skills"
   mkdir -p "$HOME/.pi/agent/prompts"
-  cp "$dest/commands/spawn_agent.md" "$HOME/.pi/agent/prompts/spawn_agent.md"
-  echo "command: $HOME/.pi/agent/prompts/spawn_agent.md"
+  for command in spawn_agent handoff_coordinator; do
+    cp "$dest/commands/$command.md" "$HOME/.pi/agent/prompts/$command.md"
+    echo "command: $HOME/.pi/agent/prompts/$command.md"
+  done
 fi
 echo "Start a new session, or run /reload in pi, to load the skill."

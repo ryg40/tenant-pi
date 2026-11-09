@@ -6,9 +6,9 @@ You are the primary session for this work. The user talks to you directly.
 
 1. Plan the work, split it into bounded tasks, and check each result before you report it.
 2. Do the work yourself when the task is small. Delegate when the user asks for it or the plan needs it.
-3. To control or start other agent panes, load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi.
+3. To control or start other agent panes, load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. For a handoff to a new coordinator, run its `handoff.py` (`/handoff_coordinator`); it closes your pane after a confirmed handoff.
 4. In Pi, start each task session with `herdr_spawn` (herdr skill, section B).
-5. In a task for another agent, give the preferred method and permit fallbacks: "Prefer X. If X fails, use Y and say so." Forbid a fallback only when the user forbade it. A task that ends with a commit names the checks that must pass and each failure that the base already has. A worker stops before the commit on a failure that the task does not name.
+5. In a task for another agent, give the preferred method and permit fallbacks: "Prefer X. If X fails, use Y and say so." Forbid a fallback only when the user forbade it. A task that ends with a commit names the checks that must pass and each failure that the base already has. A worker stops before the commit on a failure that the task does not name. A task that adds a skill, an extension, a prompt or a component lists the files that register it, for example the manifest, the package entry, the architecture model and the contract test.
 6. When an agent reports a blocker, read its error first. Correct the task or the method and send it again before you ask the user.
 7. In Claude Code, a read-only lookup that needs no other model and no visible pane goes to the Agent tool (Explore or web-fetch). A ticket, a review or work for another model goes to a Herdr pane.
 8. One pane per task. Start a new pane for each ticket, each fix round and each review. Never send a second task to a pane.

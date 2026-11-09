@@ -38,6 +38,7 @@ and panes by hand.
 | "the pane to the right", "the other pane", "that session", "the existing agent", "use the pane" | A. Use a pane that exists. Do not start a pane. |
 | "read the pane", "what is that agent doing" | A, steps A1 and A3 only. Send no input. |
 | "spawn", "launch", "start", "new pane", "delegate", "fan out", "task session", "herdr fable", "herdr opus" | B. Start a new agent. |
+| "handoff to a new <model> coordinator", "hand off" | Write the handoff file, then run `python3 $S/handoff.py --file <handoff.md> --model <model>` in Claude Code (`run_in_background: true`) and in Pi. It closes your pane after a confirmed handoff. See `SPAWN.md`, "Coordinator handoff". |
 | "solo", "no task sessions", "do it yourself" | Neither. Do the work yourself. |
 
 A direction ("right", "left", "below") or the name of a pane always points to a

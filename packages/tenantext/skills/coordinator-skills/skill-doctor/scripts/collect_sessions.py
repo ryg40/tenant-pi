@@ -9,7 +9,13 @@ sessions used which skills, and emits:
   <out>/inventory.json        - skills, per-session stats, sampling decisions
   <out>/transcripts/<id>.md   - condensed transcripts for sampled sessions
 
-Everything runs locally; nothing is uploaded. Python 3.9+, stdlib only.
+Kit change: with --source auto (the default) the Claude Code and Pi sessions
+come from the configured OpenViking server (openviking_sessions.py), read-only,
+and the other harnesses from their local files; without a configured server, or
+when it does not answer, the local files are the source of every harness.
+Exit code 3 means that no session was sampled.
+
+Nothing is uploaded. Python 3.9+, stdlib only.
 """
 
 import argparse
@@ -45,6 +51,13 @@ def parse_args():
         choices=("auto", "all", "claude", "codex", "warp", "pi", "grok", "zcode", "hermes"),
         default="auto",
         help="session source (default: auto; scans every locally available source)",
+    )
+    p.add_argument(
+        "--source",
+        choices=("auto", "openviking", "local"),
+        default="auto",
+        help="where to read sessions: auto (Claude Code and Pi from OpenViking when a server is "
+             "configured and answers, the other harnesses from the local files), openviking, or local",
     )
     p.add_argument(
         "--claude-home",
@@ -1438,6 +1451,8 @@ def parse_zcode_session(path: Path, skill_names, include_subagents: bool):
 
 
 def render_transcript(meta, stats, skills_used, entries) -> str:
+    # Kit change: error_outputs is None when the source holds no tool output.
+    errors = "unknown" if stats["error_outputs"] is None else stats["error_outputs"]
     lines = [
         f"# Session {meta.get('id')}",
         f"- cwd: {meta.get('cwd')}",
@@ -1445,11 +1460,11 @@ def render_transcript(meta, stats, skills_used, entries) -> str:
         f"- skills detected: {', '.join(skills_used) or '(none)'}",
         f"- stats: {stats['user_turns']} user turns, {stats['assistant_turns']} assistant turns, "
         f"{stats['tool_calls']} tool calls ({stats['repeated_tool_calls']} repeated), "
-        f"{stats['error_outputs']} error-ish outputs, code edits: {stats['has_code_edits']}",
-        "",
-        "## Condensed transcript",
-        "",
+        f"{errors} error-ish outputs, code edits: {stats['has_code_edits']}",
     ]
+    if stats.get("tool_output_available") is False:
+        lines.append("- tool output: not available (the source holds no tool results; the error count is unknown)")
+    lines += ["", "## Condensed transcript", ""]
     shown = entries
     if len(entries) > MAX_TRANSCRIPT_ENTRIES:
         omitted = len(entries) - TRANSCRIPT_HEAD - TRANSCRIPT_TAIL
@@ -1572,7 +1587,26 @@ def main():
     scanned_count = 0
     sources = {}
 
-    requested_claude = args.harness in ("auto", "all", "claude")
+    # Kit change: OpenViking is the source of the harnesses that it holds; the local
+    # files are the source of the other harnesses, and the fallback.
+    sys.modules.setdefault("collect_sessions", sys.modules[__name__])
+    import openviking_sessions
+    try:
+        openviking_result, source_note = openviking_sessions.collect(args, repos, cutoff)
+    except openviking_sessions.OpenVikingError as error:
+        print(f"error: {error}", file=sys.stderr)
+        sys.exit(1)
+    if source_note:
+        print(source_note, file=sys.stderr)
+    remote = set()
+    if openviking_result is not None:
+        sessions, in_scope_count, scanned_count, sources = openviking_result
+        remote = set(sources)
+
+    def local_files(harness):
+        return args.source != "openviking" and harness not in remote
+
+    requested_claude = local_files("claude") and args.harness in ("auto", "all", "claude")
     if requested_claude and (claude_home / "projects").is_dir():
         claude_files = find_claude_session_files(
             claude_home,
@@ -1606,14 +1640,14 @@ def main():
                 "modified_at": mtime.isoformat(),
                 "_entries": entries,
             })
-    elif args.harness == "claude":
+    elif local_files("claude") and args.harness == "claude":
         print(
             f"error: Claude Code project history not found at {claude_home / 'projects'}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    requested_codex = args.harness in ("auto", "all", "codex")
+    requested_codex = local_files("codex") and args.harness in ("auto", "all", "codex")
     if requested_codex and codex_home.is_dir():
         codex_files = find_codex_session_files(codex_home, cutoff)
         sources["codex"] = {"home": str(codex_home), "records_in_window": len(codex_files)}
@@ -1640,11 +1674,11 @@ def main():
                 "modified_at": mtime.isoformat(),
                 "_entries": entries,
             })
-    elif args.harness == "codex":
+    elif local_files("codex") and args.harness == "codex":
         print(f"error: Codex home not found at {codex_home}", file=sys.stderr)
         sys.exit(1)
 
-    requested_warp = args.harness in ("auto", "all", "warp")
+    requested_warp = local_files("warp") and args.harness in ("auto", "all", "warp")
     warp_databases = []
     if requested_warp:
         warp_databases = discover_warp_databases(args.warp_db, args.warp_data_dir)
@@ -1687,7 +1721,7 @@ def main():
             print("error: no Warp conversation databases found", file=sys.stderr)
             sys.exit(1)
 
-    requested_pi = args.harness in ("auto", "all", "pi")
+    requested_pi = local_files("pi") and args.harness in ("auto", "all", "pi")
     if requested_pi and (pi_home / "sessions").is_dir():
         pi_files = find_pi_session_files(pi_home, cutoff)
         sources["pi"] = {"home": str(pi_home), "records_in_window": len(pi_files)}
@@ -1714,11 +1748,11 @@ def main():
                 "modified_at": mtime.isoformat(),
                 "_entries": entries,
             })
-    elif args.harness == "pi":
+    elif local_files("pi") and args.harness == "pi":
         print(f"error: Pi session home not found at {pi_home / 'sessions'}", file=sys.stderr)
         sys.exit(1)
 
-    requested_grok = args.harness in ("auto", "all", "grok")
+    requested_grok = local_files("grok") and args.harness in ("auto", "all", "grok")
     if requested_grok and (grok_home / "sessions").is_dir():
         grok_files = find_grok_session_files(grok_home, cutoff)
         sources["grok"] = {"home": str(grok_home), "records_in_window": len(grok_files)}
@@ -1745,11 +1779,11 @@ def main():
                 "modified_at": mtime.isoformat(),
                 "_entries": entries,
             })
-    elif args.harness == "grok":
+    elif local_files("grok") and args.harness == "grok":
         print(f"error: Grok Build session home not found at {grok_home / 'sessions'}", file=sys.stderr)
         sys.exit(1)
 
-    requested_zcode = args.harness in ("auto", "all", "zcode")
+    requested_zcode = local_files("zcode") and args.harness in ("auto", "all", "zcode")
     if requested_zcode and (zcode_home / "cli" / "rollout").is_dir():
         zcode_files = find_zcode_session_files(zcode_home, cutoff)
         sources["zcode"] = {"home": str(zcode_home), "records_in_window": len(zcode_files)}
@@ -1776,14 +1810,14 @@ def main():
                 "modified_at": mtime.isoformat(),
                 "_entries": entries,
             })
-    elif args.harness == "zcode":
+    elif local_files("zcode") and args.harness == "zcode":
         print(
             f"error: ZCode model-io rollouts not found at {zcode_home / 'cli' / 'rollout'}",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    requested_hermes = args.harness in ("auto", "all", "hermes")
+    requested_hermes = local_files("hermes") and args.harness in ("auto", "all", "hermes")
     hermes_databases = discover_hermes_databases(args.hermes_home)
     if requested_hermes and hermes_databases:
         hermes_records, hermes_scanned = find_hermes_sessions(hermes_databases, cutoff)
@@ -1818,7 +1852,7 @@ def main():
                 "modified_at": meta["timestamp"],
                 "_entries": entries,
             })
-    elif args.harness == "hermes":
+    elif local_files("hermes") and args.harness == "hermes":
         print(f"error: Hermes state.db not found under {args.hermes_home}", file=sys.stderr)
         sys.exit(1)
 
@@ -1898,16 +1932,24 @@ def main():
         conversation_scope = "projects"
         scope_name = "multiple-projects"
 
+    # Kit change: each entry of sources names its session source.
+    by_source = {}
+    for name, entry in sources.items():
+        entry.setdefault("source", "local")
+        by_source.setdefault(entry["source"], []).append(name)
+    homes = by_source.get("local", [])
     inventory = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "harness": next(iter(sources)) if len(sources) == 1 else "mixed",
+        "session_source": next(iter(by_source)) if len(by_source) == 1 else "mixed",
+        "session_source_note": source_note,
         "sources": sources,
-        "claude_home": str(claude_home) if "claude" in sources else None,
-        "codex_home": str(codex_home) if "codex" in sources else None,
-        "pi_home": str(pi_home) if "pi" in sources else None,
-        "grok_home": str(grok_home) if "grok" in sources else None,
-        "zcode_home": str(zcode_home) if "zcode" in sources else None,
-        "hermes_home": str(hermes_home) if "hermes" in sources else None,
+        "claude_home": str(claude_home) if "claude" in homes else None,
+        "codex_home": str(codex_home) if "codex" in homes else None,
+        "pi_home": str(pi_home) if "pi" in homes else None,
+        "grok_home": str(grok_home) if "grok" in homes else None,
+        "zcode_home": str(zcode_home) if "zcode" in homes else None,
+        "hermes_home": str(hermes_home) if "hermes" in homes else None,
         "warp_databases": [str(path) for path in warp_databases],
         "conversation_scope": conversation_scope,
         "repo": str(repos[0]) if len(repos) == 1 else None,
@@ -1940,11 +1982,16 @@ def main():
             else ", ".join(str(repo) for repo in repos)
         )
     )
+    labels = {"openviking": "OpenViking", "local": "local files"}
+    print("session source:    " + "; ".join(
+        f"{labels[source]} ({', '.join(names)})" for source, names in by_source.items()))
     print(f"sources:           {', '.join(sources)}")
     print(f"skills found:      {st['skills_found']} ({st['skills_used']} used in window)")
     print(f"sessions in window: {st['session_records_in_window']} records, {st['sessions_in_scope']} in scope, {st['sessions_considered']} scoreable")
     print(f"sessions sampled:  {st['sessions_sampled']} -> {transcripts_dir}")
     print(f"inventory:         {out_dir / 'inventory.json'}")
+    if not sampled_keys:
+        sys.exit(3)  # Kit change: a scheduled job reads "no session to score" from the exit code.
 
 
 if __name__ == "__main__":

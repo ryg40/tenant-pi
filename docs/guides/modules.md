@@ -300,7 +300,7 @@ The Pi profile is the reference. The Claude Code form of the kit carries each co
 | Component | Claude Code form | Source of the form |
 | --- | --- | --- |
 | `tenantext` | The `SessionStart` hook of the Simplified English rules, and `/ste` | The `tenantext` plugin |
-| `herdr` | The skill, and `/spawn_agent` | The skill: a link of `install.sh`, or the plugin. The command: the plugin |
+| `herdr` | The skill, `/spawn_agent` and `/handoff_coordinator` | The skill: a link of `install.sh`, or the plugin. The command: the plugin |
 | `herdr-relay`, `coordinator-skills`, `knowledge-skills`, `tracker-site` | The skills | The links of `install.sh`, or the plugin |
 | `herdr-idle-cleanup`, `herdr-idle-cleanup-prompt`, `handoffs` | The skill, `/herdr-idle-cleanup`, `/handoffs`, `/herdr-idle` and the startup assessment of the `SessionStart` hook | The skill: a link of `install.sh`, or the plugin. The commands and the hook: the plugin |
 | `okknow` | The skill; the MCP server is a step of the user | The link of `install.sh --with okknow` |
@@ -308,7 +308,7 @@ The Pi profile is the reference. The Claude Code form of the kit carries each co
 | `computer-use` | The plugin of the package | [The Claude Code plugin](#claude-code-plugin) |
 
 The skill links of `install.sh` are the default form of the kit skills. A pull of the kit updates them at once.
-The `tenantext` plugin is for the `SessionStart` hook, `/ste` and `/spawn_agent`.
+The `tenantext` plugin is for the `SessionStart` hook, `/ste`, `/spawn_agent` and `/handoff_coordinator`.
 When you have the links, skip the skill build of the plugin: with both forms, Claude Code lists each skill twice, as `<name>` and as `tenantext:<name>`.
 The plugin skills are for a host that does not keep the kit clone, because the links point into the clone.
 [The package README](../../packages/tenantext/README.md#claude-code-plugin) gives the build and the install of the plugin.

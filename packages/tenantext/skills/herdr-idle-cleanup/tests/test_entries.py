@@ -91,9 +91,20 @@ class StartupTest(EntriesFixture):
         self.assertEqual(self.run_cli("switch", "off").returncode, 0)
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        self.assertEqual(data, {"handoff_dir": self.handoffs, "idle_minutes": 45, "unknown_key": "kept",
-                                "startup_assessment": "off"})
+        self.assertEqual(data["startup_assessment"], "off")
+        for key, value in (("handoff_dir", self.handoffs), ("idle_minutes", 45), ("unknown_key", "kept")):
+            self.assertEqual(data[key], value)
         self.assertEqual(os.stat(path).st_mode & 0o777, 0o640)
+
+    def test_switch_on_after_off_restores_p1(self):
+        path = os.path.join(self.env["XDG_CONFIG_HOME"], "herdr-idle-cleanup", "settings.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"startup_assessment": "p1", "idle_minutes": 45}, f)
+        for state in ("off", "off", "on"):  # a second off keeps p1
+            self.assertEqual(self.run_cli("switch", state).returncode, 0)
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        self.assertEqual((data["startup_assessment"], data["idle_minutes"]), ("p1", 45))
 
     def test_startup_without_a_match_prints_nothing_and_changes_nothing(self):
         self.write_index([record("bbbb000000000002", self.other)])

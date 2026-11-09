@@ -1,7 +1,7 @@
 {
   "name": "tenantext",
   "version": "0.3.0",
-  "description": "A SessionStart hook injects the Simplified English (adapted ASD-STE001) output rules at session start and after /clear, resume and compaction. A PreToolUse hook denies the shell commands of the kit command rules. /ste toggles the default. /spawn_agent starts a Herdr agent pane. After build-skills.py runs in the kit clone, the plugin also carries the skills that the kit manifest declares for tenantext.",
+  "description": "A SessionStart hook injects the Simplified English (adapted ASD-STE001) output rules at session start and after /clear, resume and compaction. A PreToolUse hook denies the shell commands of the kit command rules. /ste toggles the default. /spawn_agent starts a Herdr agent pane. /handoff_coordinator hands the work to a new coordinator pane and closes the previous one. After build-skills.py runs in the kit clone, the plugin also carries the skills that the kit manifest declares for tenantext.",
   "author": { "name": "The tenant-pi authors" },
   "repository": "https://git.example.com/owner/tenantext",
   "license": "MIT",

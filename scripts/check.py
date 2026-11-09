@@ -50,6 +50,7 @@ PACKAGE_PY = (
     ("packages/tenantext", ("-m", "unittest", "discover", "-s", "skills/herdr/tests")),
     ("packages/tenantext", ("-m", "unittest", "discover", "-s", "skills/herdr-relay/tests")),
     ("packages/tenantext", ("-m", "unittest", "discover", "-s", "skills/herdr-idle-cleanup/tests")),
+    ("packages/tenantext", ("-m", "unittest", "discover", "-s", "skills/coordinator-skills/skill-doctor/tests")),
 )
 NPM_SUITES = (("test", ("npm", "test")), ("typecheck", ("npm", "run", "typecheck")))
 FIELD = re.compile(r"[A-Za-z_][A-Za-z0-9_-]*:(?:[ \t]|$)")

@@ -170,8 +170,8 @@ class SnapshotTests(RepositoryCase):
         self.assertEqual("keep\n", (self.root / "keep.txt").read_text())
 
 
-class CheckSetTests(RepositoryCase):
-    """Exercise the publisher with a subprocess fixture and real snapshot refs."""
+class PublisherFixture:
+    """A subprocess check fixture, a stamp and a run of `main` in the test repository."""
 
     def setUp(self):
         super().setUp()
@@ -202,7 +202,7 @@ class CheckSetTests(RepositoryCase):
         (directory / tree).write_text(json.dumps(stamp))
         return tree, stamp
 
-    def invoke(self, mode, *options, push=False, default_notes=False, public=0):
+    def invoke(self, mode, *options, push=False, default_notes=False, public=0, chain=False):
         import publish_portable
         (self.root / ".git/check-mode").write_text(mode)
         real_git = publish_portable.git
@@ -219,12 +219,19 @@ class CheckSetTests(RepositoryCase):
                 mock.patch.object(publish_portable, "publish_files", return_value=("keep.txt",)), \
                 contextlib.redirect_stdout(output):
             arguments = [] if push else ["--no-push"]
+            # The fixture has no publication remote; the chain test passes `chain=True`.
+            if not chain:
+                arguments.append("--skip-chain-check")
             if not default_notes:
                 arguments += ["--notes", str(self.notes)]
             self.assertEqual(0, publish_portable.main([*arguments, *options]))
             public_check.assert_called_once_with()
             direct_check.assert_called_once_with()
         return output.getvalue()
+
+
+class CheckSetTests(PublisherFixture, RepositoryCase):
+    """Exercise the publisher with a subprocess fixture and real snapshot refs."""
 
     def test_first_release_without_portable_tags(self):
         self.make_stamp()
@@ -296,6 +303,38 @@ class CheckSetTests(RepositoryCase):
         with self.assertRaisesRegex(SystemExit, "matching stamp could not be read"):
             self.invoke("stamp")
         self.assertEqual(before, git(self.root, "show-ref"))
+
+
+class ChainGuardTests(PublisherFixture, RepositoryCase):
+    """The publisher builds only on the published head of the publication remote."""
+
+    def new_source(self, text):
+        (self.root / "keep.txt").write_text(text)
+        git(self.root, "commit", "-qam", text)
+        self.make_stamp()
+
+    def test_local_portable_ahead_of_the_remote_stops_the_build_before_any_write(self):
+        remote = Path(self.temp.name) / "public.git"
+        git(self.root, "init", "-q", "--bare", str(remote))
+        git(self.root, "remote", "add", "github", str(remote))
+        self.make_stamp()
+        self.invoke("stamp", chain=True)  # first snapshot: no remote branch, no local branch
+        git(self.root, "push", "-q", "github", "refs/heads/portable:refs/heads/main")
+        self.new_source("second\n")
+        self.invoke("stamp", chain=True)  # on the published head; not pushed, as after a rejected review
+        self.assertIn("no change:", self.invoke("stamp", chain=True))  # the push run: same tree, still ahead
+        self.new_source("third\n")
+        before = git(self.root, "show-ref")
+        commits = self.commit_objects()
+        with self.assertRaisesRegex(SystemExit, "no snapshot built; move it back: git branch -f portable"), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.invoke("stamp", chain=True)
+        self.assertEqual(before, git(self.root, "show-ref"))  # no branch move, no tag
+        self.assertEqual(commits, self.commit_objects())  # no commit object
+
+    def commit_objects(self):
+        kinds = git(self.root, "cat-file", "--batch-all-objects", "--batch-check=%(objecttype) %(objectname)")
+        return sorted(line for line in kinds.splitlines() if line.startswith(("commit ", "tag ")))
 
 
 class ReleaseClassTests(RepositoryCase):

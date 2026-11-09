@@ -30,6 +30,7 @@ from _common import (CONTRACT, DISK_NOTE, agent_info, assistant_texts, clip, ens
 EXIT = exit_codes("ask")
 NO_NEW_REPLY_LINE = CONTRACT["ask"]["no_new_reply_line"]
 NO_TRANSCRIPT_LINE = CONTRACT["ask"]["no_transcript_line"]
+API_ERROR_NOTE = CONTRACT["ask"]["api_error_note"]
 # After agent_prompt_stalled, a turn can still start late, for example on the first turn of a new pane.
 STALL_SECONDS = 60
 # A Pi session file on disk (no Herdr status): the turn ends when the final reply is last and the file
@@ -342,7 +343,7 @@ def main():
                   "Read the commit of the agent, or send the prompt again in a new pane.")
             print_reply(now["pane_id"], reply, opts["max_chars"])
             sys.exit(EXIT["api_error"])
-        print(f"note: reply was an API error ({clip_line(reply)}); "
+        print(f"{API_ERROR_NOTE} ({clip_line(reply)}); "
               "text below is the last assistant message of the transcript"
               + ("; from before this prompt" if fallback[1] else ""))
         reply = fallback[0]

@@ -12,7 +12,8 @@
       "timeout": { "code": 124, "meaning": "timeout, the pane still works" }
     },
     "no_new_reply_line": "NO NEW REPLY in the transcript",
-    "no_transcript_line": "NO TRANSCRIPT PATH from Herdr for this pane"
+    "no_transcript_line": "NO TRANSCRIPT PATH from Herdr for this pane",
+    "api_error_note": "note: reply was an API error"
   },
   "spawn": {
     "exit": {
@@ -21,5 +22,18 @@
       "invalid": { "code": 2, "meaning": "an input is not valid, nothing was started" },
       "startup_question": { "code": 4, "meaning": "the agent stopped at a startup question, the pane stays open" }
     }
+  },
+  "handoff": {
+    "exit": {
+      "done": { "code": 0, "meaning": "the handoff is recorded and the previous coordinator pane closes" },
+      "usage": { "code": 2, "meaning": "usage error, a failed check, or not a coordinator, nothing was started" },
+      "spawn_failed": { "code": 3, "meaning": "spawn.py failed, or its output has no pane ID" },
+      "startup_question": { "code": 4, "meaning": "the new coordinator stopped at a startup question, both panes stay open" },
+      "not_accepted": { "code": 5, "meaning": "no confirmed reply from the new coordinator, both panes stay open" },
+      "record_failed": { "code": 6, "meaning": "the record of the handoff was not written, both panes stay open" },
+      "send_failed": { "code": 7, "meaning": "the second prompt failed: the new coordinator is blocked on a question, busy, started no turn, gave no new reply or an API error, or ask.py did not end, both panes stay open" },
+      "close_failed": { "code": 8, "meaning": "the handoff is done, but Herdr did not close the previous coordinator pane" }
+    },
+    "accepted_marker": "HANDOFF-ACCEPTED"
   }
 }

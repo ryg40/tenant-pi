@@ -2,7 +2,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-export type Kind = "extension" | "skill" | "prompt" | "mcp";
+/** `switch` is a setting of a kit script (switches.ts); it is not a Pi resource and no settings file of Pi holds it. */
+export type Kind = "extension" | "skill" | "prompt" | "mcp" | "switch";
 export type Scope = "user" | "project";
 export type ResourceType = "extensions" | "skills" | "prompts";
 
@@ -34,8 +35,8 @@ export const FILE_KEYS = ["userSettings", "projectSettings", "userMcp", "project
 export const BUILTIN_EXTENSIONS = ["mcp", "llama.cpp", "codemode", "tool-search"];
 export const BUILTIN_PREFIX = "builtin:";
 export const AGENTS_PREFIX = "~/.agents/";
-export const TYPE_OF_KIND: Record<Exclude<Kind, "mcp">, ResourceType> = { extension: "extensions", skill: "skills", prompt: "prompts" };
-const KIND_OF_TYPE: Record<ResourceType, Exclude<Kind, "mcp">> = { extensions: "extension", skills: "skill", prompts: "prompt" };
+export const TYPE_OF_KIND: Record<Exclude<Kind, "mcp" | "switch">, ResourceType> = { extension: "extensions", skill: "skills", prompt: "prompts" };
+const KIND_OF_TYPE: Record<ResourceType, Exclude<Kind, "mcp" | "switch">> = { extensions: "extension", skills: "skill", prompts: "prompt" };
 const RESOURCE_TYPES: ResourceType[] = ["extensions", "skills", "prompts"];
 
 /** A settings or mcp file that is not a JSON object. `file` is the path to show to the user. */
@@ -521,9 +522,9 @@ function overrideFault(override: Json, base: unknown): string | undefined {
 	return undefined;
 }
 
-const GROUPS: Kind[] = ["extension", "mcp", "skill", "prompt"];
+const GROUPS: Kind[] = ["extension", "mcp", "skill", "prompt", "switch"];
 
-/** Extensions, MCP servers, skills, prompts. The order inside a group is the inventory order. */
+/** Extensions, MCP servers, skills, prompts, switches. The order inside a group is the inventory order. */
 export function sortItems<T extends ResourceItem>(items: T[]): T[] {
 	return GROUPS.flatMap(kind => items.filter(item => item.kind === kind));
 }

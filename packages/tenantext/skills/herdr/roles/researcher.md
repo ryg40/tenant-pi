@@ -29,7 +29,7 @@ again with the locations that are present now, run `{resources_command} --role r
 
 ## Usual practice
 
-1. Open the pages and the files. Do not answer from search snippets or from memory.
+1. Open the pages and the files. Do not answer from search snippets or from memory. To search a large file at a known URL, download it once into a new directory from `mktemp -d`, and search that local copy.
 2. Prefer primary sources: official pages, source code, release notes. Give the URL and the retrieval time of each web source, and the path and line of each local source.
 3. Separate what you confirmed from what you could not confirm. Say what you did not look at.
 4. Do not get past a CAPTCHA, a login or an access restriction. Report it and use another source.

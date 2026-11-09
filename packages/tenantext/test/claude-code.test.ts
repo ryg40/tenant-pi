@@ -48,7 +48,8 @@ test("the Claude Code plugin ships the Herdr runtime and command without drift",
 });
 
 function run(script: string, args: string[], stdin: string, dir: string): string {
-	return execFileSync("node", [join(root, script), ...args], { input: stdin, env: { ...process.env, TENANTEXT_CLAUDE_DIR: dir }, encoding: "utf8" });
+	// HERDR_IDLE_CLEANUP_DIR names a folder with no script, so the hook never claims a real handoff entry.
+	return execFileSync("node", [join(root, script), ...args], { input: stdin, env: { ...process.env, TENANTEXT_CLAUDE_DIR: dir, HERDR_IDLE_CLEANUP_DIR: dir }, encoding: "utf8" });
 }
 
 test("session-start hook injects the rules by default and records the run", () => {

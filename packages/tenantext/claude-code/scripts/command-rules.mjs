@@ -8,6 +8,15 @@ export const COMMAND_RULES = {
 		action: "deny",
 		reason: "Use rg instead of find",
 	},
+	// A bare env or printenv prints every secret of the environment.
+	env: {
+		action: "deny",
+		reason: "Print no secret: read one value with printenv NAME",
+	},
+	printenv: {
+		action: "deny",
+		reason: "Print no secret: read one value with printenv NAME",
+	},
 };
 
 /** The simple commands of a command line, split outside quotes at ; & | and line ends. */

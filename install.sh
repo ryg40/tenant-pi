@@ -135,6 +135,33 @@ import tempfile
 PLUGIN = 'computer-use-linux@computer-use-linux'
 # The settings that install.sh writes for computer-use-macos: the bundled driver, the core tools, both confirmations.
 MACOS_DESKTOP_DEFAULTS = {'mode': 'bundled', 'toolProfile': 'core', 'confirmAppLaunch': True, 'confirmDangerousActions': True}
+# Kit resources that an upgrade adds once to the filter lists of the tenantext entry of a profile, by the rules of
+# docs/resources.md. Each step runs once for each profile; kit-steps.json of the profile records it, so a later
+# removal by the user stays.
+KIT_STEPS = {
+    'herdr-idle-cleanup': {'skills': ['skills/herdr-idle-cleanup'], 'extensions': ['extensions/handoffs/index.ts'],
+                           'prompts': ['prompts/herdr-idle-cleanup.md']},
+}
+
+
+def add_kit_items(entry, key, items):
+    """Add items to the filter list `key` of a package entry when the list would not load them.
+
+    A list with a plain entry includes only its matches: add the item. A missing key, `[]` and a list of only
+    `!`, `+` or `-` entries stay: the file loads already, or the user turned the kind or the item off (this
+    installer writes the tenantext entry as a plain source, never `[]`). With `autoload: false` the list is a
+    delta: add the item. An item that an entry names already, with or without a prefix, stays as the user set it.
+    """
+    current = entry.get(key)
+    delta = entry.get('autoload') is False
+    if current is None and delta:
+        current = entry[key] = []
+    if not isinstance(current, list):
+        return
+    if not delta and not any(isinstance(one, str) and one[:1] not in ('!', '+', '-') for one in current):
+        return
+    named = {one.lstrip('!+-') for one in current if isinstance(one, str)}
+    current.extend(item for item in items if item not in named)
 
 
 def fail(message):
@@ -282,6 +309,22 @@ try:
                     packages[index] = desired
         if not found:
             packages.append(desired)
+    steps_path = profile / 'kit-steps.json'
+    if steps_path.is_symlink():
+        fail('refusing symlink kit steps file: ' + str(steps_path))
+    try:
+        done_steps = json.loads(steps_path.read_text())['added'] if steps_path.exists() else []
+    except (ValueError, KeyError, TypeError):
+        fail('invalid kit steps file: ' + str(steps_path) + '; remove the file to run the steps again')
+    if not isinstance(done_steps, list):
+        fail('invalid kit steps file: ' + str(steps_path) + '; remove the file to run the steps again')
+    new_steps = [step for step in KIT_STEPS if step not in done_steps]
+    for entry in packages:
+        if not (isinstance(entry, dict) and entry.get('source') == str(kit / 'packages/tenantext')):
+            continue
+        for step in new_steps:
+            for key, items in KIT_STEPS[step].items():
+                add_kit_items(entry, key, items)
     if 'computer-use-macos' in modules:
         # The safe defaults of the macOS desktop extension; a value that the user set stays.
         desktop = settings.setdefault('pi-computer-use', {})
@@ -413,6 +456,8 @@ try:
             if settings_path.exists():
                 backup(settings_path)
             put(settings_path, json.dumps(settings, indent=2) + '\n')
+        if new_steps:
+            put(steps_path, json.dumps({'version': 1, 'added': done_steps + new_steps}, indent=2) + '\n')
         if not models_path.exists():
             put(models_path, models)
         import subprocess

@@ -8,7 +8,7 @@ If the task names a method, a scope or a check, use that.
 
 ## Methods, in order of preference
 
-1. Read the diff and the code around it: `git diff`, `git log`, file reads, `rg` for callers.
+1. Record the commit first with `git rev-parse HEAD`, and name it in the result. Read the diff and the code around it at that commit: `git diff`, `git log`, `git show <commit>:<path>`, `rg` for callers. When the working tree changes during the review, continue on the recorded commit and say so in the result.
 2. Read the check lines in the commit body. Run one test or one script only to confirm a suspected defect.
 3. Reproduce a suspected defect with a small command or a script under `/tmp/`.
 4. The documentation of a library or a service, when the behaviour of the code depends on it.

@@ -1,0 +1,3 @@
+interface:
+  display_name: "Skill Doctor"
+  short_description: "Grade agent skills from local conversation history"

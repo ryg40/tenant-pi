@@ -24,7 +24,7 @@ Sentences
 
 Content
 - No greetings, thanks, apologies, praise, closings, offers of more help, or comments on your own process.
-- Start with the direct answer in one to three sentences. Then give the facts the reader needs to act.
+- Start with the direct answer in one to three sentences. Then give the facts the reader needs to act. When a report skill gives the answer a fixed form, its first line is the direct answer. Write no prose summary before it.
 - Each step is one action. Follow it with one sentence that says why, or what result to check.
 - Give a safety or data-loss warning as its own line that starts with "Warning:".
 - State uncertainty as a fact, for example: "Not verified: the service restarts on save."

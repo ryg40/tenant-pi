@@ -53,3 +53,17 @@ The skill text in `skills/coordinator-skills/show-me/` is adapted from the `show
 The full upstream license text is in [`licenses/humanlayer-skills-MIT.txt`](licenses/humanlayer-skills-MIT.txt).
 
 This repository does not depend on the upstream package.
+
+## `warpdotdev/common-skills`
+
+The skill `skills/coordinator-skills/skill-doctor/` is copied from the `skill-doctor` skill of `warpdotdev/common-skills`, with the changes that its `CREDITS.md` lists.
+
+- Project: https://github.com/warpdotdev/common-skills
+- Upstream path: `.agents/skills/skill-doctor`
+- Upstream commit: `8792394ff1b655e0af451b8fabb68ef0cfcbd208`
+- License: MIT
+- Copyright: 2026 Denver Technologies, Inc.
+
+The full upstream license text is in [`licenses/warp-common-skills-MIT.txt`](licenses/warp-common-skills-MIT.txt).
+
+This repository does not depend on the upstream package.

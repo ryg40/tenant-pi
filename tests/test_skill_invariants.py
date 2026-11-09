@@ -21,12 +21,14 @@ ROOT = Path(__file__).resolve().parents[1]
 COMPONENT = ROOT / "packages/tenantext/skills/coordinator-skills"
 KNOWLEDGE_COMPONENT = ROOT / "packages/tenantext/skills/knowledge-skills"
 TRACKER = ROOT / "docs/agents/issue-tracker.md"
-# Kit skills outside the component that a skill text can load.
+# Kit skills outside the component that a skill text can load. A kit skill text can also load
+# writing-for-agents of the component; it is optional because the component is optional.
 REQUIRED_KIT_SKILLS = ("herdr", "tracker-site")
-OPTIONAL_KIT_SKILLS = ("herdr-relay",)
-# The completion marker is a protocol identifier, not prose. Only this exact line in
-# the Herdr result contract is exempt from the wording rule, in the kit and plugin.
-PROTOCOL_LINES = {("herdr", "roles/contract.md"): {"Marker: SUBAGENT_COMPLETE"}}
+OPTIONAL_KIT_SKILLS = ("herdr-relay", "writing-for-agents")
+# The completion marker and a collector flag are protocol identifiers, not prose. Only these
+# exact lines are exempt from the wording rule, in the kit and plugin.
+PROTOCOL_LINES = {("herdr", "roles/contract.md"): {"Marker: SUBAGENT_COMPLETE"},
+                  ("skill-doctor", "SKILL.md"): {"- `--include-subagents`: include child or sidechain sessions."}}
 
 
 def user_only_skills(component=COMPONENT):

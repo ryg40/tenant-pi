@@ -56,7 +56,7 @@ A new run of the check uses the same tag. Do not move the tag by hand.
 - `**Next:**` replaces the old `Open`. Its first action is the recommended next action. Add as many actions as needed for other unfinished or unverified work, in order. Each action has an independent lowercase label, its actor and its condition, when present. Name relevant subjects in words; action labels do not identify report items. Actions are proposals, not authorization.
 - Actors: `Agent` acts. `Owner` acts, for example with a command that only the owner can run. `Owner decides` means that the owner must decide, and the action text gives the choices.
 - `**Next:** None.` and a reason: no safe next action, or no work is left. The reason says which. Then no action line follows.
-- After the block, write 1 to 3 short sentences of ordinary prose: only the steps and the pitfalls that the block does not say. Do not repeat the block.
+- The block is the whole answer. Its `REPORT` line gives the result, and its first item answers the question of the user, when there is one. Before the block, write only the `added:` line of section 5 and at most one sentence of status: no prose summary of the result. After the block, write 1 to 3 short sentences of ordinary prose: only the steps and the pitfalls that the block does not say. Do not repeat the block.
 - URLs: write each URL in full as plain text at the end of its line. Use no Markdown link, no shortened URL and no line break in a URL. A terminal can wrap a long URL, but its text stays the same.
 - Teach a junior developer: short full sentences in Simplified English, with each article and each verb. Give a new term its meaning.
 
@@ -83,7 +83,7 @@ Report in the same turn after a failure, a surprise, a change of the plan or of 
 
 ## 5. The end of the work
 
-When the work is complete, read `LOG.md` beside this file before your last message. The work is complete each time a task of the user is done and you give your final answer for it. First add the entry of this session to the page `DUMMIES`, as `LOG.md` says. With no `okknow` command, the entry goes to a local file of the user, and the `added:` line names it. When the state check of section 2 shows `log: off`, add no entry and give no `added:` line. Then end your last message with the outcome report of `LOG.md`: the compact form of section 3 with an `OUTCOME` line. It replaces the report of that turn.
+When the work is complete, read `LOG.md` beside this file before your last message. The work is complete each time a task of the user is done and you give your final answer for it. A failed check of your own change, inside the scope of the task, means that the task is not done: fix it before the `OUTCOME`. When the cause is outside that scope, or the fix needs the owner or a fact that you lack, report the check as `Failed`. First add the entry of this session to the page `DUMMIES`, as `LOG.md` says. With no `okknow` command, the entry goes to a local file of the user, and the `added:` line names it. When the state check of section 2 shows `log: off`, add no entry and give no `added:` line. Then end your last message with the outcome report of `LOG.md`: the compact form of section 3 with an `OUTCOME` line. It replaces the report of that turn and every prose summary of the work.
 
 ## 6. Compact report syntax 2
 

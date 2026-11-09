@@ -1,6 +1,7 @@
 import type { ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { buildInventory, formatItem, itemKey, readFiles, sortItems, sourceLabel, stripCredentials, type Dirs, type ResourceItem } from "./inventory.ts";
 import { NAME_RULE, deleteProfile, listProfiles, loadProfile, matchProfile, profileExists, saveProfile, validProfileName } from "./profiles.ts";
+import { isSwitch, switchItems, writeSwitches, type SwitchDeps } from "./switches.ts";
 import { createBrowser, type BrowserAction } from "./view.ts";
 import { commitWrites, planWrites, type DesiredItem, type PlanOptions } from "./writers.ts";
 
@@ -8,7 +9,8 @@ import { commitWrites, planWrites, type DesiredItem, type PlanOptions } from "./
 export type ResourcesContext = Pick<ExtensionCommandContext, "hasUI" | "reload"> & Partial<Pick<ExtensionCommandContext, "mode">> & {
 	ui: Pick<ExtensionCommandContext["ui"], "select" | "input" | "confirm" | "notify"> & Partial<Pick<ExtensionCommandContext["ui"], "custom">>;
 };
-export interface ResourcesOptions extends PlanOptions { dirs: Dirs }
+/** `switches` adds the switch rows (switches.ts) to the menu and the list. Profiles and `apply` never hold them. */
+export interface ResourcesOptions extends PlanOptions { dirs: Dirs; switches?: SwitchDeps }
 
 export const SET_DEFAULT = "Set as default (write settings and reload)";
 export const SAVE_PROFILE = "Save as profile...";
@@ -19,8 +21,8 @@ export const SUBCOMMANDS = ["list", "save", "apply", "profiles", "delete"];
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 /** Read the files and build the list. A malformed file gives a notify message and `undefined`. */
-function inventory(ctx: ResourcesContext, dirs: Dirs): ResourceItem[] | undefined {
-	try { return sortItems(buildInventory(dirs, readFiles(dirs))); }
+function inventory(ctx: ResourcesContext, dirs: Dirs, switches?: SwitchDeps): ResourceItem[] | undefined {
+	try { return sortItems([...buildInventory(dirs, readFiles(dirs)), ...switches ? switchItems(switches) : []]); }
 	catch (error) { ctx.ui.notify(message(error), "error"); return undefined; }
 }
 
@@ -30,28 +32,44 @@ export function formatList(items: ResourceItem[]): string {
 
 const formatChange = (item: ResourceItem) => `${item.enabled ? "on " : "off"}  ${item.kind} ${item.scope} ${sourceLabel(item)} ${item.id}${item.packageSource ? ` (${stripCredentials(item.packageSource)})` : ""}`;
 
-/** Write a desired state and reload. Returns false when nothing was written. */
-async function write(ctx: ResourcesContext, options: ResourcesOptions, desired: DesiredItem[], confirmTitle?: string, extra: string[] = []): Promise<boolean> {
+/**
+ * Write a desired state and reload. Returns false when nothing was written.
+ * `opened` is the state of each row when the menu opened. A switch row is written only when the user changed it in the
+ * menu, so a change of the switch by another session stays. Without `opened`, no switch row is written.
+ */
+async function write(ctx: ResourcesContext, options: ResourcesOptions, desired: DesiredItem[], confirmTitle?: string, extra: string[] = [], opened?: Map<string, boolean>): Promise<boolean> {
 	let plan;
-	try { plan = planWrites(options.dirs, readFiles(options.dirs), desired, options); }
+	try { plan = planWrites(options.dirs, readFiles(options.dirs), desired.filter(item => !isSwitch(item)), options); }
 	catch (error) { ctx.ui.notify(message(error), "error"); return false; }
-	const lines = [...plan.changes.map(formatChange), ...plan.notes, ...extra];
-	if (plan.writes.length === 0) {
+	// A switch row is written by its script, not by planWrites.
+	const switched = (desired as ResourceItem[]).filter(item => isSwitch(item) && opened?.has(itemKey(item)) && opened.get(itemKey(item)) !== item.enabled);
+	const lines = [...plan.changes.map(formatChange), ...switched.map(formatChange), ...plan.notes, ...extra];
+	if (plan.writes.length === 0 && switched.length === 0) {
 		ctx.ui.notify(["No changes to write.", ...plan.notes, ...extra].join("\n"), "info");
 		return false;
 	}
 	if (confirmTitle && !await ctx.ui.confirm(confirmTitle, lines.join("\n"))) return false;
-	try { commitWrites(plan.writes); }
-	catch (error) { ctx.ui.notify(`Write failed: ${message(error)}`, "error"); return false; }
+	// The settings files first: a failed settings write changes no switch.
+	if (plan.writes.length) {
+		try { commitWrites(plan.writes); }
+		catch (error) { ctx.ui.notify(`Write failed: ${message(error)}`, "error"); return false; }
+	}
+	const errors = options.switches ? writeSwitches(options.switches, switched) : [];
+	if (errors.length) ctx.ui.notify(`Switch write failed: ${errors.join(" ")}`, "error");
+	const saved = switched.length - errors.length;
+	if (plan.writes.length === 0) {
+		if (saved) ctx.ui.notify(`Saved ${saved} switch change(s).`, "info");
+		return errors.length === 0;
+	}
 	// Reload replaces the extension runtime. Report first, then reload, then return.
-	ctx.ui.notify([`Saved ${plan.changes.length} change(s) to ${plan.writes.map(item => item.file).join(", ")}.`, ...plan.notes].join("\n"), "info");
+	ctx.ui.notify([`Saved ${plan.changes.length} change(s) to ${plan.writes.map(item => item.file).join(", ")}.`, ...saved ? [`Saved ${saved} switch change(s).`] : [], ...plan.notes].join("\n"), "info");
 	await ctx.reload();
 	return true;
 }
 
 export async function saveCommand(ctx: ResourcesContext, options: ResourcesOptions, name: string, items?: ResourceItem[]): Promise<boolean> {
 	if (!validProfileName(name)) { ctx.ui.notify(`"${name}" is not a valid profile name. ${NAME_RULE}`, "error"); return false; }
-	const state = items ?? inventory(ctx, options.dirs);
+	const state = (items ?? inventory(ctx, options.dirs))?.filter(item => !isSwitch(item));
 	if (!state) return false;
 	if (ctx.hasUI && profileExists(options.dirs.agentDir, name) && !await ctx.ui.confirm("Replace profile", `Profile "${name}" exists. Replace it?`)) return false;
 	try { saveProfile(options.dirs, name, state); }
@@ -91,7 +109,7 @@ export async function deleteCommand(ctx: ResourcesContext, options: ResourcesOpt
 }
 
 export function listCommand(ctx: ResourcesContext, options: ResourcesOptions): void {
-	const items = inventory(ctx, options.dirs);
+	const items = inventory(ctx, options.dirs, options.switches);
 	if (items) ctx.ui.notify(formatList(items), "info");
 }
 
@@ -114,7 +132,7 @@ async function applyProfileAction(ctx: ResourcesContext, options: ResourcesOptio
  */
 export async function resourcesMenu(ctx: ResourcesContext, options: ResourcesOptions): Promise<void> {
 	if (!ctx.hasUI) return listCommand(ctx, options);
-	const start = inventory(ctx, options.dirs);
+	const start = inventory(ctx, options.dirs, options.switches);
 	if (!start) return;
 	const working = start.map(item => ({ ...item }));
 	const original = new Map(start.map(item => [itemKey(item), item.enabled]));
@@ -127,7 +145,7 @@ export async function resourcesMenu(ctx: ResourcesContext, options: ResourcesOpt
 				items: working, original, readOnly, state, done,
 				rows: () => tui.terminal.rows, requestRender: () => tui.requestRender(), say: text => ctx.ui.notify(text, "info"),
 			}, theme));
-			if (action === "save") { if (await write(ctx, options, working)) return; }
+			if (action === "save") { if (await write(ctx, options, working, undefined, [], original)) return; }
 			else if (action === "profile") await saveProfileAction(ctx, options, working);
 			else if (action === "apply") { if (await applyProfileAction(ctx, options)) return; }
 			else if (unsaved() === 0 || await ctx.ui.confirm("Discard changes", `Discard ${unsaved()} unsaved change(s)? Press s in the list to save them.`)) return;
@@ -142,7 +160,7 @@ export async function resourcesMenu(ctx: ResourcesContext, options: ResourcesOpt
 			return;
 		}
 		if (choice === SET_DEFAULT) {
-			if (await write(ctx, options, working)) return;
+			if (await write(ctx, options, working, undefined, [], original)) return;
 			continue;
 		}
 		if (choice === SAVE_PROFILE) { await saveProfileAction(ctx, options, working); continue; }

@@ -33,6 +33,7 @@ env -u PI_CODING_AGENT_SESSION_DIR PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main"
 | [After the install](POST_INSTALL.md) | The commands for each change after the install: a module, the npm modules, the model, a second profile. |
 | [Pi update checks](docs/pi-update.md) | Detect npm releases, read breaking changes, move the pin and qualify a Pi version in isolation. |
 | [Continuous integration](docs/publishing.md#continuous-integration) | GitHub offline checks of the published snapshot. |
+| [Herdr idle cleanup](docs/guides/herdr-idle-cleanup.md) | Close idle Herdr workspaces after a ranked handoff of their final reports; the startup assessment and `/handoffs`. |
 | [Privacy](docs/guides/privacy.md) | What the kit separates, what it never does, what the scanner checks. |
 | [Troubleshooting](docs/guides/troubleshooting.md) | Each diagnostic and its fix. |
 | [Release checklist](docs/guides/release-checklist.md) | The gates and steps of a portable release, also after a pin move. |

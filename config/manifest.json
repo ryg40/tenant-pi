@@ -384,6 +384,110 @@
         }
       ]
     },
+    "herdr-idle-cleanup": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "herdr"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/herdr-idle-cleanup"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The skill needs the herdr CLI, Python 3 and the scripts of the herdr skill in the kit (skills/herdr/scripts). The kit does not install or check the herdr CLI or Python 3."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
+        }
+      ]
+    },
+    "handoffs": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "herdr-idle-cleanup"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [
+          "extensions/handoffs/index.ts"
+        ],
+        "skills": [],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "host_tool_required",
+          "fact": "The extension runs idle_cleanup.py of the herdr-idle-cleanup skill (HERDR_IDLE_CLEANUP_DIR, else ~/.agents/skills/herdr-idle-cleanup, else the kit copy) with Python 3 at each session start and for /handoffs and /herdr-idle. Python 3 is a host tool; the kit does not install or check it."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
+        }
+      ]
+    },
+    "herdr-idle-cleanup-prompt": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/tenantext"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "herdr-idle-cleanup"
+      ],
+      "owner": "tenantext",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [],
+        "prompts": [
+          "prompts/herdr-idle-cleanup.md"
+        ],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the component with the kit pin."
+        },
+        {
+          "code": "kit_test_missing",
+          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
+        }
+      ]
+    },
     "herdr-watch": {
       "source": {
         "kind": "tree",
@@ -563,6 +667,7 @@
           "skills/coordinator-skills/get-status",
           "skills/coordinator-skills/dummies",
           "skills/coordinator-skills/off-the-rails",
+          "skills/coordinator-skills/skill-doctor",
           "skills/coordinator-skills/writing-for-agents"
         ],
         "prompts": [],

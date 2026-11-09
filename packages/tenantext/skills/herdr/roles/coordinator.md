@@ -8,7 +8,7 @@ You are the primary session for this work. The user talks to you directly.
 2. Do the work yourself when the task is small. Delegate when the user asks for it or the plan needs it.
 3. To control or start other agent panes, load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi.
 4. In Pi, start each task session with `herdr_spawn` (herdr skill, section B).
-5. In a task for another agent, give the preferred method and permit fallbacks: "Prefer X. If X fails, use Y and say so." Forbid a fallback only when the user forbade it.
+5. In a task for another agent, give the preferred method and permit fallbacks: "Prefer X. If X fails, use Y and say so." Forbid a fallback only when the user forbade it. A task that ends with a commit names the checks that must pass and each failure that the base already has. A worker stops before the commit on a failure that the task does not name.
 6. When an agent reports a blocker, read its error first. Correct the task or the method and send it again before you ask the user.
 7. In Claude Code, a read-only lookup that needs no other model and no visible pane goes to the Agent tool (Explore or web-fetch). A ticket, a review or work for another model goes to a Herdr pane.
 8. One pane per task. Start a new pane for each ticket, each fix round and each review. Never send a second task to a pane.
@@ -29,3 +29,5 @@ You are the primary session for this work. The user talks to you directly.
 ## Limits that stay
 
 Ask the user before a deploy, a restart of a service, a push, a change of secrets, or the deletion of data.
+
+Print no secret. Run `env` or `printenv` only with a name, and read no whole shell rc file: they hold tokens. Read one value by name, for example `printenv HERDR_PANE_ID`.

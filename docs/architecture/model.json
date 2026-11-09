@@ -1788,6 +1788,48 @@
      ]
     },
     {
+     "id": "herdr-idle-cleanup",
+     "component": "herdr-idle-cleanup",
+     "group": "g-c-herdr",
+     "label": "herdr-idle-cleanup",
+     "kind": "comp-herdr",
+     "summary": "A skill with a read-only scan that classifies each Herdr workspace and writes scan.json.",
+     "inputs": "herdr enabled, the herdr tool, Python 3, the herdr skill scripts",
+     "consent": "none",
+     "doc": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "handoffs",
+     "component": "handoffs",
+     "group": "g-c-herdr",
+     "label": "handoffs",
+     "kind": "comp-herdr",
+     "summary": "A Pi extension that runs the startup assessment of herdr-idle-cleanup at session start, starts one assessment turn for the claimed handoff entries of the repository, and adds the command /handoffs.",
+     "inputs": "Python 3, the herdr-idle-cleanup skill scripts",
+     "consent": "none",
+     "doc": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "herdr-idle-cleanup-prompt",
+     "component": "herdr-idle-cleanup-prompt",
+     "group": "g-c-herdr",
+     "label": "herdr-idle-cleanup-prompt",
+     "kind": "comp-herdr",
+     "summary": "A Pi prompt template that adds the command /herdr-idle-cleanup: it loads the herdr-idle-cleanup skill and runs its default run.",
+     "inputs": "the herdr-idle-cleanup skill",
+     "consent": "none",
+     "doc": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
      "id": "questions",
      "component": "questions",
      "group": "g-c-herdr",
@@ -1861,6 +1903,27 @@
     },
     {
      "from": "herdr-watch",
+     "to": "herdr",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "handoffs",
+     "to": "herdr-idle-cleanup",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "herdr-idle-cleanup-prompt",
+     "to": "herdr-idle-cleanup",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "herdr-idle-cleanup",
      "to": "herdr",
      "label": "requires",
      "style": "requires",

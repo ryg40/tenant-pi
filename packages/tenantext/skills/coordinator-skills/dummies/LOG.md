@@ -4,7 +4,7 @@
 
 ## The outcome report
 
-When the work is complete, end your last message with one outcome report. It replaces the report of that turn. Claude Code and Pi use the compact form of `REPORT.md` section 3, in compact report syntax 2 of `REPORT.md` section 6. Give the `added:` line of the page entry above it. With `log: off` in the output of `state.py`, there is no page entry and no `added:` line; the outcome report stays.
+When the work is complete, end your last message with one outcome report. It replaces the report of that turn and every prose summary of the work. Claude Code and Pi use the compact form of `REPORT.md` section 3, in compact report syntax 2 of `REPORT.md` section 6. Give the `added:` line of the page entry above it. With `log: off` in the output of `state.py`, there is no page entry and no `added:` line; the outcome report stays.
 
 ```markdown
 **OUTCOME** The plan is settled; live changes wait for approval

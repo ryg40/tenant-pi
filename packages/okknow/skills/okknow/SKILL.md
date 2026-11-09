@@ -36,7 +36,7 @@ Credentials come from `OPENKNOWLEDGE_USERNAME` and `OPENKNOWLEDGE_PASSWORD` at r
 6. Read the page back after a write when the result matters. If the server answers "Concurrent overwrite refused", wait the stated seconds, read again, and retry.
 7. Delete only pages that you created, for example a scratch page.
 
-Addresses: `write`, `edit`, and `delete` take a document name without `.md` (`projects/demo/handoffs`). `exec` takes a file path with `.md` (`cat projects/demo/handoffs.md`).
+Addresses: `write`, `edit`, and `delete` take a document name without `.md` (`projects/demo/handoffs`). `exec` takes one `command` string that names the page with `.md`: `exec { command: "cat projects/demo/handoffs.md" }`. Give `exec` one command or one pipe. It refuses `;`, so make one call for each command.
 Argument shape: `write { document: { path, content, position }, summary }`. The `document` value is an object, not a string.
 A write answer can say "No UI is running ... `ok start`". Ignore it when the server runs.
 
@@ -51,4 +51,4 @@ A write answer can say "No UI is running ... `ok start`". Ignore it when the ser
 ## Check the path
 
 Run `okknow doctor`. The last line must be `doctor: PASS`. `okknow setup --check` prints the state of the saved origin without credentials.
-For tool names, the configuration, troubleshooting, and the install steps, read [references/details.md](references/details.md).
+For tool names, the configuration, troubleshooting, and the install steps, read [references/details.md](references/details.md). On a server host, read its part "Read-only commands under okknow-guard" before a scan of the content directory.

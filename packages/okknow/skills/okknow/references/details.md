@@ -103,6 +103,18 @@ A server host runs the OK server and has its content directory on disk. Record t
 
 A client, such as a laptop, has no `volume` entry and needs none of this.
 
+### Read-only commands under okknow-guard
+
+The guard matches the text of a command, not its intent. Quoted text counts, so a read can look like a write. It blocks:
+
+- A command line that names the content directory, holds an interpreter word (`python`, `node`, `perl` and others) and holds a write pattern anywhere, also after a pipe: `open(..., 'w')`, `write_text`, `unlink`, `rename`, `makedirs`, `writeFile`, or a `>` before a `/`. A `2>/dev/null` is such a `>`.
+- A `docker exec` into the OK container whose part of the pipe holds `>`, `rm`, `mv`, `cp`, `tee`, `touch`, `mkdir`, `sed -i`, `truncate`, `ln`, `chmod` or `chown`, also inside a quoted search pattern.
+
+So run a read-only scan this way:
+
+- Scan or parse the content directory with a script file. Save it in a new directory from `mktemp -d`, then run `python3 <that directory>/scan.py <content directory>`. Give the command no redirect and no write word.
+- Read inside the container with plain commands: `docker exec <container> cat <path>`, `ls` or `grep`. Filter after the pipe, on the host side: the `docker exec` check reads only its own part of the pipe.
+
 ## Scoped Pi launches
 
 A Pi launch with `--no-extensions`, `--no-skills`, or its own `--mcp-config` does not load `okknow`. Add the MCP adapter extension, an MCP config with the server `okknow`, and `--skill <clone>/packages/okknow/skills/okknow` to a scoped launch that must use OK. The `--tools` list must contain `mcp`; add `bash` only if the agent needs the CLI.

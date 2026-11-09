@@ -34,7 +34,7 @@ A line of `list` has these fields in this order: `[x]` or `[ ]`, kind, scope, so
 
 In the Pi TUI the menu is a resource browser. A change stays in memory until you press `s`. The footer always shows `s save <N> change(s)`. The saved notice names the file.
 
-The browser groups the items in this order: extensions, skills, prompts, MCP servers, built-ins. A group with no item is not shown. Each group has a header line with the number of items that are on, for example `▾ Extensions  9 of 15 on`.
+The browser groups the items in this order: extensions, skills, prompts, MCP servers, built-ins, switches. A group with no item is not shown. Each group has a header line with the number of items that are on, for example `▾ Extensions  9 of 15 on`.
 
 Each item has one line, cut to the width of the terminal and never wrapped: the mark, the short name and the source label, in aligned columns. Flags follow: `project`, `read-only` and `changed`.
 
@@ -74,7 +74,7 @@ Each item of the inventory has these fields:
 
 | Field | Value |
 | --- | --- |
-| `kind` | `extension`, `skill`, `prompt` or `mcp` |
+| `kind` | `extension`, `skill`, `prompt`, `mcp` or `switch` |
 | `scope` | `user` (the agent directory) or `project` (`<cwd>/.pi`) |
 | `source` | `local`, `package` or `mcp` |
 | `packageSource` | The `source` of the package entry. Only on a package item. |
@@ -92,6 +92,7 @@ Each item of the inventory has these fields:
 | Package item | The path relative to the package |
 | MCP server | The server name |
 | Built-in extension | `builtin:mcp`, `builtin:llama.cpp`, `builtin:codemode` or `builtin:tool-search`, with source `local` |
+| Switch | `herdr-idle`, with scope `user` and source `local`. The row shows only when `idle_cleanup.py` of the herdr-idle-cleanup skill is found. A toggle and "Set as default" run `idle_cleanup.py switch on\|off`, the same setting as `/herdr-idle`. Profiles do not store the row, and `apply` does not change it. |
 
 The agent directory is the value of `PI_CODING_AGENT_DIR`. Without that variable it is `~/.pi/agent`.
 

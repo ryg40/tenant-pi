@@ -196,6 +196,19 @@ Standard error reports `model: <name> (from models.json)` or `model: <name> (fro
 The name is the handle for `ask.py` and `close.py`. Tell the user
 the name, harness, role, model and thinking level.
 
+Before the agent starts, `spawn.py` sets one variable in the shell of the new
+pane, so the agent and each command that it runs inherit it (also Pi-Bolt
+through the `pi` function). `session_env` in the output shows it.
+
+| Session | `HERDR_SKILL_SESSION` |
+| --- | --- |
+| Task session (`worker`, `reviewer`, `scout`, `researcher`) | `task` |
+| Primary session (`coordinator`, or `--interactive`) | not set |
+
+The startup assessment of the herdr-idle-cleanup skill claims nothing in a
+session with `task`; the handoff entries wait for a session that the user
+works in.
+
 ### Coordinator handoff
 
 To hand your work to the next coordinator session:

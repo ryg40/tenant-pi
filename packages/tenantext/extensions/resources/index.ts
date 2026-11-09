@@ -2,8 +2,9 @@ import { join } from "node:path";
 import { CONFIG_DIR_NAME, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { agentDir } from "../../src/agent-dir.ts";
 import { SUBCOMMANDS, runResources } from "./menu.ts";
+import { realSwitchDeps } from "./switches.ts";
 
-/** `/resources`: list Pi extensions, MCP servers, skills and prompts, set each one on or off, and keep profiles. */
+/** `/resources`: list Pi extensions, MCP servers, skills, prompts and switches, set each one on or off, and keep profiles. */
 export default function resources(pi: ExtensionAPI) {
 	pi.registerCommand("resources", {
 		description: "Turn Pi extensions, MCP servers, skills and prompt templates on or off, and save or apply profiles",
@@ -12,6 +13,6 @@ export default function resources(pi: ExtensionAPI) {
 			return items.length ? items : null;
 		},
 		// Project scope is shown and never written.
-		handler: (args, ctx) => runResources(args, ctx, { dirs: { agentDir: agentDir(), projectDir: join(ctx.cwd, CONFIG_DIR_NAME) }, writeProject: false }),
+		handler: (args, ctx) => runResources(args, ctx, { dirs: { agentDir: agentDir(), projectDir: join(ctx.cwd, CONFIG_DIR_NAME) }, writeProject: false, switches: realSwitchDeps }),
 	});
 }

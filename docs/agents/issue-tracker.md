@@ -47,7 +47,15 @@ Without both, read the server and the repository from the remote:
 git remote get-url origin
 ```
 
-Use the fallback only when the URL has the form `https://<server>/{owner}/{repo}.git`. Then set `API="https://<server>/api/v1/repos/$OWNER/$REPO"`. An SSH remote or an SSH alias (for example `forgejo:{owner}/{repo}.git`) does not name the web server: stop and report that neither `TRACKER_API` nor `tracker.api` is set.
+When the URL has the form `https://<server>/{owner}/{repo}.git`, set `API="https://<server>/api/v1/repos/$OWNER/$REPO"`.
+
+An SSH alias (for example `forgejo:{owner}/{repo}.git`) holds no server name. Read the server from the SSH configuration: it is the value of the line that starts with `hostname`. Then set `API` with `https://<that server>` as above:
+
+```sh
+ssh -G forgejo | awk '$1 == "hostname" {print $2}'
+```
+
+Take the server only from `TRACKER_API`, `tracker.api` or the remote, never from memory or an old note. When none of the three gives a server, stop and report it.
 
 Each path below is relative to `/api/v1` of that server. `{index}` is the number of an issue.
 

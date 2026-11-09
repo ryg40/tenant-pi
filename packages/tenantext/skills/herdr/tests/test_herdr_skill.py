@@ -189,16 +189,22 @@ class ModelDefaults(IsolatedConfig):
             self.assertGreater(len(err.getvalue().split(self.models_path + ": ")[1].strip()), 0)
 
     def test_dry_run_keeps_stdout_json_and_reports_model_source(self):
-        self.write_models({"roles": {"scout": {"claude": {"model": "example-alias"}}}})
-        out, err = io.StringIO(), io.StringIO()
+        self.write_models({"roles": {"scout": {"claude": {"model": "example-alias"}},
+                                     "coordinator": {"claude": {"model": "example-alias"}}}})
         me = {"workspace": "proj", "workspace_id": "w1", "tab_id": "t1", "pane_id": "p1"}
-        with mock.patch.multiple(spawn, require_herdr_env=lambda: None,
-                                 ensure_layout_readonly=lambda: me, live_agents=lambda: []), \
-                mock.patch.object(sys, "argv", ["spawn.py", "--harness", "claude", "--role", "scout", "--dry-run"]), \
-                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            spawn.main()
-        self.assertEqual(json.loads(out.getvalue())["model_source"], "models.json")
+        results = {}
+        for role in ("scout", "coordinator"):
+            out, err = io.StringIO(), io.StringIO()
+            with mock.patch.multiple(spawn, require_herdr_env=lambda: None,
+                                     ensure_layout_readonly=lambda: me, live_agents=lambda: []), \
+                    mock.patch.object(sys, "argv", ["spawn.py", "--harness", "claude", "--role", role, "--dry-run"]), \
+                    contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                spawn.main()
+            results[role] = json.loads(out.getvalue())
+        self.assertEqual(results["scout"]["model_source"], "models.json")
         self.assertEqual(err.getvalue().strip(), "model: example-alias (from models.json)")
+        self.assertEqual((results["scout"]["session_env"], results["coordinator"]["session_env"]),
+                         ({"HERDR_SKILL_SESSION": "task"}, {}))
 
 
 class Launch(IsolatedConfig):

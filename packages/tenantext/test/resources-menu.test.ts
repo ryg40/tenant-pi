@@ -178,3 +178,22 @@ test("the menu shows a project MCP override, and a change of the user row report
 	await runResources("list", list.ctx, { dirs });
 	assert.match(list.log.notices[0]!, /\[ \] mcp project override live \(override of the user server\)/);
 }));
+
+test("the herdr-idle switch row toggles through the script subcommand, and a profile does not store it", () => withFixture(async dirs => {
+	const calls: string[][] = [];
+	let on = true;
+	const switches = {
+		findScript: () => "/stub/idle_cleanup.py",
+		run: (args: string[]) => {
+			calls.push(args.slice(1));
+			if (args[2] !== "status") on = args[2] === "on";
+			return { code: 0, stdout: JSON.stringify({ on, startup_assessment: on ? "all" : "off", settings: "/stub/settings.json" }), stderr: "" };
+		},
+	};
+	const before = snapshot(dirs);
+	const { ctx } = mock({ choices: ["switch user local herdr-idle", SAVE_PROFILE, SET_DEFAULT], inputs: ["sw"] });
+	await runResources("", ctx, { dirs, writeProject: false, switches });
+	assert.deepEqual(calls.filter(args => args[1] !== "status"), [["switch", "off"]]);
+	assert.equal(snapshot(dirs), before);
+	assert.ok(loadProfile(dirs.agentDir, "sw").items.every(item => item.kind !== "switch"));
+}));

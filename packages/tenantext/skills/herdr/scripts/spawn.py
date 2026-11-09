@@ -158,6 +158,24 @@ def resolve(opts, cfg):
             "web": role["web"], "focus": role["focus"]}
 
 
+# The variable that marks a task session. The herdr-idle-cleanup startup assessment claims nothing when it is
+# `task`, so the handoff entries wait for a session that the user works in.
+SESSION_VARIABLE = "HERDR_SKILL_SESSION"
+
+
+def session_env(r):
+    """The environment that marks the session: {SESSION_VARIABLE: "task"} for a task session, else {}."""
+    return {} if r["session"] == "primary" else {SESSION_VARIABLE: "task"}
+
+
+def session_env_command(r):
+    """The shell line for the new pane: export the variable for a task session, unset it for a primary one."""
+    env = session_env(r)
+    if not env:
+        return f"unset {SESSION_VARIABLE}"
+    return "export " + " ".join(f"{k}={shlex.quote(v)}" for k, v in env.items())
+
+
 def pi_executable():
     executable = load_launch({}).get("pi_executable", "pi")
     if executable != "pi" and (not os.path.isabs(executable)
@@ -424,7 +442,7 @@ def main():
     executable = pi_executable() if r["harness"] == "pi" else r["harness"]
     shown = [x if len(x) < 100 else x[:60].replace("\n", " ") + f"... ({len(x)} chars)" for x in args]
     summary = dict(r, name=name, pane_label=label, tab=r["role"], cwd=cwd, workspace=me["workspace"],
-                   executable=executable)
+                   executable=executable, session_env=session_env(r))
 
     print(model_message(r), file=sys.stderr)
     if opts["dry_run"]:
@@ -437,6 +455,13 @@ def main():
                             workspace_id=me["workspace_id"], created_at_epoch=time.time()))
 
     time.sleep(1)  # let the shell reach its prompt
+    # The shell of the pane exports the variable, so the agent and the Pi-Bolt subshell of the `pi` function
+    # inherit it; `herdr agent start` has no option for the environment.
+    code, data, raw = herdr("pane", "run", pane, session_env_command(r))
+    if code != 0 or error_code(data):
+        herdr("pane", "close", pane)
+        remove_record(pane)
+        fail("could not set the session environment in the new pane", EXIT["failed"])
     if r["harness"] == "pi":
         try:
             prepare_pi_launcher(pane, executable)

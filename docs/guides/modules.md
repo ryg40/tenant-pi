@@ -34,6 +34,9 @@ Facts that hold for every component:
 - An in-tree (`tree`) module points at the package directory of the clone by its path. Keep the clone in place.
 - `copilot-usage`, `anthropic-usage` and `doctor` read login files, environment tokens and the `gh` login of the account. When a login exists, they send its token to the usage endpoint of the provider (source reading). Switch them off with `/resources` when you do not agree to that.
 - `herdr-relay` needs the herdr skill at `~/.agents/skills/herdr`, or the folder in `HERDR_SKILL_HOME`.
+- `herdr-idle-cleanup` reads every Herdr workspace and closes idle ones only after your yes. Its handoff files hold the report text of your sessions in `~/.local/share/tenant-pi/handoffs/`. Nothing leaves the host unless you run `publish --upload`; see [the guide](herdr-idle-cleanup.md).
+- `herdr-idle-cleanup-prompt` adds the command `/herdr-idle-cleanup` to Pi.
+- `handoffs` runs the skill at each Pi session start and shows the open handoff entries of the repository.
 - `next-prompt` shows the next action of the final dummies report as faint text in the empty editor of a coordinator session. It makes no model call and no request; see [its document](../../packages/tenantext/docs/next-prompt.md).
   It needs DUMMIES on for Pi; see [DUMMIES](#dummies).
 - `command-rules` blocks a shell command that matches a deny rule. The first rule denies `find / *` and sends the agent to `rg`. It makes no model call and no request.
@@ -299,6 +302,7 @@ The Pi profile is the reference. The Claude Code form of the kit carries each co
 | `tenantext` | The `SessionStart` hook of the Simplified English rules, and `/ste` | The `tenantext` plugin |
 | `herdr` | The skill, and `/spawn_agent` | The skill: a link of `install.sh`, or the plugin. The command: the plugin |
 | `herdr-relay`, `coordinator-skills`, `knowledge-skills`, `tracker-site` | The skills | The links of `install.sh`, or the plugin |
+| `herdr-idle-cleanup`, `herdr-idle-cleanup-prompt`, `handoffs` | The skill, `/herdr-idle-cleanup`, `/handoffs`, `/herdr-idle` and the startup assessment of the `SessionStart` hook | The skill: a link of `install.sh`, or the plugin. The commands and the hook: the plugin |
 | `okknow` | The skill; the MCP server is a step of the user | The link of `install.sh --with okknow` |
 | `agentcore` | The plugin `packages/agentcore-claude` | `claude --plugin-dir`; see [in-tree packages](../packages.md) |
 | `computer-use` | The plugin of the package | [The Claude Code plugin](#claude-code-plugin) |

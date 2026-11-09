@@ -97,6 +97,8 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
             self.assertIn(text, result.stdout)
         current = json.loads((self.profile / 'settings.json').read_text())
         settings['packages'][0]['source'] = str(ROOT / 'packages/tenantext')
+        # The kit step adds its extension once to the plain extension list; the empty skill list stays.
+        settings['packages'][0]['extensions'].append('extensions/handoffs/index.ts')
         self.assertEqual(settings, current)
         for path, data in before.items():
             if data is not None and not path.endswith('settings.json'):
@@ -111,6 +113,37 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         (self.profile / 'settings.json').write_text(original)
         self.success(self.install(mode='upgrade'))
         self.assertIn(original, [p.read_text() for p in self.profile.glob('settings.json.backup-*')])
+
+    def test_upgrade_adds_a_new_kit_skill_to_a_filtered_list_once(self):
+        self.profile.mkdir(parents=True)
+        entry = {'source': str(ROOT / 'packages/tenantext'), 'skills': ['skills/herdr'],
+                 'extensions': ['extensions/tenantext/index.ts'], 'prompts': []}
+        (self.profile / 'settings.json').write_text(json.dumps({'packages': [entry]}))
+        self.success(self.install(mode='upgrade', shell='none'))
+        current = json.loads((self.profile / 'settings.json').read_text())['packages'][0]
+        self.assertEqual(['skills/herdr', 'skills/herdr-idle-cleanup'], current['skills'])
+        self.assertEqual(['extensions/tenantext/index.ts', 'extensions/handoffs/index.ts'], current['extensions'])
+        self.assertEqual([], current['prompts'])
+        # The user removes the skill and the extension; the next upgrade keeps the removal.
+        (self.profile / 'settings.json').write_text(json.dumps({'packages': [entry]}))
+        self.success(self.install(mode='upgrade', shell='none'))
+        self.assertEqual(entry, json.loads((self.profile / 'settings.json').read_text())['packages'][0])
+        # Each key on its own: a list of only `!` entries stays (it loads all other files), and a missing or
+        # empty skill list does not stop the extension.
+        source = str(ROOT / 'packages/tenantext')
+        for given, expected in (
+                ({'skills': ['!skills/herdr-relay'], 'extensions': ['!extensions/ops-footer/index.ts']},
+                 {'skills': ['!skills/herdr-relay'], 'extensions': ['!extensions/ops-footer/index.ts']}),
+                ({'extensions': ['extensions/tenantext/index.ts']},
+                 {'extensions': ['extensions/tenantext/index.ts', 'extensions/handoffs/index.ts']}),
+                ({'skills': [], 'extensions': ['extensions/tenantext/index.ts']},
+                 {'skills': [], 'extensions': ['extensions/tenantext/index.ts', 'extensions/handoffs/index.ts']})):
+            with self.subTest(given=given):
+                (self.profile / 'kit-steps.json').unlink()
+                (self.profile / 'settings.json').write_text(json.dumps({'packages': [dict(given, source=source)]}))
+                self.success(self.install(mode='upgrade', shell='none'))
+                self.assertEqual(dict(expected, source=source),
+                                 json.loads((self.profile / 'settings.json').read_text())['packages'][0])
 
     def test_new_and_collision(self):
         result = self.install(shell='none')

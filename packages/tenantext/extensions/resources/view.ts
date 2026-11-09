@@ -13,9 +13,10 @@ const GROUPS: { key: string; title: string; test: (item: ResourceItem) => boolea
 	{ key: "prompt", title: "Prompts", test: item => item.kind === "prompt" },
 	{ key: "mcp", title: "MCP servers", test: item => item.kind === "mcp" },
 	{ key: "builtin", title: "Built-ins", test: item => item.id.startsWith(BUILTIN_PREFIX) },
+	{ key: "switch", title: "Switches", test: item => item.kind === "switch" },
 ];
 
-/** Extensions, skills, prompts, MCP servers, built-ins. A group with no item is left out. The order inside a group is the inventory order. */
+/** Extensions, skills, prompts, MCP servers, built-ins, switches. A group with no item is left out. The order inside a group is the inventory order. */
 export function groupItems(items: ResourceItem[]): Group[] {
 	return GROUPS.map(({ key, title, test }) => ({ key, title, items: items.filter(test) })).filter(group => group.items.length > 0);
 }

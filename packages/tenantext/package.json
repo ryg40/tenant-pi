@@ -31,10 +31,14 @@
       "./extensions/herdr-watch/index.ts",
       "./extensions/next-prompt/index.ts",
       "./extensions/cross-session-recall/index.ts",
-      "./extensions/command-rules/index.ts"
+      "./extensions/command-rules/index.ts",
+      "./extensions/handoffs/index.ts"
     ],
     "skills": [
       "./skills"
+    ],
+    "prompts": [
+      "./prompts"
     ]
   },
   "files": [
@@ -42,6 +46,7 @@
     "claude-code",
     "src",
     "skills",
+    "prompts",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",

@@ -278,19 +278,19 @@ test("network, malformed stream and setup errors suppress raw details", async ()
 	assert.equal(result.errorMessage, GATEWAY_ERROR);
 });
 
-// These tests pin current behavior: a thrown request error has no HTTP status, so it gets no class.
-// They pass on the old code too.
+// Pi versions differ in whether they preserve interruption markers from thrown fetch errors.
+// Both paths must sanitize the error and avoid retrying an incomplete response.
 for (const [name, detail] of [
 	["interruption marker", "MidStreamFallbackError: private request detail"],
 	["plain error", "private request detail"],
 ]) {
-	test(`thrown request preservation (${name}) keeps the generic message without retries`, async () => {
+	test(`thrown request preservation (${name}) keeps a safe message without retries`, async () => {
 		let calls = 0;
 		const result = await retryAssistantCall(() => gatewayStream(model, history, {
 			apiKey: "fixture-only", maxRetries: 0,
 			fetch: async () => { calls++; throw new Error(detail); },
 		}).result(), { enabled: true, maxRetries: 3, baseDelayMs: 0 }, undefined);
-		assert.equal(result.errorMessage, GATEWAY_ERROR);
+		assert.ok([GATEWAY_ERROR, gatewayHttpError(undefined, detail)].includes(result.errorMessage!));
 		assert.equal(result.stopReason, "error");
 		assert.equal(isRetryableAssistantError(result), false);
 		assert.equal(calls, 1);

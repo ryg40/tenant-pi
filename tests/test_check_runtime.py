@@ -26,6 +26,8 @@ PI_RANGE = RUNTIME["piAcceptedRange"]
 PI_FIELDS = {"tested": PIN, "acceptedRange": PI_RANGE}
 LOWER, UPPER = parse_range(PI_RANGE, "f")
 IN_RANGE = ".".join(map(str, (*LOWER[:2], LOWER[2] + 1)))
+if IN_RANGE == PIN:
+    IN_RANGE = ".".join(map(str, (*LOWER[:2], LOWER[2] + 2)))
 OUTSIDE = ".".join(map(str, UPPER))
 CANARY = "CANARY_SECRET"
 GOOD = {"pi": PIN, "node": "v24.21.0", "python3": "Python 3.11.2"}

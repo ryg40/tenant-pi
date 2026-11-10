@@ -53,10 +53,10 @@ To move to a new Pi version, for example `1.4.0`:
 
 One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `runtime.piBoltVersion`. The Pi-Bolt pin can lag behind the Pi pin: a new Pi version can have no Pi-Bolt release yet.
 
-With no such release, keep `runtime.piBoltVersion` and give `pi_update.py pin` a `--range` that also holds the Pi version of that Pi-Bolt release, for example `--range ">=1.4.0 <1.6"`. Then `check_runtime.py` reports `untested_in_range` for that Pi-Bolt, not `mismatch`. When a Pi-Bolt release carries the pin:
+When Pi-Bolt carries an older Pi, preserve a reviewed range that includes both versions. The current pins are Pi 1.5.2 and Pi-Bolt 1.2.0, which carries Pi 1.5.0. Keep `--range ">=1.5.0 <1.6"`; `check_runtime.py` reports `untested_in_range` for this Pi-Bolt, not `mismatch`. Review a Pi-Bolt update independently, even when its embedded Pi does not change. When a Pi-Bolt release carries the Pi pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
-2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.1.7`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
+2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.2.0`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
 3. Set `runtime.piBoltVersion` in `config/manifest.json` to that release, in the same commit as the pin.
 4. Check the runtime of the profile. The report shows the Pi version and the Pi-Bolt release.
 
@@ -65,6 +65,15 @@ With no such release, keep `runtime.piBoltVersion` and give `pi_update.py pin` a
    ```
 
 The qualification of step 2 above runs plain Pi, not Pi-Bolt.
+
+The [Pi-Bolt 1.2.0 release notes](https://github.com/opensec-git/Pi-Bolt/releases/tag/bolt-v1.2.0) name these update effects:
+
+- Remote control defaults to off. A paired phone stays paired, but needs `pi-bolt remote-control enable` after the update. This sets `remoteControl.enabled` in global settings; project settings cannot enable it. The kit does not enable it.
+- The upstream installer and `pi-bolt update` restart an existing background service, but do not start an absent service. Other update paths can leave the old service running; follow the upstream restart and enable steps before using remote control again.
+- The `pibolt-mobile-ui` skill no longer ships in Pi-Bolt. It is available separately in the upstream repository. The kit neither installs nor depends on it.
+- Startup, streaming, session resume and Codex request processing change internally. No kit API or settings migration is identified from the release notes. Compiled Pi-Bolt execution, remote control and its service update are not verified by plain Pi qualification.
+
+Pi 1.5.2 adds a fork choice when a session's folder no longer exists, including extension-driven session switches. It also fixes failed imports leaving copies and updates the Anthropic OAuth client version. No kit installer, settings, extension or skill migration is identified from these changes. Interactive session recovery and native-provider authentication remain outside the offline qualification.
 
 ## The module versions
 

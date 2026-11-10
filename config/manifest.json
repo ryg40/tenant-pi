@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "runtime": {
-    "piVersion": "1.5.1",
-    "piBoltVersion": "1.1.7",
+    "piVersion": "1.5.2",
+    "piBoltVersion": "1.2.0",
     "piAcceptedRange": ">=1.5.0 <1.6",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
@@ -11,7 +11,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.5.1"
+        "spec": "@earendil-works/pi-coding-agent@1.5.2"
       },
       "status": "tested",
       "requires": [],
@@ -951,7 +951,7 @@
     "computer-use": {
       "source": {
         "kind": "npm",
-        "spec": "@agent-sh/computer-use-linux@0.7.47"
+        "spec": "@agent-sh/computer-use-linux@0.7.49"
       },
       "status": "unverified",
       "requires": [
@@ -973,11 +973,11 @@
       "gaps": [
         {
           "code": "platform_linux_only",
-          "fact": "The package.json of version 0.7.47 limits os to linux, cpu to x64 and arm64, and libc to glibc, and its postinstall script stops on another platform. On macOS the kit offers the computer-use-macos component instead."
+          "fact": "The package.json of version 0.7.49 limits os to linux, cpu to x64 and arm64, and libc to glibc, and its postinstall script stops on another platform. On macOS the kit offers the computer-use-macos component instead."
         },
         {
           "code": "package_source_unreviewed",
-          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. File comparisons with the tarballs of versions 0.7.27, 0.7.35 and 0.7.36 found changes only in package.json, the README files, the skill and the extension. Version 0.7.27 adds the read-only tool get_tree_page. Version 0.7.35 removes no tool and adds optional parameters. Version 0.7.36 removes no tool; its generated tool list changes only the press_key description, and it adds the reference selkies-setup.md, which the kit does not use. In both versions the only package.json change is the version. npm/install.js is unchanged, and the README of 0.7.36 still says that the binary ships no telemetry and makes no outbound Internet connections. The README states the new optional routes that the kit does not set: PIXELFLUX_CU with PIXELFLUX_CU_TOKEN (loopback only) and COMPUTER_USE_LINUX_HYPRLAND_BACKGROUND. The registry tarball of 0.7.47 matches its registry SHA-512 integrity. A file comparison with 0.7.36 found changes in package.json, npm/install.js, the npm wrapper, the README files, the skill and the extension. The generated tool list keeps the same tool names and adds or changes descriptions only. package.json adds libc glibc and the peer range >=0.84.4 for the Pi packages. npm/install.js adds a 30-second idle timeout, an atomic rename of each binary and escaped log lines; it still checks each download against its sha256 file. The extension now forwards a fixed list of environment variables to the server, and the README of 0.7.47 still says that the binary ships no telemetry and makes no outbound Internet connections. The release binaries were not reviewed."
+          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. File comparisons with the tarballs of versions 0.7.27, 0.7.35 and 0.7.36 found changes only in package.json, the README files, the skill and the extension. Version 0.7.27 adds the read-only tool get_tree_page. Version 0.7.35 removes no tool and adds optional parameters. Version 0.7.36 removes no tool; its generated tool list changes only the press_key description, and it adds the reference selkies-setup.md, which the kit does not use. In both versions the only package.json change is the version. npm/install.js is unchanged, and the README of 0.7.36 still says that the binary ships no telemetry and makes no outbound Internet connections. The README states the new optional routes that the kit does not set: PIXELFLUX_CU with PIXELFLUX_CU_TOKEN (loopback only) and COMPUTER_USE_LINUX_HYPRLAND_BACKGROUND. The registry tarball of 0.7.47 matches its registry SHA-512 integrity. A file comparison with 0.7.36 found changes in package.json, npm/install.js, the npm wrapper, the README files, the skill and the extension. The generated tool list keeps the same tool names and adds or changes descriptions only. package.json adds libc glibc and the peer range >=0.84.4 for the Pi packages. npm/install.js adds a 30-second idle timeout, an atomic rename of each binary and escaped log lines; it still checks each download against its sha256 file. The extension now forwards a fixed list of environment variables to the server, and the README of 0.7.47 still says that the binary ships no telemetry and makes no outbound Internet connections. The registry tarballs of 0.7.47 and 0.7.49 match their registry SHA-512 integrity. Their file comparison changes only package.json, the README files, the generated tool catalog and the skill. The install script and extension loader are unchanged. No tool is removed; snapshot_id is a new optional argument for click, scroll, perform_action, set_value and get_tree_page. The release notes name same-device uinput scrolling and rmcp 3.9.0. The release binaries were not reviewed or run."
         },
         {
           "code": "release_download_required",
@@ -985,7 +985,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "The tools need a graphical Linux session with the AT-SPI accessibility bridge and an input backend that the doctor tool of the package reports ready. Since version 0.7.36 the binary lists windows through the wlr foreign toplevel protocol on wlroots compositors without a dedicated backend, and it sends press_key chords through wtype when ydotool is absent and the session bus answers that it has no RemoteDesktop portal, as on wlroots compositors such as Sway, labwc, river or cage (from the README and the release notes, not run). Since version 0.7.47 a coordinate pointer action on Wayland needs /dev/uinput or the RemoteDesktop portal: ydotool sends only wheel events there, and the binary refuses the action without either route (from the README, not run). The kit installs none of them; the kit doctor reports the readiness that the doctor of the package gives. The setup tools of the package change the desktop settings of the user."
+          "fact": "The tools need a graphical Linux session with the AT-SPI accessibility bridge and an input backend that the doctor tool of the package reports ready. Since version 0.7.36 the binary lists windows through the wlr foreign toplevel protocol on wlroots compositors without a dedicated backend, and it sends press_key chords through wtype when ydotool is absent and the session bus answers that it has no RemoteDesktop portal, as on wlroots compositors such as Sway, labwc, river or cage (from the README and the release notes, not run). Since version 0.7.47 a coordinate pointer action on Wayland needs /dev/uinput or the RemoteDesktop portal: the binary refuses the action without either route. Since 0.7.48 targeted scrolling sends both movement and wheel events through the same uinput device, without ydotool; ydotool remains an untargeted-scroll route (from the README and release notes, not run). The kit installs none of them; the kit doctor reports the readiness that the doctor of the package gives. The setup tools of the package change the desktop settings of the user."
         },
         {
           "code": "desktop_runtime_unverified",
@@ -996,7 +996,7 @@
     "computer-use-macos": {
       "source": {
         "kind": "npm",
-        "spec": "@amaster.ai/pi-computer-use@0.1.36"
+        "spec": "@amaster.ai/pi-computer-use@0.1.38"
       },
       "status": "unverified",
       "requires": [
@@ -1018,11 +1018,11 @@
       "gaps": [
         {
           "code": "platform_macos_only",
-          "fact": "The kit offers this component on macOS only. Version 0.1.36 declares no os field, but its desktop runtime for macOS is the optional dependency @amaster.ai/pi-computer-use-cua-driver-darwin-universal 0.1.4, which limits os to darwin. Its CuaDriver.app is a universal Mach-O binary for x86_64 and arm64 with the bundle ID com.trycua.driver and LSMinimumSystemVersion 13.0 (read from the registry tarball, not run). Linux keeps the computer-use component."
+          "fact": "The kit offers this component on macOS only. Version 0.1.38 declares no os field, but its desktop runtime for macOS is the optional dependency @amaster.ai/pi-computer-use-cua-driver-darwin-universal 0.1.4, which limits os to darwin. Its CuaDriver.app is a universal Mach-O binary for x86_64 and arm64 with the bundle ID com.trycua.driver and LSMinimumSystemVersion 13.0 (read from the registry tarball, not run). Linux keeps the computer-use component."
         },
         {
           "code": "package_source_partly_reviewed",
-          "fact": "The registry tarball of 0.1.32 matches its registry SHA-512 integrity. Its package.json, README, config, launch code and approval code were read; the package and the runtime 0.1.4 have no install script. The registry tarball of 0.1.34 matches its registry SHA-512 integrity. A file comparison with 0.1.32 found a change only in package.json: the version and the exact dependency @amaster.ai/pi-shared 0.1.34. The registry tarball of 0.1.35 matches its registry SHA-512 integrity. A file comparison with 0.1.34 found the new optional toolProfile value lazy, which the kit does not set, a reorder of the optional dependencies, and the version and the exact dependency @amaster.ai/pi-shared 0.1.35; the core profile selects the same tools. The runtime stays 0.1.4 with Cua Driver 0.37.0 (read from its Info.plist). The change of @amaster.ai/pi-shared from 0.1.32 to 0.1.34 was read; it adds async settings and policy readers and abort signals, and no telemetry or download. The change of @amaster.ai/pi-shared from 0.1.34 to 0.1.35 touches no JavaScript file of dist. The registry tarball of 0.1.36 matches its registry SHA-512 integrity. A file comparison with 0.1.35 found the new skill skills/computer-use/SKILL.md, declared in package.json, changed error texts for a failed driver request, more structured result fields, a reorder of the optional dependencies, the dev dependencies on Pi 1.5.0, and the version and the exact dependency @amaster.ai/pi-shared 0.1.36. The runtime stays 0.1.4. The change of @amaster.ai/pi-shared from 0.1.35 to 0.1.36 touches only package.json. Not reviewed: the bundled driver binary, the rest of @amaster.ai/pi-shared 0.1.36, and @modelcontextprotocol/sdk, which the package takes as the range ^1.29.0, so the top-level pin does not freeze every dependency."
+          "fact": "The registry tarball of 0.1.32 matches its registry SHA-512 integrity. Its package.json, README, config, launch code and approval code were read; the package and the runtime 0.1.4 have no install script. The registry tarball of 0.1.34 matches its registry SHA-512 integrity. A file comparison with 0.1.32 found a change only in package.json: the version and the exact dependency @amaster.ai/pi-shared 0.1.34. The registry tarball of 0.1.35 matches its registry SHA-512 integrity. A file comparison with 0.1.34 found the new optional toolProfile value lazy, which the kit does not set, a reorder of the optional dependencies, and the version and the exact dependency @amaster.ai/pi-shared 0.1.35; the core profile selects the same tools. The runtime stays 0.1.4 with Cua Driver 0.37.0 (read from its Info.plist). The change of @amaster.ai/pi-shared from 0.1.32 to 0.1.34 was read; it adds async settings and policy readers and abort signals, and no telemetry or download. The change of @amaster.ai/pi-shared from 0.1.34 to 0.1.35 touches no JavaScript file of dist. The registry tarball of 0.1.36 matches its registry SHA-512 integrity. A file comparison with 0.1.35 found the new skill skills/computer-use/SKILL.md, declared in package.json, changed error texts for a failed driver request, more structured result fields, a reorder of the optional dependencies, the dev dependencies on Pi 1.5.0, and the version and the exact dependency @amaster.ai/pi-shared 0.1.36. The runtime stays 0.1.4. The change of @amaster.ai/pi-shared from 0.1.35 to 0.1.36 touches only package.json. The registry tarballs of 0.1.38 and @amaster.ai/pi-shared 0.1.38 match their registry SHA-512 integrity. Their changes from 0.1.36 were read. The extension adds sanitized error categories, refusal recovery hints and vision failure checks. Its config, approval code, skill and runtime pins are unchanged. The shared settings reader now rejects malformed or unreadable settings and null sections instead of using defaults. The shared package adds error classification and preserves DNS failures separately from destination-policy refusals. Runtime 0.1.4 also matches its registry SHA-512 integrity; its Info.plist still names Cua Driver 0.37.0. Not reviewed: the bundled driver binary, unchanged shared-package code outside the prior review, and @modelcontextprotocol/sdk, which the package takes as the range ^1.29.0, so the top-level pin does not freeze every dependency."
         },
         {
           "code": "privacy_grant_required",
@@ -1038,7 +1038,7 @@
         },
         {
           "code": "desktop_runtime_unverified",
-          "fact": "No test of the kit ran on a Mac. Not verified: the grants, input, screenshots, the background input, the display scope (main display only is not proven for driver 0.37.0), the behavior over SSH without a GUI session, and the load in Pi and Pi-Bolt on macOS. Read in the source of @amaster.ai/pi-shared 0.1.35 (dist/settings.js, loadPiSettings; the file is the same in 0.1.36), not run: the extension reads the pi-computer-use block of settings.json in the profile directory that PI_CODING_AGENT_DIR names, and a key there wins over the same key in ~/.pi/agent/settings.json. Screenshots, accessibility text and typed text go into the conversation and so to the model provider."
+          "fact": "No test of the kit ran on a Mac. Not verified: the grants, input, screenshots, the background input, the display scope (main display only is not proven for driver 0.37.0), the behavior over SSH without a GUI session, and the load in Pi and Pi-Bolt on macOS. Read in the source of @amaster.ai/pi-shared 0.1.38 (dist/settings.js, loadPiSettings), not run on a Mac: the extension reads the pi-computer-use block of settings.json in the profile directory that PI_CODING_AGENT_DIR names, and a key there wins over the same key in ~/.pi/agent/settings.json. Screenshots, accessibility text and typed text go into the conversation and so to the model provider."
         }
       ]
     },

@@ -1,0 +1,104 @@
+/* Compare page: one view of every session. Uses the shared theme variables; all themes apply.
+   The page does not scroll: the bar is one line, and the stage gets the height that is left. */
+html, body { height: 100%; }
+body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 var(--sans); }
+[hidden] { display: none !important; }
+.cmp-app { display: grid; grid-template: "bar bar" auto "list main" minmax(0, 1fr) / minmax(220px, 280px) minmax(0, 1fr); height: 100%; }
+.cmp-app.is-list-closed { grid-template-columns: 0 minmax(0, 1fr); }
+.cmp-app.is-list-closed .cmp-list { display: none; }
+
+.cmp-bar { grid-area: bar; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 12px; border-bottom: 1px solid var(--hair); background: var(--rail); }
+.cmp-bar h1 { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-state { flex: none; color: var(--mute-2, var(--mute)); font-size: 12.5px; }
+.cmp-bar-end { display: flex; flex: none; align-items: center; gap: 8px; margin-left: auto; }
+.cmp-bar label { display: inline-flex; align-items: center; gap: 4px; color: var(--mute); font-size: 12px; }
+.cmp-bar select { max-width: 170px; padding: 3px 4px; border: 1px solid var(--hair); border-radius: 6px; background: var(--input-bg); color: var(--txt); font: inherit; }
+.cmp-type { flex: none; padding: 1px 8px; border: 1px solid var(--strong-border); border-radius: 999px; font: 11.5px/1.5 var(--mono); }
+.cmp-badge { padding: 1px 7px; border-radius: 999px; background: var(--accent); color: var(--btn-fg); font-size: 11px; font-weight: 700; }
+
+.cmp-list { grid-area: list; min-height: 0; overflow: auto; padding: 8px; border-right: 1px solid var(--hair); }
+.cmp-list ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.cmp-list button { all: unset; display: grid; gap: 2px; box-sizing: border-box; width: 100%; padding: 7px 9px; border: 1px solid var(--card-border); border-radius: 9px; background: var(--card); cursor: pointer; }
+.cmp-list button:hover { border-color: var(--strong-border); }
+.cmp-list button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cmp-list button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.cmp-row-top { display: flex; align-items: center; gap: 6px; }
+.cmp-row-stars { margin-left: auto; color: var(--accent); font-size: 12px; }
+.cmp-row-title { overflow-wrap: anywhere; font-weight: 600; }
+.cmp-row-meta, .cmp-list p { color: var(--mute); font-size: 12px; }
+
+.cmp-main { grid-area: main; display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; padding: 6px 12px 8px; }
+.cmp-hint { color: var(--mute); }
+.cmp-alert { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--danger); border-radius: 7px; background: var(--danger-soft); }
+.cmp-alert p { flex: 1; margin: 0; }
+.cmp-context { flex: none; max-height: 40%; overflow: auto; font-size: 13px; }
+.cmp-context summary { color: var(--mute); cursor: pointer; }
+.cmp-context h2 { margin: 8px 0 2px; color: var(--mute); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.cmp-context p, .cmp-context dl, .cmp-context dd { margin: 0; }
+.cmp-context dt { font-weight: 600; }
+.cmp-context dd { margin-bottom: 4px; }
+.cmp-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cmp-meta { color: var(--mute); font: 12px var(--mono); }
+
+.cmp-tabs { display: flex; flex: none; gap: 4px; }
+.cmp-tabs button { padding: 4px 12px; border: 1px solid var(--hair); border-radius: 7px 7px 0 0; background: var(--card); color: var(--txt); font: inherit; cursor: pointer; }
+.cmp-tabs button[aria-selected="true"] { border-color: var(--accent); font-weight: 700; }
+.cmp-tabs button[data-picked="true"]::after { content: " ✓"; color: var(--keep, var(--accent)); }
+
+.cmp-stage { display: grid; flex: 1; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 8px; min-height: 0; }
+.cmp-option { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 2px solid var(--card-border); border-radius: 9px; background: var(--card); }
+.cmp-option[data-picked="true"] { border-color: var(--keep, var(--accent)); }
+.cmp-option-head { display: flex; flex: none; align-items: baseline; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--hair); }
+.cmp-summary { flex: 1; min-width: 0; overflow: hidden; color: var(--mute); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.cmp-body { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--stage, var(--canvas)); }
+.cmp-body > iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.cmp-text { box-sizing: border-box; height: 100%; margin: 0; padding: 10px 12px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 14px; line-height: 1.55; }
+.cmp-original { flex: none; font-size: 13px; }
+.cmp-original summary { color: var(--mute); cursor: pointer; }
+.cmp-original[open] summary { margin-bottom: 4px; }
+.cmp-original .cmp-text { height: auto; max-height: 32vh; border: 1px solid var(--hair); border-radius: 6px; background: var(--paper, transparent); }
+.cmp-option-foot { display: flex; flex: none; align-items: flex-start; gap: 6px; padding: 5px 6px; border-top: 1px solid var(--hair); }
+.cmp-pick-button { flex: none; padding: 5px 10px; border: 1px solid var(--strong-border); border-radius: 7px; background: transparent; color: var(--txt); font: inherit; cursor: pointer; }
+.cmp-pick-button[aria-pressed="true"] { border-color: var(--keep, var(--accent)); background: var(--keep-soft, var(--accent-soft)); font-weight: 700; }
+.cmp-pick-button:disabled { cursor: default; }
+textarea { box-sizing: border-box; border: 1px solid var(--hair); border-radius: 6px; background: var(--input-bg); color: var(--txt); font: inherit; }
+.cmp-option-foot textarea { flex: 1; min-width: 0; height: 56px; padding: 4px 6px; resize: vertical; }
+.cmp-option-foot textarea:focus { height: 120px; }
+
+.cmp-decide { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
+.cmp-pick, .cmp-rate { display: flex; flex: 1 1 420px; align-items: center; gap: 8px; min-width: 0; }
+.cmp-pick p { flex: 0 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.cmp-rate { flex: 1 1 420px; color: var(--mute); font-size: 12.5px; }
+.cmp-none { flex: none; }
+.cmp-note { display: flex; flex: 1; align-items: flex-start; gap: 4px; min-width: 240px; color: var(--mute); font-size: 12.5px; white-space: nowrap; }
+.cmp-note textarea { flex: 1; min-width: 0; height: 64px; padding: 4px 6px; white-space: pre-wrap; resize: vertical; }
+/* Five stars from ten half buttons. Each button shows the left or the right half of one star. */
+.cmp-stars { display: inline-flex; flex: none; }
+.cmp-star { width: 11px; height: 22px; margin: 0; padding: 0; overflow: hidden; border: 0; background: none; color: var(--faint, var(--mute)); cursor: pointer; }
+.cmp-star::before { content: "★"; display: block; width: 22px; font: 22px/22px var(--sans); text-align: center; }
+.cmp-star.is-right::before { margin-left: -11px; }
+.cmp-star.is-on { color: var(--amber, var(--accent)); }
+.cmp-star:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cmp-star:disabled { cursor: default; }
+
+.btn-primary { padding: 5px 12px; border: 1px solid var(--btn-bg); border-radius: 7px; background: var(--btn-bg); color: var(--btn-fg); font: inherit; cursor: pointer; }
+.btn-primary:disabled, .btn-ghost:disabled { opacity: 0.5; cursor: default; }
+.btn-ghost { padding: 4px 10px; border: 1px solid var(--strong-border); border-radius: 7px; background: transparent; color: var(--txt); font: inherit; cursor: pointer; }
+
+/* Zoom of one HTML option (src/frame-zoom.js). The frame keeps its layout width; a smaller level shows more of it. */
+.zoom-stage { --zoom: 1; }
+.zoom-stage > iframe { width: calc(100% / var(--zoom)); height: calc(100% / var(--zoom)); transform: scale(var(--zoom)); transform-origin: top left; }
+.zoom-control { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; font-size: 11px; }
+.zoom-control button { min-width: 24px; height: 22px; margin: 0; padding: 0 6px; border: 1px solid var(--hair); border-radius: 6px; background: var(--card); color: var(--txt); font: inherit; cursor: pointer; }
+.zoom-control button:disabled { color: var(--faint); cursor: default; }
+.zoom-control .zoom-reset[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .cmp-app { display: block; height: auto; }
+  .cmp-bar, .cmp-bar-end { flex-wrap: wrap; }
+  .cmp-list { max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--hair); }
+  .cmp-stage { grid-auto-flow: row; }
+  .cmp-option { min-height: 70vh; }
+}
+.cmp-decide button { flex: none; white-space: nowrap; }

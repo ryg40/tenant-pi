@@ -1,0 +1,39 @@
+/* Coinflip panel in the shared GUI: a stage bar, two whole candidates, and the choice directly under them. */
+[data-shared-gui] .coinflip { grid-area: panes; grid-column: 1 / -1; display: flex; flex-direction: column; min-height: 0; padding: 10px 14px 12px; gap: 10px; overflow: auto; }
+/* The pair takes all height that is left, and at least 320px: below that the panel scrolls.
+   A pair that shrinks further lets the candidates overflow onto other controls. */
+.coinflip-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 12px; flex: 1 0 320px; min-height: 0; }
+.coinflip-candidate { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; border: 1px solid var(--card-border); border-radius: 12px; background: var(--card); box-shadow: 0 1px 2px var(--shadow); }
+/* One header line: the side, the winner mark, the description and the zoom control. */
+.coinflip-candidate h3 { display: flex; flex: none; gap: 8px; align-items: center; min-width: 0; margin: 0; padding: 6px 8px 6px 10px; border-bottom: 1px solid var(--hair); background: var(--rail); font-size: 12.5px; font-weight: 400; }
+.coinflip-badge { flex: none; padding: 1px 9px; border-radius: 999px; background: var(--brand, var(--accent)); color: var(--brand-ink, var(--canvas)); font-size: 11px; font-weight: 700; }
+.coinflip-description { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--mute-2); white-space: nowrap; text-overflow: ellipsis; }
+/* The frame has the size of the stage at 100%, so viewport units of a candidate mean the visible stage.
+   The frame scrolls its own content. The zoom control (src/frame-zoom.js) shows more of a tall candidate.
+   The stage fills the height that the window leaves. */
+.coinflip-stage { flex: 1 1 auto; min-height: 0; overflow: hidden; background: var(--canvas); }
+.coinflip-stage iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.coinflip-stage > iframe:not([src]) { visibility: hidden; }
+.coinflip-candidate.is-winner { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.coinflip-candidate.is-winner h3 { background: var(--accent-soft); }
+/* The choice is the primary action: one wide button under each candidate, the optional note between them.
+   The trusted choose controls are outside the read-only frames; candidate content never receives the choice. */
+.coinflip-decide { display: grid; flex: none; grid-template-columns: minmax(0, 1fr) minmax(180px, 0.7fr) minmax(0, 1fr); align-items: stretch; gap: 12px; }
+.coinflip-decide:not(:has(> :is(button, textarea):not([hidden]))) { display: none; }
+#coinflipChoose-left { grid-column: 1; }
+#coinflipNote { grid-column: 2; }
+#coinflipChoose-right { grid-column: 3; }
+.coinflip-pick { min-height: 42px; margin: 0; padding: 8px 14px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+.coinflip-pick:hover:not(:disabled) { filter: brightness(1.1); }
+.coinflip-pick:disabled { opacity: .5; cursor: not-allowed; }
+.coinflip textarea { display: block; box-sizing: border-box; width: 100%; min-height: 42px; height: auto; max-height: 96px; overflow-y: auto; margin: 0; padding: 10px 12px; color: var(--strong-txt); background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 12px; font: inherit; line-height: 1.4; resize: none; field-sizing: content; }
+.coinflip .alert-actions button { margin: 0; }
+/* After Submit the control stays for a repeat, as a quiet one. */
+.coinflip[data-state="submitted"] #coinflipSubmit { border-color: var(--strong-border); background: var(--card); color: var(--strong-txt); }
+@media (max-width: 900px) {
+  .coinflip-pair { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(300px, 1fr) minmax(300px, 1fr); flex-basis: 620px; }
+  .coinflip-decide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #coinflipNote { grid-column: 1 / -1; grid-row: 1; }
+  #coinflipChoose-right { grid-column: 2; }
+  .stage-bar { flex-wrap: wrap; }
+}

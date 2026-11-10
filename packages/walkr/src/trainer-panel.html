@@ -1,0 +1,16 @@
+<section class="trainer-gui" id="trainerGui" aria-labelledby="trainerGuiHeading" hidden>
+  <h2 id="trainerGuiHeading" class="visually-hidden">Training</h2>
+  <div class="stage-bar trainer-gui-bar">
+    <div class="stage-status">
+      <p class="trainer-gui-status" id="trainerGuiStatus" role="status" aria-live="polite"></p>
+      <p class="trainer-gui-dataset" id="trainerGuiDataset"></p>
+    </div>
+    <div class="alert-actions">
+      <button type="button" id="trainerGuiResolve" class="btn-ghost" hidden>Resolve saved request</button>
+      <button type="button" id="trainerGuiRetry" class="btn-primary" hidden>Retry preparation</button>
+      <button type="button" id="trainerGuiSendPending" class="btn-primary" hidden>Send pending requests</button>
+      <button type="button" id="trainerGuiEnd" class="btn-outline" hidden>End Trainer session</button>
+    </div>
+  </div>
+  <iframe id="trainerGuiFrame" title="Trainer plan review and ranking" referrerpolicy="no-referrer" hidden></iframe>
+</section>

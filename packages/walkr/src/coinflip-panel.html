@@ -1,0 +1,36 @@
+<section class="coinflip" id="coinflip" aria-labelledby="coinflipHeading" hidden>
+  <h2 id="coinflipHeading" class="visually-hidden">Coinflip</h2>
+  <div class="stage-bar coinflip-bar">
+    <p class="stage-status coinflip-status" id="coinflipStatus" role="status" aria-live="polite"></p>
+    <div class="alert-actions">
+      <button type="button" id="coinflipRetry" class="btn-primary" hidden>Retry generation</button>
+      <button type="button" id="coinflipRecover" class="btn-ghost" hidden>Mark interrupted attempt failed</button>
+      <button type="button" id="coinflipResolve" class="btn-ghost" hidden>Resolve saved request</button>
+      <details class="gui-pop gui-history"><summary>Saved choices</summary><ol id="coinflipChoices"></ol></details>
+      <button type="button" id="coinflipStop" class="btn-outline" hidden>Stop</button>
+      <button type="button" id="coinflipSubmit" class="btn-primary" hidden>Submit winner</button>
+    </div>
+  </div>
+  <div class="coinflip-pair">
+    <section class="coinflip-candidate" data-side="left" aria-labelledby="coinflipLabel-left">
+      <h3 id="coinflipLabel-left"><span class="pane-side">Left</span> <span class="coinflip-badge" id="coinflipBadge-left" hidden></span>
+        <span class="coinflip-description" id="coinflipDescription-left"></span></h3>
+      <div class="coinflip-stage" id="coinflipStage-left">
+        <iframe id="coinflipFrame-left" title="Left candidate" sandbox="" referrerpolicy="no-referrer"></iframe>
+      </div>
+    </section>
+    <section class="coinflip-candidate" data-side="right" aria-labelledby="coinflipLabel-right">
+      <h3 id="coinflipLabel-right"><span class="pane-side">Right</span> <span class="coinflip-badge" id="coinflipBadge-right" hidden></span>
+        <span class="coinflip-description" id="coinflipDescription-right"></span></h3>
+      <div class="coinflip-stage" id="coinflipStage-right">
+        <iframe id="coinflipFrame-right" title="Right candidate" sandbox="" referrerpolicy="no-referrer"></iframe>
+      </div>
+    </section>
+  </div>
+  <div class="coinflip-decide">
+    <button type="button" class="btn-primary coinflip-pick" id="coinflipChoose-left">Choose the left candidate</button>
+    <label for="coinflipNote" class="visually-hidden">Optional note, saved with your next choice</label>
+    <textarea id="coinflipNote" rows="1" placeholder="Optional note, saved with your next choice"></textarea>
+    <button type="button" class="btn-primary coinflip-pick" id="coinflipChoose-right">Choose the right candidate</button>
+  </div>
+</section>

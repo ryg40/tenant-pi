@@ -1,0 +1,6 @@
+/* Trainer panel in the shared GUI: a stage bar (status, dataset, End) and the framed private Trainer page. */
+[data-shared-gui] .trainer-gui { grid-area: panes; grid-column: 1 / -1; display: flex; flex-direction: column; min-height: 0; padding: 10px 14px 12px; gap: 10px; overflow: auto; }
+.trainer-gui-status, .trainer-gui-dataset { margin: 0; overflow-wrap: anywhere; }
+.trainer-gui-dataset { color: var(--mute-2); font-size: 12px; }
+.trainer-gui-dataset:empty { display: none; }
+.trainer-gui iframe { flex: 1 0 360px; width: 100%; min-height: 0; box-sizing: border-box; border: 1px solid var(--card-border); border-radius: 12px; background: var(--card); box-shadow: 0 1px 2px var(--shadow); }

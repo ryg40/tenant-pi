@@ -371,6 +371,9 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                                          ('Darwin', 'computer-use-macos', 'computer-use')):
             with self.subTest(platform=platform):
                 self.command('uname', 'echo ' + platform + '\n')
+                # all selects walkr too: fake node and npm commands record the step without a network.
+                for name in ('node', 'npm'):
+                    self.command(name, 'echo "' + name + ' $*" >>"$HOME/walkr-calls"\n')
                 self.success(self.install(mode='new' if platform == 'Linux' else 'upgrade', shell='none',
                                           modules='all', env={'OKKNOW_ORIGIN': 'http://127.0.0.1:1'}))
                 calls = [json.loads(line)['args'] for line in (self.profile / 'calls.jsonl').read_text().splitlines()]
@@ -378,10 +381,112 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                 for name in ('wiki', 'hermes', 'mcp', desktop):
                     self.assertIn('npm:' + MANIFEST['components'][name]['source']['spec'], requested)
                 self.assertNotIn('npm:' + MANIFEST['components'][other]['source']['spec'], requested)
+                self.assertIn('packages/walkr/src/setup.js', (self.home / 'walkr-calls').read_text())
                 if platform == 'Linux':
                     # The Darwin subtest shares this home, so only the first run proves the link.
                     self.assertTrue((self.home / '.local/bin/okknow').is_symlink())
                 (self.profile / 'calls.jsonl').write_text('')
+
+    @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
+    def test_walkr_runs_the_setup_of_the_package_for_claude_and_for_the_profile(self):
+        walkr = ROOT / 'packages/walkr'
+        env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent), 'INSTALL_SKIP_PACKAGES': '1'}
+        self.success(self.install(shell='none', modules='walkr', env=env))
+        # The Walkr setup made ~/.claude; this run adds no skill link of the kit to an account that had none.
+        self.assertEqual(sorted(MANIFEST['components']['walkr']['resources']['skills']),
+                         sorted('skills/' + p.name for p in (self.home / '.claude/skills').iterdir()))
+        self.success(self.install(mode='upgrade', shell='none', modules='walkr', env=env))
+        for name in MANIFEST['components']['walkr']['resources']['skills']:
+            for root in ('.claude', '.agents'):
+                skill = (self.home / root / name / 'SKILL.md').read_text()
+                self.assertNotIn('{{', skill)
+        compare = (self.home / '.claude/skills/walkr-compare/SKILL.md').read_text()
+        self.assertIn(str(walkr / 'src/walkr-compare.js'), compare)
+        prompt = (self.profile / 'prompts/walkr-compare.md').read_text()
+        self.assertIn(json.dumps(str(self.home / '.agents/skills/walkr-compare/SKILL.md')), prompt)
+        # The walkr-core skill calls its command by name: the link exists, points into the kit and can run.
+        for name, source in (('walkr', 'cli.js'), ('walkr-core', 'walkr-core.js'), ('walkr-compare', 'walkr-compare.js')):
+            link = self.home / '.local/bin' / name
+            self.assertEqual((walkr / 'src' / source).resolve(), link.resolve())
+            self.assertTrue(os.access(link, os.X_OK), name)
+        # The package is no Pi package of the profile: its skills are templates.
+        self.assertNotIn('packages/walkr', (self.profile / 'settings.json').read_text())
+
+    @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
+    def test_walkr_keeps_another_file_of_a_command_name_and_reports_it(self):
+        env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent), 'INSTALL_SKIP_PACKAGES': '1'}
+        other = self.home / '.local/bin/walkr-core'
+        other.parent.mkdir(parents=True)
+        other.write_text('#!/bin/sh\n')
+        result = self.install(shell='none', modules='walkr', env=env)
+        self.assertEqual(1, result.returncode)
+        self.assertIn('exists and is not a link', result.stderr)
+        self.assertEqual('#!/bin/sh\n', other.read_text())
+
+    @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
+    def test_walkr_keeps_an_unrelated_link_with_the_same_source_filename(self):
+        env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent), 'INSTALL_SKIP_PACKAGES': '1'}
+        other = self.base / 'another-app'
+        (other / 'src').mkdir(parents=True)
+        (other / 'package.json').write_text(json.dumps({'name': 'another-app'}))
+        source = other / 'src/cli.js'
+        source.write_text('#!/usr/bin/env node\n')
+        link = self.home / '.local/bin/walkr'
+        link.parent.mkdir(parents=True)
+        link.symlink_to(os.path.relpath(source, link.parent))
+        before = os.readlink(link)
+        result = self.install(shell='none', modules='walkr', env=env)
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual(before, os.readlink(link))
+        self.assertEqual('#!/usr/bin/env node\n', source.read_text())
+        self.assertFalse((self.profile / 'prompts/walkr.md').exists())
+
+    @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
+    def test_walkr_replaces_a_link_to_an_older_walkr_clone(self):
+        env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent), 'INSTALL_SKIP_PACKAGES': '1'}
+        older = self.base / 'older clone'
+        (older / 'src').mkdir(parents=True)
+        shutil.copy(ROOT / 'packages/walkr/package.json', older / 'package.json')
+        shutil.copy(ROOT / 'packages/walkr/src/cli.js', older / 'src/cli.js')
+        link = self.home / '.local/bin/walkr'
+        link.parent.mkdir(parents=True)
+        link.symlink_to(os.path.relpath(older / 'src/cli.js', link.parent))
+        self.success(self.install(shell='none', modules='walkr', env=env))
+        self.assertEqual(ROOT / 'packages/walkr/src/cli.js', link.resolve())
+
+    @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
+    def test_walkr_link_creation_failure_fails_the_module(self):
+        env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent), 'INSTALL_SKIP_PACKAGES': '1'}
+        self.command('ln', 'exit 1\n')
+        result = self.install(shell='none', modules='walkr', env=env)
+        self.assertNotEqual(0, result.returncode)
+        # Check only the completion marker, not the profile name or the rest of the report.
+        self.assertNotRegex(result.stdout, r'(?im)^complete\b')
+        self.assertFalse(os.path.lexists(self.home / '.local/bin/walkr'))
+        self.assertFalse((self.profile / 'prompts/walkr.md').exists())
+
+    @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
+    def test_walkr_installs_the_dependencies_again_after_an_interrupted_npm_run(self):
+        # A kit copy with a node_modules folder that holds no dependency, and an npm that repairs nothing.
+        kit = self.base / 'kit'
+        shutil.copytree(ROOT, kit, symlinks=True, ignore=shutil.ignore_patterns('.git', 'node_modules', '.local'))
+        (kit / 'packages/walkr/node_modules').mkdir()
+        self.command('npm', 'echo "npm $*" >>"$HOME/npm-calls"\nexit 0\n')
+        env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent)}
+        self.command('pi', 'exit 0\n')
+        result = self.run_install('--new', 'demo', '--shell', 'none', '--with', 'walkr', '--yes', env=env, script=kit / 'install.sh')
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+        self.assertIn('ci --ignore-scripts', (self.home / 'npm-calls').read_text())
+        self.assertIn('dependencies of packages/walkr are not complete', result.stderr)
+        self.assertFalse((self.home / '.local/bin/walkr-core').exists())
+
+    def test_walkr_without_node_reports_the_step_and_keeps_the_profile(self):
+        result = self.install(shell='none', modules='walkr', env={'PATH': str(self.bin) + ':/usr/bin:/bin'})
+        if shutil.which('node', path='/usr/bin:/bin'):
+            self.skipTest('node is in the base PATH of this host')
+        self.assertEqual(1, result.returncode)
+        self.assertIn('the walkr step failed', result.stderr)
+        self.assertTrue((self.profile / 'settings.json').is_file())
 
     def test_all_with_another_name_writes_nothing(self):
         result = self.install(modules='all,wiki')

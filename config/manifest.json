@@ -1088,6 +1088,101 @@
           "fact": "scripts/okknow-guard acts only on a server host whose config names the content directory. The installer wires it into no Claude Code hook and no Pi extension."
         }
       ]
+    },
+    "walkr": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/walkr"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "walkr",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/walkr",
+          "skills/walkr-core",
+          "skills/walkr-double",
+          "skills/walkr-coinflip",
+          "skills/walkr-trainer",
+          "skills/walkr-compare"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "HUMAN_REVIEW_STATE_DIR",
+        "HUMAN_REVIEW_PORT",
+        "HUMAN_REVIEW_BIND",
+        "HUMAN_REVIEW_ALLOWED_HOSTS",
+        "HUMAN_REVIEW_IDLE_MS",
+        "HUMAN_REVIEW_NO_BROWSER",
+        "HUMAN_REVIEW_COMPARE_ROOT",
+        "HUMAN_REVIEW_TRAINER_ROOT",
+        "HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR"
+      ],
+      "gaps": [
+        {
+          "code": "own_installer",
+          "fact": "The skills and the Pi prompts that the manifest names are templates with placeholders; the profile settings do not load packages/walkr as a Pi package. install.sh --with walkr runs the Walkr setup, which writes them with the path of this clone to ~/.claude/skills, ~/.codex/skills, ~/.agents/skills and <profile>/prompts. A moved clone needs a new run."
+        },
+        {
+          "code": "dependencies_required",
+          "fact": "The package needs npm ci --ignore-scripts in packages/walkr before its first command. install.sh --with walkr runs it when node_modules is absent."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the Walkr skills or prompts with the kit pin, and no Pi or Pi-Bolt session ran a Walkr workflow from this package. The Pi extensions of packages/walkr/integrations/pi load with pi -e, not from the profile settings; no run with Pi-Bolt."
+        },
+        {
+          "code": "platform_unverified",
+          "fact": "Linux and macOS only. No macOS run of install.sh --with walkr."
+        },
+        {
+          "code": "compare_unreviewed",
+          "fact": "The Compare mode of the package (walkr-compare) had two owner trials on 2026-11-10 and no independent code review."
+        }
+      ]
+    },
+    "walkr-prompts": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/walkr"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "walkr"
+      ],
+      "owner": "walkr",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [],
+        "prompts": [
+          "prompts/walkr.md",
+          "prompts/walkr-core.md",
+          "prompts/walkr-double.md",
+          "prompts/walkr-coinflip.md",
+          "prompts/walkr-trainer.md",
+          "prompts/walkr-compare.md"
+        ],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "own_installer",
+          "fact": "The prompts are templates: each one names its skill file through a placeholder. The Walkr setup of install.sh --with walkr writes them to <profile>/prompts with the path of the skill in ~/.agents/skills."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads a Walkr prompt with the kit pin, and no Pi or Pi-Bolt session ran one from this package."
+        }
+      ]
     }
   }
 }

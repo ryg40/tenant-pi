@@ -62,6 +62,8 @@ PUBLISH_DIRS = (
     ("packages/agentcore-claude", ("node_modules/",)),
     ("packages/agentcore-memory-admin", ("node_modules/",)),
     ("packages/okknow", ()),
+    # The Walkr package. Its hosted deployment and upstream design files are in the private-copy list.
+    ("packages/walkr", ("node_modules/",)),
 )
 # Optional list of repository-relative files or directory prefixes ending in "/".
 # The list excludes itself. A portable copy has neither the list nor its excluded files.
@@ -85,6 +87,24 @@ PATTERN_ALLOW = (
     # A property that says whether a key is set, and a variable name; no value (vendored OpenViking extension).
     ("packages/openviking-pi/shared/credentials.mjs", '    hasApiKey: ' 'connection.hasApiKey,'),
     ("packages/openviking-pi/shared/plugin-config.mjs", '    hasApiKey: ' 'connection.hasApiKey,'),
+    # Reads of a page credential from the document and from a server reply; no value (Walkr browser client).
+    ("packages/walkr/src/chrome-client.js", '  token: ' 'document.body.dataset.token,'),
+    ("packages/walkr/src/chrome-client.js", '  state.artifactToken = ' 'bootstrap.artifactToken || "";'),
+    # The same reads in the shared page and in the Walkr tests; two tests use a fixture word, not a credential.
+    ("packages/walkr/src/shared-gui-shell.js", '  const request = createDoubleRequest({ token: ' 'doc.body.dataset.token, fetch: fetchImpl, allowEmptyView: true });'),
+    ("packages/walkr/src/shared-gui-shell.js", '  const modeShell = (mode) => mounted[mode] ??= MODE_SHELLS[mode].mount({ window: win, token: ' 'doc.body.dataset.token, fetch: fetchImpl,'),
+    ("packages/walkr/src/shared-gui-shell.js", '        transport: createSessionTransport({ sessionId: view.sessionId, token: ' 'doc.body.dataset.token, fetch: fetchImpl, base }),'),
+    ("packages/walkr/test/double-server.test.js", '  const browserToken = ' 'dom.window.document.body.dataset.token;'),
+    ("packages/walkr/test/double-server.test.js", '  const token = ' 'dom.window.document.body.dataset.token;'),
+    ("packages/walkr/test/double-server.test.js", '  const token = ' '"temporary-test-credential";'),
+    ("packages/walkr/test/double-session-ui.test.js", '  const token = ' 'page.win.document.body.dataset.token;'),
+    ("packages/walkr/test/double-session-ui.test.js", '  const token = ' 'dom.window.document.body.dataset.token;'),
+    ("packages/walkr/test/double-session.test.js", '  const token = ' 'dom.window.document.body.dataset.token;'),
+    ("packages/walkr/test/double-session.test.js", '  assert.equal((await s.api(route("../sessions"), { token: ' 'dom.window.document.body.dataset.token })).status, 403);'),
+    ("packages/walkr/test/double-ui.test.js", '  const wrongToken = ' 'createFetchTransport({ comparisonId: "..", token: "other", fetch: globalThis.fetch, base: server.base });'),
+    ("packages/walkr/test/mode-navigation.test.js", '  const browserToken = ' 'dom.window.document.body.dataset.token;'),
+    ("packages/walkr/test/mode-navigation.test.js", '  const paneToken = ' 'shellDom.window.document.body.dataset.token;'),
+    ("packages/walkr/test/shared-gui.test.js", '  const browserToken = ' 'q.win.document.body.dataset.token;'),
     ("packages/openviking-pi/tests/config.test.mjs", '    OPENVIKING_API_KEY: ' 'process.env.OPENVIKING_API_KEY,'),
 )
 

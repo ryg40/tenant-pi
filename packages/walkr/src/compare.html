@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" data-theme="torch-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Compare · Walkr</title>
+  <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/_walkr/compare/compare.css">
+  <script type="module" src="/theme.js"></script>
+</head>
+<body data-compare data-token="__TOKEN__" data-frames="__FRAMES__">
+  <div class="cmp-app" id="app">
+    <header class="cmp-bar">
+      <button type="button" id="toggleList" class="btn-ghost" aria-expanded="true" aria-controls="list">Sessions <span class="cmp-badge" id="newCount" hidden></span></button>
+      <span class="cmp-type" id="type" hidden></span>
+      <h1 id="title">Walkr sessions</h1>
+      <span class="cmp-state" id="state" role="status" aria-live="polite"></span>
+      <span class="cmp-bar-end">
+        <button type="button" id="newer" class="btn-ghost" title="Show the next newer session">Newer</button>
+        <button type="button" id="older" class="btn-ghost" title="Show the next older session">Older</button>
+        <label>Type <select id="typeFilter"><option value="">All types</option></select></label>
+        <label>View <select id="viewMode"></select></label>
+        <label>Theme
+          <select id="theme" data-theme-picker>
+            <option value="torch-light">Torch Light</option>
+            <option value="torch-dark">Torch Dark</option>
+            <option value="plum">Fleet / Plum Dusk</option>
+            <option value="night">Fleet / Soft Night</option>
+            <option value="day">Fleet / Soft Day</option>
+            <option value="statue-light">Statue Light</option>
+            <option value="statue-dark">Statue Dark</option>
+            <option value="light">Original Light</option>
+            <option value="dark">Original Dark</option>
+          </select>
+        </label>
+      </span>
+    </header>
+
+    <aside class="cmp-list" id="list" aria-label="Sessions, newest first">
+      <ol id="sessions"></ol>
+      <p id="empty" hidden>No session yet. An agent starts one with walkr-compare create.</p>
+    </aside>
+
+    <main class="cmp-main">
+      <div class="cmp-alert" id="alert" role="alert" hidden>
+        <p id="alertText"></p>
+        <button type="button" id="resolve" class="btn-primary" hidden>Retry the same request</button>
+      </div>
+      <p class="cmp-hint" id="hint">Select a session in the list.</p>
+      <details class="cmp-context" id="context" hidden>
+        <summary>Brief and answers</summary>
+        <div id="contextBody"></div>
+      </details>
+      <details class="cmp-original" id="original" hidden>
+        <summary id="originalLabel">Original text</summary>
+        <pre class="cmp-text" id="originalText"></pre>
+      </details>
+      <div class="cmp-tabs" id="tabs" role="tablist" aria-label="Options" hidden></div>
+      <div class="cmp-stage" id="stage" hidden></div>
+      <footer class="cmp-decide" id="decide" hidden>
+        <div class="cmp-pick">
+          <p id="result" role="status"></p>
+          <label class="cmp-none" id="noneLabel"><input type="checkbox" id="none"> No option fits</label>
+          <label class="cmp-note" id="noteLabel">Note <textarea id="note" rows="3" maxlength="8000" placeholder="Optional. Required when no option fits."></textarea></label>
+          <button type="button" id="submit" class="btn-primary" disabled>Submit result</button>
+        </div>
+        <div class="cmp-rate">
+          <span id="rateTitle">Rate this session</span>
+          <span class="cmp-stars" id="stars" role="radiogroup" aria-labelledby="rateTitle"></span>
+          <span id="rateText"></span>
+          <label class="cmp-note">Rating note <textarea id="rateNote" rows="3" maxlength="2000" placeholder="Optional. What was good or bad in this session?"></textarea></label>
+          <button type="button" id="rate" class="btn-ghost" disabled>Save rating</button>
+        </div>
+      </footer>
+    </main>
+  </div>
+  <script type="module" src="/_walkr/compare/app.js"></script>
+</body>
+</html>

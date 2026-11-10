@@ -48,7 +48,7 @@ if [ -z "$shell" ]; then ask 'Shell [bash/zsh/none]:'; shell=$answer; fi
 desktop_module=computer-use
 [ "$(uname -s)" = Darwin ] && desktop_module=computer-use-macos
 # all means every optional module of this platform; it stands alone.
-optional_modules=wiki,hermes,mcp,$desktop_module,okknow
+optional_modules=wiki,hermes,mcp,$desktop_module,okknow,walkr
 # mcp-codemode is a choice for a comparison profile, so all leaves it out.
 if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, all or none]:"; modules=$answer; asked=yes; fi
 case ,$modules, in
@@ -205,14 +205,14 @@ try:
     modules = os.environ['modules'].split(',')
     if modules == ['none']:
         modules = []
-    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'questions')
+    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'walkr', 'questions')
            for module in modules):
         fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, all or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
-    # questions is mandatory; accept its old --with name without installing twice. okknow is a tree package.
+    # questions is mandatory; accept its old --with name without installing twice. okknow and walkr are tree packages.
     # mcp-codemode has no package: Pi carries the MCP client and codemode.
     specs = ['npm:' + manifest['components'][module]['source']['spec']
-             for module in dict.fromkeys([*modules, 'questions']) if module not in ('okknow', 'mcp-codemode')]
+             for module in dict.fromkeys([*modules, 'questions']) if module not in ('okknow', 'walkr', 'mcp-codemode')]
     okknow_package = kit / manifest['components']['okknow']['source']['path']
     okknow_script = okknow_package / 'skills/okknow/scripts/okknow'
     okknow_link = home / '.local/bin/okknow'
@@ -234,8 +234,11 @@ try:
     end = '# <<< tenant-pi ' + name + ' <<<'
     launcher_mark = '# tenant-pi launcher: ' + name
     # With the okknow CLI link of the kit, the launcher puts its directory at the end of PATH.
+    # The same holds for the Walkr command links of the kit, which are in the same directory.
+    walkr_link = home / '.local/bin/walkr-core'
     okknow_path = ['export PATH="$PATH":' + shlex.quote(str(okknow_link.parent))] if (
-        okknow_link.is_symlink() and okknow_link.resolve() == okknow_script.resolve()) else []
+        okknow_link.is_symlink() and okknow_link.resolve() == okknow_script.resolve()
+        or walkr_link.is_symlink() and walkr_link.resolve() == (kit / 'packages/walkr/src/walkr-core.js').resolve()) else []
     launch_text = '\n'.join(['#!/bin/sh', launcher_mark, '# tenant-pi runtime: ' + choice,
         'export PI_CODING_AGENT_DIR=' + shlex.quote(str(profile)),
         'unset PI_CODING_AGENT_SESSION_DIR',
@@ -427,6 +430,10 @@ try:
         brew_sqlite = ('/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib', '/usr/local/opt/sqlite/lib/libsqlite3.dylib')
         if 'wiki' in modules and choice == 'pi-bolt' and sys.platform == 'darwin' and not any(Path(p).exists() for p in brew_sqlite):
             print('note: wiki vector search on Pi-Bolt needs Homebrew SQLite: brew install sqlite; see docs/guides/macos.md#optional-modules')
+        if 'walkr' in modules:
+            # Walkr has its own installer for the skills and the Pi prompts; the kit runs it after the profile step.
+            print('walkr: package ' + str(kit / manifest['components']['walkr']['source']['path'])
+                  + ' (its setup writes the Walkr skills to ~/.claude, ~/.codex and ~/.agents, and the prompts to the profile)')
         if 'okknow' in modules:
             print('okknow: package ' + str(okknow_package))
             print('okknow: CLI link ' + str(okknow_link) + (' (' + okknow_link_state() + ')' if okknow_link_state() else ''))
@@ -555,7 +562,7 @@ try:
         put(launcher, launch_text, 0o700)
         put(startup, updated, startup.stat().st_mode & 0o777 if startup.exists() else 0o600)
     if action == 'alias':
-        print('Complete: ' + name + '\nprofile: ' + str(profile))
+        print('profile: ' + str(profile))
         print('alias: ' + (name if shell != 'none' else 'none'))
         print('startup: ' + (str(startup) if shell != 'none' else 'none'))
         if shell != 'none':
@@ -624,6 +631,65 @@ case ,$modules, in
     fi
     case ,$modules, in *,mcp,* | *,mcp-codemode,*) helper okknow-mcp || okknow_failed=yes ;; esac ;;
 esac
+# The Walkr setup makes ~/.claude when it is absent. The Claude skill links of the kit follow the state before it.
+claude_dir=no; [ -d "$HOME/.claude" ] && claude_dir=yes
+# walkr: the dependencies of the package, then its own setup writes the skills and the Pi prompts.
+# The package is not a Pi package of the profile: the skills hold the path of this clone.
+walkr_failed=no
+case ,$modules, in
+  *,walkr,*)
+    walkr_dir=$kit/packages/walkr
+    if ! command -v node >/dev/null 2>&1; then
+      echo 'walkr:   no node command on PATH' >&2; walkr_failed=yes
+    elif [ "${INSTALL_SKIP_PACKAGES:-}" != 1 ]; then
+      # A node_modules folder proves nothing: an interrupted npm run leaves one. Load each dependency.
+      walkr_deps() { (cd "$walkr_dir" && node --input-type=module -e 'await import("css-tree"); await import("marked"); await import("parse5");') >/dev/null 2>&1; }
+      if ! walkr_deps; then
+        (cd "$walkr_dir" && npm ci --ignore-scripts --omit=dev) && walkr_deps || {
+          echo 'walkr:   the dependencies of packages/walkr are not complete' >&2; walkr_failed=yes; }
+      fi
+    fi
+    # The walkr-core skill calls its command by name, so the six commands get links, as in the Walkr installer.
+    if [ "$walkr_failed" = no ]; then
+      mkdir -p "$HOME/.local/bin"
+      for pair in walkr:cli.js walkr-core:walkr-core.js walkr-double:walkr-double.js walkr-coinflip:walkr-coinflip.js walkr-trainer:walkr-trainer.js walkr-compare:walkr-compare.js; do
+        link=$HOME/.local/bin/${pair%%:*} target=$walkr_dir/src/${pair#*:}
+        if [ -L "$link" ]; then
+          # A matching filename proves no ownership. Read the resolved package metadata, without executing it.
+          if python3 - "$link" "${pair#*:}" <<'PY'
+import json, sys
+from pathlib import Path
+try:
+    target = Path(sys.argv[1]).resolve()
+    package = json.loads((target.parent.parent / 'package.json').read_text())
+    owned = target.parent.name == 'src' and target.name == sys.argv[2] and package.get('name') == 'walkr'
+except (OSError, ValueError, RuntimeError, AttributeError):
+    owned = False
+sys.exit(0 if owned else 1)
+PY
+          then
+            rm -f "$link"
+          else
+            echo "walkr:   $link is a link to another place; move it away and run again" >&2; walkr_failed=yes; continue
+          fi
+        elif [ -e "$link" ]; then
+          echo "walkr:   $link exists and is not a link; move it away and run again" >&2; walkr_failed=yes; continue
+        fi
+        if ln -s "$target" "$link"; then
+          echo "walkr:   $link"
+        else
+          echo "walkr:   could not create $link" >&2; walkr_failed=yes
+        fi
+      done
+    fi
+    if [ "$walkr_failed" = no ]; then
+      node --input-type=module -e '
+        const [setup, home, profile] = process.argv.slice(1);
+        const { installSkills } = await import(setup);
+        for (const line of installSkills(home, { global: true, home, piAgentDir: profile })) console.log("walkr:   " + line);
+      ' "$walkr_dir/src/setup.js" "$HOME" "$profile" || walkr_failed=yes
+    fi ;;
+esac
 # The skill's own script turns DUMMIES on for Pi and writes the autostart block into the profile.
 dummies_failed=no dummies_on= dummies_status=
 if [ "$dummies" = yes ]; then
@@ -649,7 +715,7 @@ if [ "$plugin" = yes ]; then
     plugin_failed=yes
   fi
 fi
-if [ -d "$HOME/.claude" ]; then
+if [ "$claude_dir" = yes ]; then
   helper links || { echo 'install: Claude skill links failed after profile success; alias unchanged' >&2; exit 1; }
 else
   echo "skills:  no ~/.claude directory, so no Claude Code skill link"
@@ -663,6 +729,10 @@ if [ "$okknow_failed" = yes ]; then
   echo 'install: an okknow step failed; the profile and the alias are in place. Run okknow setup' >&2
   exit 1
 fi
+if [ "$walkr_failed" = yes ]; then
+  echo 'install: the walkr step failed; the profile and the alias are in place. See docs/guides/modules.md#walkr' >&2
+  exit 1
+fi
 if [ "$dummies_failed" = yes ]; then
   echo 'install: the DUMMIES step failed; the profile and the alias are in place' >&2
   exit 1
@@ -671,3 +741,4 @@ if [ "$plugin_failed" = yes ]; then
   echo 'install: the Claude Code plugin step failed; the profile and the alias are in place' >&2
   exit 1
 fi
+printf 'Complete: %s\n' "$name"

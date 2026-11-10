@@ -1402,6 +1402,16 @@
      "nodeW": 320
     },
     {
+     "id": "g-c-walkr",
+     "label": "Walkr",
+     "sub": "packages/walkr",
+     "x": 820,
+     "y": 50,
+     "cols": 1,
+     "tone": "profile",
+     "nodeW": 320
+    },
+    {
      "id": "g-c-herdr",
      "label": "Herdr and questions",
      "sub": "coordination",
@@ -1741,6 +1751,34 @@
      "inputs": "an OpenKnowledge server; OKKNOW_ORIGIN or okknow setup; OPENKNOWLEDGE_USERNAME and OPENKNOWLEDGE_PASSWORD in the environment",
      "consent": "your agreement to requests to that server",
      "doc": "docs/guides/modules.md#okknow",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "walkr",
+     "component": "walkr",
+     "group": "g-c-walkr",
+     "label": "walkr",
+     "kind": "comp-skills",
+     "summary": "Optional: the review tool Walkr with one skill for each mode. The agent prepares a session, you look at it in a browser page, and the agent reads your notes, pick and rating. install.sh --with walkr runs the Walkr setup.",
+     "inputs": "the node and npm commands; a browser",
+     "consent": "your agreement to a local web server of your account and to the files that the Walkr setup writes",
+     "doc": "docs/guides/modules.md#walkr",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "walkr-prompts",
+     "component": "walkr-prompts",
+     "group": "g-c-walkr",
+     "label": "walkr prompts",
+     "kind": "comp-skills",
+     "summary": "Optional: one Pi prompt for each Walkr mode, for example /walkr and /walkr-compare. The Walkr setup writes them to the profile.",
+     "inputs": "the walkr component",
+     "consent": "your agreement to a local web server of your account and to the files that the Walkr setup writes",
+     "doc": "docs/guides/modules.md#walkr",
      "tags": [
       "not a detected installation"
      ]

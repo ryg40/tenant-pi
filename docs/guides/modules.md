@@ -85,6 +85,7 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 - **Computer use** (`computer-use`): control of the desktop on Linux. Ask about desktop control before you install it. Read [computer use](#computer-use) first.
 - **Computer use on macOS** (`computer-use-macos`): control of the desktop on a Mac. Ask about desktop control before you install it. Read [computer use on macOS](#computer-use-on-macos) first.
 - **OpenKnowledge** (`okknow`): the skill and the CLI for one OpenKnowledge server of the user. Read [okknow](#okknow) first.
+- **Walkr** (`walkr`): the review tool for pages, text and options of a change, with a browser page for the user. Read [walkr](#walkr) first.
 
 ## Computer use
 
@@ -297,6 +298,33 @@ A server host keeps the content directory of the server on its disk. There, `okk
 
 To remove the module: delete the `packages/okknow` entry from the profile settings, the link `~/.local/bin/okknow`, the link `~/.claude/skills/okknow` and the `okknow` entry of `<profile>/mcp-adapter.json` or `<profile>/mcp.json`.
 
+## walkr
+
+The `walkr` module is the in-tree package `packages/walkr`: the review tool Walkr with its commands `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare`. The agent prepares a review session, you open a private page in a browser, and the agent reads your notes, your pick and your rating. [The package README](../../packages/walkr/README.md) and [the mode guide](../../packages/walkr/docs/modes.md) describe each mode. The source of Walkr lives in this kit; the kit has no second copy of it.
+
+`install.sh --with walkr` does these steps:
+
+1. It checks that Node can load the three dependencies of the package. When one is missing, it runs `npm ci --ignore-scripts --omit=dev` in the package and checks again. This step needs the network.
+2. It links the six commands `walkr`, `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare` into `~/.local/bin`. The `walkr-core` skill calls its command by name. The step replaces a link only when its target belongs to a package named `walkr` in `package.json`. It keeps each unidentified link or other file of these names, then ends with an error that names the file. A failed link creation also makes the install fail and skips the Walkr setup. The profile launcher adds `~/.local/bin` at the end of `PATH`.
+3. It runs the setup of Walkr for your account. The setup writes one skill for each mode to `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills`, and one prompt for each mode to `<profile>/prompts`. Each Pi prompt names its skill file in `~/.agents/skills`; Claude Code reads `~/.claude/skills`.
+4. It prints one line for each written file. A file that you changed stops the setup; the line names the file.
+
+The setup makes `~/.claude`, `~/.codex` and `~/.agents` when they are absent. On an account without `~/.claude` before the install, that run makes no Claude Code skill link of the kit. A later run of `install.sh` finds the directory and makes the links, as for each account with `~/.claude`.
+
+The skills and the prompts in the package are templates. The setup writes the absolute path of this clone into each skill, so the package is not an entry of `settings.packages`. After you move the clone, run `install.sh --upgrade <name> --with walkr` again.
+
+In Pi or Pi-Bolt, type `/walkr` with a request, for example `/walkr compare cfn options` or `/walkr simplify ticket`. In Claude Code, the same line loads the same skill. Each Compare workflow asks its questions before it prepares the options: with `AskUserQuestion` in Claude Code, and with `ask_user_question` of the `questions` component in Pi.
+
+`walkr setup --help` and `walkr-core setup --help` print help without writing files. The other four commands have no `setup` form.
+
+The Walkr server listens on `127.0.0.1`. Core and other non-Compare routes require both a loopback Host header and a loopback connection peer. A remote peer cannot reach those routes with a forged loopback Host. To open the Compare page from another computer, read [the Compare limits](../../packages/walkr/docs/compare.md#limits) for `HUMAN_REVIEW_BIND` and `HUMAN_REVIEW_ALLOWED_HOSTS` first.
+
+Warning: with `HUMAN_REVIEW_BIND=0.0.0.0`, each device of your networks can reach the server over plain HTTP. Only the secret in the page URL protects a page.
+
+To remove the module: run no step of the kit. Delete the six command links of `~/.local/bin`, the `walkr*` folders of the three skill folders, the `walkr*.md` files of `<profile>/prompts` and the file `.walkr-setup.json` beside them.
+
+Not verified: a Walkr workflow in a Pi or Pi-Bolt session from this package, the Pi extensions of `packages/walkr/integrations/pi` with Pi-Bolt, and the module on macOS.
+
 ## Claude Code
 
 The Pi profile is the reference. The Claude Code form of the kit carries each component that has a Claude Code form, and nothing else.
@@ -308,6 +336,7 @@ The Pi profile is the reference. The Claude Code form of the kit carries each co
 | `herdr-relay`, `coordinator-skills`, `knowledge-skills`, `tracker-site` | The skills | The links of `install.sh`, or the plugin |
 | `herdr-idle-cleanup`, `herdr-idle-cleanup-prompt`, `handoffs` | The skill, `/herdr-idle-cleanup`, `/handoffs`, `/herdr-idle` and the startup assessment of the `SessionStart` hook | The skill: a link of `install.sh`, or the plugin. The commands and the hook: the plugin |
 | `okknow` | The skill; the MCP server is a step of the user | The link of `install.sh --with okknow` |
+| `walkr` | The skills `walkr`, `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare` | The files that the Walkr setup of `install.sh --with walkr` writes; they are not links |
 | `agentcore` | The plugin `packages/agentcore-claude` | `claude --plugin-dir`; see [in-tree packages](../packages.md) |
 | `computer-use` | The plugin of the package | [The Claude Code plugin](#claude-code-plugin) |
 

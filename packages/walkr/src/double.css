@@ -1,0 +1,555 @@
+/* Double shell. The shared palettes in theme.css load first. */
+
+* { box-sizing: border-box; }
+
+/* Author display rules beat the UA rule for [hidden], so restate it. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; margin: 0; }
+
+body {
+  background: var(--canvas);
+  color: var(--txt);
+  font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, textarea, select { font: inherit; color: inherit; }
+h1, h2, p, ol { margin: 0; }
+
+/* Desktop: Left | Right | rail. */
+.double-app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--rail-w);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas: "bar bar bar" "alert alert alert" "panes panes rail";
+  height: 100vh;
+  height: 100dvh;
+}
+
+.double-bar {
+  grid-area: bar;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--hair);
+  background: var(--rail);
+}
+.double-brand { display: flex; align-items: center; gap: 8px; font-weight: 700; white-space: nowrap; }
+.double-brand::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.double-title { min-width: 0; overflow: hidden; color: var(--strong-txt); font-size: 14px; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.double-bar .theme-control { margin-left: auto; }
+
+.save-line { display: flex; align-items: center; gap: 7px; color: var(--faint-2); font-size: 11.5px; white-space: nowrap; }
+.save-line.saving { color: var(--mute); }
+.save-line.failed { color: var(--danger); }
+.save-line.sent { color: var(--accent); }
+.dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--green); }
+.save-line.saving .dot { background: var(--amber); }
+.save-line.failed .dot { background: var(--danger); }
+
+.double-alert {
+  grid-area: alert;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--danger);
+  background: var(--danger-soft);
+  color: var(--txt);
+}
+.double-alert p { flex: 1 1 320px; font-size: 12.5px; }
+.alert-actions { display: flex; gap: 6px; }
+
+.double-panes {
+  grid-area: panes;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--hair); }
+.pane-label {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--hair-2);
+  background: var(--rail);
+  font-size: 13px;
+  font-weight: 500;
+}
+.pane-side {
+  flex: none;
+  padding: 1px 9px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.pane-name { min-width: 0; overflow: hidden; color: var(--strong-txt); white-space: nowrap; text-overflow: ellipsis; }
+.pane-count { flex: none; margin-left: auto; color: var(--faint-2); font-size: 11px; }
+
+/* Trusted component controls: always reachable from the shell, collapsed by default. */
+.pane-controls { flex: none; border-bottom: 1px solid var(--hair-2); background: var(--rail); }
+.pane-controls > summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 6px 14px;
+  color: var(--mute);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+:is(.pane-controls > summary, .control-keep, .control-delete):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.controls-note { padding: 0 14px 8px; color: var(--faint); font-size: 11.5px; }
+.controls-list { max-height: 30vh; margin: 0; padding: 0 10px 8px; overflow-y: auto; list-style: none; }
+.control-row { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 3px 4px; border-top: 1px solid var(--hair-2); }
+.control-name { flex: 1; min-width: 0; overflow: hidden; color: var(--strong-txt); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; }
+.control-keep, .control-delete {
+  flex: none;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mute-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+.control-keep:hover:not(:disabled) { border-color: var(--strong-border); color: var(--strong-txt); }
+.control-keep[aria-pressed="true"] { border-color: var(--btn-bg); background: var(--btn-bg); color: var(--btn-fg); }
+.control-delete:hover:not(:disabled) { border-color: var(--danger); color: var(--danger); }
+:is(.control-keep, .control-delete):disabled { opacity: 0.5; cursor: default; }
+[data-double-session-shell] .control-row, [data-shared-gui] .control-row { flex-wrap: wrap; }
+[data-double-session-shell] .control-name, [data-shared-gui] .control-name { min-width: 90px; white-space: normal; }
+.selection-legend { margin: 4px 0 10px; color: var(--mute); font-size: 11.5px; line-height: 1.4; }
+.rail-scroll .pane-controls { border: 0; background: transparent; }
+.rail-scroll .controls-list { max-height: none; padding: 0; overflow: visible; }
+/* One compact card per component: the name and its mark, then Keep, Discard and the comment on one line.
+   A kept or discarded component shows its mark at rest: a colored edge, a tinted card and a filled label. */
+.rail-scroll .control-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; margin-bottom: 6px; padding: 6px 10px; border: 1px solid var(--card-border); border-left-width: 3px; border-radius: 10px; background: var(--card); }
+.control-heading, .control-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rail-scroll .control-heading { grid-column: 1 / -1; flex-wrap: nowrap; justify-content: space-between; }
+.rail-scroll .control-name { font-weight: 600; }
+.selection-state { flex: none; padding: 1px 8px; border: 1px solid var(--hair); border-radius: 999px; color: var(--faint); font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+.rail-scroll [data-selection="keep"] { border-left-color: var(--keep); background: var(--keep-soft); }
+.rail-scroll [data-selection="discard"] { border-left-color: var(--discard); background: var(--discard-soft); }
+.rail-scroll [data-selection="discard"] .control-name { text-decoration: line-through; text-decoration-color: var(--discard); }
+.rail-scroll [data-selection="keep"] .selection-state { border-color: var(--keep); background: var(--keep); color: var(--mark-fg); }
+.rail-scroll [data-selection="discard"] .selection-state { border-color: var(--discard); background: var(--discard); color: var(--mark-fg); }
+.rail-scroll :is(.control-keep, .control-delete) { min-height: 26px; padding: 1px 10px; }
+.rail-scroll .control-keep[aria-pressed="true"] { background: var(--keep); border-color: var(--keep); color: var(--mark-fg); }
+.rail-scroll .control-delete[aria-pressed="true"] { background: var(--discard); border-color: var(--discard); color: var(--mark-fg); }
+/* A pressed mark stays readable when the session is read-only. */
+.rail-scroll :is(.control-keep, .control-delete)[aria-pressed="true"]:disabled { opacity: 0.85; }
+.component-comment { min-width: 0; font-size: 12px; }
+.rail-scroll .component-comment:not([open]) { justify-self: end; }
+.rail-scroll .component-comment[open] { grid-column: 1 / -1; }
+.component-comment summary { padding: 4px 0; cursor: pointer; color: var(--mute-2); }
+.component-comment summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.component-comment textarea { display: block; width: 100%; min-height: 72px; margin: 6px 0; padding: 8px; resize: vertical; border: 1px solid var(--hair); border-radius: 6px; background: var(--input-bg); color: var(--strong-txt); }
+.component-comment textarea:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+.history-heading { margin-top: 18px; }
+[data-double-session-shell] .double-rail, [data-shared-gui] .double-rail { overflow-y: auto; }
+[data-double-session-shell] .rail-scroll, [data-shared-gui] .rail-scroll { flex: 1 0 auto; overflow: visible; }
+@media (min-width: 1181px) {
+  [data-double-session-shell] .double-rail, [data-shared-gui] .double-rail { overflow: hidden; }
+  [data-double-session-shell] .rail-scroll, [data-shared-gui] .rail-scroll { flex: 1; overflow-y: auto; }
+  [data-double-session-shell] .rail-foot, [data-shared-gui] .rail-foot { max-height: 55vh; overflow-y: auto; }
+}
+/* The overall comment is one line at rest and grows with its text. Save sits beside the field. */
+.overall-comment { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 5px 6px; margin-bottom: 10px; }
+/* Save shows when the field has text. */
+.overall-comment:has(textarea:placeholder-shown) button { display: none; }
+.overall-comment:has(textarea:placeholder-shown) textarea { grid-column: 1 / -1; }
+.overall-comment label { grid-column: 1 / -1; color: var(--strong-txt); font-size: 12px; font-weight: 600; }
+.overall-comment textarea { box-sizing: border-box; width: 100%; min-height: 34px; max-height: 30vh; padding: 7px 8px; resize: vertical; color: var(--strong-txt); background: var(--input-bg); border: 1px solid var(--hair); border-radius: 6px; line-height: 1.4; field-sizing: content; }
+.overall-comment textarea:focus { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.pane-stage { position: relative; flex: 1; min-height: 0; background: var(--canvas); }
+.pane-stage iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+/* Zoom of one candidate display (src/frame-zoom.js). The frame keeps its layout width; a smaller level
+   scales it down and makes it taller by the same factor, so more of the page shows. */
+/* The stage does not clip: the Double delete popup is a child of the stage and can be taller than the stage.
+   The scaled frame has the visual size of the stage, so it needs no clip. */
+.zoom-stage { --zoom: 1; }
+/* The doubled class wins over the frame rule of each mode sheet. */
+.zoom-stage.zoom-stage > iframe { height: calc(100% / var(--zoom)); transform: scale(var(--zoom)); transform-origin: top center; }
+.zoom-control { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; font-size: 11px; font-weight: 500; letter-spacing: 0; text-transform: none; }
+.zoom-control button { min-width: 26px; height: 24px; margin: 0; padding: 0 7px; border: 1px solid var(--hair); border-radius: 6px; background: var(--card); color: var(--txt); font: inherit; cursor: pointer; }
+.zoom-control button:hover:not(:disabled) { border-color: var(--accent); }
+.zoom-control button:disabled { color: var(--faint); cursor: default; }
+.zoom-control .zoom-reset { min-width: 46px; font-variant-numeric: tabular-nums; }
+.zoom-control .zoom-reset[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.pane-missing { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; color: var(--faint); text-align: center; }
+
+/* The trusted delete popup sits over its own pane, never inside the frame. */
+.double-popup {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  z-index: 5;
+  width: min(340px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px 14px;
+  border: 1px solid var(--strong-border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: 0 10px 30px -10px var(--shadow), 0 4px 14px -8px rgba(27, 26, 22, 0.3);
+  transform: translateX(-50%);
+  animation: rise 130ms ease-out;
+}
+.popup-head { display: flex; align-items: flex-start; gap: 8px; }
+.popup-title { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.popup-kicker { color: var(--mute); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
+.popup-name { overflow-wrap: anywhere; color: var(--strong-txt); font-size: 13.5px; font-weight: 600; }
+.popup-label { color: var(--mute-2); font-size: 12px; }
+.double-popup textarea {
+  width: 100%;
+  min-height: 70px;
+  padding: 8px 10px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: var(--input-bg);
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+}
+.double-popup textarea:focus { border-color: var(--focus); background: var(--card); }
+.popup-foot { display: flex; align-items: center; gap: 8px; min-height: 18px; }
+.popup-status { flex: 1; color: var(--faint-2); font-size: 11.5px; }
+.popup-status.saving { color: var(--mute); }
+.popup-status.failed { color: var(--danger); }
+
+/* Buttons follow the review rail. Hit areas are at least 32px high. */
+.btn-primary, .btn-ghost, .btn-danger, .send, .row-undo { min-height: 32px; cursor: pointer; }
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 1px solid var(--btn-bg);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+.btn-ghost {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mute);
+  font-size: 12px;
+}
+.btn-ghost:hover:not(:disabled) { background: var(--soft); color: var(--strong-txt); }
+/* A secondary action that must stay visible, for example Stop. */
+.btn-outline { min-height: 32px; padding: 6px 12px; border: 1px solid var(--strong-border); border-radius: 10px; background: var(--card); color: var(--strong-txt); font-size: 12px; font-weight: 500; cursor: pointer; }
+.btn-outline:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-outline:disabled { opacity: 0.5; cursor: default; }
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: var(--card); }
+.popup-x { font-size: 14px; line-height: 1; }
+:is(.btn-primary, .btn-ghost, .btn-danger, .row-undo):disabled { opacity: 0.5; cursor: default; }
+
+.double-rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--rail);
+}
+.rail-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 12px 12px; }
+.rail-head { display: flex; align-items: baseline; gap: 7px; padding: 0 4px 9px; }
+.section { color: var(--mute); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.dim { color: var(--faint); font-size: 11px; }
+.empty { padding: 16px 14px; border: 1px dashed var(--dash); border-radius: 8px; color: var(--faint); font-size: 11.5px; text-align: center; }
+
+.history { display: flex; flex-direction: column; gap: 8px; padding: 0; list-style: none; }
+.history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 12px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card);
+}
+.history-row.undone { opacity: 0.7; }
+.history-head { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.history-label { min-width: 0; overflow-wrap: anywhere; color: var(--strong-txt); font-size: 12.5px; font-weight: 500; }
+.history-kind { margin-left: auto; color: var(--faint-2); font-size: 11px; }
+.history-feedback {
+  padding-left: 9px;
+  border-left: 2px solid var(--amber);
+  color: var(--mute-2);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chip { padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--mute); font-size: 10px; font-weight: 600; }
+.badge { padding: 1px 7px; border-radius: 999px; background: var(--soft); color: var(--faint-2); font-size: 10px; font-weight: 600; }
+.row-undo {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border: 1px solid var(--hair);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mute-2);
+  font-size: 12px;
+}
+.row-undo:hover:not(:disabled) { border-color: var(--strong-border); background: var(--soft); color: var(--strong-txt); }
+
+/* Next Round and Done share one line: the primary action is wide, Done stays beside it. */
+.rail-foot { flex: none; display: flex; flex-wrap: wrap; align-items: stretch; gap: 0 8px; padding: 10px 12px 12px; border-top: 1px solid var(--hair-2); }
+.rail-foot > * { flex: 1 1 100%; min-width: 0; }
+.rail-foot > .send { flex: 3 1 0; width: auto; }
+.rail-foot > .end-open { flex: 1 1 0; width: auto; margin-top: 0; }
+.summary { margin-bottom: 8px; color: var(--mute-2); font-size: 12px; }
+.send {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--btn-bg);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.send:disabled { border-color: var(--hair); background: var(--soft); color: var(--faint); cursor: default; }
+.sent-note { margin-top: 8px; color: var(--accent); font-size: 12px; text-align: center; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* Fleet and Statue structure is opt-in; original themes keep upstream panel styling. */
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) body { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .double-rail { background: linear-gradient(165deg, var(--rail), var(--canvas)); }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) :is(.double-popup, .history-row, .empty) { border-radius: 14px; }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) :is(textarea, .send, .btn-primary, .btn-ghost, .btn-danger, .row-undo, .control-keep, .control-delete) { border-radius: 10px; }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .section { color: var(--accent); font-size: 12px; letter-spacing: 0; text-transform: none; font-weight: 700; }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .section::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--btn-bg); }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .history-feedback { border-color: var(--amber); }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .send:not(:disabled):hover { filter: brightness(1.08); }
+
+/* Medium width: panes stay side by side; the rail moves below them. */
+@media (max-width: 1180px) {
+  .double-app {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "bar" "alert" "panes" "rail";
+  }
+  .double-rail { max-height: 34vh; border-top: 1px solid var(--hair); }
+}
+
+/* Narrow: Left above Right with persistent labels; the page scrolls. */
+@media (max-width: 720px) {
+  .double-app { height: auto; min-height: 100dvh; }
+  .double-bar { flex-wrap: wrap; gap: 6px 12px; }
+  .double-bar .theme-control { margin-left: 0; }
+  .double-panes { grid-template-columns: minmax(0, 1fr); }
+  .pane { border-right: 0; border-bottom: 1px solid var(--hair); }
+  .pane-stage { flex: none; height: 72vh; }
+  .controls-list { max-height: 40vh; }
+  .double-rail { max-height: none; }
+}
+
+/* Session page: round state, Next, Retry, and the explicit End choice. */
+.session-state { flex: none; padding: 1px 9px; border-radius: 999px; background: var(--chip); color: var(--mute); font-size: 11px; font-weight: 600; white-space: nowrap; }
+.session-state:empty { display: none; }
+.session-state[data-state="generating"] { color: var(--amber); }
+.session-state[data-state="failed"] { color: var(--danger); }
+.session-state[data-state="ended"] { color: var(--accent); }
+.session-note, .draft-note { margin-bottom: 8px; color: var(--mute-2); font-size: 12px; overflow-wrap: anywhere; }
+.session-note:empty { display: none; }
+.draft-note { color: var(--danger); }
+.session-alert { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--danger); border-radius: 6px; background: var(--danger-soft); font-size: 12px; overflow-wrap: anywhere; }
+.end-open { width: 100%; margin-top: 6px; border: 1px solid var(--strong-border); color: var(--strong-txt); font-weight: 500; }
+.end-panel { display: flex; flex-direction: column; gap: 7px; margin: 8px 0 0; padding: 10px; border: 1px solid var(--strong-border); border-radius: 8px; background: var(--card); }
+.end-panel legend { padding: 0 4px; color: var(--strong-txt); font-size: 12.5px; font-weight: 600; }
+.end-help, .end-notice { color: var(--mute-2); font-size: 12px; }
+.end-notice { color: var(--danger); }
+.end-option { display: flex; align-items: center; gap: 7px; min-height: 32px; min-width: 0; color: var(--strong-txt); font-size: 12.5px; overflow-wrap: anywhere; cursor: pointer; }
+.end-option input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) :is(.end-panel, .session-alert) { border-radius: 14px; }
+
+/* Shared GUI page. Three parts: a thin top bar, the stage of the candidates, and the composer.
+   The stage gets every pixel that the bar and the composer leave. The page itself does not scroll. */
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+[data-shared-gui] [hidden] { display: none !important; }
+[data-shared-gui] .double-app {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "bar bar bar" "alert alert alert" "panes panes rail" "entry entry entry";
+  background: var(--stage);
+}
+
+/* Top bar: what the page shows (mode, title, state) on the left, the tools on the right. */
+[data-shared-gui] .double-bar { flex-wrap: nowrap; gap: 10px; min-height: 46px; padding: 6px 14px; border-bottom: 1px solid var(--band-line); background: var(--band); color: var(--band-txt); }
+[data-shared-gui] .double-brand { color: var(--band-txt); font-size: 14px; letter-spacing: 0.01em; }
+[data-shared-gui] .double-brand::before { width: 9px; height: 9px; background: var(--brand, var(--green)); }
+.view-mode { flex: none; padding: 2px 10px; border-radius: 999px; background: var(--brand, var(--btn-bg)); color: var(--brand-ink, var(--btn-fg)); font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap; }
+.view-mode:empty { display: none; }
+[data-shared-gui] .double-title { flex: 0 1 auto; color: var(--band-txt); font-size: 14px; }
+[data-shared-gui] .session-state { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; background: var(--band-soft); color: var(--band-txt); }
+[data-shared-gui] .session-state::before { content: ""; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--band-mute); }
+[data-shared-gui] .session-state[data-state="generating"]::before { background: var(--brand, var(--amber)); animation: pulse 1.2s ease-in-out infinite; }
+[data-shared-gui] .session-state[data-state="failed"] { color: var(--band-danger); }
+[data-shared-gui] .session-state[data-state="failed"]::before { background: var(--band-danger); }
+[data-shared-gui] .session-state:empty { display: none; }
+[data-shared-gui] .save-line { margin-left: auto; color: var(--band-mute); }
+[data-shared-gui] .save-line.failed { color: var(--band-danger); }
+[data-shared-gui] .save-line.failed .dot { background: var(--band-danger); }
+/* The state chip already says Ended: the line stays for assistive technology only. */
+[data-shared-gui] .save-line.sent { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+[data-shared-gui] .save-line.sent + * { margin-left: auto; }
+/* Nothing in progress: the line takes no room, the connection dot beside it is enough. */
+[data-shared-gui] .save-line:has(#statusText:empty) .dot { display: none; }
+[data-shared-gui] .double-bar .theme-control { margin-left: 0; color: var(--band-mute); font-size: 0; gap: 0; }
+[data-shared-gui] .double-bar .theme-control select { padding: 4px 8px; font-size: 12px; }
+[data-shared-gui] .double-bar .btn-ghost { flex: none; min-height: 30px; padding: 4px 9px; color: var(--band-mute); }
+[data-shared-gui] .double-bar .btn-ghost:hover:not(:disabled) { background: var(--band-soft); color: var(--band-txt); }
+/* New review: leave the session on screen and open the start card. */
+.btn-bar { flex: none; min-height: 30px; padding: 4px 12px; border: 1px solid var(--band-mute); border-radius: 10px; background: transparent; color: var(--band-txt); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.btn-bar:hover:not(:disabled) { border-color: var(--brand, var(--accent)); background: var(--band-soft); }
+.btn-bar:disabled { opacity: 0.5; cursor: default; }
+[data-shared-gui] .double-bar :focus-visible { outline-color: var(--band-focus); }
+
+/* A popover of the page: a quiet summary, and a card that opens over the stage. It never pushes the candidates. */
+.gui-pop { position: relative; flex: none; font-size: 12px; }
+.gui-pop > summary { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 4px 9px; border-radius: 10px; color: var(--mute-2); cursor: pointer; white-space: nowrap; list-style: none; }
+.gui-pop > summary::-webkit-details-marker { display: none; }
+.gui-pop > summary::after { content: ""; width: 5px; height: 5px; margin: -3px 0 0 2px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); opacity: 0.7; }
+.gui-pop > summary:hover, .gui-pop[open] > summary { background: var(--soft); color: var(--strong-txt); }
+.gui-pop > :not(summary) { position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; box-sizing: border-box; width: min(520px, 86vw); max-height: min(60vh, 520px); margin: 0; padding: 10px 12px; overflow: auto; border: 1px solid var(--card-border); border-radius: 12px; background: var(--card); color: var(--txt); box-shadow: 0 14px 34px var(--shadow); }
+.double-bar .gui-pop > summary { color: var(--band-mute); }
+.double-bar .gui-pop > summary:hover, .double-bar .gui-pop[open] > summary { background: var(--band-soft); color: var(--band-txt); }
+.gui-pop > :is(ul, ol) { padding-left: 12px; list-style: none; }
+.gui-pop > ol { padding-left: 30px; list-style: decimal; }
+.gui-pop > ol:empty::before, .gui-pop > ul:empty::before { content: "Nothing saved yet."; color: var(--mute); }
+.gui-conn .dot { background: var(--band-mute); }
+.gui-conn[data-state="on"] .dot { background: var(--band-ok); }
+.gui-conn[data-state="off"] .dot { background: var(--band-danger); }
+.gui-conn[data-state="off"] > summary { color: var(--band-danger); font-weight: 600; }
+.gui-conn > p { width: min(440px, 86vw); font: 11.5px/1.5 var(--mono); overflow-wrap: anywhere; }
+.gui-guides-body { width: min(360px, 86vw); }
+.gui-guides-body > p { margin: 0 0 8px; color: var(--mute-2); }
+[data-shared-gui] .gui-guides .mode-nav { flex: none; margin: 0; padding: 0; border: 0; background: none; }
+[data-shared-gui] .gui-guides .mode-nav a { min-height: 32px; padding: 4px 12px; border-color: var(--hair); }
+/* Saved sessions: one row per session with its mode, its state and its brief. */
+#guiHistory { display: grid; gap: 2px; padding: 6px; }
+#guiHistory button { display: grid; grid-template-columns: 78px 78px minmax(0, 1fr); align-items: baseline; gap: 8px; width: 100%; margin: 0; padding: 7px 8px; border: 0; border-radius: 8px; background: none; color: var(--txt); font: inherit; font-size: 0; text-align: left; cursor: pointer; }
+#guiHistory button > span { font-size: 12.5px; }
+#guiHistory button:hover { background: var(--soft); }
+#guiHistory button[aria-current="true"] { background: var(--accent-soft); }
+#guiHistory .history-mode { color: var(--accent); font-weight: 700; }
+#guiHistory .history-status { color: var(--mute-2); }
+#guiHistory .history-brief { overflow: hidden; color: var(--strong-txt); white-space: nowrap; text-overflow: ellipsis; }
+
+/* The stage bar of a mode: its one status text on the left, its session actions on the right. */
+.stage-bar { display: flex; flex: none; align-items: center; gap: 12px; min-width: 0; min-height: 32px; }
+.stage-status { flex: 1 1 auto; min-width: 0; margin: 0; padding-left: 10px; border-left: 3px solid var(--accent); color: var(--txt); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+[data-state="generating"] > .stage-bar .stage-status, [data-state="preparing"] > .stage-bar .stage-status { border-left-color: var(--amber); }
+:is([data-state="failed"], [data-state="alert"]) > .stage-bar .stage-status { border-left-color: var(--danger); color: var(--danger); }
+.stage-bar .alert-actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.stage-bar .alert-actions button { margin: 0; }
+
+/* The composer: the prompt of the page. A bar under the stage while a session is on screen. */
+.gui-entry { grid-area: entry; min-width: 0; border-top: 1px solid var(--hair); background: var(--rail); }
+.composer { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "mode brief actions"; align-items: end; gap: 0 10px; padding: 8px 14px; }
+/* Under a session the bar keeps one fixed height. The hint and a long draft open upward over the stage edge,
+   so focus and blur of the prompt never resize the stage or move a stage control under the pointer. */
+body[data-gui-stage="review"] .composer { grid-template-rows: 34px; }
+body[data-gui-stage="review"] .composer-field { grid-area: brief; position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: flex-end; gap: 5px; height: 34px; min-width: 0; pointer-events: none; }
+body[data-gui-stage="review"] .composer-field > * { flex: none; pointer-events: auto; }
+body[data-gui-stage="review"] #guiStatus { align-self: flex-start; max-width: 100%; margin: 0; padding: 4px 10px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--card); box-shadow: 0 6px 18px -8px var(--shadow); }
+body:not([data-gui-stage="review"]) .composer-field { display: contents; }
+.composer-title { grid-area: title; margin: 0; }
+.gui-mode { grid-area: mode; display: flex; gap: 2px; min-width: 0; margin: 0; padding: 2px; border: 1px solid var(--hair); border-radius: 10px; background: var(--card); }
+.gui-mode label { position: relative; display: inline-flex; align-items: center; padding: 5px 11px; border-radius: 8px; color: var(--mute-2); font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.gui-mode label:hover { color: var(--strong-txt); }
+.gui-mode label:has(input:checked) { background: var(--btn-bg); color: var(--btn-fg); font-weight: 600; }
+.gui-mode label:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The radio stays in the page for the keyboard and for assistive technology; the label is the visible control. */
+.gui-mode input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.mode-hint { display: none; }
+.gui-entry textarea { grid-area: brief; display: block; box-sizing: border-box; width: 100%; min-height: 34px; height: auto; max-height: 92px; overflow-y: auto; margin: 0; padding: 7px 12px; color: var(--strong-txt); background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 12px; font: inherit; line-height: 1.4; resize: none; field-sizing: content; }
+/* Under a session the prompt is one line at rest. It opens to its text on focus. */
+body[data-gui-stage="review"] .gui-entry textarea:not(:focus) { max-height: 34px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.gui-entry textarea:focus { max-height: 30vh; border-color: var(--accent); outline: 2px solid var(--focus); outline-offset: 1px; }
+.gui-actions { grid-area: actions; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.gui-actions button { margin: 0; }
+.gui-actions .btn-primary { min-height: 34px; padding: 6px 16px; font-size: 12.5px; font-weight: 600; }
+/* The hint of the prompt shows while the prompt has focus. A failure, an unconfirmed request or a disconnected chat always shows. */
+#guiStatus { grid-area: status; display: none; margin: 0 2px 6px; color: var(--mute-2); font-size: 12px; overflow-wrap: anywhere; }
+.gui-entry:focus-within #guiStatus, #guiStatus[data-kind="alert"] { display: block; }
+#guiStatus[data-kind="alert"] { color: var(--danger); font-weight: 600; }
+#guiStatus:empty { display: none !important; }
+
+/* No candidates yet: the composer takes the stage as one centered card. */
+body:not([data-gui-stage="review"]) .gui-entry { grid-area: 3 / 1 / 5 / -1; display: grid; place-items: center; padding: 24px 16px; overflow: auto; border-top: 0; background: var(--stage); }
+body:not([data-gui-stage="review"]) .composer { grid-template-columns: minmax(0, 1fr); grid-template-areas: "title" "mode" "brief" "actions" "status"; gap: 14px; width: min(760px, 100%); padding: 26px 28px 22px; border: 1px solid var(--card-border); border-radius: 18px; background: var(--card); box-shadow: 0 18px 44px -18px var(--shadow); }
+body:not([data-gui-stage="review"]) .composer-title { color: var(--strong-txt); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+body:not([data-gui-stage="review"]) .gui-mode { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0; border: 0; background: none; }
+body:not([data-gui-stage="review"]) .gui-mode label { display: grid; align-content: start; gap: 3px; padding: 10px 12px; border: 1px solid var(--card-border); border-radius: 12px; color: var(--strong-txt); font-size: 14px; font-weight: 600; white-space: normal; }
+body:not([data-gui-stage="review"]) .gui-mode label:has(input:checked) { border-color: var(--btn-bg); background: var(--accent-soft); color: var(--strong-txt); box-shadow: inset 0 0 0 1px var(--btn-bg); }
+body:not([data-gui-stage="review"]) .mode-hint { display: block; color: var(--mute-2); font-size: 12px; font-weight: 400; line-height: 1.35; }
+body:not([data-gui-stage="review"]) .gui-entry textarea { min-height: 128px; max-height: 40vh; padding: 12px 14px; font-size: 14px; line-height: 1.5; }
+body:not([data-gui-stage="review"]) .gui-actions .btn-primary { min-height: 40px; padding: 8px 22px; font-size: 14px; }
+body:not([data-gui-stage="review"]) #guiStatus { display: block; margin: 0; font-size: 12.5px; }
+body[data-gui-stage="review"] .composer-title { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* Double in the shared GUI: the panes and the right column fill the stage. */
+[data-shared-gui] .double-panes { background: var(--card); }
+[data-shared-gui] .double-rail { border-left: 1px solid var(--hair); }
+[data-shared-gui] .pane:last-child { border-right: 0; }
+
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+@media (max-width: 1180px) {
+  [data-shared-gui] .double-app { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto auto; grid-template-areas: "bar" "alert" "panes" "rail" "entry"; }
+  [data-shared-gui] .double-rail { border-left: 0; }
+  body:not([data-gui-stage="review"]) .gui-entry { grid-area: 3 / 1 / 6 / -1; }
+  [data-shared-gui] .double-title { flex-shrink: 4; }
+}
+@media (max-width: 900px) {
+  .composer { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "mode mode" "brief actions"; gap: 6px 10px; }
+  body[data-gui-stage="review"] .composer { grid-template-rows: auto 34px; }
+  body:not([data-gui-stage="review"]) .gui-mode { grid-template-columns: minmax(0, 1fr); }
+  [data-shared-gui] .double-bar { flex-wrap: wrap; }
+}
+/* The final choice gets the room of the right column foot: the round note and the overall comment step aside. */
+.rail-foot:has(#endPanel:not([hidden])) :is(.overall-comment, .session-note) { display: none; }

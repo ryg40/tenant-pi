@@ -1,0 +1,96 @@
+/* Trainer page. Uses the shared theme variables; all themes apply. */
+body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.5 var(--sans); }
+[hidden] { display: none !important; }
+.trainer-app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 280px);
+  grid-template-areas: "bar bar" "progress side" "alert side" "plan side" "rank side" "done side";
+  align-content: start;
+  gap: 12px;
+  padding: 0 16px 24px;
+}
+.trainer-bar { grid-area: bar; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.trainer-brand { font-weight: 700; color: var(--brand, var(--accent)); }
+.trainer-bar h1 { margin: 0; font-size: 20px; }
+.trainer-id { color: var(--mute); font-family: var(--mono); font-size: 12px; }
+.theme-control { margin-left: auto; color: var(--mute); }
+/* Progress first, then the task as the lead text of the page. */
+.trainer-progress { grid-area: progress; display: grid; gap: 6px; }
+.trainer-progress progress { width: 100%; height: 8px; accent-color: var(--accent); }
+.trainer-progress p { margin: 0; }
+#progressText { color: var(--mute-2); font-size: 12.5px; }
+.trainer-task { color: var(--strong-txt); font-size: 16px; font-weight: 600; white-space: pre-wrap; }
+.trainer-alert { grid-area: alert; padding: 8px 12px; border: 1px solid var(--danger); background: var(--danger-soft); border-radius: 7px; }
+.trainer-plan { grid-area: plan; }
+.trainer-rank { grid-area: rank; }
+/* A closing state is a notice, not a second page title. */
+.trainer-done { grid-area: done; padding: 10px 14px; border: 1px solid var(--card-border); border-left: 3px solid var(--accent); border-radius: 10px; background: var(--card); }
+.trainer-done h2 { margin: 0 0 2px; font-size: 14px; }
+.trainer-done p { margin: 0; color: var(--mute-2); font-size: 13px; }
+.trainer-side { grid-area: side; border-left: 1px solid var(--hair); padding-left: 12px; }
+.trainer-plan h2, .trainer-rank h2 { font-size: 17px; margin: 4px 0; }
+.trainer-rank p { margin: 4px 0; }
+.rank-help, #groupState { color: var(--mute-2); font-size: 13px; }
+.trainer-side h2 { margin: 6px 0 8px; color: var(--mute-2); font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.trainer-side ul { margin: 0; padding-left: 18px; color: var(--mute-2); font-size: 13px; }
+.trainer-side ul:empty::before { content: "None."; margin-left: -18px; }
+.plan-actions { display: grid; gap: 6px; max-width: 640px; }
+.candidates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 12px 0; }
+.candidate {
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: 6px;
+  min-height: min(38vh, 360px);
+  padding: 10px;
+  text-align: left;
+  color: var(--txt);
+  background: var(--card);
+  border: 2px solid var(--card-border);
+  border-radius: 9px;
+  cursor: pointer;
+  font: inherit;
+}
+.candidate[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.candidate:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.candidate:disabled { cursor: default; opacity: 1; }
+.rank-badge {
+  justify-self: start;
+  min-width: 32px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  font-size: 18px;
+  font-weight: 700;
+  text-align: center;
+}
+.candidate[aria-pressed="true"] .rank-badge { background: var(--btn-bg); color: var(--btn-fg); }
+.candidate-head { font-weight: 600; }
+.candidate-content { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.45 var(--mono); max-height: 50vh; overflow: auto; }
+/* One row per group. The row on screen is marked; a saved group has a filled dot. */
+.group-list { display: grid; gap: 6px; margin: 0 0 14px; padding: 0; list-style: none; }
+.group-list button { all: unset; display: flex; align-items: baseline; gap: 8px; box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid var(--card-border); border-radius: 10px; background: var(--card); font-size: 13px; overflow-wrap: anywhere; cursor: pointer; }
+.group-list button::before { content: ""; flex: none; width: 8px; height: 8px; border: 1.5px solid var(--mute); border-radius: 50%; }
+.group-list button[data-saved="true"]::before { border-color: var(--accent); background: var(--accent); }
+.group-list button:hover { border-color: var(--strong-border); }
+.group-list button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.group-list button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+textarea { width: 100%; box-sizing: border-box; background: var(--input-bg); color: var(--txt); border: 1px solid var(--hair); border-radius: 6px; font: inherit; }
+.btn-primary { background: var(--btn-bg); color: var(--btn-fg); border: 1px solid var(--btn-bg); border-radius: 7px; padding: 8px 14px; font: inherit; cursor: pointer; }
+.btn-primary:disabled { opacity: 0.5; cursor: default; }
+.btn-ghost { background: transparent; color: var(--txt); border: 1px solid var(--strong-border); border-radius: 7px; padding: 8px 14px; font: inherit; cursor: pointer; }
+@media (max-width: 760px) {
+  .trainer-app { grid-template-columns: 1fr; grid-template-areas: "bar" "progress" "alert" "plan" "rank" "done" "side"; }
+  .candidates { grid-template-columns: 1fr; }
+  .trainer-side { border-left: 0; padding-left: 0; }
+}
+
+/* Framed by the shared GUI: no second mode bar and no second brand. The theme follows the GUI through shared storage. */
+.is-embedded .mode-nav, .is-embedded .trainer-brand, .is-embedded .trainer-bar .theme-control { display: none; }
+/* The GUI names the mode and the dataset in its own bars: the framed page starts with the progress. */
+.is-embedded .trainer-bar { display: none; }
+.is-embedded body { background: var(--card); }
+/* The stage bar of the GUI already says that the session is ended or complete. */
+.is-embedded .trainer-done { display: none; }
+.is-embedded .trainer-app { grid-template-areas: "progress side" "alert side" "done side" "plan side" "rank side"; grid-template-rows: auto auto auto auto minmax(0, 1fr); box-sizing: border-box; min-height: 100vh; padding: 16px 18px 18px; }
+/* An ended session is read-only: no ranking help. */
+body[data-status="ended"] .rank-help { display: none; }

@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "runtime": {
     "piVersion": "1.5.2",
-    "piBoltVersion": "1.2.0",
+    "piBoltVersion": "1.2.1",
     "piAcceptedRange": ">=1.5.0 <1.6",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
@@ -835,7 +835,7 @@
     "hermes": {
       "source": {
         "kind": "npm",
-        "spec": "pi-hermes-memory@0.10.0"
+        "spec": "pi-hermes-memory@0.11.0"
       },
       "status": "tested",
       "requires": [
@@ -951,7 +951,7 @@
     "computer-use": {
       "source": {
         "kind": "npm",
-        "spec": "@agent-sh/computer-use-linux@0.7.49"
+        "spec": "@agent-sh/computer-use-linux@0.7.51"
       },
       "status": "unverified",
       "requires": [
@@ -973,11 +973,11 @@
       "gaps": [
         {
           "code": "platform_linux_only",
-          "fact": "The package.json of version 0.7.49 limits os to linux, cpu to x64 and arm64, and libc to glibc, and its postinstall script stops on another platform. On macOS the kit offers the computer-use-macos component instead."
+          "fact": "The package.json of version 0.7.51 limits os to linux, cpu to x64 and arm64, and libc to glibc, and its postinstall script stops on another platform. On macOS the kit offers the computer-use-macos component instead."
         },
         {
           "code": "package_source_unreviewed",
-          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. File comparisons with the tarballs of versions 0.7.27, 0.7.35 and 0.7.36 found changes only in package.json, the README files, the skill and the extension. Version 0.7.27 adds the read-only tool get_tree_page. Version 0.7.35 removes no tool and adds optional parameters. Version 0.7.36 removes no tool; its generated tool list changes only the press_key description, and it adds the reference selkies-setup.md, which the kit does not use. In both versions the only package.json change is the version. npm/install.js is unchanged, and the README of 0.7.36 still says that the binary ships no telemetry and makes no outbound Internet connections. The README states the new optional routes that the kit does not set: PIXELFLUX_CU with PIXELFLUX_CU_TOKEN (loopback only) and COMPUTER_USE_LINUX_HYPRLAND_BACKGROUND. The registry tarball of 0.7.47 matches its registry SHA-512 integrity. A file comparison with 0.7.36 found changes in package.json, npm/install.js, the npm wrapper, the README files, the skill and the extension. The generated tool list keeps the same tool names and adds or changes descriptions only. package.json adds libc glibc and the peer range >=0.84.4 for the Pi packages. npm/install.js adds a 30-second idle timeout, an atomic rename of each binary and escaped log lines; it still checks each download against its sha256 file. The extension now forwards a fixed list of environment variables to the server, and the README of 0.7.47 still says that the binary ships no telemetry and makes no outbound Internet connections. The registry tarballs of 0.7.47 and 0.7.49 match their registry SHA-512 integrity. Their file comparison changes only package.json, the README files, the generated tool catalog and the skill. The install script and extension loader are unchanged. No tool is removed; snapshot_id is a new optional argument for click, scroll, perform_action, set_value and get_tree_page. The release notes name same-device uinput scrolling and rmcp 3.9.0. The release binaries were not reviewed or run."
+          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. File comparisons with the tarballs of versions 0.7.27, 0.7.35 and 0.7.36 found changes only in package.json, the README files, the skill and the extension. Version 0.7.27 adds the read-only tool get_tree_page. Version 0.7.35 removes no tool and adds optional parameters. Version 0.7.36 removes no tool; its generated tool list changes only the press_key description, and it adds the reference selkies-setup.md, which the kit does not use. In both versions the only package.json change is the version. npm/install.js is unchanged, and the README of 0.7.36 still says that the binary ships no telemetry and makes no outbound Internet connections. The README states the new optional routes that the kit does not set: PIXELFLUX_CU with PIXELFLUX_CU_TOKEN (loopback only) and COMPUTER_USE_LINUX_HYPRLAND_BACKGROUND. The registry tarball of 0.7.47 matches its registry SHA-512 integrity. A file comparison with 0.7.36 found changes in package.json, npm/install.js, the npm wrapper, the README files, the skill and the extension. The generated tool list keeps the same tool names and adds or changes descriptions only. package.json adds libc glibc and the peer range >=0.84.4 for the Pi packages. npm/install.js adds a 30-second idle timeout, an atomic rename of each binary and escaped log lines; it still checks each download against its sha256 file. The extension now forwards a fixed list of environment variables to the server, and the README of 0.7.47 still says that the binary ships no telemetry and makes no outbound Internet connections. The registry tarballs of 0.7.47 and 0.7.49 match their registry SHA-512 integrity. Their file comparison changes only package.json, the README files, the generated tool catalog and the skill. The install script and extension loader are unchanged. No tool is removed; snapshot_id is a new optional argument for click, scroll, perform_action, set_value and get_tree_page. The release notes name same-device uinput scrolling and rmcp 3.9.0. The release binaries were not reviewed or run. The registry tarballs of 0.7.50 and 0.7.51 match their registry SHA-512 integrity. Against 0.7.49, package.json changes only its version. The install script, npm wrapper, extension loader and MCP client bundle are unchanged; the generated tool catalog changes only its server version. The release notes and source delta add opt-in HTTP MCP and rustix 1.1.6, and fix AT-SPI application ownership and background-action readback. No desktop tool or binary was run for this review."
         },
         {
           "code": "release_download_required",
@@ -985,7 +985,11 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "The tools need a graphical Linux session with the AT-SPI accessibility bridge and an input backend that the doctor tool of the package reports ready. Since version 0.7.36 the binary lists windows through the wlr foreign toplevel protocol on wlroots compositors without a dedicated backend, and it sends press_key chords through wtype when ydotool is absent and the session bus answers that it has no RemoteDesktop portal, as on wlroots compositors such as Sway, labwc, river or cage (from the README and the release notes, not run). Since version 0.7.47 a coordinate pointer action on Wayland needs /dev/uinput or the RemoteDesktop portal: the binary refuses the action without either route. Since 0.7.48 targeted scrolling sends both movement and wheel events through the same uinput device, without ydotool; ydotool remains an untargeted-scroll route (from the README and release notes, not run). The kit installs none of them; the kit doctor reports the readiness that the doctor of the package gives. The setup tools of the package change the desktop settings of the user."
+          "fact": "The tools need a graphical Linux session with the AT-SPI accessibility bridge and an input backend that the doctor tool of the package reports ready. Since version 0.7.36 the binary lists windows through the wlr foreign toplevel protocol on wlroots compositors without a dedicated backend, and it sends press_key chords through wtype when ydotool is absent and the session bus answers that it has no RemoteDesktop portal, as on wlroots compositors such as Sway, labwc, river or cage (from the README and the release notes, not run). Since version 0.7.47 a coordinate pointer action on Wayland needs /dev/uinput or the RemoteDesktop portal: the binary refuses the action without either route. Since 0.7.48 targeted scrolling sends both movement and wheel events through the same uinput device, without ydotool; ydotool remains an untargeted-scroll route (from the README and release notes, not run). The kit installs none of them; the kit doctor reports the readiness that the doctor of the package gives. The setup tools of the package change the desktop settings of the user. Version 0.7.51 reads every AT-SPI root owned by a pid and no longer falls back to the whole desktop for an unmatched pid. Its action readback follows the acted-on application; a compositor-listed window can use a title fallback for a Flatpak proxy (source and release notes, not run)."
+        },
+        {
+          "code": "http_listener_unverified",
+          "fact": "Since 0.7.50, mcp --listen enables a plain HTTP MCP listener. The source requires a bearer token, a Host allowlist and no Origin header, and refuses shell-enabled mode. The unchanged Pi extension uses stdio and does not enable this listener. The kit sets none of its flags or token variables. Not verified: HTTP authentication, host checks or desktop access through this route. The README still states no telemetry or outbound Internet connections."
         },
         {
           "code": "desktop_runtime_unverified",

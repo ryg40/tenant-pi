@@ -7,6 +7,7 @@ import { ensureServer } from "./local-server.js";
 import { compareRoot, sessionName } from "./compare-store.js";
 import { isCanonicalAbsolute } from "./canonical-path.js";
 import { posixOnlyRefusal } from "./posix-only.js";
+import { connect, disconnect } from "./sheprd-link.js";
 
 const HELP = `walkr-compare (compatibility: walkr compare)
   create <absolute-request.json>               Submit { actionId, workflow, title, brief, options } with 2 or 3 options;
@@ -16,6 +17,8 @@ const HELP = `walkr-compare (compatibility: walkr compare)
   view <session-id>                            Print one saved record as JSON
   wait <session-id> [--timeout <seconds>]      Wait for the submitted result of the owner (default 240, max 3600)
   outcome <session-id> <absolute-request.json> Save { actionId, summary }: what you did with the result
+  close                                        Tell Sheprd that the run ended; print { "sheprd": ... }. Starts no server.
+                                               It does not close the page in Sheprd: Sheprd keeps it open for a rating.
 
 An option has { optionId, label, format, content } and an optional summary. format is html, text or markdown.
 Optional request fields: clarifications [{ question, answer }], repo { name, revision }, source { label, format, content }.
@@ -87,6 +90,7 @@ async function readJson(file) {
 
 export async function runCompare(args) {
   if (args.length === 0 || args.length === 1 && ["--help", "-h", "help"].includes(args[0])) return stdout(HELP);
+  if (args.length === 1 && args[0] === "close") return json({ sheprd: await disconnect() });
   const refusal = posixOnlyRefusal(); // Before hosted, argument and path checks; help stays available.
   if (refusal) fail(refusal.replace("Double, Coinflip, the shared GUI and Trainer need", "Compare needs"));
   if (process.env.HUMAN_REVIEW_HOSTED === "1") fail("Compare is not available in hosted mode.");
@@ -104,10 +108,16 @@ export async function runCompare(args) {
   const session = options.session && `sessions/${options.session}`;
   if (options.command === "create") {
     const answer = await request(server, "sessions", { method: "POST", body: await readJson(options.input) });
-    return json({ ...answer.result, status: answer.view.status, url: url(answer.path) });
+    const made = { ...answer.result, status: answer.view.status, url: url(answer.path) };
+    const sheprd = await connect(made.url); // Optional link; a failed link never fails the command.
+    return json(sheprd === null ? made : { ...made, sheprd });
   }
   if (options.command === "list") return json(await request(server, "sessions"));
-  if (options.command === "open") return stdout(`${url((await request(server, session ?? "page")).path)}\n`);
+  if (options.command === "open") {
+    const page = url((await request(server, session ?? "page")).path);
+    await connect(page);
+    return stdout(`${page}\n`);
+  }
   if (options.command === "view") return json((await request(server, session)).view);
   if (options.command === "outcome") {
     return json((await request(server, `${session}/outcome`, { method: "POST", body: await readJson(options.input) })).result);

@@ -9,6 +9,7 @@ import { commandArg, installSkills, reviewInvocation } from "./setup.js";
 import { runDouble } from "./double-cli.js";
 import { runTrainer } from "./trainer-cli.js";
 import { runCompare } from "./compare-cli.js";
+import { connect } from "./sheprd-link.js";
 import { alive, ensureServer, readServerRecord } from "./local-server.js";
 import { BATCH_ID, carriedIds, normalizeRecord } from "./batch-id.js";
 
@@ -105,7 +106,9 @@ async function openCommand(input) {
     process.exit(1);
   }
   const url = `${process.env.HUMAN_REVIEW_PUBLIC_URL || `http://127.0.0.1:${server.port}`}${body.path}`;
-  if (process.env.HUMAN_REVIEW_NO_BROWSER !== "1") openBrowser(url);
+  // With the optional Sheprd link, Sheprd shows the page, so no system browser opens.
+  const shownInSheprd = (await connect(url)) === "connected";
+  if (process.env.HUMAN_REVIEW_NO_BROWSER !== "1" && !shownInSheprd) openBrowser(url);
   console.log(`Reviewing ${target.kind === "url" ? target.value : path.basename(target.value)}`);
   console.log(url);
   const command = reviewInvocation();

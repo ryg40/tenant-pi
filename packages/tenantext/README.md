@@ -470,7 +470,7 @@ The marketplace manifest is `packages/tenantext/.claude-plugin/marketplace.json`
 Its plugin source is the sibling `claude-code/` directory inside this package.
 
 The skill links that the kit `install.sh` writes into `~/.claude/skills` are the default form of these skills in Claude Code.
-The plugin is for the `SessionStart` hook, `/ste`, `/spawn_agent` and `/handoff_coordinator`.
+The plugin is for the `SessionStart` hook, `/ste`, `/claude-mode`, `/spawn_agent` and `/handoff_coordinator`.
 When you have the links, skip the skill build: with both forms, Claude Code lists each skill twice, as `<name>` and as `tenantext:<name>`.
 The plugin skills are for a host that does not keep the kit clone, because the links point into the clone.
 
@@ -522,6 +522,86 @@ Commands:
 | `/ste on`, `/ste off` | Default for new sessions and for the next resume, `/clear` or compaction |
 | `/ste rules` | Print the rule block |
 | `/ste help` | Command table |
+| `/claude-mode [status\|default\|auto\|yolo\|reset\|help]` | User-only selection for future `tenant-claude` launches; no change to the active conversation |
+
+### Tenant Claude permission profile
+
+`tenant-claude` selects a permission mode separately from ordinary `claude` and Herdr launches.
+It uses the existing Claude login, integrations and permission rules. It writes no global Claude setting.
+The fresh selection is Default, even when global `permissions.defaultMode` is `auto`.
+
+| Selection | Launch flag | Behavior |
+| --- | --- | --- |
+| Default (`default`) | `--permission-mode default` | Normal permission prompts, subject to existing allow and deny rules; Claude labels this Manual |
+| Auto (`auto`) | `--permission-mode auto` | Claude's classifier reviews actions; this is not YOLO |
+| YOLO (`yolo`) | `--permission-mode bypassPermissions` | Bypasses routine permission checks; Claude's remaining protections still apply |
+
+Default retains existing allow and deny rules. Already allowed tools may run without another prompt.
+
+Warning: YOLO can run unintended actions without routine permission checks. Use an isolated environment.
+
+The shell and slash command share `permission-profile.json` under `~/.claude/tenantext/`.
+They reuse `TENANTEXT_CLAUDE_DIR`, or `CLAUDE_CONFIG_DIR/tenantext` when that override is set, as the existing plugin does.
+Directory overrides must be absolute and match in both environments. Pi's `PI_CODING_AGENT_DIR` does not select this state.
+The file holds only a version and a mode. Its location does not depend on the plugin cache or worktree.
+A malformed file stops a launch; `mode reset` or `mode default` repairs a regular file with Default.
+A linked state file is refused rather than replaced.
+
+Install the launcher separately, from the kit root:
+
+```sh
+node packages/tenantext/claude-code/install-launcher.mjs
+```
+
+This opt-in action links `~/.local/bin/tenant-claude` to this checkout. It selects no mode and starts no session.
+The main `install.sh` does not install it. The installer leaves every unrelated file, directory or link unchanged and reports a conflict.
+Keep this checkout in place and add `~/.local/bin` to `PATH` yourself if needed.
+The launcher requires Node 24 on Linux or macOS and an independently installed `claude` on `PATH`.
+The plugin must also be installed for the slash command; use `/tenantext:claude-mode` if Claude lists its namespaced name.
+
+| Action | Shell | Claude slash command |
+| --- | --- | --- |
+| Show the saved selection | `tenant-claude` or `tenant-claude mode status` | `/claude-mode` |
+| Select normal prompts | `tenant-claude mode default` | `/claude-mode default` |
+| Select classifier review | `tenant-claude mode auto` | `/claude-mode auto` |
+| Explicitly select bypass | `tenant-claude mode yolo` | `/claude-mode yolo` |
+| Save Default again | `tenant-claude mode reset` | `/claude-mode reset` |
+| Start a new session | `tenant-claude launch --model MODEL` | None; exit and launch from the shell |
+
+Selection and launch are separate actions. An empty selection command only shows status.
+Actions use the exact lowercase names in the table. YOLO selection and launch both print a warning.
+The slash command is user-invoked only and keeps normal tool approval. Its response passes through Claude's model.
+It validates the action before calling the shared controller; it never interpolates raw arguments into a shell preprocessing command.
+
+A saved selection does not change the active conversation. Use Claude's native Shift+Tab mode control and check its mode indicator.
+Use `/config` for Claude's own configuration controls; those settings are separate from this saved selection.
+The launcher requests a mode; it does not verify the active runtime mode.
+Managed `disableAutoMode` and `disableBypassPermissionsMode`, availability restrictions, native confirmations and root refusal remain authoritative.
+Unavailable Auto can fall back to Manual. The wrapper never retries with bypass or suppresses a native refusal.
+Claude itself may save settings during normal use, including its native bypass acceptance; the controller never writes those settings.
+
+`launch` forwards ordinary arguments without a shell, preserving their order, bytes, empty values, working directory and exit status.
+It refuses permission flags, permission-tool rules, prompt delegation, `--settings` and `--setting-sources`.
+It also refuses resume/continue and remote-session routing flags, because an attached conversation can keep its own mode.
+Known native subcommands from Claude Code 2.1.322 are refused before loading the selection or printing a launch banner:
+`agents`, `attach`, `auth`, `auto-mode`, `doctor`, `gateway`, `import`, `install`, `logs`, `mcp`, `plugin`, `plugins`, `purge`,
+`respawn`, `rm`, `setup-token`, `stop`, `kill`, `ultrareview`, `update`, and `upgrade`.
+This wrapper starts new sessions; it is not an administration proxy.
+
+Use separate short flags (`-p`, not combined or attached short forms), or full long flags.
+Single-dash arguments with attached content are refused, including `'- list item'` and `'-1 degree'`, even as prompt values.
+Reserved tokens remain refused after `--`, because a preceding value-taking option could consume that delimiter.
+The conservative checks also reject exact reserved tokens, including command words such as `attach`, used as prompts or option values.
+Ordinary sentences such as `explain attach and logs` still pass unchanged unless an argument matches a guard.
+For custom permission settings, existing sessions, Claude administration or refused prompt values, use ordinary `claude` instead.
+The command list needs review when Claude updates. Unknown future native subcommands are not covered.
+
+The flag choices follow the official [CLI reference](https://code.claude.com/docs/en/cli-reference) and
+[permission modes](https://code.claude.com/docs/en/permission-modes).
+[Permission policy](https://code.claude.com/docs/en/permissions) defines the managed restrictions.
+[Invocation controls](https://code.claude.com/docs/en/skills#control-who-invokes-a-skill) define the command's user-only flag.
+Offline tests use scratch homes and a stub executable. They check shared state, failures, argument delivery and installer conflicts.
+Not verified: a live slash invocation, classifier behavior, native bypass acceptance, or policy enforcement in a real session.
 
 `/ste` is a slash command backed by a script, so Claude Code sends its output through the model once. The command tells the model to print it verbatim.
 
@@ -534,6 +614,10 @@ Files:
 | `claude-code/hooks/hooks.json` | `SessionStart` hook, matcher `startup\|resume\|clear\|compact` |
 | `claude-code/scripts/session-start.mjs` | Emits the rule block as `additionalContext`, records the run, exits 0 on every path |
 | `claude-code/scripts/ste.mjs` | Backs `/ste` |
+| `claude-code/scripts/permission-profile.mjs` | Shared mode state and launch validation |
+| `claude-code/scripts/claude-mode.mjs` | Controller used by the user-only `/claude-mode` command |
+| `claude-code/bin/tenant-claude.mjs` | Separate shell selection and launch actions |
+| `claude-code/install-launcher.mjs` | Standalone, collision-preserving launcher installation |
 | `claude-code/scripts/herdr-idle.mjs` | Backs `/herdr-idle`: runs `idle_cleanup.py switch` of the herdr-idle-cleanup skill |
 | `claude-code/scripts/idle-script.mjs` | Finds `idle_cleanup.py` for the `SessionStart` hook and `/herdr-idle` |
 | `claude-code/scripts/pre-tool-use.mjs` | `PreToolUse` hook for `Bash`. Denies a command that matches a rule, and allows the call on every failure |

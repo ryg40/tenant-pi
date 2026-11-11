@@ -53,10 +53,12 @@ To move to a new Pi version, for example `1.4.0`:
 
 One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `runtime.piBoltVersion`. The Pi-Bolt pin can lag behind the Pi pin: a new Pi version can have no Pi-Bolt release yet.
 
-When Pi-Bolt carries an older Pi, preserve a reviewed range that includes both versions. The current pins are Pi 1.5.2 and Pi-Bolt 1.2.0, which carries Pi 1.5.0. Keep `--range ">=1.5.0 <1.6"`; `check_runtime.py` reports `untested_in_range` for this Pi-Bolt, not `mismatch`. Review a Pi-Bolt update independently, even when its embedded Pi does not change. When a Pi-Bolt release carries the Pi pin:
+When plain Pi moves ahead of Pi-Bolt's embedded Pi, supply `pin --range` with a reviewed range that includes both Pi versions.
+
+The current pins are Pi 1.5.2 and Pi-Bolt 1.2.1, which carries Pi 1.5.2. The reviewed range stays `>=1.5.0 <1.6`; the embedded Pi matches the tested pin. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
-2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.2.0`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
+2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.2.1`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
 3. Set `runtime.piBoltVersion` in `config/manifest.json` to that release, in the same commit as the pin.
 4. Check the runtime of the profile. The report shows the Pi version and the Pi-Bolt release.
 
@@ -72,6 +74,15 @@ The [Pi-Bolt 1.2.0 release notes](https://github.com/opensec-git/Pi-Bolt/release
 - The upstream installer and `pi-bolt update` restart an existing background service, but do not start an absent service. Other update paths can leave the old service running; follow the upstream restart and enable steps before using remote control again.
 - The `pibolt-mobile-ui` skill no longer ships in Pi-Bolt. It is available separately in the upstream repository. The kit neither installs nor depends on it.
 - Startup, streaming, session resume and Codex request processing change internally. No kit API or settings migration is identified from the release notes. Compiled Pi-Bolt execution, remote control and its service update are not verified by plain Pi qualification.
+
+The [Pi-Bolt 1.2.1 release notes](https://github.com/opensec-git/Pi-Bolt/releases/tag/bolt-v1.2.1) add these effects:
+
+- The embedded Pi moves from 1.5.0 to 1.5.2. Pi-Bolt keeps `cacheWarming: "streaming"`, unlike plain Pi's new `"idle"` default. Idle warming can make billed requests between turns; the kit sets neither value.
+- Updates install the release build without recompiling extensions. Previously compiled extensions load from files until you run `pi-bolt compile` again.
+- An npm installation checks npm for updates before GitHub. Release downloads retry interrupted transfers; Windows updates tolerate locked leftover files.
+- Built-in grep fixes path-relative globs and overlapping context. Markdown links show their destination and support local-file clicks.
+
+The verified npm wrapper tarballs add only the version and a more accurate compiled-extension notice. Their dependencies, signature checks and service-restart behavior are unchanged. No kit settings migration is identified. Remote control, service updates, recompilation and desktop interaction still need separate checks.
 
 Pi 1.5.2 adds a fork choice when a session's folder no longer exists, including extension-driven session switches. It also fixes failed imports leaving copies and updates the Anthropic OAuth client version. No kit installer, settings, extension or skill migration is identified from these changes. Interactive session recovery and native-provider authentication remain outside the offline qualification.
 

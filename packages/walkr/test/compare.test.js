@@ -6,6 +6,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
+import * as css from "css-tree";
 import { listen, request } from "./double-fixtures.js";
 import { starsLabel, starsText, stepRating } from "../src/compare-stars.js";
 import { tmpRoot } from "./tmp-root.js";
@@ -333,6 +334,131 @@ test("the page lists the sessions newest first, shows the type and the format of
   page.$("typeFilter").value = "cfn-options";
   page.$("typeFilter").dispatchEvent(new page.window.Event("change"));
   assert.deepEqual([...page.$("sessions").querySelectorAll("button")].map((row) => row.dataset.session), [html.result.sessionId]);
+});
+
+test("folding and Solo keep frames, zoom, drafts and picks in place, including saved results and ratings", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s);
+  const page = await bootPage(t, s, made.path);
+  const stage = page.$("stage");
+  const cards = [...stage.children];
+  const frames = cards.map((card) => card.querySelector("iframe"));
+  const documents = frames.map((frame) => frame.contentDocument);
+  const control = (card, label) => card.querySelector(`[aria-label="${label}"]`);
+  const fold = (card, direction) => card.querySelector(`[data-fold="${direction}"]`);
+  const comment = cards[0].querySelector("textarea");
+  comment.value = "Keep this draft";
+  comment.dispatchEvent(new page.window.Event("input"));
+  cards[0].querySelector(".zoom-out").click();
+  const zoom = cards[0].querySelector(".cmp-body").dataset.zoom;
+  cards[0].querySelector("[data-pick]").click();
+  page.$("stars").querySelector('[data-rating="7"]').click();
+  page.$("rateNote").value = "Useful options";
+  page.$("rateNote").dispatchEvent(new page.window.Event("input"));
+
+  fold(cards[0], "left").click();
+  const rail = cards[0].querySelector(".cmp-rail");
+  assert.equal(fold(cards[0], "left").getAttribute("aria-label"), "Fold Option A to the left");
+  assert.equal(rail.getAttribute("aria-expanded"), "false");
+  assert.equal(page.$(rail.getAttribute("aria-controls")).hidden, true);
+  assert.equal(rail.hidden, false);
+  assert.equal(rail.querySelector(".cmp-rail-label").textContent, "Option A");
+  assert.equal(rail.querySelector(".cmp-rail-pick").hidden, false);
+  assert.equal(page.doc.activeElement, rail, "focus moves out of the folded content");
+  assert.equal(page.$("showAll").hidden, false);
+  fold(cards[2], "right").click();
+  assert.deepEqual(cards.map((card) => card.dataset.fold), ["left", "", "right"]);
+  control(cards[1], "Show Option B alone").click();
+  rail.click();
+  assert.equal(rail.hidden, true);
+  assert.equal(fold(cards[0], "left").getAttribute("aria-expanded"), "true");
+  assert.equal(page.doc.activeElement, fold(cards[0], "left"));
+  control(cards[2], "Show Option C alone").click();
+  assert.deepEqual(cards.map((card) => card.dataset.fold), ["left", "left", ""]);
+  page.$("showAll").click();
+  assert.equal(page.$("showAll").hidden, true);
+  assert.ok(cards.every((card) => !card.classList.contains("is-folded")));
+
+  fold(cards[0], "right").click();
+  await page.app.load();
+  assert.deepEqual([...stage.children].map((card) => card.dataset.fold), ["right", "", ""], "polling keeps the folds");
+  assert.deepEqual([...stage.querySelectorAll("iframe")], frames, "folding and polling keep the frames in order");
+  assert.deepEqual(frames.map((frame) => frame.contentDocument), documents, "frame documents are not reloaded");
+  assert.equal(cards[0].querySelector(".cmp-body").dataset.zoom, zoom);
+  assert.equal(cards[0].querySelector("textarea").value, "Keep this draft");
+  assert.equal(cards[0].querySelector("[data-pick]").getAttribute("aria-pressed"), "true");
+  assert.equal(page.$("stars").querySelector('[aria-checked="true"]').dataset.rating, "7");
+  assert.equal(page.$("rateNote").value, "Useful options");
+  await page.click(page.$("rate"));
+  await page.click(page.$("submit"));
+  const saved = (await s.agent(`sessions/${made.result.sessionId}`)).json.view;
+  assert.equal(saved.result.pick, "a");
+  assert.deepEqual(saved.result.comments, { a: "Keep this draft" });
+  assert.equal(saved.rating.value, 7);
+  assert.equal(saved.rating.note, "Useful options");
+  assert.equal(stage.querySelector('[data-option="a"]').dataset.fold, "right");
+  assert.equal(stage.querySelector('[data-option="a"] .cmp-rail-pick').hidden, false);
+});
+
+test("two-option folds support no pick, reset on session changes, and leave One option unchanged", async (t) => {
+  const s = await serve(t, await setup(t));
+  const first = await created(s, textRequest());
+  const second = await created(s, { ...textRequest("another-text"), title: "Another session" });
+  const page = await bootPage(t, s, first.path);
+  const stage = page.$("stage");
+  const cards = [...stage.children];
+  cards[0].querySelector('[aria-label="Show Short alone"]').click();
+  assert.equal(cards[1].classList.contains("is-folded"), true);
+  cards[0].querySelector('[data-fold="right"]').click();
+  assert.ok(cards.every((card) => card.classList.contains("is-folded")), "even all-folded can recover with Show all");
+  page.$("showAll").click();
+  assert.ok(cards.every((card) => !card.classList.contains("is-folded")));
+  cards[0].querySelector('[data-pick]').click();
+  cards[0].querySelector('[data-fold="left"]').click();
+  page.$("none").click();
+  assert.equal(cards[0].querySelector('.cmp-rail-pick').hidden, true);
+  assert.equal(page.$("submit").disabled, true, "no pick still requires a note");
+  page.$("note").value = "Need another version";
+  page.$("note").dispatchEvent(new page.window.Event("input"));
+  await page.click(page.$("submit"));
+  assert.equal((await s.agent(`sessions/${first.result.sessionId}`)).json.view.result.pick, null);
+  await page.click(page.$("sessions").querySelector(`[data-session="${second.result.sessionId}"]`));
+  assert.ok([...stage.children].every((card) => !card.classList.contains("is-folded")));
+  assert.equal(page.$("showAll").hidden, true);
+  stage.querySelector('[data-fold="right"]').click();
+  page.$("viewMode").value = "single";
+  page.$("viewMode").dispatchEvent(new page.window.Event("change"));
+  assert.equal(page.$("showAll").hidden, true);
+  assert.equal(stage.querySelector(".cmp-fold-controls"), null);
+  assert.equal(page.$("tabs").hidden, false);
+  page.$("tabs").querySelector('[data-tab="shorter"]').click();
+  assert.equal(stage.firstElementChild.dataset.option, "shorter");
+  page.$("viewMode").value = "columns";
+  page.$("viewMode").dispatchEvent(new page.window.Event("change"));
+  await page.click(page.$("sessions").querySelector(`[data-session="${first.result.sessionId}"]`));
+  assert.ok([...stage.children].every((card) => !card.classList.contains("is-folded")), "returning to a session also resets folds");
+});
+
+test("the Compare wordmark precedes Sessions and declares the required theme tokens", async (t) => {
+  const dom = new JSDOM(await fs.readFile(new URL("../src/compare.html", import.meta.url), "utf8"));
+  t.after(() => dom.window.close());
+  const doc = dom.window.document;
+  const mark = doc.querySelector(".cmp-mark");
+  assert.equal(mark.textContent, "walkr");
+  assert.equal(mark.querySelector(".cmp-mark-r").textContent, "r");
+  assert.equal(mark, doc.querySelector(".cmp-bar").firstElementChild);
+  assert.equal(mark.nextElementSibling, doc.getElementById("toggleList"));
+  const colors = new Map();
+  css.walk(css.parse(await fs.readFile(new URL("../src/compare.css", import.meta.url), "utf8")), {
+    visit: "Rule",
+    enter(rule) {
+      rule.block.children.forEach((declaration) => {
+        if (declaration.property === "color") colors.set(css.generate(rule.prelude), css.generate(declaration.value));
+      });
+    },
+  });
+  assert.equal(colors.get(".cmp-mark"), "var(--strong-txt)");
+  assert.equal(colors.get(".cmp-mark-r"), "var(--accent)");
 });
 
 test("the command starts the background server, creates a session, waits for the result and saves the outcome", async (t) => {

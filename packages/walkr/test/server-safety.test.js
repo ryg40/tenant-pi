@@ -6,8 +6,10 @@ import dns from "node:dns";
 import https from "node:https";
 import { gzipSync, deflateSync, deflateRawSync, brotliCompressSync } from "node:zlib";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { tmpRoot } from "./tmp-root.js";
 import { createServer } from "../src/server.js";
+import { injectSdk } from "../src/html-transform.js";
 import { Store } from "../src/state.js";
 import { stateDir } from "../src/paths.js";
 
@@ -64,6 +66,52 @@ function request(service, route, { body, authenticated = true } = {}) {
     req.on("error", reject);
     req.end(body ? JSON.stringify(body) : undefined);
   });
+}
+/** Block real libuv work before watchFile queues its initial stat, without a CPU-speed assumption. */
+function holdFileWorkers(t, tmp) {
+  const count = Math.max(1, Math.min(1024, parseInt(process.env.UV_THREADPOOL_SIZE || "4", 10) || 4));
+  const pipes = Array.from({ length: count }, (_, i) => path.join(tmp, `worker-${i}.fifo`));
+  const made = spawnSync("mkfifo", pipes, { encoding: "utf8", timeout: 5000 });
+  assert.equal(made.status, 0, made.error?.message || made.stderr);
+  const descriptors = [], pending = [];
+  let released;
+  const release = () => released ||= (async () => {
+    for (const fd of descriptors) fs.writeSync(fd, Buffer.from([1]));
+    try {
+      await Promise.all(pending);
+    } finally {
+      for (const fd of descriptors) fs.closeSync(fd);
+    }
+  })();
+  t.after(release);
+  for (const pipe of pipes) {
+    const fd = fs.openSync(pipe, "r+");
+    descriptors.push(fd);
+    pending.push(new Promise((resolve, reject) => {
+      fs.read(fd, Buffer.alloc(1), 0, 1, null, (error) => error ? reject(error) : resolve());
+    }));
+  }
+  return release;
+}
+async function pageEvents(t, service, sessionId) {
+  let text = "";
+  // Finish server-side timer cleanup before this test's mock clock is reset.
+  const closed = new Promise((resolve) => {
+    service.server.once("request", (req) => req.once("close", resolve));
+  });
+  await new Promise((resolve, reject) => {
+    const req = http.get({ host: "127.0.0.1", port: service.port, path: `/events/${sessionId}` }, (res) => {
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => { text += chunk; resolve(); });
+      res.on("error", reject);
+    });
+    req.on("error", reject);
+    t.after(async () => { req.destroy(); await closed; });
+  });
+  return {
+    reloads: () => (text.match(/event: reload\n/g) || []).length,
+    beats: () => (text.match(/: beat\n\n/g) || []).length,
+  };
 }
 async function app(t) {
   const seen = [];
@@ -234,6 +282,194 @@ test("unexpected failures log private causes and return only correlation codes w
   assert.equal(save.status, 500);
   assert.ok(diagnosticFor(save, privateDetail).detail.includes(privateDetail));
   assert.equal(fs.readFileSync(file, "utf8"), "<p>Original</p>");
+});
+
+test("watcher startup reconciles a later rewrite while its initial stat is blocked", { skip: process.platform === "win32" }, async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const f = await fixture(t);
+  const file = path.join(f.tmp, "startup.html");
+  fs.writeFileSync(file, "<p>Original</p>");
+  const release = holdFileWorkers(t, f.tmp);
+  let callbacks = 0, reads = 0, registrations = 0;
+  const watchFile = fs.watchFile, readFile = fs.readFileSync;
+  t.mock.method(fs, "watchFile", (target, options, callback) => {
+    registrations += 1;
+    return watchFile(target, options, (...args) => {
+      callbacks += 1;
+      callback(...args);
+    });
+  });
+  t.mock.method(fs, "readFileSync", (target, ...args) => {
+    if (target === file) reads += 1;
+    return readFile(target, ...args);
+  });
+  const opened = JSON.parse((await request(f, "/api/session", { body: { file } })).text);
+  const events = await pageEvents(t, f, opened.sessionId);
+  assert.equal((await request(f, "/api/session", { body: { file } })).status, 200);
+  assert.equal(registrations, 1, "reopening a page adds no duplicate watcher");
+  t.mock.timers.tick(400); // A one-shot registration check would finish before the later write.
+  f.store.addComment(opened.key, { id: "comment", feedback: "Keep this feedback" });
+  f.store.addEdit(opened.key, "Body", "edited", "Original", "Edited");
+  const raw = JSON.parse((await request(f, `/api/page/${opened.key}/raw`)).text);
+  assert.equal((await request(f, `/api/page/${opened.key}/save`, {
+    body: { html: "<p>Autosaved</p>", baseHash: raw.hash },
+  })).status, 200);
+  const before = structuredClone(f.store.page(opened.key));
+  t.mock.timers.tick(400);
+  assert.deepEqual(f.store.page(opened.key), before, "our autosave keeps pristine and unsent feedback");
+  fs.writeFileSync(file, "<p>Agent rewrite</p>");
+  t.mock.timers.tick(400);
+  assert.equal(callbacks, 0, "the real native watcher has not sampled its initial baseline");
+  assert.equal(f.store.page(opened.key).pristine, "<p>Agent rewrite</p>");
+  assert.deepEqual(f.store.page(opened.key).comments, before.comments);
+  assert.deepEqual(f.store.page(opened.key).edits, []);
+  assert.equal(new Store().page(opened.key).pristine, "<p>Agent rewrite</p>");
+  await waitFor(() => events.reloads() === 1);
+  const settledReads = reads;
+  t.mock.timers.tick(8000);
+  assert.equal(reads, settledReads, "quiet startup polling does not reread unchanged file contents");
+  assert.equal(events.reloads(), 1, "own writes and repeated reconciliation cause no duplicate reload");
+  await release();
+});
+
+test("startup reconciliation preserves unchanged SDK-bearing input and unsent edits but detects a later rewrite", { skip: process.platform === "win32" }, async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const f = await fixture(t);
+  const file = path.join(f.tmp, "sdk.html");
+  const clean = "<html><body><p>Original</p></body></html>";
+  const injected = injectSdk(clean, "fixture");
+  fs.writeFileSync(file, injected);
+  const release = holdFileWorkers(t, f.tmp);
+  const opened = JSON.parse((await request(f, "/api/session", { body: { file } })).text);
+  const events = await pageEvents(t, f, opened.sessionId);
+  f.store.addComment(opened.key, { id: "comment", feedback: "Keep this feedback" });
+  f.store.addEdit(opened.key, "Body", "edited", "Original", "Edited");
+  const before = structuredClone(f.store.page(opened.key));
+  const persistedBefore = new Store().page(opened.key);
+  assert.equal(before.pristine, clean);
+  // The heartbeat follows reconciliation on the same stream, so earlier reloads cannot be pending.
+  t.mock.timers.tick(15000);
+  await waitFor(() => events.beats() > 0);
+  assert.deepEqual(f.store.page(opened.key).edits, before.edits, "unchanged SDK tags must not erase unsent static edits");
+  assert.deepEqual(f.store.page(opened.key), before);
+  assert.deepEqual(new Store().page(opened.key), persistedBefore);
+  assert.equal(events.reloads(), 0);
+  assert.equal(fs.readFileSync(file, "utf8"), injected);
+
+  const rewritten = "<html><body><p>External rewrite</p></body></html>";
+  const rewrittenDisk = injectSdk(rewritten, "fixture");
+  fs.writeFileSync(file, rewrittenDisk);
+  t.mock.timers.tick(400);
+  assert.equal(f.store.page(opened.key).pristine, rewritten);
+  assert.deepEqual(f.store.page(opened.key).edits, [], "a real static rewrite still replaces the old edits");
+  assert.deepEqual(f.store.page(opened.key).comments, before.comments);
+  assert.equal(new Store().page(opened.key).pristine, rewritten);
+  assert.equal(fs.readFileSync(file, "utf8"), rewrittenDisk);
+  const beats = events.beats();
+  t.mock.timers.tick(15000);
+  await waitFor(() => events.beats() > beats);
+  assert.equal(events.reloads(), 1, "the real rewrite reloads once; repeated reconciliation stays quiet");
+  await release();
+});
+
+test("a native deletion ends startup polling and replacement still retries a failed save", { skip: process.platform === "win32" }, async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const f = await fixture(t);
+  const file = path.join(f.tmp, "replaced.html");
+  fs.writeFileSync(file, "<p>Original</p>");
+  const release = holdFileWorkers(t, f.tmp);
+  let callbacks = 0, stats = 0;
+  const watchFile = fs.watchFile, stat = fs.statSync;
+  t.mock.method(fs, "watchFile", (target, options, callback) => watchFile(target, options, (...args) => {
+    callbacks += 1;
+    callback(...args);
+  }));
+  t.mock.method(fs, "statSync", (target, ...args) => {
+    if (target === file) stats += 1;
+    return stat(target, ...args);
+  });
+  const opened = JSON.parse((await request(f, "/api/session", { body: { file } })).text);
+  f.store.addComment(opened.key, { id: "comment", feedback: "Retain across replacement" });
+  f.store.setDynamic(opened.key, true);
+  f.store.addEdit(opened.key, "Body", "edited", "Original", "Edited");
+  const before = structuredClone(f.store.page(opened.key));
+  fs.unlinkSync(file);
+  t.mock.timers.tick(800);
+  assert.deepEqual(f.store.page(opened.key), before, "a missing source is not an empty replacement");
+  assert.equal((await request(f, "/health")).status, 200);
+  await release();
+  await waitFor(() => callbacks > 0);
+  const stoppedStats = stats;
+  t.mock.timers.tick(4000);
+  assert.equal(stats, stoppedStats, "the first native callback ends startup stat polling");
+  fs.writeFileSync(file + ".replacement", "<p>Replacement</p>");
+  fs.renameSync(file + ".replacement", file);
+  let failed = false;
+  const failingRename = t.mock.method(fs, "renameSync", () => {
+    failed = true;
+    throw Object.assign(new Error("replacement save failed"), { code: "ENOSPC" });
+  });
+  await waitFor(() => failed);
+  assert.deepEqual(f.store.page(opened.key), before);
+  failingRename.mock.restore();
+  await waitFor(() => f.store.page(opened.key).pristine === "<p>Replacement</p>");
+  assert.deepEqual(f.store.page(opened.key).comments, before.comments);
+  assert.deepEqual(f.store.page(opened.key).edits, before.edits, "dynamic edits remain unsent feedback");
+  assert.equal(new Store().page(opened.key).pristine, "<p>Replacement</p>");
+  assert.equal(fs.readFileSync(file, "utf8"), "<p>Replacement</p>");
+});
+
+test("startup reconciliation releases its timer on sweep and disposal, including a queued save retry", { skip: process.platform === "win32" }, async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout"] });
+  const f = await fixture(t);
+  const file = path.join(f.tmp, "closed.md");
+  fs.writeFileSync(file, "# Original");
+  const release = holdFileWorkers(t, f.tmp);
+  let registrations = 0;
+  const watchFile = fs.watchFile;
+  t.mock.method(fs, "watchFile", (...args) => { registrations += 1; return watchFile(...args); });
+  // Track timer ownership through the public API, not stat calls hidden by the disposed guard.
+  const intervals = new Set();
+  const schedule = globalThis.setInterval, cancel = globalThis.clearInterval;
+  t.mock.method(globalThis, "setInterval", (...args) => {
+    const timer = schedule(...args);
+    intervals.add(timer);
+    return timer;
+  });
+  t.mock.method(globalThis, "clearInterval", (timer) => {
+    intervals.delete(timer);
+    return cancel(timer);
+  });
+  const opened = JSON.parse((await request(f, "/api/session", { body: { file } })).text);
+  assert.ok(intervals.size > 0, "opening the page starts reconciliation");
+  f.store.addEdit(opened.key, "Heading", "edited", "Original", "Edited");
+  const edits = structuredClone(f.store.page(opened.key).edits);
+  fs.writeFileSync(file, "# Rewritten");
+  t.mock.timers.tick(400);
+  assert.equal(f.store.page(opened.key).pristine, "# Rewritten");
+  assert.deepEqual(f.store.page(opened.key).edits, edits, "Markdown rows remain unsent feedback");
+  assert.equal((await request(f, `/api/session/${opened.sessionId}/end`, { body: {} })).status, 200);
+  t.mock.timers.tick(60000);
+  assert.equal(intervals.size, 0, "sweep releases the unreferenced page's interval");
+  fs.writeFileSync(file, "# After close");
+  t.mock.timers.tick(800);
+  assert.equal(f.store.page(opened.key).pristine, "# Rewritten");
+  assert.equal((await request(f, "/api/session", { body: { file } })).status, 200);
+  assert.equal(registrations, 2, "a swept page can register one fresh watcher");
+  assert.ok(intervals.size > 0, "reopening the page starts reconciliation again");
+  const before = structuredClone(f.store.page(opened.key));
+  fs.writeFileSync(file, "# After reopen");
+  const failingRename = t.mock.method(fs, "renameSync", () => {
+    throw Object.assign(new Error("disposed retry"), { code: "ENOSPC" });
+  });
+  t.mock.timers.tick(400);
+  assert.ok(failingRename.mock.callCount() > 0, "a save retry is pending at disposal");
+  failingRename.mock.restore();
+  f.dispose();
+  assert.equal(intervals.size, 0, "disposal releases the reopened page's interval");
+  t.mock.timers.tick(800);
+  await release();
+  assert.deepEqual(f.store.page(opened.key), before, "a disposed watcher cannot refresh the page");
 });
 
 test("a watcher save failure preserves feedback and retries without another source write", async (t) => {

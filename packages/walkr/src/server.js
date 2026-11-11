@@ -516,7 +516,7 @@ export function createServer() {
     if (watched.has(key)) return;
     const page = store.page(key);
     if (!page || page.kind === "url") return;
-    const watch = { file: page.file, retry: null };
+    const watch = { file: page.file, retry: null, startup: null };
     watched.set(key, watch);
 
     const refresh = () => {
@@ -524,13 +524,13 @@ export function createServer() {
       clearTimeout(watch.retry);
       let html = "";
       try {
-        html = fs.readFileSync(page.file, "utf8");
+        html = stripSdk(fs.readFileSync(page.file, "utf8"));
       } catch {
         return;
       }
       const current = hash(html);
       // Our own autosave must never bounce back as a reload.
-      if (lastWritten.get(key) === current) return;
+      if (lastWritten.get(key) === current) return true;
       // Rows on a Markdown or self-rendering page are unsent feedback, not
       // something this write already contains; keep them.
       try {
@@ -543,8 +543,28 @@ export function createServer() {
       }
       lastWritten.set(key, current);
       for (const session of sessionsForKey(key)) emit(session, "reload", { key });
+      return true;
     };
-    fs.watchFile(page.file, { interval: WATCH_INTERVAL_MS }, refresh);
+    fs.watchFile(page.file, { interval: WATCH_INTERVAL_MS }, () => {
+      clearInterval(watch.startup);
+      watch.startup = null;
+      refresh();
+    });
+    // watchFile has no ready event: its async initial stat can absorb a later write.
+    // Reconcile until a native change proves it is running, but avoid repeated full reads.
+    let sampled = "";
+    watch.startup = setInterval(() => {
+      if (watched.get(key) !== watch) return;
+      let signature;
+      try {
+        const stat = fs.statSync(page.file, { bigint: true });
+        signature = [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":");
+      } catch {
+        return;
+      }
+      if (signature !== sampled && refresh()) sampled = signature;
+    }, WATCH_INTERVAL_MS);
+    watch.startup.unref?.();
   }
 
   function writePage(key, html) {
@@ -1753,6 +1773,7 @@ export function createServer() {
       if (!referenced) {
         fs.unwatchFile(entry.file);
         clearTimeout(entry.retry);
+        clearInterval(entry.startup);
         watched.delete(key);
         lastWritten.delete(key);
       }
@@ -1770,6 +1791,7 @@ export function createServer() {
     for (const entry of watched.values()) {
       fs.unwatchFile(entry.file);
       clearTimeout(entry.retry);
+      clearInterval(entry.startup);
     }
     watched.clear();
     server.close();

@@ -89,7 +89,13 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 
 ## Computer use
 
-The `computer-use` module is agent-sh `computer-use-linux` 0.7.49, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. Its manifest status is `unverified`. For macOS, see [computer use on macOS](#computer-use-on-macos). The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
+The `computer-use` module is agent-sh `computer-use-linux` 0.7.51, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. Its manifest status is `unverified`. For macOS, see [computer use on macOS](#computer-use-on-macos). The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
+
+Against 0.7.49, the verified npm tarballs leave the installer, extension loader, MCP client bundle and tool schemas unchanged. Version 0.7.50 adds an optional HTTP MCP listener and updates `rustix` to 1.1.6. Version 0.7.51 fixes AT-SPI application ownership, unmatched-pid scoping and background-action readback. The Pi extension still starts stdio MCP, not HTTP.
+
+Warning: `mcp --listen` exposes desktop tools over plain HTTP. The kit does not enable it.
+
+The upstream listener requires a bearer token, checks `Host`, rejects `Origin`, and refuses shell-enabled mode. It needs TLS before it crosses a trust boundary. These source checks are not a runtime qualification of HTTP or desktop access.
 
 Since 0.7.48, tree results include `snapshot_id`. Pass it with tree-based actions and `get_tree_page` to reject a replaced snapshot before input. Without it, indices refer to the latest tree. Full capture-space coordinates and direct AT-SPI identifiers do not use this check. These are upstream source facts, not desktop test results.
 
@@ -314,6 +320,8 @@ The setup makes `~/.claude`, `~/.codex` and `~/.agents` when they are absent. On
 The skills and the prompts in the package are templates. The setup writes the absolute path of this clone into each skill, so the package is not an entry of `settings.packages`. After you move the clone, run `install.sh --upgrade <name> --with walkr` again.
 
 In Pi or Pi-Bolt, type `/walkr` with a request, for example `/walkr compare cfn options` or `/walkr simplify ticket`. In Claude Code, the same line loads the same skill. Each Compare workflow asks its questions before it prepares the options: with `AskUserQuestion` in Claude Code, and with `ask_user_question` of the `questions` component in Pi.
+
+The Sheprd link is optional and off by default. With `export WALKR_SHEPRD_CONNECT=1` in the shell or the profile that starts Pi or Claude Code, a Walkr run in a Herdr pane with `sheprd` on the `PATH` shows its page in Sheprd's Walkr section. See [the Sheprd link](../../packages/walkr/docs/compare.md#sheprd-link-optional).
 
 `walkr setup --help` and `walkr-core setup --help` print help without writing files. The other four commands have no `setup` form.
 

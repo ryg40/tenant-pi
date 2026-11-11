@@ -50,6 +50,23 @@ Tenantext is a Pi extension suite with a Claude Code plugin under `claude-code/`
 | Claude Code plugin | `claude-code/`; `build-skills.py` builds each skill that `config/manifest.json` declares for the package, from the package sources |
 | License | MIT, `packages/tenantext/LICENSE`; third-party notices in `packages/tenantext/THIRD_PARTY_NOTICES.md` and `packages/tenantext/licenses/` |
 
+### Claude permission profile
+
+Tenantext's Claude plugin ships the user-only `/claude-mode` command and the shared controller for the optional `tenant-claude` launcher.
+The selections are Default, Auto and YOLO. Auto uses Claude's classifier; YOLO requests `bypassPermissions`.
+The saved selection affects future launcher sessions only, not the active conversation, ordinary `claude`, or Herdr.
+The controller writes a dedicated `permission-profile.json`, not global Claude settings or credentials.
+
+The launcher has a standalone opt-in installer. From the kit root:
+
+```sh
+node packages/tenantext/claude-code/install-launcher.mjs
+```
+
+It preserves unrelated `~/.local/bin/tenant-claude` entries and selects no mode.
+The main `install.sh` remains unchanged. The plugin directory already belongs to the package's shipped file set.
+See [the command interface and safety boundaries](../packages/tenantext/README.md#tenant-claude-permission-profile) before selecting a mode.
+
 ### Publish set
 
 `PUBLISH_DIRS` in `scripts/publish_check.py` publishes tracked package files except installed dependencies and build output.

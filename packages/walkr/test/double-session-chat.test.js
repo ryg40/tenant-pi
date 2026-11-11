@@ -11,8 +11,8 @@ import { installDoubleSessionChat, SESSION_MESSAGE } from "../src/double-session
 import { ReceiptLimitError } from "../src/double-chat-receipt.js";
 
 async function until(check, timeout = 5000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
+  const deadline = performance.now() + timeout;
+  while (performance.now() < deadline) {
     if (await check()) return;
     await delay(10);
   }
@@ -81,7 +81,6 @@ function harness(t, f, client, options = {}) {
     handlers.get("session_shutdown")?.({}, ctx);
     handlers.clear();
     // Successful full-disk scans use the runtime's existing receipt budget.
-    // Only deliberate failure fixtures below opt into the 150 ms deadline.
     installed = installDoubleSessionChat(pi, {}, { clientFactory: () => client, pollMs: 10,
       acceptanceCheckMs: 5, ...options });
     handlers.get("session_start")({}, ctx);
@@ -90,7 +89,7 @@ function harness(t, f, client, options = {}) {
   f.setChatCleanup(() => handlers.get("session_shutdown")({}, ctx));
   const execute = (params) => installed.execute({ doubleSessionId: "design", ...params }, ctx);
   return { ctx, sent, entries, load, persist, handlers, execute,
-    start: () => execute({ action: "start", timeoutSeconds: 10 }), status: () => execute({ action: "status" }),
+    start: () => execute({ action: "start" }), status: () => execute({ action: "status" }),
     setPersistence: (value) => { persistEnabled = value; }, setDrop: (value) => { drop = value; },
     switchIdentity() { sessionId = "another-pi"; sessionFile = path.join(f.root, "another-pi.jsonl"); },
   };
@@ -190,7 +189,7 @@ test("pending persistence and uncertain ack do not suppress later Retry/final; e
   await f.unchanged(assert);
 });
 
-test("short failure-only receipt budget preserves missing and dropped events and rejects delayed real disk proof", async (t) => {
+test("receipt expiry preserves missing and dropped events and rejects delayed real disk proof", async (t) => {
   for (const mode of ["missing persistence", "dropped message", "delayed final scan"]) {
     await t.test(mode, async (t) => {
       const { f, s, client, events, mutate, root } = await setup(t);
@@ -198,12 +197,16 @@ test("short failure-only receipt budget preserves missing and dropped events and
       let observations = 0;
       client.acknowledge = async (...args) => { acknowledgments.push(args[1]); return ack(...args); };
       client.events = async (...args) => { const result = await readEvents(...args); observations++; return result; };
-      let release, heldAt;
-      const h = harness(t, f, client, { deliveryTimeoutMs: 150, receiptIO: {
+      // Expire receipt work only after delivery reaches the intended failure phase.
+      // Real network and disk work must not spend a 150 ms failure-only budget.
+      let now = Date.now(), release, missing = false;
+      t.mock.method(Date, "now", () => now);
+      const h = harness(t, f, client, { receiptIO: {
         async stat(...args) {
-          const result = await fs.stat(...args);
+          let result;
+          try { result = await fs.stat(...args); }
+          catch (error) { if (error.code === "ENOENT") missing = true; throw error; }
           if (mode === "delayed final scan" && !release) {
-            heldAt = performance.now();
             await new Promise((resolve) => { release = resolve; });
           }
           return result;
@@ -215,10 +218,12 @@ test("short failure-only receipt budget preserves missing and dropped events and
         h.setDrop(mode === "dropped message");
         const result = await mutate(mode === "delayed final scan" ? "end" : "next", mode === "delayed final scan" ? { pane: "left" } : {});
         const eventId = result.result.eventId;
-        if (mode === "delayed final scan") {
-          await until(() => release);
-          await delay(200);
-        }
+        await until(() => h.sent.length === 1);
+        if (mode === "missing persistence") await until(() => missing);
+        if (mode === "delayed final scan") await until(() => release);
+        assert.equal((await eventStatus(h, eventId)).status, "delivering");
+        now += 30000; // The unchanged runtime receipt deadline.
+        release?.();
         await until(async () => (await eventStatus(h, eventId))?.status === "failed_delivery");
         const state = await eventStatus(h, eventId);
         assert.equal(state.delivery, "not-confirmed");
@@ -235,8 +240,7 @@ test("short failure-only receipt budget preserves missing and dropped events and
           if (mode === "dropped message") {
             assert.equal(entry, undefined);
           } else {
-            assert.ok(release, "real stat completed but its result remains withheld");
-            assert.ok(performance.now() - heldAt >= 150, "real receipt I/O exceeds the short deadline");
+            assert.ok(release, "real stat completes before its result returns after the receipt deadline");
             assert.equal(entry.content, h.sent[0].message.content);
             assert.deepEqual(entry.details, h.sent[0].message.details);
             assert.deepEqual(eventPacket(h.sent[0]).output, (await s.api(root + "/output")).json);

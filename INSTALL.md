@@ -44,7 +44,7 @@ The install line of the Pi-Bolt README installs it to `~/.pi-bolt` and links the
 curl -fsSL https://pi-bolt.opensec.in/install.sh | sh
 ```
 
-One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.5.0 (Pi-Bolt 1.2.0, linux-x64, JIT off)`. Use the Pi-Bolt release `runtime.piBoltVersion` of the manifest, the selected Pi-Bolt release. When the Pi-Bolt pin lags behind the Pi pin, it carries an older Pi than `runtime.piVersion`, and then `untested_in_range` is the expected result. Check it:
+One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.5.2 (Pi-Bolt 1.2.1, linux-x64, JIT off)`. Use the Pi-Bolt release `runtime.piBoltVersion` of the manifest, the selected Pi-Bolt release. When the Pi-Bolt pin lags behind the Pi pin, it carries an older Pi than `runtime.piVersion`, and then `untested_in_range` is the expected result. Check it:
 
 ```sh
 python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"
@@ -118,9 +118,9 @@ Each optional module is one `pi install` line. Use the `PI_CODING_AGENT_DIR` of 
 
 ```sh
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter@7.0.1
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory@0.10.0
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory@0.11.0
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki@0.12.5
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.49
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.51
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@amaster.ai/pi-computer-use@0.1.38
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/openviking-pi/index.ts"
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/agentcore-pi/index.ts"

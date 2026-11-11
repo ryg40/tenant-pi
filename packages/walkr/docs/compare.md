@@ -31,14 +31,20 @@ The private URL belongs to one server run. A page that is open shows a new sessi
 
 | Part | Content |
 | --- | --- |
-| Bar | Sessions, the type of the session on screen, its title and state, Newer, Older, the Type and View selectors, the theme |
+| Bar | The theme-coloured `walkr` wordmark, Sessions, the session type, title and state, Newer, Older, Type, View, Show all and the theme |
 | Session list | Every saved session, the newest first: type, title, time, your pick and the stars. A session shows New until you open it. |
-| Stage | The options of the selected session, in the format of its type |
+| Stage | The options in their original order. Side by side adds Fold left, Fold right and Solo to each option head. |
+| Folded rail | A narrow button in the option's place, with its label and pick mark. Select it to open that option again. |
+| Show all | Opens all folded options. This control appears in the bar only when Side by side has a folded option. |
 | Decision line | Your pick, No option fits, the note, Submit result, and the rating |
 
 - Sessions opens and closes the list. A closed list gives the stage the full width.
 - Type shows only the sessions of one type in the list.
 - View changes the display: Side by side, or One option (with one tab for each option).
+- Fold left and Fold right close one column into a rail with its label facing that direction. Open columns share the free width.
+- Solo opens the chosen option and folds its neighbours in place. Show all restores equal columns.
+- Folding changes only the layout. Frames, zoom, comments, your pick and rating stay. A newly selected session starts unfolded.
+- On a narrow screen, options stack vertically only when none is folded. With folds, the rails and open options share one row.
 - A text session has a folded box with the original text above the options. Open it to compare. Each version shows as clean text.
   The browser saves the view for each type.
 - Newer and Older step through the list.
@@ -89,10 +95,11 @@ walkr-compare list
 walkr-compare view <session-id>
 walkr-compare wait <session-id> [--timeout <seconds>]
 walkr-compare outcome <session-id> /absolute/outcome.json     # { actionId, summary }
+walkr-compare close                                          # optional Sheprd link only
 ```
 
 `walkr compare ...` runs the same commands.
-`create` prints `{ sessionId, replay, status, url }`. `open` prints the page URL of this server run.
+`create` prints `{ sessionId, replay, status, url }`, and `sheprd` only when the [Sheprd link](#sheprd-link-optional) is on. `open` prints the page URL of this server run.
 `wait` polls each 500 ms until the result or the timeout (default 240 seconds, maximum 3600). It prints `{ status: "ready", result, rating }` or `{ status: "timeout" }`.
 No command opens a browser.
 
@@ -119,6 +126,33 @@ No command opens a browser.
 Limits: 2 or 3 options, 1 MiB for each option content, 8 MiB for each request, at most 12 clarifications.
 `workflow` uses 1 to 64 lowercase letters, digits or hyphens. `optionId` uses 1 to 64 letters, digits, dots, underscores or hyphens.
 Two options with the same content are refused. The source is `text` or `markdown`.
+
+## Sheprd link (optional)
+
+The Sheprd link shows the Compare page in the Walkr section of Sheprd, beside the agent's pane. It is off by default.
+Without it, each command prints and does what this guide describes, and no `sheprd` process starts.
+
+To turn it on, put `export WALKR_SHEPRD_CONNECT=1` in the shell or the profile that starts Pi or Claude Code.
+The link works only when all three conditions hold:
+
+1. `WALKR_SHEPRD_CONNECT` is exactly `1`.
+2. The agent runs in a Herdr pane: `HERDR_ENV` is exactly `1`.
+3. A `sheprd` file is on the `PATH`. Walkr skips a relative or empty `PATH` entry, because it depends on the current directory, which can be a checkout under review.
+
+The link works only when the agent and Sheprd run on the same computer.
+Sheprd's shim on an SSH host cannot connect a Walkr run: it answers `walkr connect` with exit 8, so Walkr prints `"failed"`.
+
+With the link on, `create` and `open` run `sheprd walkr connect - --show` after they have the page URL.
+The URL goes to `sheprd` on standard input, never as an argument, because it holds the page secret.
+`create` adds `"sheprd": "connected"` or `"sheprd": "failed"` to its JSON. `open` prints only the URL.
+`walkr-core FILE` also tells Sheprd the URL; when Sheprd shows the page, no system browser opens.
+A `sheprd` that fails or does not end within 5 seconds never fails the Walkr command. The command then goes on as without the link.
+Sheprd accepts only a loopback address, so a URL with an address of `HUMAN_REVIEW_ALLOWED_HOSTS` gives `"failed"`.
+
+`walkr-compare close` runs `sheprd walkr disconnect` and nothing else. It starts no server and prints `{ "sheprd": "disconnected" }`, `{ "sheprd": "failed" }` or `{ "sheprd": null }` when the link is off.
+It tells Sheprd that the run ended; it does not close the page. The page stays open in Sheprd for a rating
+until the owner presses Close in Sheprd, or until it is idle for 2 hours.
+An open page keeps the Walkr server alive past its 45 idle minutes, because the page keeps making requests.
 
 ## Data contract
 

@@ -93,6 +93,8 @@ The create request:
    With `null`, ask with the question tool whether to start a new session, and use the note for the new options.
 5. Run `outcome` with `{ "actionId", "summary" }`: one or two sentences on what you did. Then ask the owner to rate the session in the page.
 
+Only when `create` printed `"sheprd": "connected"`: this rule replaces the rating request of step 5. The page is in Sheprd's Walkr section. Say so with the URL, and say that the owner can rate the session there. After the outcome, run `{{LOCAL_COMPARE_COMMAND}} close`, then go on without waiting for the rating; ask no question about it.
+
 ## Rules
 
 - Retry an uncertain command with the exact same request file and action ID. Never invent a new ID for a retry.

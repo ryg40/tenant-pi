@@ -8,6 +8,8 @@ body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 
 .cmp-app.is-list-closed .cmp-list { display: none; }
 
 .cmp-bar { grid-area: bar; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 12px; border-bottom: 1px solid var(--hair); background: var(--rail); }
+.cmp-mark { flex: none; color: var(--strong-txt); font: 700 17px/1 var(--sans); }
+.cmp-mark-r { color: var(--accent); }
 .cmp-bar h1 { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .cmp-state { flex: none; color: var(--mute-2, var(--mute)); font-size: 12.5px; }
 .cmp-bar-end { display: flex; flex: none; align-items: center; gap: 8px; margin-left: auto; }
@@ -45,10 +47,19 @@ body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 
 .cmp-tabs button[aria-selected="true"] { border-color: var(--accent); font-weight: 700; }
 .cmp-tabs button[data-picked="true"]::after { content: " ✓"; color: var(--keep, var(--accent)); }
 
-.cmp-stage { display: grid; flex: 1; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 8px; min-height: 0; }
+.cmp-stage { --cmp-rail-width: 36px; display: grid; flex: 1; grid-template-columns: var(--cmp-columns); grid-auto-flow: column; gap: 8px; min-height: 0; }
 .cmp-option { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 2px solid var(--card-border); border-radius: 9px; background: var(--card); }
 .cmp-option[data-picked="true"] { border-color: var(--keep, var(--accent)); }
-.cmp-option-head { display: flex; flex: none; align-items: baseline; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--hair); }
+.cmp-option-head { display: flex; flex: none; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 4px 8px; border-bottom: 1px solid var(--hair); }
+.cmp-option-head strong { min-width: 0; overflow-wrap: anywhere; }
+.cmp-fold-controls { display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: 4px; }
+.cmp-fold-controls .btn-ghost { padding: 2px 6px; font-size: 11.5px; }
+.cmp-rail { display: flex; flex: 1; align-items: center; gap: 4px; width: 100%; min-height: 0; padding: 10px 5px; overflow: hidden; border: 0; border-radius: 7px; background: transparent; color: var(--txt); font: 600 13px/1.4 var(--sans); text-align: left; white-space: nowrap; writing-mode: vertical-rl; cursor: pointer; }
+.cmp-rail-label { min-height: 0; overflow: hidden; text-overflow: ellipsis; }
+.cmp-rail-pick { flex: none; }
+.cmp-option[data-fold="left"] .cmp-rail { transform: rotate(180deg); }
+.cmp-option[data-picked="true"] .cmp-rail { background: var(--keep-soft, var(--accent-soft)); }
+.cmp-rail:hover { background: var(--accent-soft); }
 .cmp-summary { flex: 1; min-width: 0; overflow: hidden; color: var(--mute); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
 .cmp-body { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--stage, var(--canvas)); }
 .cmp-body > iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
@@ -63,10 +74,9 @@ body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 
 .cmp-pick-button:disabled { cursor: default; }
 textarea { box-sizing: border-box; border: 1px solid var(--hair); border-radius: 6px; background: var(--input-bg); color: var(--txt); font: inherit; }
 .cmp-option-foot textarea { flex: 1; min-width: 0; height: 56px; padding: 4px 6px; resize: vertical; }
-.cmp-option-foot textarea:focus { height: 120px; }
 
 .cmp-decide { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px 18px; }
-.cmp-pick, .cmp-rate { display: flex; flex: 1 1 420px; align-items: center; gap: 8px; min-width: 0; }
+.cmp-pick, .cmp-rate { display: flex; flex: 1 1 420px; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .cmp-pick p { flex: 0 1 auto; min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .cmp-rate { flex: 1 1 420px; color: var(--mute); font-size: 12.5px; }
 .cmp-none { flex: none; }
@@ -93,12 +103,20 @@ textarea { box-sizing: border-box; border: 1px solid var(--hair); border-radius:
 .zoom-control button:disabled { color: var(--faint); cursor: default; }
 .zoom-control .zoom-reset[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
 
+@media (max-width: 1200px) {
+  .cmp-bar, .cmp-bar-end { flex-wrap: wrap; }
+  .cmp-bar-end { flex: 1 1 100%; min-width: 0; }
+  .cmp-note { min-width: 0; flex-basis: 100%; }
+}
 @media (max-width: 900px) {
   html, body { height: auto; }
   .cmp-app { display: block; height: auto; }
-  .cmp-bar, .cmp-bar-end { flex-wrap: wrap; }
   .cmp-list { max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--hair); }
-  .cmp-stage { grid-auto-flow: row; }
+  .cmp-stage { grid-template-columns: minmax(0, 1fr); grid-auto-flow: row; }
+  .cmp-stage.has-folds { grid-template-columns: var(--cmp-columns); grid-auto-flow: column; }
   .cmp-option { min-height: 70vh; }
+  .cmp-option-foot, .cmp-option-head .zoom-control { flex-wrap: wrap; }
+  .cmp-option-foot .cmp-pick-button, .cmp-option-head .zoom-control { max-width: 100%; }
+  .cmp-option-foot textarea { flex-basis: 100%; }
 }
 .cmp-decide button { flex: none; white-space: nowrap; }

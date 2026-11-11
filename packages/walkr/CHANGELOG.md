@@ -20,6 +20,7 @@
 - A star rating for each Compare session: five stars with half stars, saved as a whole number from 1 to 10. You can rate at each time, and the agent reads earlier ratings before a new session.
 - `walkr-compare` starts the background Walkr server when none runs, as `walkr-core` does. Sessions are saved under `~/.local/.walkr/compare` or `HUMAN_REVIEW_COMPARE_ROOT`.
 - `HUMAN_REVIEW_ALLOWED_HOSTS`: a list of exact `name:port` values that the server accepts in the `Host` header. With `HUMAN_REVIEW_BIND=0.0.0.0` you can open the Compare page from another computer. Every other route refuses such a host. The default accepts `127.0.0.1` and `localhost` only, as before.
+- An optional Sheprd link, off by default. With `WALKR_SHEPRD_CONNECT=1` in a Herdr pane and `sheprd` on the `PATH`, `walkr-compare create` and `open` and `walkr-core FILE` show the page in Sheprd's Walkr section, and `walkr-compare close` tells Sheprd that the run ended. See the [Compare guide](docs/compare.md#sheprd-link-optional).
 
 ## 0.9.3 (2026-11-10)
 

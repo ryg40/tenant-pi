@@ -26,9 +26,12 @@ async function page(t, s, shellPath, { storage = [], lose = null } = {}) {
   const base = `http://127.0.0.1:${s.port}`;
   const dom = new JSDOM((await request(s.port, shellPath)).text, { url: base + shellPath });
   for (const [key, value] of storage) dom.window.localStorage.setItem(key, value);
-  const posts = [];
+  const posts = [], requests = [];
   const shell = bootSharedGui(dom.window, { base, refreshMs: 30, fetch: async (url, init) => {
-    if (init.method === "POST") posts.push(url.split("/").at(-1));
+    if (init.method === "POST") {
+      posts.push(url.split("/").at(-1));
+      requests.push({ route: new URL(url).pathname, body: JSON.parse(init.body) });
+    }
     const answer = await fetch(url, init);
     if (lose && url.endsWith(`/${lose}`)) { lose = null; await answer.arrayBuffer(); throw new TypeError("Lost response"); }
     return answer;
@@ -38,7 +41,7 @@ async function page(t, s, shellPath, { storage = [], lose = null } = {}) {
   await until(() => shell.state);
   const $ = (id) => dom.window.document.getElementById(id);
   const type = (text) => { $("brief").value = text; $("brief").dispatchEvent(new dom.window.Event("input")); };
-  return { shell, posts, close, $, type, win: dom.window,
+  return { shell, posts, requests, close, $, type, win: dom.window,
     storage: () => Object.keys(dom.window.localStorage).map((key) => [key, dom.window.localStorage.getItem(key)]) };
 }
 const root = (id) => `/api/double/sessions/${encodeDoubleComparisonId(id)}`;
@@ -173,15 +176,18 @@ test("an uncertain Send resolves to its saved request once: Double Retry and Coi
   const kept = p.storage();
   p.close();
   const q = await page(t, s, bound.path, { storage: kept });
-  await until(() => !q.$("sessionRetry").hidden);
+  await until(() => !q.$("sessionRetry").hidden && !q.$("sessionRetry").disabled);
   await delay(100);
   assert.deepEqual(q.posts, [], "reload never resubmits");
   q.$("sessionRetry").click();
   await until(() => q.$("sessionAlert").hidden);
   assert.deepEqual(q.posts, ["steer"]);
+  assert.deepEqual(q.requests, p.requests.filter((item) => item.route === r + "/steer"), "Retry replays the exact saved request");
   assert.equal((await generations(s, r)).length, 2, "one steered round only");
   const v = (await s.api(r)).json.view;
-  await post(`${r}/fail`, { actionId: "f1", requestId: v.generation.requestId, attemptId: v.generation.attempt.id, message: "Model stopped" });
+  const failed = await post(`${r}/fail`, { actionId: "f1", requestId: v.generation.requestId, attemptId: v.generation.attempt.id, message: "Model stopped" });
+  assert.equal(failed.status, 200, JSON.stringify(failed.json));
+  assert.equal(failed.json.view.status, "failed");
   await until(() => q.shell.state.view?.status === "failed");
   const latest = (await s.api(r)).json.view;
   const token = /data-token="([0-9a-f]{64})"/.exec((await request(s.port, bound.path)).text)[1];
@@ -211,6 +217,7 @@ test("an uncertain Send resolves to its saved request once: Double Retry and Coi
   x.$("coinflipResolve").click();
   await until(() => x.$("coinflipResolve").hidden);
   assert.deepEqual(x.posts, ["steer"]);
+  assert.deepEqual(x.requests, w.requests.filter((item) => item.route === croute(cid) + "/steer"), "Resolve replays the exact saved request");
   assert.match(x.$("coinflipStatus").textContent, /replacement pair/);
   const events = (await c.events(cid)).events.filter((e) => e.kind === "generation");
   assert.deepEqual(events.map((e) => e.payload.kind), ["initial", "steer"]);
@@ -324,7 +331,7 @@ test("S2: Coinflip lost Send, reload, Resolve: the confirmed text leaves the box
   const kept = w.storage();
   w.close();
   const x = await page(t, s, c.connected.path, { storage: kept });
-  await until(() => !x.$("coinflipResolve").hidden);
+  await until(() => !x.$("coinflipResolve").hidden && !x.$("coinflipResolve").disabled);
   assert.equal(x.$("brief").value, "Try a pill shape");
   x.$("coinflipResolve").click();
   await until(() => x.$("coinflipResolve").hidden && x.$("brief").value === "");

@@ -26,6 +26,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
   let draft = { pick: null, comments: {}, note: "", none: false }, ratingDraft = null;
   let busy = false, error = "", closed = false, timer, zooms = [], readGeneration = 0;
   let listOpen = stored("list") ? stored("list") === "open" : !selected;
+  const folds = new Map(); // Layout only, reset when the selected session changes.
   let pending = null;
   try { pending = JSON.parse(stored("pending", "null")); } catch {}
 
@@ -75,6 +76,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     if (sessionId === selected) return;
     readGeneration += 1;
     selected = sessionId; view = null; loaded = ""; single = 0; ratingDraft = null;
+    folds.clear();
     draft = { pick: null, comments: {}, note: "", none: false };
     for (const id of ["note", "rateNote"]) $(id).value = "";
     $("none").checked = false;
@@ -148,7 +150,72 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     comment.addEventListener("input", () => { draft.comments[item.optionId] = comment.value; });
     foot.append(pick, comment);
     card.append(head, stage, foot);
+    if (mode === "columns") {
+      const controls = make("span", "cmp-fold-controls");
+      const rail = make("button", "cmp-rail");
+      const mark = make("span", "cmp-rail-pick", " ✓");
+      mark.setAttribute("aria-hidden", "true");
+      mark.hidden = true;
+      rail.append(make("span", "cmp-rail-label", item.label), mark);
+      rail.type = "button";
+      rail.hidden = true;
+      rail.setAttribute("aria-label", `Show ${item.label}`);
+      rail.title = `Show ${item.label}`;
+      stage.id = `cmp-body-${item.optionId}`;
+      rail.setAttribute("aria-controls", stage.id);
+      rail.setAttribute("aria-expanded", "false");
+      for (const direction of ["left", "right"]) {
+        const fold = make("button", "btn-ghost", `Fold ${direction}`);
+        fold.type = "button";
+        fold.dataset.fold = direction;
+        fold.setAttribute("aria-label", `Fold ${item.label} to the ${direction}`);
+        fold.setAttribute("aria-controls", stage.id);
+        fold.addEventListener("click", () => {
+          folds.set(item.optionId, direction);
+          layoutColumns();
+          rail.focus();
+        });
+        controls.append(fold);
+      }
+      const solo = make("button", "btn-ghost", "Solo");
+      solo.type = "button";
+      solo.setAttribute("aria-label", `Show ${item.label} alone`);
+      solo.addEventListener("click", () => {
+        const index = view.options.findIndex((other) => other.optionId === item.optionId);
+        folds.clear();
+        view.options.forEach((other, at) => {
+          if (other.optionId !== item.optionId) folds.set(other.optionId, at < index ? "left" : "right");
+        });
+        layoutColumns();
+      });
+      controls.append(solo);
+      head.append(controls);
+      rail.addEventListener("click", () => {
+        const direction = folds.get(item.optionId);
+        folds.delete(item.optionId);
+        layoutColumns();
+        controls.querySelector(`[data-fold="${direction}"]`)?.focus();
+      });
+      card.append(rail);
+    }
     return card;
+  }
+
+  function layoutColumns() {
+    const columns = view && viewMode() === "columns";
+    $("showAll").hidden = !columns || !folds.size;
+    $("stage").classList.toggle("has-folds", Boolean(columns && folds.size));
+    const tracks = [];
+    for (const card of $("stage").children) {
+      const direction = columns && folds.get(card.dataset.option);
+      const folded = Boolean(direction);
+      tracks.push(folded ? "var(--cmp-rail-width)" : "minmax(0, 1fr)");
+      card.classList.toggle("is-folded", folded);
+      card.dataset.fold = direction || "";
+      for (const child of card.children) child.hidden = child.classList.contains("cmp-rail") ? !folded : folded;
+      for (const button of card.querySelectorAll("[data-fold], .cmp-rail")) button.setAttribute("aria-expanded", String(!folded));
+    }
+    $("stage").style.setProperty("--cmp-columns", tracks.join(" "));
   }
 
   function context() {
@@ -230,6 +297,8 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
       $("title").textContent = "Walkr sessions";
       $("state").textContent = "";
       $("tabs").hidden = true;
+      $("showAll").hidden = true;
+      folds.clear();
       for (const zoom of zooms.splice(0)) zoom.close();
       $("stage").replaceChildren();
       stageKey = "";
@@ -273,7 +342,17 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
       }) : []));
     }
     const picked = readOnly ? view.result.pick : draft.pick;
-    for (const card of $("stage").children) card.dataset.picked = String(card.dataset.option === picked);
+    layoutColumns();
+    for (const card of $("stage").children) {
+      const on = card.dataset.option === picked;
+      card.dataset.picked = String(on);
+      const rail = card.querySelector(".cmp-rail");
+      if (rail) {
+        const label = view.options.find((item) => item.optionId === card.dataset.option).label;
+        rail.querySelector(".cmp-rail-pick").hidden = !on;
+        rail.setAttribute("aria-label", `Show ${label}${on ? ", picked" : ""}`);
+      }
+    }
     for (const tab of $("tabs").children) tab.dataset.picked = String(tab.dataset.tab === picked);
     for (const button of $("stage").querySelectorAll("[data-pick]")) {
       const on = button.dataset.pick === picked;
@@ -308,6 +387,10 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     [$("older"), "click", () => step(1)],
     [$("typeFilter"), "change", () => render()],
     [$("viewMode"), "change", () => { if (view) store(`view:${view.workflow}`, $("viewMode").value); render(); }],
+    [$("showAll"), "click", () => {
+      const first = $("stage").querySelector(".is-folded [data-fold]");
+      folds.clear(); layoutColumns(); first?.focus();
+    }],
     [$("none"), "change", () => { draft.none = $("none").checked; if (draft.none) draft.pick = null; render(); }],
     [$("note"), "input", () => { draft.note = $("note").value; render(); }],
     [$("rateNote"), "input", () => render()],

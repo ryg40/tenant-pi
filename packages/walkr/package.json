@@ -29,7 +29,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "test": "node --test --test-force-exit --test-timeout=60000",
+    "test": "node --import ./test/no-sheprd-link.js --test --test-force-exit --test-timeout=60000",
     "start": "node src/cli.js"
   },
   "keywords": [

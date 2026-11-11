@@ -215,6 +215,7 @@ On a stop, the extension releases its binding. A stopped watcher never reconnect
 | `HUMAN_REVIEW_ALLOWED_HOSTS` | Extra `Host` header values that the server accepts, as a comma-separated list of exact `name:port` values. The default is none. Such a host reaches only the Compare page and the theme files; every other route stays on `127.0.0.1`. |
 | `HUMAN_REVIEW_IDLE_MS` | The idle time before the server stops. The default is 45 minutes. |
 | `HUMAN_REVIEW_CORE_COMMAND` | The command of the wake-up watcher, as a JSON array |
+| `WALKR_SHEPRD_CONNECT` | `1` in a Herdr pane with `sheprd` on the `PATH` shows the page in Sheprd's Walkr section, and then opens no system browser. The default is off. See [the Sheprd link](compare.md#sheprd-link-optional). |
 
 ## Errors
 

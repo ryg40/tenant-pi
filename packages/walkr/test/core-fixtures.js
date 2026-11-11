@@ -3,7 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpRoot } from "./tmp-root.js";
 
 export const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -63,13 +63,27 @@ const parse = (text) => {
 };
 
 /** A detached review server on a disposable state directory; `restart` replaces it on the same state. */
-export async function disposableServer(t, env = {}) {
+export async function disposableServer(t, env = {}, { clock = false } = {}) {
   const tmp = fs.mkdtempSync(path.join(tmpRoot, "walkr-core-wake-"));
   const stateDir = path.join(tmp, "state");
   const fixture = { tmp, stateDir, server: null, child: null };
+  const preloads = [];
+  if (clock) {
+    const clockFile = path.join(tmp, "clock.json");
+    const preload = path.join(tmp, "clock.mjs");
+    let now = Date.now();
+    fixture.advanceClock = (ms) => {
+      now += ms;
+      fs.writeFileSync(clockFile + ".tmp", String(now));
+      fs.renameSync(clockFile + ".tmp", clockFile);
+    };
+    fixture.advanceClock(0);
+    fs.writeFileSync(preload, `import fs from "node:fs";\nDate.now = () => Number(fs.readFileSync(${JSON.stringify(clockFile)}, "utf8"));\n`);
+    preloads.push("--import", pathToFileURL(preload).href);
+  }
   async function launch() {
     fs.rmSync(path.join(stateDir, "server.json"), { force: true });
-    fixture.child = spawn(process.execPath, ["src/server-entry.js"], {
+    fixture.child = spawn(process.execPath, [...preloads, "src/server-entry.js"], {
       cwd: project,
       env: { ...process.env, HUMAN_REVIEW_STATE_DIR: stateDir, HUMAN_REVIEW_HOSTED: "", ...env },
       stdio: "ignore",

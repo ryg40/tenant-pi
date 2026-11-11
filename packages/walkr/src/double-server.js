@@ -14,7 +14,10 @@ import { POSIX_ONLY_CODE, posixOnlyRefusal } from "./posix-only.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PANES = ["left", "right"];
-const STATIC = new Set(["/double.js", "/double-route.js", "/double-selection.js", "/double.css", "/double-sdk.js", "/double-session-shell.js", "/shared-gui-shell.js", "/frame-zoom.js"]);
+const STATIC = new Map([
+  "/double.js", "/double-route.js", "/double-selection.js", "/double.css", "/double-sdk.js", "/double-session-shell.js", "/shared-gui-shell.js", "/frame-zoom.js",
+  ...SHARED_GUI_MODE_ASSETS,
+].map((route) => [route, path.join(here, route.slice(1))]));
 // The connected Pi chat renews its lease each second. A busy chat process can miss several renewals
 // (a long tool call, a large session write), so the lease lasts 20 seconds, not 5.
 const GUI_LEASE_MS = 20000;
@@ -203,7 +206,7 @@ export function createDoubleHandler({ token, archiveDir, stateDir, hosted, train
   async function handle(req, res) {
     // Never normalize or decode the path before matching the prefixed segment.
     const raw = req.url.split("?")[0];
-    if (!/^\/(?:api\/double|double|double-session|double-artifact|double-gui|walkr-mode)(?:\/|$)/.test(raw) && !STATIC.has(raw) && !SHARED_GUI_MODE_ASSETS.has(raw)) return false;
+    if (!/^\/(?:api\/double|double|double-session|double-artifact|double-gui|walkr-mode)(?:\/|$)/.test(raw) && !STATIC.has(raw)) return false;
     try {
       const isApi = raw === "/api/double" || raw.startsWith("/api/double/");
       const provided = req.headers["x-human-review-token"];
@@ -218,9 +221,10 @@ export function createDoubleHandler({ token, archiveDir, stateDir, hosted, train
       // Registered shared-GUI modes own their API, frame, and static routes; Double keeps the routes below.
       const modeContext = { ...modeState, agent, guiBrowser, serial, readBody, send };
       for (const mode of Object.values(modes)) if (mode.route && await mode.route(raw, req, res, modeContext)) return true;
-      if (STATIC.has(raw) || SHARED_GUI_MODE_ASSETS.has(raw)) {
+      const staticFile = STATIC.get(raw);
+      if (staticFile) {
         if (req.method !== "GET") fail("METHOD_NOT_ALLOWED", "Use GET for static resources.");
-        send(res, 200, await fs.readFile(path.join(here, raw.slice(1))), MIME[path.extname(raw)]);
+        send(res, 200, await fs.readFile(staticFile), MIME[path.extname(staticFile)]);
         return true;
       }
       if (raw.startsWith("/double-gui/")) {

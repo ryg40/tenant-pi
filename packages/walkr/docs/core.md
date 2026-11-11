@@ -208,7 +208,7 @@ On a stop, the extension releases its binding. A stopped watcher never reconnect
 
 | Variable | Effect |
 | --- | --- |
-| `HUMAN_REVIEW_STATE_DIR` | The state directory. The default is `~/.human-review`. It holds `state.json` and the server record `server.json`. |
+| `HUMAN_REVIEW_STATE_DIR` | The state directory. The default is `~/.human-review`. It holds `state.json`, the server record `server.json` and the private error log `errors.log`. |
 | `HUMAN_REVIEW_NO_BROWSER` | `1` prints the URL and opens no browser |
 | `HUMAN_REVIEW_PORT` | A fixed port for the server. The default is a free port. |
 | `HUMAN_REVIEW_BIND` | The address that the server listens on. The default is `127.0.0.1`. `0.0.0.0` listens on every interface. |
@@ -216,8 +216,20 @@ On a stop, the extension releases its binding. A stopped watcher never reconnect
 | `HUMAN_REVIEW_IDLE_MS` | The idle time before the server stops. The default is 45 minutes. |
 | `HUMAN_REVIEW_CORE_COMMAND` | The command of the wake-up watcher, as a JSON array |
 
+## Errors
+
+Unexpected Core request, proxy, page-load and save failures show a generic message with a `WR-` reference code.
+The code identifies an entry in `errors.log` in the state directory, by default `~/.human-review/errors.log`.
+The log holds the time, operation and private cause. File-watcher save failures also go there before the watcher retries.
+Only the file owner can read or write the log (mode `0600`). The detached server does not need a terminal.
+The log resets before a new entry would exceed 1 MiB. Long causes are shortened.
+If the state directory cannot accept a log write, the request still fails safely, but its code has no saved entry.
+
+Warning: the log can contain private paths and exception details. Do not share it without checking its contents.
+
 ## Limits
 
+- Removal of injected tags matches `data-eh-sdk` or `data-eh-route` anywhere inside a `script` or `base` start tag. An application tag with that text in an attribute value is removed on save.
 - A wake can race a poll. Then the wake still starts a turn, and the poll returns the batch. The `batch_id` rule prevents a second application.
 - If Pi exits between the claim and the wake message, that batch does not wake the chat again. The handoff box stays the fallback.
 - `state.json` holds the bound chat identity. A process that can read the state directory can see it.

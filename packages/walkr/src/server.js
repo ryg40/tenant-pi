@@ -1,11 +1,16 @@
 import http from "node:http";
+import https from "node:https";
 import { BlockList, isIP } from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { createBrotliDecompress, createGunzip, createInflate, createInflateRaw } from "node:zlib";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 import { atomicWrite, Store, resolveAsset } from "./state.js";
 import { injectSdk, stripSdk } from "./html-transform.js";
+import { recordError } from "./diagnostics.js";
 import { isMarkdown, renderMarkdownPage } from "./markdown.js";
 import { canonicalTarget, ensureStateDir, localUrl, SERVER_PROTOCOL, serverPath, stateDir, targetKey } from "./paths.js";
 import { commandArg, reviewInvocation } from "./setup.js";
@@ -90,51 +95,105 @@ const MAX_LOCAL_PAGE_BYTES = 24 * 1024 * 1024;
 const hash = (text) => crypto.createHash("sha1").update(text).digest("hex");
 const uid = (prefix) => `${prefix}_${crypto.randomBytes(6).toString("hex")}`;
 
-/** Read an HTML response with a hard size cap, since text() is unbounded. */
+function reportError(operation, error) {
+  const code = `WR-${crypto.randomBytes(6).toString("hex")}`;
+  recordError(code, operation, error);
+  return code;
+}
+
+/** Supply both loopback families without consulting DNS or the hosts file. */
+function lookupLoopback(_hostname, options, callback) {
+  if (options.all) callback(null, [{ address: "127.0.0.1", family: 4 }, { address: "::1", family: 6 }]);
+  else callback(null, "127.0.0.1", 4);
+}
+
+/** Pin the network address, while keeping the selected app's Host and TLS name. */
+function requestLocal(target, options, onResponse) {
+  const value = localUrl(target);
+  if (!value) throw new Error("Expected a localhost URL.");
+  const url = new URL(value);
+  let hostname;
+  if (url.hostname === "localhost") hostname = "localhost";
+  else if (url.hostname === "127.0.0.1") hostname = "127.0.0.1";
+  else if (url.hostname === "[::1]") hostname = "::1";
+  else throw new Error("Expected a loopback host.");
+  const transport = url.protocol === "https:" ? https : http;
+  return transport.request({
+    ...options,
+    hostname,
+    lookup: lookupLoopback,
+    autoSelectFamily: true,
+    port: url.port || (url.protocol === "https:" ? 443 : 80),
+    path: `${url.pathname}${url.search}`,
+    headers: { ...options.headers, host: url.host },
+    ...(url.hostname === "localhost" ? { servername: "localhost" } : {}),
+  }, onResponse);
+}
+
+/** Match fetch's deflate sniffing without buffering the compressed response. */
+async function* decodeDeflate(source) {
+  const input = Readable.from(source);
+  let first;
+  for await (const chunk of input.iterator({ destroyOnReturn: false })) {
+    first = chunk;
+    break;
+  }
+  if (!first) return;
+  input.unshift(first);
+  const decoder = (first[0] & 0x0f) === 0x08 ? createInflate() : createInflateRaw();
+  const done = pipeline(input, decoder).catch((error) => decoder.destroy(error));
+  try {
+    yield* decoder;
+  } finally {
+    input.destroy();
+    decoder.destroy();
+    await done;
+  }
+}
+
+/** Decode in reverse wire order; pipeline destroys every stage on failure or a size-cap refusal. */
 async function readCapped(response, url) {
-  const reader = response.body.getReader();
+  const encodings = String(response.headers["content-encoding"] || "").toLowerCase().split(",").map((value) => value.trim());
+  const decoders = encodings.every((value) => ["gzip", "x-gzip", "deflate", "br"].includes(value))
+    ? encodings.reverse().map((value) => value === "br" ? createBrotliDecompress() : value === "deflate" ? decodeDeflate : createGunzip())
+    : [];
   const chunks = [];
   let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_LOCAL_PAGE_BYTES) {
-      await reader.cancel().catch(() => {});
-      throw new Error(`The page at ${url} is larger than ${MAX_LOCAL_PAGE_BYTES / (1024 * 1024)}MB.`);
+  await pipeline(response, ...decoders, async (source) => {
+    for await (const chunk of source) {
+      size += chunk.length;
+      if (size > MAX_LOCAL_PAGE_BYTES) {
+        throw new Error(`The page at ${url} is larger than ${MAX_LOCAL_PAGE_BYTES / (1024 * 1024)}MB.`);
+      }
+      chunks.push(chunk);
     }
-    chunks.push(value);
-  }
+  });
   return Buffer.concat(chunks).toString("utf8");
 }
 
 async function fetchLocalPage(target, redirects = 0) {
   const url = localUrl(target);
-  let response;
-  try {
-    response = await fetch(url, {
-      redirect: "manual",
-      headers: { accept: "text/html,application/xhtml+xml" },
+  const response = await new Promise((resolve, reject) => {
+    const req = requestLocal(url, {
+      headers: { accept: "text/html,application/xhtml+xml", "accept-encoding": "identity" },
       signal: AbortSignal.timeout(LOCAL_FETCH_TIMEOUT_MS),
-    });
-  } catch (err) {
-    if (err.name === "TimeoutError") {
-      throw new Error(`Localhost did not answer within ${LOCAL_FETCH_TIMEOUT_MS / 1000}s for ${url}`);
-    }
-    throw err;
-  }
-  if (response.status >= 300 && response.status < 400) {
-    const location = response.headers.get("location");
-    if (!location) throw new Error(`Localhost returned redirect ${response.status} without a location.`);
+    }, resolve);
+    req.on("error", reject);
+    req.end();
+  });
+  if (response.statusCode >= 300 && response.statusCode < 400) {
+    response.destroy();
+    const location = response.headers.location;
+    if (!location) throw new Error(`Localhost returned redirect ${response.statusCode} without a location.`);
     if (redirects >= MAX_LOCAL_REDIRECTS) throw new Error("Too many redirects while loading the localhost page.");
     return fetchLocalPage(new URL(location, url).href, redirects + 1);
   }
-  if (!response.ok) throw new Error(`Localhost returned ${response.status} for ${url}`);
-  const contentType = response.headers.get("content-type") || "";
-  if (!/html|xhtml/i.test(contentType)) {
-    throw new Error(`Expected an HTML page from localhost, but received ${contentType || "an unknown content type"}.`);
+  const contentType = response.headers["content-type"] || "";
+  if (response.statusCode < 200 || response.statusCode >= 300 || !/html|xhtml/i.test(contentType)) {
+    response.destroy();
+    throw new Error("Expected an HTML page from localhost.");
   }
-  return { html: await readCapped(response, url), resolvedUrl: response.url || url };
+  return { html: await readCapped(response, url), resolvedUrl: url };
 }
 
 /**
@@ -457,9 +516,12 @@ export function createServer() {
     if (watched.has(key)) return;
     const page = store.page(key);
     if (!page || page.kind === "url") return;
-    watched.set(key, { file: page.file });
+    const watch = { file: page.file, retry: null };
+    watched.set(key, watch);
 
-    fs.watchFile(page.file, { interval: WATCH_INTERVAL_MS }, () => {
+    const refresh = () => {
+      if (watched.get(key) !== watch) return;
+      clearTimeout(watch.retry);
       let html = "";
       try {
         html = fs.readFileSync(page.file, "utf8");
@@ -469,12 +531,20 @@ export function createServer() {
       const current = hash(html);
       // Our own autosave must never bounce back as a reload.
       if (lastWritten.get(key) === current) return;
-      lastWritten.set(key, current);
       // Rows on a Markdown or self-rendering page are unsent feedback, not
       // something this write already contains; keep them.
-      store.setPristine(key, html, { keepEdits: isMarkdown(page.file) || !!store.page(key)?.dynamic });
+      try {
+        store.setPristine(key, html, { keepEdits: isMarkdown(page.file) || !!store.page(key)?.dynamic });
+      } catch (error) {
+        reportError("watcher-save", error);
+        watch.retry = setTimeout(refresh, WATCH_INTERVAL_MS);
+        watch.retry.unref?.();
+        return;
+      }
+      lastWritten.set(key, current);
       for (const session of sessionsForKey(key)) emit(session, "reload", { key });
-    });
+    };
+    fs.watchFile(page.file, { interval: WATCH_INTERVAL_MS }, refresh);
   }
 
   function writePage(key, html) {
@@ -949,9 +1019,9 @@ export function createServer() {
    * through to the app, unchanged in both directions.
    */
   function proxyToApp(req, res, target) {
-    const headers = { ...req.headers, host: target.host };
+    const headers = { ...req.headers };
     delete headers.cookie;
-    const upstream = http.request(target, { method: req.method, headers }, (up) => {
+    const upstream = requestLocal(target.href, { method: req.method, headers }, (up) => {
       const out = { ...up.headers };
       // The response now lives on the review origin; app cookies must not
       // land here, and frame-blocking headers would blank the iframe.
@@ -961,9 +1031,10 @@ export function createServer() {
       res.writeHead(up.statusCode || 502, out);
       up.pipe(res);
     });
-    upstream.on("error", (err) => {
+    upstream.on("error", (error) => {
+      const code = reportError("app-proxy", error);
       if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
-      res.end(`Could not reach ${target.href}: ${err.message}`);
+      res.end(`Could not reach the reviewed localhost app. Reference: ${code}`);
     });
     req.pipe(upstream);
   }
@@ -1129,9 +1200,10 @@ export function createServer() {
                 baseHref: fetched.resolvedUrl,
                 src: `http://${host}/sdk.js?key=${encodeURIComponent(key)}`,
               };
-            } catch (err) {
+            } catch (error) {
+              const code = reportError("page-load", error);
               res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
-              return res.end(`Could not load ${page.url}: ${err.message}`);
+              return res.end(`Could not load the reviewed localhost page. Reference: ${code}`);
             }
           } else {
             try {
@@ -1143,6 +1215,7 @@ export function createServer() {
             // Markdown reviews render on the fly; the source file stays untouched.
             if (isMarkdown(page.file)) html = renderMarkdownPage(html, page.file);
           }
+          const injected = injectSdk(html, key, sdkOptions);
           const headers = { "content-type": MIME[".html"], "cache-control": "no-store" };
           if (page.kind === "url") {
             // Names the app that later same-origin requests belong to.
@@ -1150,7 +1223,7 @@ export function createServer() {
             headers["set-cookie"] = `__hr_page=${key}; Path=/; SameSite=Lax`;
           }
           res.writeHead(200, headers);
-          return res.end(injectSdk(html, key, sdkOptions));
+          return res.end(injected);
         }
         if (page.kind === "url") {
           const stagedPrefix = "__human_review_paste__/";
@@ -1460,8 +1533,9 @@ export function createServer() {
           try {
             const clean = writePage(key, body.html);
             return json(res, 200, { savedAt: Date.now(), hash: hash(clean) });
-          } catch (err) {
-            return json(res, 500, { error: String(err.message || err) });
+          } catch (error) {
+            const code = reportError("file-save", error);
+            return json(res, 500, { error: `Could not save the reviewed file. Reference: ${code}` });
           }
         }
 
@@ -1656,8 +1730,9 @@ export function createServer() {
 
       res.writeHead(404, { "content-type": "text/plain" });
       return res.end("Not found");
-    } catch (err) {
-      return json(res, 500, { error: String(err.message || err) });
+    } catch (error) {
+      const code = reportError("request", error);
+      return json(res, 500, { error: `Request failed. Reference: ${code}` });
     }
   });
 
@@ -1677,6 +1752,7 @@ export function createServer() {
       const referenced = [...sessions.values()].some((s) => s.visited.has(key));
       if (!referenced) {
         fs.unwatchFile(entry.file);
+        clearTimeout(entry.retry);
         watched.delete(key);
         lastWritten.delete(key);
       }
@@ -1691,7 +1767,10 @@ export function createServer() {
 
   const dispose = () => {
     clearInterval(sweep);
-    for (const entry of watched.values()) fs.unwatchFile(entry.file);
+    for (const entry of watched.values()) {
+      fs.unwatchFile(entry.file);
+      clearTimeout(entry.retry);
+    }
     watched.clear();
     server.close();
   };

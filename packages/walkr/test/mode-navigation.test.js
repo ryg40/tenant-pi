@@ -120,7 +120,12 @@ test("Double private shells retain active menu, explicit chat binding, isolated 
 });
 
 test("mode routes preserve Core shells and arbitrary local-app proxy paths without listing local capabilities", async (t) => {
-  const app = http.createServer((req, res) => { res.setHeader("content-type", "text/html"); res.end(`<p>App ${req.url}</p>`); });
+  const paths = [];
+  const app = http.createServer((req, res) => {
+    paths.push(req.url);
+    res.setHeader("content-type", "text/html");
+    res.end("<p>App fixture</p>");
+  });
   await new Promise((resolve) => app.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => { app.closeAllConnections(); app.close(resolve); }));
   const f = await fixture(t), s = await listen(t, f);
@@ -134,7 +139,8 @@ test("mode routes preserve Core shells and arbitrary local-app proxy paths witho
   for (const route of ["/", "/core", "/coinflip", "/trainer", "/modes/double", "/_walkr/modes/custom", "/_walkr/modes/core/child", "/_walkr/modes/double?app=1"]) {
     const proxied = await request(s.port, route);
     assert.equal(proxied.status, 200);
-    assert.equal(proxied.text, `<p>App ${route}</p>`);
+    assert.equal(proxied.text, "<p>App fixture</p>");
+    assert.equal(paths.at(-1), route);
   }
   for (const mode of modes) {
     const entry = await request(s.port, `/_walkr/modes/${mode}`);

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- Core: the review proxy validates every outbound target and uses numeric loopback addresses. Redirects cannot leave loopback.
+- Core: a failed file-watch save no longer stops the server or clears unsaved feedback. The watcher retries the save.
+- Core: unexpected request errors return generic messages with reference codes instead of exception details. The bounded, owner-only `errors.log` records their causes and file-watcher save failures.
+- Core: local pages retain raw and zlib deflate decoding and reverse-order encoding chains, with the decoded size limit intact.
+- Core: removing injected review tags also removes tags exposed by the first removal pass.
+- Double: static resources use registered file paths, not request-derived filenames.
+- Tests: wake leases use a controlled clock, and the navigation fixture no longer reflects request paths into HTML.
+
 ### Added
 
 - Compare, a fifth mode with the command `walkr-compare` and the skill `walkr-compare`. The agent prepares 2 or 3 options of one change. You see them side by side in one private page, pick one, comment and submit. See the [Compare guide](docs/compare.md).
@@ -95,6 +105,7 @@ Walkr is a fork of [Human Review](https://github.com/petergyang/human-review) 0.
 
 ### Known limits
 
+- Removal of injected tags matches `data-eh-sdk` or `data-eh-route` anywhere inside a `script` or `base` start tag. An application tag with that text in an attribute value is removed on save.
 - The browser tests use jsdom, not a real browser. Real browser layout, accessibility and visual contrast are not verified by the tests.
 - The Pi tests use an offline model provider. They prove delivery and saving, not the quality of real model output.
 - One server writes to one archive or one Trainer root at a time.

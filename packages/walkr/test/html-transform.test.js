@@ -59,12 +59,38 @@ test("localhost pages get absolute assets, their real route, and one sdk", () =>
   assert.equal((twice.match(/<script[^>]*data-eh-route/g) || []).length, 1);
   assert.ok(twice.includes('history.replaceState(null,"",location.origin+"/wiki?view=course#lesson")'));
   assert.ok(twice.indexOf("data-eh-route") < twice.indexOf("<title>"));
-  assert.ok(twice.includes('href="http://localhost:3000/_next/app.css"'));
-  assert.ok(twice.includes('src="http://localhost:3000/_next/app.js"'));
-  assert.ok(twice.includes('src="http://localhost:3000/hero.png"'));
+  assert.equal(twice.match(/<link[^>]*href="([^"]+)"/)[1], "http://localhost:3000/_next/app.css");
+  assert.equal(twice.match(/<script src="([^"]+)"/)[1], "http://localhost:3000/_next/app.js");
+  assert.equal(twice.match(/<img src="([^"]+)"/)[1], "http://localhost:3000/hero.png");
   assert.ok(twice.includes('<a href="/wiki/lesson">'));
-  assert.ok(twice.includes('src="http://127.0.0.1:4444/sdk.js?key=k"'));
+  assert.equal(twice.match(/data-eh-sdk[^>]*src="([^"]+)"/)[1], "http://127.0.0.1:4444/sdk.js?key=k");
   assert.ok(!stripSdk(twice).includes("data-eh-route"));
+});
+
+test("stripping nested bootstrap tags reaches a fixed point without changing application bytes", () => {
+  const sdk = '<script data-eh-sdk></script>';
+  const route = '<script data-eh-route>history.replaceState(null,"", "/")</script>';
+  const base = '<base data-eh-sdk href="/">';
+  const app = '<script>app()</script>\r\n<p>Keep these bytes</p>\t';
+  for (const tag of [sdk, route, base, '<SCRIPT DATA-EH-SDK></SCRIPT>']) {
+    assert.equal(stripSdk(`\r\n${tag}\t${app}`), `\r\n\t${app}`, "surrounding whitespace stays byte-identical");
+    for (const inner of [sdk, route, base]) {
+      for (const split of [1, 4]) {
+        const nested = tag.slice(0, split) + inner + tag.slice(split);
+        assert.equal(stripSdk(nested + app), app);
+      }
+    }
+  }
+});
+
+test("a frameset page stays byte-identical after injection and stripping", () => {
+  const page = '<!DOCTYPE html><html><head><title>Frames</title></head><frameset><frame src="a.html"></frameset></html>';
+  assert.equal(stripSdk(injectSdk(page, "k")), page);
+});
+
+test("inline SVG with a self-closing style and CDATA stays byte-identical after injection and stripping", () => {
+  const page = '<!DOCTYPE html><html><body><svg><style/><text><![CDATA[Compare > Keep < text]]></text></svg></body></html>';
+  assert.equal(stripSdk(injectSdk(page, "k")), page);
 });
 
 test("a script containing the literal '</body>' does not fool injection", () => {

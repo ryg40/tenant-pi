@@ -18,6 +18,24 @@ async function opened(s, f) {
   return response.json;
 }
 
+test("static resources come only from the registered asset lookup", async (t) => {
+  const f = await fixture(t), s = await listen(t, f);
+  for (const [file, type, content] of [
+    ["shared-gui-mode-shells.js", "text/javascript", /export const MODE_SHELLS\b/],
+    ["coinflip.css", "text/css", /\.coinflip/],
+    ["trainer-gui-shell.js", "text/javascript", /export function mountTrainerGui\b/],
+  ]) {
+    const response = await request(s.port, `/${file}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers["content-type"].split(";")[0], type);
+    assert.match(response.text, content);
+  }
+  for (const route of ["/double/../server.js", "/double/%2e%2e/server.js", "/double.js/../server.js", "/double.js?file=server.js", "/shared-gui-mode-shells.js?file=server.js", "/double.js%00"]) {
+    assert.notEqual((await request(s.port, route)).status, 200, route);
+  }
+  assert.equal((await request(s.port, "/double.js", { method: "POST" })).status, 405);
+});
+
 test("accepted IDs retain exact identity through real HTTP fetch, actions, Send and receipt", async (t) => {
   const f = await fixture(t);
   const s = await listen(t, f);

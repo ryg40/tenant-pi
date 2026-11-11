@@ -139,7 +139,7 @@ test("a localhost route is visually editable and returns source-directed feedbac
     body: { target: `http://localhost:${appPort}/redirect-away` },
   });
   assert.equal(redirect.status, 500);
-  assert.match(JSON.parse(redirect.raw).error, /limited to localhost/);
+  assert.doesNotMatch(redirect.raw, /limited to localhost|server\.js/);
 });
 
 test.after(() => fs.rmSync(tmp, { recursive: true, force: true }));

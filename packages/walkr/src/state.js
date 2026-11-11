@@ -418,10 +418,17 @@ export class Store {
    * write (an editor autosave, a formatter) must not throw them away.
    */
   setPristine(key, html, { keepEdits = false } = {}) {
-    return this.update(key, (page) => {
-      page.pristine = html;
-      if (!keepEdits) page.edits = [];
-    });
+    const previous = this.page(key);
+    if (!previous) return null;
+    const next = { ...previous, pristine: html, edits: keepEdits ? previous.edits : [], updatedAt: Date.now() };
+    this.data.pages[key] = next;
+    try {
+      this.save();
+      return next;
+    } catch (err) {
+      this.data.pages[key] = previous;
+      throw err;
+    }
   }
 
   /**

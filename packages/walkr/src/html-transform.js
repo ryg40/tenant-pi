@@ -64,9 +64,15 @@ function injectBeforeLast(html, closeRe, tag) {
   return `${html.slice(0, last)}${tag}${html.slice(last)}`;
 }
 
-/** Remove any injected tag, so a file saved with one never keeps it. */
+/** Remove injected tags to a fixed point; removing one can expose another. This is not an HTML sanitizer. */
 export function stripSdk(html) {
-  return String(html).replace(SDK_TAG_RE, "").replace(SDK_BASE_RE, "").replace(SDK_ROUTE_RE, "");
+  let clean = String(html);
+  let previous;
+  do {
+    previous = clean;
+    clean = clean.replace(SDK_TAG_RE, "").replace(SDK_BASE_RE, "").replace(SDK_ROUTE_RE, "");
+  } while (clean !== previous);
+  return clean;
 }
 
 export function hasSdk(html) {

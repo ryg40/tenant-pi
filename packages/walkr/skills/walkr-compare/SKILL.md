@@ -93,7 +93,14 @@ The create request:
    With `null`, ask with the question tool whether to start a new session, and use the note for the new options.
 5. Run `outcome` with `{ "actionId", "summary" }`: one or two sentences on what you did. Then ask the owner to rate the session in the page.
 
-Only when `create` printed `"sheprd": "connected"`: this rule replaces the rating request of step 5. The page is in Sheprd's Walkr section. Say so with the URL, and say that the owner can rate the session there. After the outcome, run `{{LOCAL_COMPARE_COMMAND}} close`, then go on without waiting for the rating; ask no question about it.
+### Optional Sheprd link
+
+Sheprd is a separate tool that receives Walkr page URLs; the kit neither installs nor requires it.
+Only when `create` printed `"sheprd": "connected"`: this rule replaces the rating request of step 5.
+That status means the link command exited with code 0, not that Walkr checked the page display.
+Give the URL and say that the owner can rate in the Compare page.
+After the outcome, run `{{LOCAL_COMPARE_COMMAND}} close`. Continue without waiting for the rating or asking about it.
+Not verified: Sheprd shows the page in its Walkr section or keeps it open for a rating after disconnect.
 
 ## Rules
 

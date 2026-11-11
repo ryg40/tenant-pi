@@ -6,6 +6,7 @@
 
 - Core: the review proxy validates every outbound target and uses numeric loopback addresses. Redirects cannot leave loopback.
 - Core: a failed file-watch save no longer stops the server or clears unsaved feedback. The watcher retries the save.
+- Core: the file watcher catches source changes during startup. Unchanged content with injected review tags no longer causes a false reload.
 - Core: unexpected request errors return generic messages with reference codes instead of exception details. The bounded, owner-only `errors.log` records their causes and file-watcher save failures.
 - Core: local pages retain raw and zlib deflate decoding and reverse-order encoding chains, with the decoded size limit intact.
 - Core: removing injected review tags also removes tags exposed by the first removal pass.
@@ -17,10 +18,12 @@
 - Compare, a fifth mode with the command `walkr-compare` and the skill `walkr-compare`. The agent prepares 2 or 3 options of one change. You see them side by side in one private page, pick one, comment and submit. See the [Compare guide](docs/compare.md).
 - Two workflows of the `walkr-compare` skill. `walkr compare cfn options` shows options of a CloudFormation change, and `walkr compare cfn + architecture diagram` adds a diagram to each option. `walkr simplify ticket` shows three versions of a short text, each as clean text in its own box, with the original text folded above them. The agent asks with its question tool before it starts.
 - The Compare page is one view of every session. It has no mode menu. The session list is in time order, the newest first, and a session shows New until you open it. The Type selector filters the list, and the View selector changes the display: Side by side or One option.
+- Compare: Fold left and Fold right turn an option into a narrow rail. Solo folds the other options; Show all opens them again. Folding keeps the frames, zoom, comments, pick and rating. A newly selected session starts unfolded.
+- Compare: the `walkr` wordmark appears before Sessions in the top bar and uses the theme colors.
 - A star rating for each Compare session: five stars with half stars, saved as a whole number from 1 to 10. You can rate at each time, and the agent reads earlier ratings before a new session.
 - `walkr-compare` starts the background Walkr server when none runs, as `walkr-core` does. Sessions are saved under `~/.local/.walkr/compare` or `HUMAN_REVIEW_COMPARE_ROOT`.
 - `HUMAN_REVIEW_ALLOWED_HOSTS`: a list of exact `name:port` values that the server accepts in the `Host` header. With `HUMAN_REVIEW_BIND=0.0.0.0` you can open the Compare page from another computer. Every other route refuses such a host. The default accepts `127.0.0.1` and `localhost` only, as before.
-- An optional Sheprd link, off by default. With `WALKR_SHEPRD_CONNECT=1` in a Herdr pane and `sheprd` on the `PATH`, `walkr-compare create` and `open` and `walkr-core FILE` show the page in Sheprd's Walkr section, and `walkr-compare close` tells Sheprd that the run ended. See the [Compare guide](docs/compare.md#sheprd-link-optional).
+- An optional Sheprd link, off by default. Sheprd is a separate tool that receives Walkr page URLs; the kit neither installs nor requires it. The link needs `WALKR_SHEPRD_CONNECT=1`, a Herdr pane and `sheprd` on the `PATH`. With it, `walkr-compare create`, `walkr-compare open` and `walkr-core FILE` request a page display. `walkr-compare close` sends a disconnect request. See the [Compare guide](docs/compare.md#sheprd-link-optional).
 
 ## 0.9.3 (2026-11-10)
 

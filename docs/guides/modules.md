@@ -321,7 +321,10 @@ The skills and the prompts in the package are templates. The setup writes the ab
 
 In Pi or Pi-Bolt, type `/walkr` with a request, for example `/walkr compare cfn options` or `/walkr simplify ticket`. In Claude Code, the same line loads the same skill. Each Compare workflow asks its questions before it prepares the options: with `AskUserQuestion` in Claude Code, and with `ask_user_question` of the `questions` component in Pi.
 
-The Sheprd link is optional and off by default. With `export WALKR_SHEPRD_CONNECT=1` in the shell or the profile that starts Pi or Claude Code, a Walkr run in a Herdr pane with `sheprd` on the `PATH` shows its page in Sheprd's Walkr section. See [the Sheprd link](../../packages/walkr/docs/compare.md#sheprd-link-optional).
+Sheprd is a separate tool that receives Walkr page URLs; the kit neither installs nor requires it.
+The link is optional and off by default. Set `export WALKR_SHEPRD_CONNECT=1` in the shell or the profile that starts Pi or Claude Code.
+In a Herdr pane with `sheprd` on the `PATH`, `walkr-core FILE`, `walkr-compare create` and `walkr-compare open` request a page display.
+See [the Sheprd link](../../packages/walkr/docs/compare.md#sheprd-link-optional).
 
 `walkr setup --help` and `walkr-core setup --help` print help without writing files. The other four commands have no `setup` form.
 

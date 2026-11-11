@@ -88,6 +88,8 @@ The agent reads the ratings and notes of earlier sessions of the same type befor
 
 ## Agent commands
 
+Sheprd is a separate tool that receives Walkr page URLs; the kit neither installs nor requires it.
+
 ```sh
 walkr-compare create /absolute/request.json
 walkr-compare open [<session-id>]
@@ -129,7 +131,8 @@ Two options with the same content are refused. The source is `text` or `markdown
 
 ## Sheprd link (optional)
 
-The Sheprd link shows the Compare page in the Walkr section of Sheprd, beside the agent's pane. It is off by default.
+The link asks Sheprd to show the Compare page. It is off by default.
+Not verified: Sheprd shows the page in its Walkr section beside the agent's pane.
 Without it, each command prints and does what this guide describes, and no `sheprd` process starts.
 
 To turn it on, put `export WALKR_SHEPRD_CONNECT=1` in the shell or the profile that starts Pi or Claude Code.
@@ -139,20 +142,23 @@ The link works only when all three conditions hold:
 2. The agent runs in a Herdr pane: `HERDR_ENV` is exactly `1`.
 3. A `sheprd` file is on the `PATH`. Walkr skips a relative or empty `PATH` entry, because it depends on the current directory, which can be a checkout under review.
 
-The link works only when the agent and Sheprd run on the same computer.
-Sheprd's shim on an SSH host cannot connect a Walkr run: it answers `walkr connect` with exit 8, so Walkr prints `"failed"`.
+Not verified: the agent and Sheprd must run on the same computer.
+Not verified: Sheprd's SSH shim answers `walkr connect` with exit 8.
 
 With the link on, `create` and `open` run `sheprd walkr connect - --show` after they have the page URL.
 The URL goes to `sheprd` on standard input, never as an argument, because it holds the page secret.
 `create` adds `"sheprd": "connected"` or `"sheprd": "failed"` to its JSON. `open` prints only the URL.
-`walkr-core FILE` also tells Sheprd the URL; when Sheprd shows the page, no system browser opens.
+`"connected"` means the command exited with code 0. Walkr reports `"failed"` for any other exit code.
+Walkr does not check whether Sheprd shows the page.
+`walkr-core FILE` also sends Sheprd the URL. Core opens no system browser when `sheprd walkr connect` exits with code 0.
 A `sheprd` that fails or does not end within 5 seconds never fails the Walkr command. The command then goes on as without the link.
-Sheprd accepts only a loopback address, so a URL with an address of `HUMAN_REVIEW_ALLOWED_HOSTS` gives `"failed"`.
+Not verified: Sheprd accepts only loopback URLs and refuses addresses from `HUMAN_REVIEW_ALLOWED_HOSTS`.
 
 `walkr-compare close` runs `sheprd walkr disconnect` and nothing else. It starts no server and prints `{ "sheprd": "disconnected" }`, `{ "sheprd": "failed" }` or `{ "sheprd": null }` when the link is off.
-It tells Sheprd that the run ended; it does not close the page. The page stays open in Sheprd for a rating
-until the owner presses Close in Sheprd, or until it is idle for 2 hours.
-An open page keeps the Walkr server alive past its 45 idle minutes, because the page keeps making requests.
+This requests a disconnect; Walkr does not check what happens to the page.
+Not verified: Sheprd keeps the page open for a rating after disconnect.
+Not verified: the page closes when the owner selects Close in Sheprd, or after 2 hours idle.
+While the Compare page keeps making requests, it keeps the Walkr server alive past the default 45 idle minutes.
 
 ## Data contract
 

@@ -326,6 +326,8 @@ The link is optional and off by default. Set `export WALKR_SHEPRD_CONNECT=1` in 
 In a Herdr pane with `sheprd` on the `PATH`, `walkr-core FILE`, `walkr-compare create` and `walkr-compare open` request a page display.
 See [the Sheprd link](../../packages/walkr/docs/compare.md#sheprd-link-optional).
 
+The package also holds an optional [Compare mirror](../../packages/walkr/mirror/README.md): a persistent, read-only page for the session records of more than one computer. `install.sh --with walkr` does not install, link or start it, on Linux or on macOS. You start it by hand when you want it.
+
 `walkr setup --help` and `walkr-core setup --help` print help without writing files. The other four commands have no `setup` form.
 
 The Walkr server listens on `127.0.0.1`. Core and other non-Compare routes require both a loopback Host header and a loopback connection peer. A remote peer cannot reach those routes with a forged loopback Host. To open the Compare page from another computer, read [the Compare limits](../../packages/walkr/docs/compare.md#limits) for `HUMAN_REVIEW_BIND` and `HUMAN_REVIEW_ALLOWED_HOSTS` first.

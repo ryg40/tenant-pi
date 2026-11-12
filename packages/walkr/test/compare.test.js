@@ -482,8 +482,10 @@ test("the command starts the background server, creates a session, waits for the
   const env = { ...process.env, HUMAN_REVIEW_STATE_DIR: f.stateDir, HUMAN_REVIEW_COMPARE_ROOT: f.root, HUMAN_REVIEW_IDLE_MS: "0" };
   delete env.HUMAN_REVIEW_HOSTED;
   const cli = async (...args) => (await run(process.execPath, [CLI, ...args], { env })).stdout;
+  // The record is read when the server starts: the setup hook may remove the state directory first.
+  let serverPid = 0;
   t.after(async () => {
-    try { process.kill(JSON.parse(await fs.readFile(path.join(f.stateDir, "server.json"), "utf8")).pid); } catch {}
+    if (serverPid) try { process.kill(serverPid); } catch {}
     await new Promise((resolve) => setTimeout(resolve, 200));
   });
   assert.match(await cli("--help"), /walkr-compare/);
@@ -491,6 +493,7 @@ test("the command starts the background server, creates a session, waits for the
   const file = path.join(f.dir, "request.json");
   await fs.writeFile(file, JSON.stringify(textRequest()));
   const made = JSON.parse(await cli("create", file));
+  serverPid = JSON.parse(await fs.readFile(path.join(f.stateDir, "server.json"), "utf8")).pid;
   assert.equal(made.status, "open");
   assert.match(made.url, /^http:\/\/127\.0\.0\.1:[0-9]+\/_walkr\/compare\/g\/[a-f0-9]{64}#/);
   assert.equal(JSON.parse(await cli("create", file)).replay, true);

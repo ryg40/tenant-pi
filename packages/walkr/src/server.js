@@ -55,6 +55,8 @@ const MAX_BODY = 24 * 1024 * 1024;
 const POLL_HEARTBEAT_MS = 15000;
 const WATCH_INTERVAL_MS = 400;
 const IDLE_SHUTDOWN_MS = Number(process.env.HUMAN_REVIEW_IDLE_MS || 45 * 60 * 1000);
+/** How often the server checks for idle time, closed windows and its own files. Tests shorten it. */
+const SWEEP_MS = Number(process.env.HUMAN_REVIEW_SWEEP_MS || 60 * 1000);
 /** A window with no live connection this long is treated as closed for good. */
 const SESSION_TTL_MS = 30 * 60 * 1000;
 /** After a tab says it is going away, how long a reload has to come back. */
@@ -242,7 +244,7 @@ function sweepStagedPastes(store) {
   }
 }
 
-export function createServer() {
+export function createServer({ ownFiles = [] } = {}) {
   const store = new Store();
   sweepStagedPastes(store);
   const cliInvocation = reviewInvocation();
@@ -1070,9 +1072,10 @@ export function createServer() {
   }
 
   const server = http.createServer(async (req, res) => {
-    touch();
     const url = new URL(req.url, "http://127.0.0.1");
     const route = url.pathname;
+    // A health check arrives on a timer (the CLI, Sheprd), so it is no sign of use.
+    if (route !== "/health") touch();
 
     try {
       // A request that arrived via a DNS-rebound hostname carries that hostname
@@ -1759,6 +1762,9 @@ export function createServer() {
   const sweep = setInterval(() => {
     const now = Date.now();
 
+    // The checkout or the state directory was deleted: nobody can use this server again.
+    if (ownFiles.some((file) => !fs.existsSync(file))) process.exit(0);
+
     // A window with no SSE client for a while is gone for good — a crash, a
     // laptop that never woke — so the review ends and any waiting agent is freed.
     for (const session of [...sessions.values()]) {
@@ -1783,7 +1789,7 @@ export function createServer() {
     // alone must not keep the process alive forever.
     const busy = [...sessions.values()].some((s) => s.clients.size > 0) || [...pollers.values()].some((s) => s.size > 0);
     if (IDLE_SHUTDOWN_MS > 0 && !busy && now - lastActivity > IDLE_SHUTDOWN_MS) process.exit(0);
-  }, 60000);
+  }, SWEEP_MS);
   sweep.unref();
 
   const dispose = () => {
@@ -1907,14 +1913,16 @@ function readServerRecord() {
 
 process.on("exit", releaseServerSlot);
 
-export async function start(port = 0) {
+/** `exitWhenFilesGone`: the detached server ends when its entry file or its state directory is deleted. */
+export async function start(port = 0, { exitWhenFilesGone = false } = {}) {
   const claim = await claimServerSlot();
   if (!claim.proceed) {
     const err = new Error("a human-review server is already running for this state directory");
     err.code = "EALREADY";
     throw err;
   }
-  const { server, store, token, dispose } = createServer();
+  const ownFiles = exitWhenFilesGone ? [path.join(here, "server-entry.js"), stateDir()] : [];
+  const { server, store, token, dispose } = createServer({ ownFiles });
   return new Promise((resolve, reject) => {
     // Without this, a busy HUMAN_REVIEW_PORT dies as an uncaught exception.
     server.once("error", (err) => {

@@ -215,7 +215,8 @@ Sheprd is a separate tool that receives Walkr page URLs; the kit neither install
 | `HUMAN_REVIEW_PORT` | A fixed port for the server. The default is a free port. |
 | `HUMAN_REVIEW_BIND` | The address that the server listens on. The default is `127.0.0.1`. `0.0.0.0` listens on every interface. |
 | `HUMAN_REVIEW_ALLOWED_HOSTS` | Extra `Host` header values that the server accepts, as a comma-separated list of exact `name:port` values. The default is none. Such a host reaches only the Compare page and the theme files; every other route stays on `127.0.0.1`. |
-| `HUMAN_REVIEW_IDLE_MS` | The idle time before the server stops. The default is 45 minutes. |
+| `HUMAN_REVIEW_IDLE_MS` | The idle time before the server stops. The default is 45 minutes. A `/health` check does not count as use. An open page or a waiting agent keeps the server running. The background server also stops when its state directory or its `server-entry.js` file is deleted. |
+| `HUMAN_REVIEW_SWEEP_MS` | How often the server checks the idle time and its files. The default is 60 seconds. Tests use a short value. |
 | `HUMAN_REVIEW_CORE_COMMAND` | The command of the wake-up watcher, as a JSON array |
 | `WALKR_SHEPRD_CONNECT` | With `1`, a Herdr pane and `sheprd` on the `PATH`, Core sends its page URL to Sheprd. Core skips the system browser when `sheprd walkr connect` exits with code 0. The default is off. See [the Sheprd link](compare.md#sheprd-link-optional). |
 

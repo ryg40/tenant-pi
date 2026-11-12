@@ -18,6 +18,7 @@
     "prompts",
     "docs",
     "integrations/pi",
+    "mirror",
     "install.sh",
     "INSTALL.md",
     "CHANGELOG.md",

@@ -2,8 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- The optional Compare mirror in `mirror/`: a persistent, read-only Compare page over a root of session records, with `sync.sh` to copy records from other computers. No install step installs or starts it.
+- Mirror: the documented container command sets `HUMAN_REVIEW_ALLOWED_HOSTS` for the published port, so the browser no longer gets `403`. The theme files use file names from a fixed table, not from the request path.
+
 ### Fixed
 
+- Core and Compare: a `/health` check no longer counts as use, so a background server with only health-check traffic stops after the idle time. The background server also stops when its state directory or its `server-entry.js` file is deleted. `HUMAN_REVIEW_SWEEP_MS` sets the check interval for tests.
+- Core and Compare: the command stops a server of an older protocol (or of no protocol) for the same state directory before it starts a new one. Before, the old server kept the server lock, so the start failed and the old server kept running. The command never stops a server of a newer protocol: it fails with a message to use the newer Walkr version or another `HUMAN_REVIEW_STATE_DIR`. A server that ended before the stop signal counts as stopped.
+- Tests: the Compare command test stops its background server even when the state directory is removed first.
 - Setup: valid plain skill descriptions with embedded colons or hashes no longer block installation. Ambiguous YAML and skill name collisions still refuse before writes.
 - Core: the review proxy validates every outbound target and uses numeric loopback addresses. Redirects cannot leave loopback.
 - Core: a failed file-watch save no longer stops the server or clears unsaved feedback. The watcher retries the save.

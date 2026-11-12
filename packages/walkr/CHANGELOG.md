@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- Setup: valid plain skill descriptions with embedded colons or hashes no longer block installation. Ambiguous YAML and skill name collisions still refuse before writes.
 - Core: the review proxy validates every outbound target and uses numeric loopback addresses. Redirects cannot leave loopback.
 - Core: a failed file-watch save no longer stops the server or clears unsaved feedback. The watcher retries the save.
 - Core: the file watcher catches source changes during startup. Unchanged content with injected review tags no longer causes a false reload.

@@ -301,14 +301,35 @@ for (const [label, front, name] of [
   ["a folded description", "name: custom\ndescription: >\n  First line.\n\n  Second line.\n", null],
   ["a wrapped plain description", "name: custom\ndescription: First line\n  continues here\n", null],
   ["a Walkr name with a block description", "name: walkr\ndescription: |-\n  Router\n", "walkr"],
+  ["a colon and hash in a plain description", 'name: custom\ndescription: Analyze a Figma file with a kind:"design" dashboard at https://example.invalid/a#b.\n', null],
+  ["a Walkr name with a colon and hash in a plain description", 'name: walkr\ndescription: Uses kind:"design" at https://example.invalid/a#b\n', "walkr"],
 ]) {
   test(`frontmatter with ${label} is read by its name`, (t) => {
     const home = fixture(t);
-    put(path.join(home, ".agents/skills/custom/SKILL.md"), `---\n${front}---\n`);
-    if (name) assert.throws(() => installSkills(home, { global: true, home }), new RegExp(`name ${name} collides`));
-    else installSkills(home, { global: true, home });
+    const file = path.join(home, ".agents/skills/custom/SKILL.md");
+    const content = `---\n${front}---\n`;
+    put(file, content);
+    if (name) {
+      const before = snapshot(home);
+      assert.throws(() => installSkills(home, { global: true, home }), new RegExp(`name ${name} collides`));
+      assert.deepEqual(snapshot(home), before);
+    } else {
+      installSkills(home, { global: true, home });
+      assert.ok(fs.existsSync(path.join(home, ".agents/skills/walkr/SKILL.md")));
+      assert.equal(fs.readFileSync(file, "utf8"), content);
+    }
   });
 }
+
+test("plain descriptions with mapping or comment syntax refuse without writes", (t) => {
+  for (const value of ["Key: value", "Key:\tvalue", "Ends with a colon:", "Text #comment", "Text\t#comment", "# comment"]) {
+    const home = fixture(t);
+    put(path.join(home, ".agents/skills/custom/SKILL.md"), `---\nname: custom\ndescription: ${value}\n---\n`);
+    const before = snapshot(home);
+    assert.throws(() => installSkills(home, { global: true, home }), /unsupported YAML scalar/);
+    assert.deepEqual(snapshot(home), before);
+  }
+});
 
 for (const linkName of ["walkr-core", "human-review"]) {
   test(`a nameless linked skill takes the name of its link path: ${linkName}`, (t) => {

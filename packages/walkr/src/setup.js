@@ -170,6 +170,7 @@ function readRegular(file) {
 
 // No YAML parser ships in the production dependency tree. Accept only a flat,
 // unambiguous scalar subset; refuse all other frontmatter instead of guessing names.
+// Plain scalars allow ':' before non-whitespace text and '#' after non-whitespace text.
 function discoveryName(file, fallback) {
   const text = readRegular(file).replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
   const end = text.startsWith("---") ? text.indexOf("\n---", 3) : -1;
@@ -208,7 +209,7 @@ function discoveryName(file, fallback) {
     } else if (!value) {
       parsed = null;
     } else {
-      if (/^(?:null|true|false|~)$/i.test(value) || /^[!&*|>{}\[\]@`%?+\d.-]/.test(value) || /[:#]/.test(value)) {
+      if (/^(?:null|true|false|~)$/i.test(value) || /^[!&*|>{}\[\]@`%?+\d.-]/.test(value) || /:(?:[ \t]|$)|(?:^|[ \t])#/.test(value)) {
         conflict(file, "unsupported YAML scalar; review discovery manually");
       }
       parsed = value;

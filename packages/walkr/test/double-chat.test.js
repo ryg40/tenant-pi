@@ -118,7 +118,8 @@ test("idle Pi boundary wakes without user input and acknowledges the exact real 
     assert.ok(h.entries.some((entry) => entry.customType === BATCH_MESSAGE));
     return acknowledge(...args);
   };
-  h = harness(t, client);
+  // Success path on real disk: the runtime receipt budget; the 80 ms deadline is for failure fixtures.
+  h = harness(t, client, { deliveryTimeoutMs: 30000 });
   assert.equal(h.turns, 0, "factory/startup does not prompt a model");
   const armed = await h.call({ action: "start", comparisonId: "trial", timeoutSeconds: 4 });
   assert.equal(armed.details.status, "waiting");
@@ -131,7 +132,10 @@ test("idle Pi boundary wakes without user input and acknowledges the exact real 
   } });
   await s.api("/api/double/~trial/send", { method: "POST", body: { actionId: "send-exact", expectedRevision: 1 } });
   const expected = (await s.api("/api/double/~trial/poll")).json.batch;
-  await until(async () => (await status(h)).status === "received");
+  let final;
+  // Bound only: the wait ends at the first inactive status, and the 4 s poll timeout ends any wait.
+  await until(async () => !(final = await status(h)).active, 30000);
+  assert.equal(final.status, "received");
   assert.equal(h.turns, 1, "triggerTurn wakes the idle session through sendMessage");
   const delivered = h.sent.filter(({ message }) => message.customType === BATCH_MESSAGE);
   assert.equal(delivered.length, 1);

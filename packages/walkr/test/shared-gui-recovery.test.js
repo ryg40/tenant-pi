@@ -28,11 +28,17 @@ async function page(t, s, shellPath, { storage = [], intercept = (_url, _init, n
   const dom = new JSDOM(response.text, { url: base + shellPath });
   for (const [key, value] of storage) dom.window.localStorage.setItem(key, value);
   const calls = [];
+  // A request stays open until the shell has read its answer; settled() waits for none open.
+  let open = 0;
   const shell = bootSharedGui(dom.window, { base, refreshMs: 60_000, fetch: async (url, init) => {
     const call = { url, ...init }; calls.push(call);
-    const answer = await intercept(url, init, () => fetch(url, init));
+    open++;
+    let answer;
+    try { answer = await intercept(url, init, () => fetch(url, init)); } catch (e) { open--; throw e; }
     call.status = answer.status;
     if (init.method === "POST") call.answer = await answer.clone().json().catch(() => null);
+    const json = answer.json.bind(answer);
+    answer.json = () => json().finally(() => { open--; });
     return answer;
   } });
   let closed = false;
@@ -45,7 +51,8 @@ async function page(t, s, shellPath, { storage = [], intercept = (_url, _init, n
     pending: () => JSON.parse(dom.window.localStorage.getItem(key) ?? "null"),
     storage: () => Object.keys(dom.window.localStorage).map((key) => [key, dom.window.localStorage.getItem(key)]),
     draft(text) { $("brief").value = text; $("brief").dispatchEvent(new dom.window.Event("input")); },
-    async settled() { await until(() => !$("startRetry").disabled); },
+    // The button alone can enable during the reload after an action, from the render of another answer.
+    async settled() { await until(() => open === 0 && !$("startRetry").disabled); },
   };
 }
 const starts = (p) => p.calls.filter((c) => c.url.endsWith("/gui/start"));

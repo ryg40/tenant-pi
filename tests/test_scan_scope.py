@@ -24,7 +24,13 @@ class ScanScopeTests(unittest.TestCase):
         self.env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull,
                     "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "test",
                     "GIT_AUTHOR_EMAIL": "test@example.invalid", "GIT_COMMITTER_NAME": "test",
-                    "GIT_COMMITTER_EMAIL": "test@example.invalid", "TMPDIR": str(self.root)}
+                    "GIT_COMMITTER_EMAIL": "test@example.invalid", "TMPDIR": str(self.root),
+                    # A detached auto gc or maintenance can still write objects while rmtree runs.
+                    "GIT_CONFIG_COUNT": "4",
+                    "GIT_CONFIG_KEY_0": "gc.auto", "GIT_CONFIG_VALUE_0": "0",
+                    "GIT_CONFIG_KEY_1": "gc.autoDetach", "GIT_CONFIG_VALUE_1": "false",
+                    "GIT_CONFIG_KEY_2": "maintenance.auto", "GIT_CONFIG_VALUE_2": "false",
+                    "GIT_CONFIG_KEY_3": "receive.autogc", "GIT_CONFIG_VALUE_3": "false"}
         for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             self.env.pop(key, None)
         self.git("init", "-q")
@@ -128,6 +134,9 @@ class ScanScopeTests(unittest.TestCase):
         self.assertGreater(len(" ".join(commits)), 128 * 1024)
         remote = self.root / "remote.git"
         self.git("init", "--bare", "-q", str(remote))
+        # A local push clears GIT_CONFIG_* for receive-pack, so the remote keeps its own setting.
+        for key, value in (("receive.autogc", "false"), ("gc.auto", "0"), ("gc.autoDetach", "false")):
+            self.git("--git-dir", str(remote), "config", key, value)
         self.git("remote", "add", "scratch", str(remote))
         hook = self.root / ".git/hooks/pre-push"
         shutil.copyfile(ROOT / "scripts/git-hooks/pre-push", hook)

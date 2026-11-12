@@ -252,7 +252,23 @@ async function bootPage(t, s, pagePath, { intercept = null, wait = true } = {}) 
   t.after(() => app.close());
   if (wait) await app.ready;
   const doc = dom.window.document;
-  const click = async (node) => { node.click(); await new Promise((resolve) => setTimeout(resolve, 150)); await app.load(); };
+  const click = async (node) => {
+    node.click();
+    // load() does not wait for a busy send. The retry control unlocks after its receipt is handled.
+    await new Promise((resolve, reject) => {
+      const finish = (failure) => {
+        clearTimeout(timer);
+        observer.disconnect();
+        failure ? reject(failure) : resolve();
+      };
+      const check = () => { if (!doc.getElementById("resolve").disabled) finish(); };
+      const observer = new dom.window.MutationObserver(check);
+      const timer = setTimeout(() => finish(new Error("Compare receipt did not settle")), 5000);
+      observer.observe(doc.getElementById("resolve"), { attributes: true, attributeFilter: ["disabled"] });
+      check();
+    });
+    await app.load();
+  };
   return { app, doc, $: (id) => doc.getElementById(id), click, browser, window: dom.window };
 }
 
@@ -594,13 +610,23 @@ test("a held poll does not overwrite a submitted view", { timeout: 10000 }, asyn
   assert.equal((await s.agent(session)).json.view.result.pick, "short");
 });
 
-test("an answer that does not prove the save keeps the request for an exact retry", async (t) => {
+test("an answer that does not prove the save keeps the request for an exact retry", { timeout: 10000 }, async (t) => {
   const f = await setup(t);
   const s = await serve(t, f);
   const made = await created(s, htmlRequest("create-unproven"));
-  let broken = true;
+  let firstBody, retryBody, release, captured;
+  const held = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { captured = resolve; });
+  t.after(() => release());
   const intercept = async (route, options) => {
-    if (broken && options.method === "POST" && route.endsWith("/submit")) { broken = false; return { ok: true, status: 200, json: async () => ({}) }; }
+    if (options.method !== "POST" || route !== `${API}/sessions/${made.result.sessionId}/submit`) return;
+    if (!firstBody) {
+      firstBody = options.body;
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    retryBody = options.body;
+    captured();
+    await held;
   };
   const page = await bootPage(t, s, made.path, { intercept });
   await page.click(page.$("stage").querySelector('[data-pick="b"]'));
@@ -608,8 +634,25 @@ test("an answer that does not prove the save keeps the request for an exact retr
   const saved = JSON.parse(page.window.localStorage.getItem("walkr-compare:pending"));
   assert.equal(saved.sessionId, made.result.sessionId);
   assert.equal(page.$("resolve").hidden, false);
-  // The server saved the first request. The exact retry confirms it and clears the saved request.
-  await page.click(page.$("resolve"));
+  assert.deepEqual(saved.body, JSON.parse(firstBody));
+  // The server saved the first request, but the retry receipt must arrive before click completes.
+  const retry = page.click(page.$("resolve"));
+  retry.catch(() => {}); // Cleanup still awaits a rejected click if an earlier assertion fails.
+  let timer;
+  try {
+    await started;
+    assert.equal(retryBody, firstBody, "the retry sends the exact original request");
+    const result = await Promise.race([
+      retry.then(() => "completed"),
+      new Promise((resolve) => { timer = setTimeout(() => resolve("held"), 600); }),
+    ]);
+    assert.equal(result, "held", "click must stay pending while the receipt is held");
+    assert.deepEqual(JSON.parse(page.window.localStorage.getItem("walkr-compare:pending")), saved);
+  } finally {
+    clearTimeout(timer);
+    release();
+    await retry;
+  }
   assert.equal(page.window.localStorage.getItem("walkr-compare:pending"), null);
   assert.equal((await s.agent(`sessions/${made.result.sessionId}`)).json.view.result.pick, "b");
 });

@@ -13,6 +13,7 @@
 - Core: removing injected review tags also removes tags exposed by the first removal pass.
 - Double: static resources use registered file paths, not request-derived filenames.
 - Tests: wake leases use a controlled clock, and the navigation fixture no longer reflects request paths into HTML.
+- Tests: Compare clicks wait for receipt handling instead of a fixed delay. A held retry receipt checks that the exact pending request stays until confirmation.
 
 ### Added
 

@@ -14,9 +14,15 @@ chmod 700 "$dest" "$dest/sessions" || exit 1
 [ -z "$owner" ] || chown "$owner" "$dest" "$dest/sessions" || exit 1
 failed=0
 for source in "$@"; do
-  # The store accepts only directories of mode 0700 and records of mode 0600 with the owner of the server.
-  rsync -rt --timeout=20 --chmod=D700,F600 ${owner:+--chown="$owner"} --prune-empty-dirs \
-    --include='*/' --include='/*/session.json' --exclude='*' \
+  # Only options that rsync 2.6.9, openrsync (macOS) and rsync 3 all have.
+  # The rules copy the session directories of the first level and their session.json, nothing else.
+  # A session directory without a record arrives empty; the store skips it like an interrupted create.
+  rsync -rt --timeout=20 \
+    --include='/*/' --include='/*/session.json' --exclude='*' \
     "${source%/}/sessions/" "$dest/sessions/" || { echo "sync.sh: no copy from $source" >&2; failed=1; }
 done
+# The store accepts only directories of mode 0700 and records of mode 0600 with the owner of the server.
+find "$dest/sessions" -type d -exec chmod 700 {} + || exit 1
+find "$dest/sessions" -type f -exec chmod 600 {} + || exit 1
+[ -z "$owner" ] || chown -R "$owner" "$dest/sessions" || exit 1
 exit "$failed"

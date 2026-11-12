@@ -9,6 +9,7 @@
 
 ### Fixed
 
+- Mirror: `sync.sh` uses only the `rsync` options that the `rsync` of macOS also has. The script sets the modes and the owner after the copy with `find`, `chmod` and `chown`.
 - Core and Compare: a `/health` check no longer counts as use, so a background server with only health-check traffic stops after the idle time. The background server also stops when its state directory or its `server-entry.js` file is deleted. `HUMAN_REVIEW_SWEEP_MS` sets the check interval for tests.
 - Core and Compare: the command stops a server of an older protocol (or of no protocol) for the same state directory before it starts a new one. Before, the old server kept the server lock, so the start failed and the old server kept running. The command never stops a server of a newer protocol: it fails with a message to use the newer Walkr version or another `HUMAN_REVIEW_STATE_DIR`. A server that ended before the stop signal counts as stopped.
 - Tests: the Compare command test stops its background server even when the state directory is removed first.

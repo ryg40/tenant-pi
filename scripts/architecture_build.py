@@ -124,6 +124,8 @@ def component_node(node, component, root):
         source_text, base = f"tree {source['path']}", source["path"]
     elif kind == "npm":
         source_text, base = f"npm {source['spec']}", None
+    elif kind == "git":
+        source_text, base = f"git {source['url']} {source['commit'][:7]}", None
     else:
         source_text, base = kind, None
     requires = [item for item in component.get("requires", []) if item != "core"]

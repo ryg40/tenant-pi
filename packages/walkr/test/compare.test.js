@@ -206,6 +206,8 @@ test("an HTML option is served as a sandboxed document without scripts and netwo
   assert.match(policy, /default-src 'none'/);
   assert.match(policy, /(^|; )sandbox($|;)/, "the sandbox directive has no allow-scripts");
   assert.doesNotMatch(policy, /script-src|allow-/);
+  // Servo compares 'self' with the opaque origin of the sandboxed option, so the policy also names the page origin.
+  assert.equal(policy.split("; ").find((part) => part.startsWith("frame-ancestors")), `frame-ancestors 'self' http://127.0.0.1:${s.port}`);
   assert.equal(frame.headers["x-content-type-options"], "nosniff");
   assert.equal((await request(s.port, `/_walkr/compare/o/${"0".repeat(64)}/${result.sessionId}/a`)).status, 404);
   assert.equal((await request(s.port, `${browser.frames}/${result.sessionId}/missing`)).status, 404);

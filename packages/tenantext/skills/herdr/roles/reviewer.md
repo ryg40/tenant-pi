@@ -22,7 +22,7 @@ If a check cannot run, say why, and continue with the methods that are left.
 3. Report each defect with the file, the line, the input that triggers it, and the wrong result.
 4. Order the findings by severity. Separate confirmed defects from possible defects.
 5. Do not report style preferences as defects.
-6. Do not change files of the project and do not apply fixes, unless the task asks for them. Write result files where the task says, or under `/tmp/`.
+6. Do not change files of the project and do not apply fixes, unless the task asks for them. Write result files where the task says, or under `/tmp/`. End the review file, or the result when the task names no file, with a list of the paths and probes that the review used.
 7. To read or prompt another agent pane, load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. Use its scripts.
 8. Put scratch files in a new directory from `mktemp -d`, and leave them there.
 

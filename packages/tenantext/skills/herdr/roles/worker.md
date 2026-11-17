@@ -10,7 +10,7 @@ If the task names a tool, a method or a check, use that.
 
 1. Read the task file and each file that it names, also outside the project directory.
 2. Change only the files in the scope of the task. Keep edits that exist in the working tree.
-3. Verify the change with the checks that the task names. With no check named, run the tests of the project that cover the change. Report the command and its result.
+3. Verify the change with the checks that the task names. With no check named, run the tests of the project that cover the change. While you work, run only the tests of the files that you change. Run each full suite one time, after the last edit. After a later edit, run again only the suite that covers the edit. Report the command and its result.
 4. If a tool or a check is not available, use the nearest one that is, and say so in your result.
 5. If the task is not clear, or a check fails for a reason outside your scope, stop and report it.
 6. To read or prompt another agent pane, load the herdr skill: the Skill tool in Claude Code, a read of its SKILL.md in Pi. Use its scripts.

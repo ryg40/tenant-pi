@@ -1,0 +1,479 @@
+{
+  "profile": "/home/user/.pi/profiles/demo",
+  "runtime": {
+    "pi": {
+      "installed": "1.5.2",
+      "required": "1.5.2",
+      "status": "match"
+    },
+    "pi_bolt": {
+      "installed": null,
+      "required": "1.2.1",
+      "status": "missing"
+    },
+    "node": {
+      "installed": "24.21.0",
+      "required": ">=24.0.0 <25",
+      "status": "match"
+    },
+    "python": {
+      "installed": "3.11.2",
+      "required": ">=3.11",
+      "status": "match"
+    }
+  },
+  "items": [
+    {
+      "name": "core",
+      "group": "core",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.5.2",
+      "version_pinned": "1.5.2",
+      "state_source": [
+        "/home/user/.local/bin/pi"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "model-routing",
+      "group": "core",
+      "installed": true,
+      "active": false,
+      "version_installed": null,
+      "version_pinned": null,
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "tenantext",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "codex-accounts",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "context-meter",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "ops-footer",
+      "group": "tenantext",
+      "installed": true,
+      "active": false,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json",
+        "/home/user/.pi/profiles/demo/ops-footer/settings.json"
+      ],
+      "plan": "skip"
+    },
+    {
+      "name": "copilot-usage",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "anthropic-usage",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "doctor",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "resources",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "command-rules",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "next-prompt",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "cross-session-recall",
+      "group": "tenantext",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "hermes",
+      "group": "memory",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.11.0",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "wiki",
+      "group": "memory",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.12.5",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "openviking",
+      "group": "memory",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.4.22",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "agentcore",
+      "group": "memory",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.2.0",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "coordinator-skills",
+      "group": "skills",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "dummies",
+      "group": "skills",
+      "installed": false,
+      "active": false,
+      "version_installed": null,
+      "version_pinned": null,
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "knowledge-skills",
+      "group": "skills",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "tracker-site",
+      "group": "skills",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "okknow",
+      "group": "skills",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "1.1.0",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "artifacts",
+      "group": "skills",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.1.0",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "artifacts-prompt",
+      "group": "skills",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.1.0",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "walkr",
+      "group": "walkr",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.9.3",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "walkr-prompts",
+      "group": "walkr",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": null,
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "herdr",
+      "group": "herdr",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "herdr-relay",
+      "group": "herdr",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "herdr-watch",
+      "group": "herdr",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "herdr-idle-cleanup",
+      "group": "herdr",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json",
+        "/home/user/.pi/profiles/demo/kit-steps.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "handoffs",
+      "group": "herdr",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json",
+        "/home/user/.pi/profiles/demo/kit-steps.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "herdr-idle-cleanup-prompt",
+      "group": "herdr",
+      "installed": true,
+      "active": true,
+      "version_installed": "1.0.0",
+      "version_pinned": "1.0.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json",
+        "/home/user/.pi/profiles/demo/kit-steps.json"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "questions",
+      "group": "herdr",
+      "installed": "partial",
+      "active": false,
+      "version_installed": null,
+      "version_pinned": "2.15.0",
+      "state_source": [
+        "/home/user/.pi/profiles/demo/settings.json"
+      ],
+      "plan": "upgrade"
+    },
+    {
+      "name": "mcp",
+      "group": "mcp",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "7.0.1",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "mcp-codemode",
+      "group": "mcp",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": null,
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "computer-use",
+      "group": "desktop",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.7.51",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "computer-use-macos",
+      "group": "desktop",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.1.38",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "claude-code-plugin",
+      "group": "desktop",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": "0.7.51",
+      "state_source": [],
+      "plan": "skip"
+    },
+    {
+      "name": "shell-rc",
+      "group": "shell",
+      "installed": true,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": null,
+      "state_source": [
+        "/home/user/.bashrc"
+      ],
+      "plan": "keep"
+    },
+    {
+      "name": "launcher",
+      "group": "shell",
+      "installed": true,
+      "active": true,
+      "version_installed": null,
+      "version_pinned": null,
+      "state_source": [
+        "/home/user/.local/bin/demo"
+      ],
+      "plan": "keep"
+    }
+  ]
+}

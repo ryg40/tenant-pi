@@ -4,6 +4,7 @@ import { stripVTControlCharacters } from "node:util";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import { MemoryTracker, vikingCounters, wikiModel, wikiStatus } from "../extensions/ops-footer/memory.ts";
 import { okknowState } from "../extensions/ops-footer/okknow.ts";
+import { artifactsCommand, artifactsStatus } from "../extensions/ops-footer/artifacts.ts";
 import { memoryGroups } from "../extensions/ops-footer/view.ts";
 import { ansiPaint, plainPaint } from "../extensions/ops-footer/paint.ts";
 import { dashboardSections, detailedReport } from "../extensions/ops-footer/render.ts";
@@ -151,4 +152,35 @@ test("okknow doctor states map to the OpenKnowledge row; no origin gives no row;
   assert.deepEqual(tracker.snapshot(new Map(), []).ok?.running, ["search", "exec"]);
   tracker.end("a", "mcp", false); tracker.end("b", "okknow_exec", false);
   assert.equal(tracker.snapshot(new Map(), [], "connected").ok?.last, "exec");
+});
+
+const artifactsUrl = "http://127.0.0.1:8799/browse";
+const artifactsRow = (data: ReturnType<typeof healthy>) => memoryGroups(data, NOW).find(g => g.key.startsWith("memory:artifacts:"));
+
+test("artifact server row: no row without the CLI or with the state unconfigured", () => {
+  // A PATH and a home without the CLI: no command, so the footer runs nothing and shows no row.
+  assert.equal(artifactsCommand({ PATH: "" }, "/nonexistent-home-for-test"), undefined);
+  assert.equal(artifactsStatus(JSON.stringify({ state: "unconfigured", url: null })), undefined);
+});
+
+test("artifact server row: the state word comes from the JSON of the CLI; an unknown word or a bad JSON is error", () => {
+  assert.deepEqual(artifactsStatus(JSON.stringify({ state: "stopped", url: artifactsUrl })), { state: "stopped", url: artifactsUrl });
+  assert.deepEqual(artifactsStatus(JSON.stringify({ state: "sleeping", url: artifactsUrl })), { state: "error" });
+  assert.deepEqual(artifactsStatus("not json"), { state: "error" });
+  const row = artifactsRow({ ...healthy(), memory: { artifacts: { state: "stopped", url: artifactsUrl } } });
+  assert.equal(row?.url, artifactsUrl);
+});
+
+test("artifact server row: the footer width does not count the hyperlink sequences", () => {
+  const osc8 = /\x1b\]8;;[^\x1b]*\x1b\\/g;
+  for (const width of [160, 100, 60]) {
+    const linked = { ...healthy(), memory: { artifacts: { state: "running" as const, url: artifactsUrl } } };
+    const plain = { ...healthy(), memory: { artifacts: { state: "running" as const } } };
+    const withLink = dashboardSections(linked, contextStub(), defaults, width, ansiPaint, NOW).below;
+    const without = dashboardSections(plain, contextStub(), defaults, width, ansiPaint, NOW).below;
+    assert.ok(withLink.some(row => new RegExp(osc8.source).test(row)), `link at ${width}`);
+    // Each row, also the rows beside the link, is the same as without the link once the link sequences are removed.
+    assert.deepEqual(withLink.map(row => row.replace(osc8, "")), without, `width ${width}`);
+    for (const row of withLink) assert.ok(visibleWidth(row) <= width, `row fits ${width}`);
+  }
 });

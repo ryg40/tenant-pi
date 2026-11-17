@@ -31,7 +31,7 @@ The private URL belongs to one server run. A page that is open shows a new sessi
 
 | Part | Content |
 | --- | --- |
-| Bar | The theme-coloured `walkr` wordmark, Sessions, the session type, title and state, Newer, Older, Type, View, Show all and the theme |
+| Bar | The foot logo and the theme-coloured `walkr` wordmark, Sessions, the session type, title and state, Newer, Older, Type, View, Show all and the theme |
 | Session list | Every saved session, the newest first: type, title, time, your pick and the stars. A session shows New until you open it. |
 | Stage | The options in their original order. Side by side adds Fold left, Fold right and Solo to each option head. |
 | Folded rail | A narrow button in the option's place, with its label and pick mark. Select it to open that option again. |
@@ -219,6 +219,7 @@ This split guards against mistakes, not against a hostile or steered agent. Opti
 
 An HTML option gets the policy `default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; sandbox`.
 The frame has an opaque origin, runs no script, sends no form and cannot read the page or another option.
+The policy also has `frame-ancestors 'self'` and the origin of the request, so only the Compare page of this server frames an option. The named origin is for Servo 0.8 (Sheprd pages), which compares `'self'` with the opaque origin of the option.
 
 ## Tests
 

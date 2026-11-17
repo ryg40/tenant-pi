@@ -39,7 +39,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
-from _common import (STATE_DIR, agent_info, catalog_lines, ensure_layout, error_code, exit_codes, herdr,  # noqa: E402
+from _common import (STATE_DIR, agent_info, api, catalog_lines, ensure_layout, error_code, exit_codes, herdr,  # noqa: E402
                      live_agents, load_catalog, load_launch, make_name, mcp_servers, pane_label, panes, place_role_tab,
                      read_record, remove_record, require_herdr_env, tabs, write_record)
 
@@ -161,15 +161,18 @@ def resolve(opts, cfg):
 # The variable that marks a task session. The herdr-idle-cleanup startup assessment claims nothing when it is
 # `task`, so the handoff entries wait for a session that the user works in.
 SESSION_VARIABLE = "HERDR_SKILL_SESSION"
+# The switch of the recall compressor of the OpenViking memory plugin. A task session has a task file and
+# needs no compressed recall block, so it gets `off`; a primary session keeps the default of its harness.
+RECALL_COMPRESS_VARIABLE = "OPENVIKING_RECALL_COMPRESS"
 
 
 def session_env(r):
-    """The environment that marks the session: {SESSION_VARIABLE: "task"} for a task session, else {}."""
-    return {} if r["session"] == "primary" else {SESSION_VARIABLE: "task"}
+    """The environment of the session: the task mark and the compressor switch for a task session, else {}."""
+    return {} if r["session"] == "primary" else {SESSION_VARIABLE: "task", RECALL_COMPRESS_VARIABLE: "off"}
 
 
 def session_env_command(r):
-    """The shell line for the new pane: export the variable for a task session, unset it for a primary one."""
+    """The shell line for the new pane: export the variables for a task session, unset the mark for a primary one."""
     env = session_env(r)
     if not env:
         return f"unset {SESSION_VARIABLE}"
@@ -195,8 +198,8 @@ def is_pi_bolt(executable):
     return "(Pi-Bolt " in (out.splitlines() or [""])[0]
 
 
-def prepare_pi_launcher(pane, executable):
-    if executable == "pi":
+def prepare_pi_launcher(pane, executable, project=False, harness="pi"):
+    if executable == "pi" and not project:
         return
     code, data, raw = herdr("pane", "process-info", "--pane", pane)
     try:
@@ -205,15 +208,25 @@ def prepare_pi_launcher(pane, executable):
     except (TypeError, KeyError):
         supported = False
     if code != 0 or not supported:
+        if project and executable in ("pi", "claude"):
+            print("credsync: pane shell cannot install the wrapper; starting unchanged; use a POSIX shell", file=sys.stderr)
+            return
         raise RuntimeError("custom Pi launcher requires a new pane at a POSIX shell prompt")
     # Herdr keeps its Pi lifecycle detection; only this new shell gets the wrapper.
-    command = f'pi() {{ {shlex.quote(executable)} "$@"; }}'
-    if is_pi_bolt(executable):
+    target = shlex.quote(executable)
+    if project:
+        wrapper = os.path.join(HERE, "credsync-launch.sh")
+        target = f'/bin/sh {shlex.quote(wrapper)} {target}'
+    command = f'{harness}() {{ {target} "$@"; }}'
+    if harness == "pi" and executable != "pi" and is_pi_bolt(executable):
         # Pi-Bolt reports the agent name pi-bolt, which Herdr 0.9.5 does not know. Without
         # HERDR_SOCKET_PATH it skips that report and Herdr detects the process as pi.
-        command = f'pi() {{ (unset HERDR_SOCKET_PATH; exec {shlex.quote(executable)} "$@"); }}'
+        command = f'pi() {{ (unset HERDR_SOCKET_PATH; exec {target} "$@"); }}'
     code, data, raw = herdr("pane", "run", pane, command)
     if code != 0 or error_code(data):
+        if project and executable in ("pi", "claude"):
+            print("credsync: pane wrapper setup failed; starting unchanged; check the pane shell", file=sys.stderr)
+            return
         raise RuntimeError("could not configure the custom Pi launcher in the new pane")
 
 
@@ -462,21 +475,21 @@ def main():
         herdr("pane", "close", pane)
         remove_record(pane)
         fail("could not set the session environment in the new pane", EXIT["failed"])
-    if r["harness"] == "pi":
+    project = os.path.isfile(os.path.join(cwd, ".credsync.json"))
+    if r["harness"] == "pi" or project:
         try:
-            prepare_pi_launcher(pane, executable)
+            prepare_pi_launcher(pane, executable, project=project, harness=r["harness"])
         except RuntimeError as exc:
             herdr("pane", "close", pane)
             remove_record(pane)
             fail(str(exc), EXIT["failed"])
-        if executable != "pi":
-            time.sleep(1)  # let the shell consume its local wrapper before readiness checking
     code, data, raw = herdr("agent", "start", name, "--kind", r["harness"], "--pane", pane,
                             "--timeout", str(int(opts["start_timeout"]) * 1000), "--", *args,
                             timeout=int(opts["start_timeout"]) + 30)
     err = error_code(data)
     if err == "agent_not_ready":
-        print(json.dumps(dict(summary, pane_id=pane, placement=how, status="blocked")))
+        recorded = set_agent_meta(pane, r)
+        print(json.dumps(dict(summary, pane_id=pane, placement=how, status="blocked", meta_recorded=recorded)))
         print("The agent stopped at a startup question (for example folder trust). "
               f"Read it with `herdr agent read {pane} --source visible`, show it to the user, and wait for the decision.",
               file=sys.stderr)
@@ -486,8 +499,29 @@ def main():
         remove_record(pane)
         fail(f"agent start failed and the new pane was closed: {raw[:400]}", EXIT["failed"])
     a = data["result"]["agent"]
+    recorded = set_agent_meta(pane, r)
     print(json.dumps(dict(summary, pane_id=pane, placement=how, status=a.get("agent_status"),
-                          transcript=(a.get("agent_session") or {}).get("value"))))
+                          transcript=(a.get("agent_session") or {}).get("value"), meta_recorded=recorded)))
+
+
+def set_agent_meta(pane, r):
+    """Record the resolved model and thinking on the Herdr agent record of the pane.
+
+    Herdr builds without `pane.set_agent_meta` answer `invalid_request`; the spawn still counts.
+    Returns True when Herdr recorded the values, else False (also when there is nothing to record).
+    """
+    params = {"pane_id": pane}
+    for key in ("model", "thinking"):
+        if r.get(key):
+            params[key] = r[key]
+    if len(params) == 1:
+        return False
+    reply = api("pane.set_agent_meta", params)
+    if not isinstance(reply, dict) or "result" not in reply:
+        code = error_code(reply) if isinstance(reply, dict) else "no reply"
+        print(f"warning: Herdr did not record model and thinking for {pane} ({code})", file=sys.stderr)
+        return False
+    return True
 
 
 def ensure_layout_readonly():

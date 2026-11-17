@@ -23,6 +23,7 @@ import { createCompareHandler } from "./compare-server.js";
 import { compareRoot } from "./compare-store.js";
 import { modeForRoute, modePage } from "./modes.js";
 import { BATCH_ID, carriedIds, newBatchId, normalizeRecord } from "./batch-id.js";
+import { withFoot } from "./brand.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const loopbackPeers = new BlockList();
@@ -1122,7 +1123,7 @@ export function createServer({ ownFiles = [] } = {}) {
           const page = store.page(session.entryKey);
           return `<li><a href="/s/${session.id}">${escapeHtml(page.kind === "url" ? page.url : path.basename(page.file))}</a></li>`;
         }).join("");
-        const shell = fs.readFileSync(path.join(here, "hosted-home.html"), "utf8");
+        const shell = withFoot(fs.readFileSync(path.join(here, "hosted-home.html"), "utf8"));
         res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-store" });
         return res.end(shell.replace("__REVIEWS__", links || "<li>Open a file with walkr-core. Local private review URLs are not listed here.</li>"));
       }
@@ -1194,7 +1195,7 @@ export function createServer({ ownFiles = [] } = {}) {
           return res.end("This review session has ended. Run human-review <target> again.");
         }
         seen(sessions.get(id));
-        const shell = fs.readFileSync(path.join(here, "chrome.html"), "utf8");
+        const shell = withFoot(fs.readFileSync(path.join(here, "chrome.html"), "utf8"));
         res.writeHead(200, { "content-type": MIME[".html"], "cache-control": "no-store" });
         return res.end(shell.replace("__SESSION_ID__", id).replace("__TOKEN__", token));
       }

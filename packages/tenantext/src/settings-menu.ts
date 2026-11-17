@@ -18,7 +18,7 @@ const numbers: Record<string, [number, number, string]> = {
 const flags = [
   ["rules", "Simplified English rules"], ["guard", "First-prompt guard"], ["decisions", "Decision-server calls"],
   ["enabled", "Operations footer"], ["showHealthyServices", "Show healthy services"],
-  ["showUnavailableOptionalSources", "Show unavailable sources"],
+  ["showUnavailableOptionalSources", "Show unavailable sources"], ["showArtifactServer", "Artifact server row"],
 ] as const;
 const endpoints = [["OK", "OpenKnowledge health URL"], ["OV", "OpenViking health URL"]] as const;
 
@@ -48,7 +48,7 @@ export async function settingsMenu(ctx: ExtensionContext, actions: SettingsMenuA
         if (!value) continue;
         const next = { ...main, [key]: value === "on" };
         saveMainSettings(next); main = next; actions.mainChanged(next);
-      } else if (key === "enabled" || key === "showHealthyServices" || key === "showUnavailableOptionalSources") {
+      } else if (key === "enabled" || key === "showHealthyServices" || key === "showUnavailableOptionalSources" || key === "showArtifactServer") {
         const value = await ctx.ui.select(key, ["on", "off"]);
         if (!value) continue;
         const next = { ...footer, [key]: value === "on" };

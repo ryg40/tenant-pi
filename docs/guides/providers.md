@@ -77,7 +77,7 @@ A Codex login belongs to Pi and to one profile. The optional Tenantext gateway u
 
 ### More than one Codex account
 
-Core Pi gives one login for each provider name. A second direct account needs the `codex-accounts` component of `packages/tenantext`. It registers the provider `openai-codex-2` with its own login. That component needs the gateway settings and the key `TENANTEXT_LITELLM_API_KEY`. See [the module guide](modules.md) for the component and `packages/tenantext/docs/codex-routing.md` for the routes. Without that component, do not offer a second account.
+Core Pi gives one login for each provider name. A second direct account needs the `codex-accounts` component of `packages/tenantext`. It registers the provider `openai-codex-2` with its own login. The component registers it without the gateway settings: only the gateway provider `litellm-codex` needs `TENANTEXT_LITELLM_BASE_URL` and `TENANTEXT_LITELLM_API_KEY`. See [the module guide](modules.md) for the component and `packages/tenantext/docs/codex-routing.md` for the routes. Without that component, do not offer a second account.
 
 ## Local providers: llama-swap and vLLM
 

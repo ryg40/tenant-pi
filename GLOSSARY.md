@@ -50,3 +50,11 @@ _Avoid_: Desktop module, cua
 **Desktop tools**:
 The tools of the computer-use modules: `computer_use_linux_*` (Linux) and `computer_use_*` (macOS) in Pi, and the MCP server of the Claude Code plugin `computer-use-linux@computer-use-linux`.
 The Herdr read roles start without them.
+
+**AWS rows**:
+The six optional rows of the Agent Toolkit for AWS: `aws-core`, `aws-agents`, `aws-data-analytics`, `aws-agents-for-devsecops`, `aws-startup-advisor` and `aws-emulator`.
+They come from one clone of the upstream repository at the commit of their `git` source, in a folder of the kit.
+On an upgrade, they follow the selection.
+A row that is off loses only the parts of the kit: the skills entries that name the kit clone, and the parts that a kit record names.
+See [Agent Toolkit for AWS](docs/guides/aws-agent-toolkit.md).
+_Avoid_: AWS module, aws-toolkit

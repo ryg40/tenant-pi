@@ -451,7 +451,7 @@ body.collapsed .handle { right: 0; }
 .edit-row.sent .pip { background: var(--green); }
 
 .rail-brand { display: flex; align-items: center; gap: 8px; padding: 14px 16px 0; font-size: 13px; font-weight: 700; }
-.rail-brand::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+.rail-brand .walkr-foot { flex: none; }
 .rail > .theme-control { padding: 10px 16px 13px; border-bottom: 1px solid var(--hair); justify-content: space-between; }
 .rail > .theme-control select { flex: 1; max-width: 225px; }
 .app { height: 100dvh; }
@@ -472,7 +472,6 @@ body.collapsed .handle { right: 0; }
 :root:is([data-theme="plum"], [data-theme="night"], [data-theme="day"], [data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .toast-action { border-color: currentColor; }
 
 :root:is([data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .rail-brand { margin: 12px 16px 0; padding: 8px 12px; border-radius: 12px 3px 12px 3px; background: var(--brand); color: var(--brand-ink); }
-:root:is([data-theme="statue-light"], [data-theme="statue-dark"], [data-theme="torch-light"], [data-theme="torch-dark"]) .rail-brand::before { background: var(--brand-ink); }
 @media (max-width: 720px) {
   .app { flex-direction: column; }
   .stage { min-height: 0; }

@@ -26,6 +26,9 @@ RANGE = re.compile(r">=(\d{1,9})\.(\d{1,9})(?:\.(\d{1,9}))?(?: <(\d{1,9})(?:\.(\
 # `latest`, and every other form are rejected. Without a version the package follows the
 # registry at install time; `pi update` moves it.
 NPM = re.compile(r"(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*(?:@(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?)?\Z")
+# A git source is an HTTPS clone URL without user, port, query or fragment, and one full commit.
+GIT_URL = re.compile(r"https://[a-z0-9][a-z0-9.-]*/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*\.git\Z")
+COMMIT = re.compile(r"[0-9a-f]{40}\Z")
 SCHEMA_VERSION = 2
 # `unverified` has no test in this repository yet; its `gaps` name what no test proves.
 STATUSES = ("tested", "unverified")
@@ -102,14 +105,20 @@ REVIEWED_SOURCES = {
     "questions": {"kind": "npm", "name": "@juicesharp/rpiv-ask-user-question"},
     "computer-use": {"kind": "npm", "name": "@agent-sh/computer-use-linux"},
     "computer-use-macos": {"kind": "npm", "name": "@amaster.ai/pi-computer-use"},
+    # The Agent Toolkit for AWS: one upstream repository, one clone, six components.
+    **{cid: {"kind": "git", "url": "https://github.com/aws/agent-toolkit-for-aws.git"}
+       for cid in ("aws-core", "aws-agents", "aws-data-analytics", "aws-agents-for-devsecops", "aws-startup-advisor",
+                   "aws-emulator")},
 }
 
 
 def reviewed_source(cid, value):
-    """True when a checked source has the reviewed kind and package of `cid`, at any version."""
+    """True when a checked source has the reviewed kind and package of `cid`, at any version or commit."""
     anchor = REVIEWED_SOURCES[cid]
     if anchor["kind"] == "npm":
         return value["kind"] == "npm" and npm_name(value["spec"]) == anchor["name"]
+    if anchor["kind"] == "git":
+        return value["kind"] == "git" and value["url"] == anchor["url"]
     return value == anchor
 
 
@@ -282,13 +291,17 @@ def absolute(value, at):
 
 
 def source(value, at):
-    fields(value, ("kind",), ("spec", "path"), at)
+    fields(value, ("kind",), ("spec", "path", "url", "commit"), at)
     kind = value["kind"]
-    forms = {"npm": ("kind", "spec"), "builtin": ("kind",), "tree": ("kind", "path")}
+    forms = {"npm": ("kind", "spec"), "builtin": ("kind",), "tree": ("kind", "path"), "git": ("kind", "url", "commit")}
     if not isinstance(kind, str) or kind not in forms or set(value) != set(forms[kind]):
         fail("source_form", at)
     if kind == "npm" and (not isinstance(value["spec"], str) or not NPM.fullmatch(value["spec"])):
         fail("exact_npm_pin", at + ".spec")
+    if kind == "git" and (not isinstance(value["url"], str) or not GIT_URL.fullmatch(value["url"])):
+        fail("git_url", at + ".url")
+    if kind == "git" and (not isinstance(value["commit"], str) or not COMMIT.fullmatch(value["commit"])):
+        fail("exact_git_commit", at + ".commit")
     if kind == "tree":
         tree_path(value["path"], at + ".path")
 
@@ -411,6 +424,13 @@ def manifest(data):
                 fail("tree_resource_missing", at + ".resources")
     if components["core"]["requires"]:
         fail("core_source", "manifest.components.core")
+    # The components of one git URL share one clone, so they name one commit.
+    commits = {}
+    for component in components.values():
+        if component["source"]["kind"] == "git":
+            commits.setdefault(component["source"]["url"], set()).add(component["source"]["commit"])
+    if any(len(found) > 1 for found in commits.values()):
+        fail("git_commit_differs", "manifest.components.source.commit")
     visiting, done = set(), set()
 
     def visit(cid):

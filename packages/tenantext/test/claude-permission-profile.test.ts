@@ -265,6 +265,36 @@ test("standalone installation is opt-in, idempotent and preserves every unrelate
 	f.unchanged();
 });
 
+test("ordinary Claude installation preserves native arguments and unapproved starts", () => {
+	const f = fixture();
+	f.ok(installer, ["--claude"]);
+	const link = join(f.home, ".local", "bin", "claude");
+	const env = { PATH: `${dirname(link)}:${f.env.PATH}` };
+	const args = ["--permission-mode", "plan", "literal"];
+	writeFileSync(join(f.home, ".credsync.json"), "unapproved");
+	const fallback = spawnSync(link, args, { cwd: f.home, env: { ...f.env, ...env }, encoding: "utf8", timeout: 10_000 });
+	assert.equal(fallback.status, 0, fallback.stderr);
+	assert.equal(fallback.stderr.trim().split("\n").length, 1);
+	assert.deepEqual(JSON.parse(readFileSync(f.capture, "utf8")).args, args);
+	f.unchanged();
+});
+
+test("ordinary Claude without a project file starts with old Node on PATH", () => {
+	const f = fixture();
+	f.ok(installer, ["--claude"]);
+	const link = join(f.home, ".local", "bin", "claude");
+	const old = join(f.home, "old-node");
+	mkdirSync(old);
+	writeFileSync(join(old, "node"), "#!/bin/sh\nprintf 'v18.0.0\\n'\nexit 1\n", { mode: 0o700 });
+	const args = ["-p", "two words", "", "--", "literal"];
+	const path = `${old}:${dirname(link)}:${f.bin}`;
+	const result = spawnSync(link, args, { cwd: f.home, env: { ...f.env, PATH: path }, encoding: "utf8", timeout: 10_000 });
+	assert.equal(result.status, 0, result.stderr);
+	assert.equal(result.stderr, "");
+	assert.deepEqual(JSON.parse(readFileSync(f.capture, "utf8")).args, args);
+	f.unchanged();
+});
+
 test("the shipped slash command is user-only and never expands untrusted arguments as shell code", () => {
 	const command = readFileSync(join(plugin, "commands", "claude-mode.md"), "utf8");
 	assert.match(command, /^disable-model-invocation: true$/m);

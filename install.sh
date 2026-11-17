@@ -11,9 +11,13 @@ ask() {
   IFS= read -r answer <&3 || fail "cancelled"
   exec 3>&-
 }
-mode= name= shell= modules= runtime_choice= approved=no replace=no plugin= dummies= asked=no
+mode= name= shell= modules= runtime_choice= approved=no replace=no plugin= dummies= asked=no inventory=no dry_run=no
+claude_aws= adopt=no
+ui= tui_consent= tui_dummies=
 while [ "$#" -gt 0 ]; do
   case $1 in
+    --inventory) inventory=yes; shift ;;
+    --dry-run) dry_run=yes; shift ;;
     --new|--upgrade)
       [ -z "$mode" ] || fail "choose only one of --new and --upgrade"
       mode=${1#--}; [ "$#" -ge 2 ] || fail "$1 needs a name"; name=$2; shift 2 ;;
@@ -22,8 +26,14 @@ while [ "$#" -gt 0 ]; do
       if [ "$option" = --shell ]; then shell=$2; else modules=$2; fi; shift 2 ;;
     --runtime) [ "$#" -ge 2 ] || fail "$1 needs a value"; runtime_choice=$2; shift 2 ;;
     --yes) approved=yes; shift ;;
+    --tui|--plain)
+      [ -z "$ui" ] || [ "$ui" = "${1#--}" ] || fail "choose only one of --tui and --plain"
+      ui=${1#--}; shift ;;
     --replace-alias) replace=yes; shift ;;
     --claude-plugin) plugin=yes; shift ;;
+    # The yes to the Claude Code plugins of the AWS rows, and the move of an AWS entry of the user to the kit pin.
+    --claude-aws) claude_aws=yes; shift ;;
+    --adopt-aws) adopt=yes; shift ;;
     --dummies) dummies=yes; shift ;;
     *) fail "unknown option: $1" ;;
   esac
@@ -43,29 +53,155 @@ if [ "$mode" = upgrade ]; then
   done
 fi
 if [ -z "$name" ]; then ask "Name of $mode profile:"; name=$answer; fi
-if [ -z "$shell" ]; then ask 'Shell [bash/zsh/none]:'; shell=$answer; fi
 # Each platform offers its own computer-use module: computer-use on Linux, computer-use-macos on macOS.
 desktop_module=computer-use
 [ "$(uname -s)" = Darwin ] && desktop_module=computer-use-macos
 # all means every optional module of this platform; it stands alone.
-optional_modules=wiki,hermes,mcp,$desktop_module,okknow,walkr
-# mcp-codemode is a choice for a comparison profile, so all leaves it out.
-if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, all or none]:"; modules=$answer; asked=yes; fi
-case ,$modules, in
-  ,all,) modules=$optional_modules ;;
-  *,all,*) fail "all stands alone; use $optional_modules, mcp-codemode, all or none" ;;
-esac
-case ,$modules, in
-  *,mcp-codemode,*)
-    # The adapter replaces the MCP support of Pi, so one profile cannot hold both.
-    case ,$modules, in
-      *,mcp,*) fail "choose one of mcp and mcp-codemode; see docs/guides/modules.md#mcp-with-codemode" ;;
-    esac ;;
-esac
+optional_modules=wiki,hermes,mcp,$desktop_module,okknow,artifacts,walkr
+# The AWS rows: the components of config/manifest.json with a git source (scripts/kit_aws.py). all leaves them out.
+aws_modules=aws-core,aws-agents,aws-data-analytics,aws-agents-for-devsecops,aws-startup-advisor,aws-emulator
+# The checks of a --with value that ask nothing and write nothing. A refused platform exits before the first write.
+check_modules() {
+  case ,$modules, in
+    ,all,) modules=$optional_modules ;;
+    *,all,*) fail "all stands alone; use $optional_modules, mcp-codemode, $aws_modules, all or none" ;;
+  esac
+  # An AWS plugin row needs aws-core.
+  case ,$modules, in
+    *,aws-*) python3 "$kit/scripts/kit_aws.py" check --kit "$kit" --with "$modules" || exit 2 ;;
+  esac
+  case ,$modules, in
+    *,mcp-codemode,*)
+      # The adapter replaces the MCP support of Pi, so one profile cannot hold both.
+      case ,$modules, in
+        *,mcp,*) fail "choose one of mcp and mcp-codemode; see docs/guides/modules.md#mcp-with-codemode" ;;
+      esac ;;
+  esac
+  case ,$modules, in
+    *,computer-use,*) [ "$(uname -s)" = Linux ] || fail "computer-use supports Linux only. On macOS use computer-use-macos; see docs/guides/modules.md#computer-use" ;;
+  esac
+  case ,$modules, in
+    *,computer-use-macos,*) [ "$(uname -s)" = Darwin ] || fail "computer-use-macos supports macOS only. On Linux use computer-use; see docs/guides/modules.md#computer-use-on-macos" ;;
+  esac
+}
+# --inventory prints the state of the profile and the plan of the given choices, then exits. It asks nothing more and
+# writes no file. kit_inventory.py finds the runtime as a run does: --runtime, else the launcher choice, else pi.
+if [ "$inventory" = yes ]; then
+  case $name in [a-z]*) ;; *) fail "invalid name: use [a-z][a-z0-9-]{0,31}" ;; esac
+  case $name in *[!a-z0-9-]*) fail "invalid name: use [a-z][a-z0-9-]{0,31}" ;; esac
+  [ "${#name}" -le 32 ] || fail "invalid name: use [a-z][a-z0-9-]{0,31}"
+  case $shell in '' | bash | zsh | none) ;; *) fail "shell must be bash, zsh or none" ;; esac
+  dir=$HOME/.pi/profiles/$name
+  if [ "$mode" = upgrade ] && [ ! -d "$dir" ]; then fail "upgrade profile does not exist"; fi
+  if [ "$mode" = new ] && { [ -e "$dir" ] || [ -L "$dir" ]; }; then fail "new profile name already exists"; fi
+  [ -z "$modules" ] || check_modules
+  set -- --kit "$kit" --profile "$dir" --name "$name" --plain
+  [ -z "$modules" ] || set -- "$@" --with "$modules"
+  [ -z "$shell" ] || set -- "$@" --shell "$shell"
+  [ -z "$dummies" ] || set -- "$@" --dummies
+  [ -z "$plugin" ] || set -- "$@" --claude-plugin
+  [ -z "$claude_aws" ] || set -- "$@" --claude-aws
+  [ "$adopt" = no ] || set -- "$@" --adopt-aws
+  [ -z "$runtime_choice" ] || set -- "$@" --runtime "$runtime_choice"
+  exec python3 "$kit/scripts/kit_inventory.py" "$@"
+fi
+if [ -z "$shell" ]; then ask 'Shell [bash/zsh/none]:'; shell=$answer; fi
+# The Pi runtime: --runtime, else the choice in the launcher of an upgrade, else a question, else pi.
+if [ -z "$runtime_choice" ] && [ "$mode" = upgrade ]; then
+  case $name in
+    '' | *[!a-z0-9-]*) ;;
+    *)
+      launcher=$HOME/.local/bin/$name
+      if [ -f "$launcher" ] && grep -qxF "# tenant-pi launcher: $name" "$launcher"; then
+        runtime_choice=$(sed -n 's/^# tenant-pi runtime: //p' "$launcher" | head -n 1)
+      fi ;;
+  esac
+fi
+# --tui, the default with a terminal, asks the optional modules and the runtime on one screen. --yes skips the
+# screen, also with --tui. The selection takes the path of --with, and the consent questions follow it.
+# --plain keeps the questions.
+tui_tty=${INSTALL_TEST_TTY:-/dev/tty}
+if [ -z "$modules" ] && [ "$ui" != plain ] && [ "$approved" != yes ] &&
+   [ -c "$tui_tty" ] && (true <"$tui_tty") 2>/dev/null; then
+  case $name in
+    '' | *[!a-z0-9-]*) ;;
+    *)
+      if [ ! -f "$kit/scripts/kit_inventory.py" ] || [ ! -f "$kit/config/catalog.json" ]; then
+        echo 'tui:     no scripts/kit_inventory.py or config/catalog.json in this clone, so the plain questions follow' >&2
+      else
+        runtimes=$runtime_choice
+        if [ -z "$runtimes" ]; then
+          runtimes=pi
+          if command -v pi >/dev/null 2>&1 && command -v pi-bolt >/dev/null 2>&1; then runtimes=pi,pi-bolt; fi
+        fi
+        # The inventory reads state only, with the choices that are known now. The screen draws on the terminal and
+        # prints the selection JSON. It runs the same inventory command with --with of its selection (and --runtime
+        # after r) for the plan, as the dry run does. DUMMIES is no choice there: --dummies sets the plan of its row,
+        # and without it the DUMMIES question follows the screen. mcp-codemode replaces the adapter, so the plan shows
+        # an installed mcp as a removal. Exit 1 of the screen is an abort; another failure falls back to the questions.
+        set -- --kit "$kit" --profile "$HOME/.pi/profiles/$name" --name "$name" --json
+        case $shell in bash | zsh | none) set -- "$@" --shell "$shell" ;; esac
+        [ -z "$dummies" ] || set -- "$@" --dummies
+        [ -z "$plugin" ] || set -- "$@" --claude-plugin
+        [ -z "$claude_aws" ] || set -- "$@" --claude-aws
+        [ "$adopt" = no ] || set -- "$@" --adopt-aws
+        [ -z "$runtime_choice" ] || set -- "$@" --runtime "$runtime_choice"
+        # Ctrl-C ends the run as q does. The screen restores the terminal first; the trap runs after it exits.
+        trap 'fail "cancelled"' INT
+        if ! profile_state=$(python3 "$kit/scripts/kit_inventory.py" "$@"); then
+          echo 'tui:     the inventory did not run (see the line above), so the plain questions follow' >&2
+        elif selection=$(printf '%s\n' "$profile_state" |
+            python3 "$kit/scripts/kit_tui.py" --inventory - --catalog "$kit/config/catalog.json" --no-remove \
+              --choices "$optional_modules,mcp-codemode,$aws_modules" --exclusive mcp,mcp-codemode --replaces mcp-codemode=mcp \
+              --requires aws-agents=aws-core --requires aws-data-analytics=aws-core \
+              --requires aws-agents-for-devsecops=aws-core --requires aws-startup-advisor=aws-core \
+              --runtime "${runtimes%%,*}" --runtimes "$runtimes" -- python3 "$kit/scripts/kit_inventory.py" "$@"); then
+          parsed=$(printf '%s\n' "$selection" | python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    valid = data["confirmed"] is True and isinstance(data["runtime"], str) and all(
+        isinstance(data[key], list) and all(isinstance(name, str) for name in data[key])
+        for key in ("enable", "disable", "consent"))
+except (ValueError, KeyError, TypeError):
+    valid = False
+if not valid:
+    sys.exit(1)
+known = sys.argv[1].split(",")
+print(",".join(name for name in data["enable"] if name in known) or "none")
+print(data["runtime"])
+# The desktop modules have their own question below.
+print(",".join(name for name in data["consent"] if name in known and name in data["enable"]
+               and name not in ("computer-use", "computer-use-macos")))
+# DUMMIES is active in the profile: its block is there and the Pi switch is on.
+print("on" if "dummies" in data["enable"] else "")
+' "$optional_modules,mcp-codemode,$aws_modules") || fail "the selection of the screen is not valid"
+          modules=$(printf '%s\n' "$parsed" | sed -n 1p)
+          [ -n "$runtime_choice" ] || runtime_choice=$(printf '%s\n' "$parsed" | sed -n 2p)
+          tui_consent=$(printf '%s\n' "$parsed" | sed -n 3p)
+          tui_dummies=$(printf '%s\n' "$parsed" | sed -n 4p)
+          asked=yes
+        else
+          case $? in
+            1) fail "cancelled" ;;
+            *) echo 'tui:     the screen stopped with an error (see the line above), so the plain questions follow' >&2 ;;
+          esac
+        fi
+        trap - INT
+      fi ;;
+  esac
+fi
+# mcp-codemode is a choice for a comparison profile, so all leaves it out. all leaves out the AWS rows too.
+if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, $aws_modules, all or none]:"; modules=$answer; asked=yes; fi
+check_modules
+# A module that needs consent and that the screen turned on gets an explicit yes here. A no cancels the run.
+if [ -n "$tui_consent" ]; then
+  ask "These modules need your consent: $tui_consent. The screen showed the effect of each one. Install them? [yes/no]:"
+  [ "$answer" = yes ] || fail "cancelled"
+fi
 case ,$modules, in
   *,computer-use,*)
-    # A refused platform exits before the first write. --with computer-use is the yes to desktop control.
-    [ "$(uname -s)" = Linux ] || fail "computer-use supports Linux only. On macOS use computer-use-macos; see docs/guides/modules.md#computer-use"
+    # --with computer-use is the yes to desktop control.
     if [ "$asked" = yes ]; then
       ask 'computer-use lets the agent read your screen and send input to your desktop. Install it? [yes/no]:'
       [ "$answer" = yes ] || fail "cancelled"
@@ -74,7 +210,6 @@ esac
 case ,$modules, in
   *,computer-use-macos,*)
     # --with computer-use-macos is the yes to desktop control. The install starts no driver and requests no grant.
-    [ "$(uname -s)" = Darwin ] || fail "computer-use-macos supports macOS only. On Linux use computer-use; see docs/guides/modules.md#computer-use-on-macos"
     if [ "$asked" = yes ]; then
       ask 'computer-use-macos lets the agent read your screen and send input to your Mac. Screenshots, accessibility text and typed text go to the model provider. Cua Driver sends telemetry by default. macOS asks for the grants at the first desktop tool call. Install it? [yes/no]:'
       [ "$answer" = yes ] || fail "cancelled"
@@ -92,21 +227,27 @@ case ,$modules, in
       fail "missing choice: the okknow origin (set OKKNOW_ORIGIN, or run in a terminal)"
     fi ;;
 esac
+# artifacts: the origin and the token file path come from ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE, an existing
+# user config or the wizard in a terminal. The checks write nothing and send no request.
+artifacts_cli=$kit/packages/artifacts/skills/artifacts/scripts/artifacts
+case ,$modules, in
+  *,artifacts,*)
+    if [ -n "${ARTIFACTS_ORIGIN:-}" ] || [ -n "${ARTIFACTS_TOKEN_FILE:-}" ]; then
+      [ -n "${ARTIFACTS_ORIGIN:-}" ] && [ -n "${ARTIFACTS_TOKEN_FILE:-}" ] || fail "set both ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE"
+      python3 "$artifacts_cli" setup --check --origin "$ARTIFACTS_ORIGIN" --token-file "$ARTIFACTS_TOKEN_FILE" ||
+        fail "ARTIFACTS_ORIGIN or ARTIFACTS_TOKEN_FILE is refused (see the line above); see docs/guides/modules.md#artifacts"
+    elif python3 "$artifacts_cli" setup --check >/dev/null 2>&1; then :
+    elif ! (true <"${INSTALL_TEST_TTY:-/dev/tty}") 2>/dev/null || [ ! -c "${INSTALL_TEST_TTY:-/dev/tty}" ]; then
+      fail "missing choice: the artifacts origin and token file (set ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE, or run in a terminal)"
+    fi ;;
+esac
 # DUMMIES needs its own yes, as the Claude Code plugin: --dummies or a yes here. --yes does not give it.
-if [ -z "$dummies" ] && [ "$asked" = yes ]; then
+# When the screen showed DUMMIES on in the profile, a no would change nothing, so the question is left out.
+if [ -z "$dummies" ] && [ "$asked" = yes ] && [ "$tui_dummies" = on ]; then
+  echo 'DUMMIES: on in this profile; the run keeps it'
+elif [ -z "$dummies" ] && [ "$asked" = yes ]; then
   ask 'DUMMIES reports: a coordinator session ends each reply with a compact report for a junior developer, and next-prompt drafts the next action. Turn it on for Pi? All your profiles share the switch; the autostart block goes into this profile. [y/N]'
   case $answer in y | Y | yes | Yes) dummies=yes ;; *) dummies= ;; esac
-fi
-# The Pi runtime: --runtime, else the choice in the launcher of an upgrade, else a question, else pi.
-if [ -z "$runtime_choice" ] && [ "$mode" = upgrade ]; then
-  case $name in
-    '' | *[!a-z0-9-]*) ;;
-    *)
-      launcher=$HOME/.local/bin/$name
-      if [ -f "$launcher" ] && grep -qxF "# tenant-pi launcher: $name" "$launcher"; then
-        runtime_choice=$(sed -n 's/^# tenant-pi runtime: //p' "$launcher" | head -n 1)
-      fi ;;
-  esac
 fi
 if [ -z "$runtime_choice" ] && [ "$approved" != yes ] && command -v pi >/dev/null 2>&1 && command -v pi-bolt >/dev/null 2>&1; then
   ask 'Pi runtime [pi/pi-bolt]:'; runtime_choice=$answer
@@ -118,7 +259,7 @@ case $runtime_choice in
   *) fail "runtime must be pi, pi-bolt or an absolute path" ;;
 esac
 case $runtime in /*) ;; *) runtime=$(cd "$(dirname "$runtime")" && pwd -P)/${runtime##*/} ;; esac
-export kit mode name shell modules runtime_choice runtime replace dummies optional_modules
+export kit mode name shell modules runtime_choice runtime replace dummies plugin optional_modules claude_aws adopt aws_modules
 # Python handles JSON and shell quoting; prompts remain plain POSIX sh.
 helper() {
 python3 - "$1" <<'PY'
@@ -205,17 +346,33 @@ try:
     modules = os.environ['modules'].split(',')
     if modules == ['none']:
         modules = []
-    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'walkr', 'questions')
+    aws_names = os.environ['aws_modules'].split(',')
+    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'artifacts', 'walkr', 'questions', *aws_names)
            for module in modules):
-        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, all or none')
+        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, ' + os.environ['aws_modules'] + ', all or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
-    # questions is mandatory; accept its old --with name without installing twice. okknow and walkr are tree packages.
-    # mcp-codemode has no package: Pi carries the MCP client and codemode.
+    # questions is mandatory; accept its old --with name without installing twice. Only an npm source is a Pi package
+    # install: okknow, artifacts and walkr are tree packages, the AWS rows come from one git clone, and mcp-codemode
+    # has no package (Pi carries the MCP client and codemode).
     specs = ['npm:' + manifest['components'][module]['source']['spec']
-             for module in dict.fromkeys([*modules, 'questions']) if module not in ('okknow', 'walkr', 'mcp-codemode')]
+             for module in dict.fromkeys([*modules, 'questions'])
+             if manifest['components'].get(module, {}).get('source', {}).get('kind') == 'npm']
+    # The AWS rows: Pi skills entries into the kit clone, and the plan lines of scripts/kit_aws.py.
+    sys.dont_write_bytecode = True
+    sys.path.insert(0, str(kit))
+    from scripts import kit_aws
+    aws_rows = kit_aws.components(manifest)
+    if sorted(aws_rows) != sorted(aws_names):
+        fail('the AWS rows of install.sh differ from config/manifest.json')
+    aws_clone = kit_aws.clone_dir(home, kit_aws.source(aws_rows)[0])
+    aws_selected = [module for module in modules if module in aws_rows]
+    adopt = os.environ.get('adopt') == 'yes'
     okknow_package = kit / manifest['components']['okknow']['source']['path']
     okknow_script = okknow_package / 'skills/okknow/scripts/okknow'
     okknow_link = home / '.local/bin/okknow'
+    artifacts_package = kit / manifest['components']['artifacts']['source']['path']
+    artifacts_script = artifacts_package / 'skills/artifacts/scripts/artifacts'
+    artifacts_link = home / '.local/bin/artifacts'
     choice = os.environ['runtime_choice']
     if any(ord(c) < 32 or ord(c) == 127 for c in choice):
         fail('runtime path has a control character')
@@ -234,15 +391,19 @@ try:
     end = '# <<< tenant-pi ' + name + ' <<<'
     launcher_mark = '# tenant-pi launcher: ' + name
     # With the okknow CLI link of the kit, the launcher puts its directory at the end of PATH.
-    # The same holds for the Walkr command links of the kit, which are in the same directory.
+    # The same holds for the artifacts and Walkr command links of the kit, which are in the same directory.
     walkr_link = home / '.local/bin/walkr-core'
     okknow_path = ['export PATH="$PATH":' + shlex.quote(str(okknow_link.parent))] if (
         okknow_link.is_symlink() and okknow_link.resolve() == okknow_script.resolve()
+        or artifacts_link.is_symlink() and artifacts_link.resolve() == artifacts_script.resolve()
         or walkr_link.is_symlink() and walkr_link.resolve() == (kit / 'packages/walkr/src/walkr-core.js').resolve()) else []
     launch_text = '\n'.join(['#!/bin/sh', launcher_mark, '# tenant-pi runtime: ' + choice,
         'export PI_CODING_AGENT_DIR=' + shlex.quote(str(profile)),
         'unset PI_CODING_AGENT_SESSION_DIR',
         'export PATH=' + shlex.quote(str(runtime.parent)) + ':"$PATH"', *okknow_path,
+        'if [ -r ' + shlex.quote(str(kit / 'packages/tenantext/skills/herdr/scripts/credsync-launch.sh')) + ' ] && { [ -e .credsync.json ] || [ "${TENANT_CREDSYNC_PID-}" = "$$" ]; }; then',
+        '  exec /bin/sh ' + shlex.quote(str(kit / 'packages/tenantext/skills/herdr/scripts/credsync-launch.sh')) + ' ' + shlex.quote(str(runtime)) + ' "$@"',
+        'fi',
         'exec ' + shlex.quote(str(runtime)) + ' "$@"', ''])
     block = start + '\nalias ' + name + '=' + shlex.quote(shlex.quote(str(launcher))) + '\n' + end + '\n'
     old = ''
@@ -296,7 +457,8 @@ try:
     packages = settings.setdefault('packages', [])
     if not isinstance(packages, list):
         fail('settings packages must be a list')
-    for desired in [str(kit / 'packages/tenantext')] + ([str(okknow_package)] if 'okknow' in modules else []):
+    for desired in ([str(kit / 'packages/tenantext')] + ([str(okknow_package)] if 'okknow' in modules else [])
+                    + ([str(artifacts_package)] if 'artifacts' in modules else [])):
         found = False
         tail = '/packages/' + Path(desired).name
         for index, entry in enumerate(packages):
@@ -356,6 +518,7 @@ try:
             # A list of plain names replaces the defaults, and it takes no + entry.
             additive = tools and all(isinstance(tool, str) and tool[:1] in ('+', '-') for tool in tools)
             tools.append('+codemode' if additive else 'codemode')
+    aws_lines = kit_aws.pi_skills(settings, aws_clone, aws_rows, aws_selected, adopt)
     changed = before != settings
     models = (kit / 'config/models.example.json').read_text()
     # Claude Code gets the skills that the manifest declares for the package, not each folder with a SKILL.md.
@@ -365,6 +528,8 @@ try:
               for item in component['resources']['skills']]
     if 'okknow' in modules:
         skills += [okknow_package / item for item in manifest['components']['okknow']['resources']['skills']]
+    if 'artifacts' in modules:
+        skills += [artifacts_package / item for item in manifest['components']['artifacts']['resources']['skills']]
 
     def okknow_link_state():
         # Make or replace only a link of this kit; keep another okknow command.
@@ -373,6 +538,15 @@ try:
         if okknow_link.is_symlink() and (not okknow_link.exists() or okknow_link.resolve().is_relative_to(kit.resolve())):
             return None
         return 'skipped: ' + str(okknow_link) + ' exists and is not a link of this kit'
+
+    def artifacts_link_state():
+        # Make or replace only a link of this kit; keep another artifacts command.
+        if not artifacts_link.exists() and not artifacts_link.is_symlink():
+            return None
+        if artifacts_link.is_symlink() and (not artifacts_link.exists()
+                                            or artifacts_link.resolve().is_relative_to(kit.resolve())):
+            return None
+        return 'skipped: ' + str(artifacts_link) + ' exists and is not a link of this kit'
     adapter_path = profile / 'mcp-adapter.json'
     native_path = profile / 'mcp.json'
     mcp_path = native_path if 'mcp-codemode' in modules else adapter_path
@@ -410,7 +584,7 @@ try:
             print('herdr: Pi integration in ' + str(profile / 'extensions'))
         if settings_path.exists() and changed:
             print('Proposed settings.json change:')
-            for key in ('packages', 'pi-computer-use', 'extensions', 'defaultTools'):
+            for key in ('packages', 'skills', 'pi-computer-use', 'extensions', 'defaultTools'):
                 if before.get(key) != settings.get(key):
                     print(key + ':')
                     print('- ' + json.dumps(before.get(key), ensure_ascii=True))
@@ -447,10 +621,22 @@ try:
                 print('okknow: origin: the setup wizard asks for it')
             if 'mcp' in modules or 'mcp-codemode' in modules:
                 print('okknow: MCP server okknow in ' + str(mcp_path))
+        if 'artifacts' in modules:
+            print('artifacts: package ' + str(artifacts_package))
+            print('artifacts: CLI link ' + str(artifacts_link)
+                  + (' (' + artifacts_link_state() + ')' if artifacts_link_state() else ''))
+            if os.environ.get('ARTIFACTS_ORIGIN'):
+                print('artifacts: origin ' + os.environ['ARTIFACTS_ORIGIN'] + ' (from ARTIFACTS_ORIGIN)')
+            else:
+                print('artifacts: origin from the user config, else the setup wizard asks for it')
         if os.environ.get('dummies') == 'yes':
             print('DUMMIES: on for Pi, shared by all profiles of this user; autostart block in the instruction file of the profile, else a new AGENTS.md')
+        for line in aws_lines + kit_aws.plan_lines(home, profile, aws_rows, modules, os.environ.get('claude_aws') == 'yes',
+                                                   adopt, skills=False):
+            print(line)
         if 'computer-use' in modules and (home / '.claude').is_dir() and shutil.which('claude'):
-            print('Claude Code plugin: ' + PLUGIN + ' (asked separately; --claude-plugin is the yes)')
+            print('Claude Code plugin: ' + PLUGIN + (' (chosen)' if os.environ.get('plugin') == 'yes'
+                                                      else ' (not chosen; --claude-plugin or a yes in a terminal is the yes)'))
         if (home / '.claude').is_dir():
             links = [dest.name for _, dest, skipped in claude_links() if not skipped]
             print('Claude skill links: ' + str(len(links)) + '\ntarget: ' + str(folder))
@@ -459,6 +645,8 @@ try:
     elif action == 'profile':
         os.umask(0o077)
         profile.mkdir(parents=True, exist_ok=True)
+        for line in aws_lines:
+            print(line)
         if not settings_path.exists() or changed:
             if settings_path.exists():
                 backup(settings_path)
@@ -500,6 +688,16 @@ try:
         if not found or Path(found).resolve() != okknow_script.resolve():
             print('okknow:  ' + ('the okknow on PATH is ' + found if found else str(okknow_link.parent) + ' is not on PATH')
                   + '; the profile launcher adds ' + str(okknow_link.parent) + ' at the end of PATH')
+    elif action == 'artifacts-cli':
+        state = artifacts_link_state()
+        if state:
+            print(state, file=sys.stderr)
+        else:
+            artifacts_link.parent.mkdir(parents=True, exist_ok=True)
+            if artifacts_link.is_symlink():
+                artifacts_link.unlink()
+            artifacts_link.symlink_to(artifacts_script)
+            print('artifacts: ' + str(artifacts_link))
     elif action == 'okknow-mcp':
         # Only the command of a header helper enters the file, never a credential.
         import subprocess
@@ -573,20 +771,8 @@ except Exception as error:
     sys.exit(2)
 PY
 }
-helper plan || exit 2
-if helper conflict; then :; else
-  status=$?
-  [ "$status" -eq 10 ] || exit "$status"
-  if [ "$replace" != yes ]; then
-    ask "Conflict for $name. Replace this alias/function/command with the shown launcher? [yes/no]:"
-    [ "$answer" = yes ] || fail "cancelled"
-  fi
-fi
-if [ "$approved" != yes ]; then
-  ask 'Apply the shown profile and shell changes? [yes/no]:'
-  [ "$answer" = yes ] || fail "cancelled"
-fi
-# The Claude Code plugin needs its own yes; --yes does not give it. Without a terminal, no plugin.
+# The Claude Code plugin needs its own yes; --yes does not give it. Without a terminal, no plugin. The choice writes
+# nothing, so it comes before the plan and the dry-run exit.
 case ,$modules, in
   *,computer-use,*)
     if [ ! -d "$HOME/.claude" ]; then
@@ -605,8 +791,70 @@ case ,$modules, in
     fi ;;
   *) plugin= ;;
 esac
+# The AWS rows of this run. One yes covers the Claude Code plugins of all of them, as for the plugin above:
+# --claude-aws or a yes in a terminal; --yes does not give it, and without a terminal there is none.
+aws_chosen=
+for row in $(printf '%s\n' "$aws_modules" | tr , ' '); do
+  case ,$modules, in *,"$row",*) aws_chosen=$aws_chosen${aws_chosen:+,}$row ;; esac
+done
+if [ ! -d "$HOME/.claude" ]; then
+  claude_aws=
+elif ! command -v claude >/dev/null 2>&1; then
+  [ -z "$aws_chosen$claude_aws" ] || echo "claude-aws: no claude command on PATH, so no Claude Code AWS plugins"
+  claude_aws=
+elif [ -z "$claude_aws" ] && [ -n "$aws_chosen" ]; then
+  if (true <"${INSTALL_TEST_TTY:-/dev/tty}") 2>/dev/null; then
+    ask "Install the Claude Code plugins of the AWS rows $aws_chosen too, from a folder marketplace at the kit clone? The kit also adds deniedMcpServers entries to ~/.claude/settings.json. They turn off each server with the command of a plugin aws-mcp server, also a server of yours. One yes covers all of them. [yes/no]:"
+    claude_aws=$answer
+  else
+    echo "claude-aws: no terminal and no --claude-aws, so no Claude Code AWS plugins"
+  fi
+fi
+[ "$claude_aws" = yes ] || claude_aws=
+helper plan || exit 2
+# --dry-run: the plan of the choices, then exit 0 before the conflict question, the approval and the first write.
+if [ "$dry_run" = yes ]; then
+  if helper conflict; then :; else
+    status=$?
+    [ "$status" -eq 10 ] || exit "$status"
+    if [ "$replace" = yes ]; then
+      echo "conflict: the run replaces the alias, function or command $name (--replace-alias)"
+    else
+      echo "conflict: $name is another alias, function or command; the run asks before it replaces it"
+    fi
+  fi
+  set -- --kit "$kit" --profile "$HOME/.pi/profiles/$name" --name "$name" --plain --with "$modules" --shell "$shell" --runtime "$runtime"
+  [ -z "$dummies" ] || set -- "$@" --dummies
+  [ "$plugin" != yes ] || set -- "$@" --claude-plugin
+  [ -z "$claude_aws" ] || set -- "$@" --claude-aws
+  [ "$adopt" = no ] || set -- "$@" --adopt-aws
+  python3 "$kit/scripts/kit_inventory.py" "$@" || exit 2
+  echo 'dry run: no file was written'
+  exit 0
+fi
+if helper conflict; then :; else
+  status=$?
+  [ "$status" -eq 10 ] || exit "$status"
+  if [ "$replace" != yes ]; then
+    ask "Conflict for $name. Replace this alias/function/command with the shown launcher? [yes/no]:"
+    [ "$answer" = yes ] || fail "cancelled"
+  fi
+fi
+if [ "$approved" != yes ]; then
+  ask 'Apply the shown profile and shell changes? [yes/no]:'
+  [ "$answer" = yes ] || fail "cancelled"
+fi
+# The AWS clone comes first: the skills entries of the profile step name its folders.
+if [ -n "$aws_chosen" ]; then
+  python3 "$kit/scripts/kit_aws.py" clone --kit "$kit" || { echo 'install: the AWS clone step failed; nothing was written' >&2; exit 1; }
+fi
 helper profile || { echo 'install: profile step failed; alias unchanged' >&2; exit 1; }
 profile=$HOME/.pi/profiles/$name
+# The aws-mcp entry of aws-core, or the removal of the kit entry when aws-core is off.
+aws_failed=no
+set -- mcp --kit "$kit" --profile "$profile" --with "$modules"
+[ "$adopt" = no ] || set -- "$@" --adopt
+python3 "$kit/scripts/kit_aws.py" "$@" || aws_failed=yes
 # Herdr reads the transcript path of a Pi pane from its Pi integration. Pi loads it from <profile>/extensions.
 # The step is best effort: a failure prints a warning and the install still exits 0.
 if [ "$runtime_choice" = pi-bolt ]; then
@@ -630,6 +878,19 @@ case ,$modules, in
       python3 "$okknow_cli" setup <"${INSTALL_TEST_TTY:-/dev/tty}" || okknow_failed=yes
     fi
     case ,$modules, in *,mcp,* | *,mcp-codemode,*) helper okknow-mcp || okknow_failed=yes ;; esac ;;
+esac
+# artifacts: the CLI link, then the setup writes the user config (no token).
+artifacts_failed=no
+case ,$modules, in
+  *,artifacts,*)
+    helper artifacts-cli || artifacts_failed=yes
+    if [ -n "${ARTIFACTS_ORIGIN:-}" ]; then
+      python3 "$artifacts_cli" setup --origin "$ARTIFACTS_ORIGIN" --token-file "$ARTIFACTS_TOKEN_FILE" --yes || artifacts_failed=yes
+    elif python3 "$artifacts_cli" setup --check >/dev/null 2>&1; then
+      echo "artifacts: keeps the user config $(python3 "$artifacts_cli" setup --check)"
+    else
+      python3 "$artifacts_cli" setup <"${INSTALL_TEST_TTY:-/dev/tty}" || artifacts_failed=yes
+    fi ;;
 esac
 # The Walkr setup makes ~/.claude when it is absent. The Claude skill links of the kit follow the state before it.
 claude_dir=no; [ -d "$HOME/.claude" ] && claude_dir=yes
@@ -715,6 +976,13 @@ if [ "$plugin" = yes ]; then
     plugin_failed=yes
   fi
 fi
+# The Claude Code AWS plugins after the yes: for the chosen rows, and off for the kit plugins of the other rows.
+aws_claude_failed=no
+if [ -n "$claude_aws" ] && { [ -n "$aws_chosen" ] || python3 "$kit/scripts/kit_aws.py" claude-installed --kit "$kit"; }; then
+  set -- claude --kit "$kit" --with "$modules" --claude
+  [ "$adopt" = no ] || set -- "$@" --adopt
+  python3 "$kit/scripts/kit_aws.py" "$@" || aws_claude_failed=yes
+fi
 if [ "$claude_dir" = yes ]; then
   helper links || { echo 'install: Claude skill links failed after profile success; alias unchanged' >&2; exit 1; }
 else
@@ -729,6 +997,10 @@ if [ "$okknow_failed" = yes ]; then
   echo 'install: an okknow step failed; the profile and the alias are in place. Run okknow setup' >&2
   exit 1
 fi
+if [ "$artifacts_failed" = yes ]; then
+  echo 'install: an artifacts step failed; the profile and the alias are in place. Run artifacts setup' >&2
+  exit 1
+fi
 if [ "$walkr_failed" = yes ]; then
   echo 'install: the walkr step failed; the profile and the alias are in place. See docs/guides/modules.md#walkr' >&2
   exit 1
@@ -739,6 +1011,14 @@ if [ "$dummies_failed" = yes ]; then
 fi
 if [ "$plugin_failed" = yes ]; then
   echo 'install: the Claude Code plugin step failed; the profile and the alias are in place' >&2
+  exit 1
+fi
+if [ "$aws_failed" = yes ]; then
+  echo 'install: the aws-mcp step failed; the profile and the alias are in place. See docs/guides/aws-agent-toolkit.md' >&2
+  exit 1
+fi
+if [ "$aws_claude_failed" = yes ]; then
+  echo 'install: the Claude Code AWS step failed; the profile and the alias are in place. See docs/guides/aws-agent-toolkit.md' >&2
   exit 1
 fi
 printf 'Complete: %s\n' "$name"

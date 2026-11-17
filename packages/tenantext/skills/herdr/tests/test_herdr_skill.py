@@ -204,7 +204,7 @@ class ModelDefaults(IsolatedConfig):
         self.assertEqual(results["scout"]["model_source"], "models.json")
         self.assertEqual(err.getvalue().strip(), "model: example-alias (from models.json)")
         self.assertEqual((results["scout"]["session_env"], results["coordinator"]["session_env"]),
-                         ({"HERDR_SKILL_SESSION": "task"}, {}))
+                         ({"HERDR_SKILL_SESSION": "task", "OPENVIKING_RECALL_COMPRESS": "off"}, {}))
 
 
 class Launch(IsolatedConfig):

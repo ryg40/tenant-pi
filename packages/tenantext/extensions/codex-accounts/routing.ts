@@ -106,8 +106,9 @@ export const gatewayStream: typeof streamSimple = (model, context, options) => {
 			delete next.conversation;
 			// ChatGPT Codex routes a request to a prompt-cache server by its `session_id` header.
 			// The Codex account proxies set that header from `litellm_session_id`, which only
-			// survives the gateway hop inside `extra_body`. Without it every request gets a random
-			// session id and the cache hit rate falls to about half of the direct providers.
+			// survives the gateway hop inside `extra_body`. Without it a hook of the gateway derives
+			// a stable `prefix-<hash>` id from the model, the system and developer messages and the
+			// first user message, so two conversations with the same start share one cache key.
 			if (options?.sessionId) next.extra_body = { ...(next.extra_body as Record<string, unknown> | undefined), litellm_session_id: options.sessionId };
 			return next;
 		},
@@ -117,7 +118,7 @@ export const gatewayStream: typeof streamSimple = (model, context, options) => {
 			status = response.status;
 			if (!response.ok) {
 				await response.body?.cancel();
-				await options?.onResponse?.({ status, headers: { "x-codex-account": response.headers.get("x-codex-account") ?? "" } }, model);
+				await options?.onResponse?.({ status, headers: Object.fromEntries(ACCOUNT_HEADERS.map((name) => [name, response.headers.get(name) ?? ""])) }, model);
 				return new Response(JSON.stringify({ error: { message: gatewayHttpError(status) } }), {
 					status, headers: { "content-type": "application/json" },
 				});
@@ -143,6 +144,20 @@ export const gatewayStream: typeof streamSimple = (model, context, options) => {
 	return output;
 };
 
+// A quota router in front of the account proxies, if you run one, sends `X-Codex-Account`. The LiteLLM gateway passes an
+// upstream header to its client with the prefix `llm_provider-`. Pi gives the header names in
+// lower case. The prefixed name comes first: it is the value of the router behind the gateway,
+// and the gateway is the configured path. The bare name serves a direct connection to the router.
+export const ACCOUNT_HEADERS = ["llm_provider-x-codex-account", "x-codex-account"] as const;
+
+export function selectedAccount(headers: Record<string, string | undefined>): string | undefined {
+	for (const name of ACCOUNT_HEADERS) {
+		const value = headers[name];
+		if (typeof value === "string" && ACCOUNT_NAME.test(value)) return value;
+	}
+	return undefined;
+}
+
 export function registerGateway(pi: ExtensionAPI, publish: (routing: NonNullable<CodexStatusSnapshot["routing"]>) => void, preferredAccount?: string) {
 	const config = gatewayConfig();
 	let enabled = false;
@@ -155,9 +170,8 @@ export function registerGateway(pi: ExtensionAPI, publish: (routing: NonNullable
 	}
 	pi.on("after_provider_response", (event, ctx) => {
 		if (ctx.model?.provider !== GATEWAY_PROVIDER) return;
-		const selected = event.headers["x-codex-account"];
 		publish({ state: event.status >= 400 ? "error" : "unknown", preferredAccount,
-			selectedAccount: typeof selected === "string" && ACCOUNT_NAME.test(selected) ? selected : undefined,
+			selectedAccount: selectedAccount(event.headers),
 			summary: event.status >= 400 ? gatewayHttpError(event.status) : "Gateway status endpoint unavailable; account comes from the last response." });
 	});
 	return enabled;

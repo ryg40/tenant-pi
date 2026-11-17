@@ -6,15 +6,17 @@ The `cross-session-recall` extension keeps each interactive input of the user in
 
 | Item | Value |
 | --- | --- |
-| Directory | `CROSS_SESSION_RECALL_DIR`, else `~/.pi/agent/cross-session-recall` |
+| Directory | `CROSS_SESSION_RECALL_DIR`, else `$XDG_DATA_HOME/tenant-pi/cross-session-recall`, else `~/.local/share/tenant-pi/cross-session-recall` |
 | File | `history.sqlite3`, with the `-wal` and `-shm` files of SQLite |
 | Modes | directory `0700`, files `0600`: the user reads them, nobody else |
 | Scope | one store for all Pi profiles of the user; a kit profile and the base profile share one history |
 | Limits | none: no count and no age limit; only `/recall-clear` deletes |
 
-The store is in the home of the user and not in the profile, because the input history is personal, like a shell history. A profile that wants its own history sets `CROSS_SESSION_RECALL_DIR` in its launcher.
+The store is in the home of the user and not in the profile, because the input history is personal, like a shell history. It is outside `~/.pi`: the extension writes no file into `~/.pi/agent`. A profile that wants its own history sets `CROSS_SESSION_RECALL_DIR` in its launcher.
 
 The schema: `inputs` keeps every accepted input with its time, working directory and session file. `recall_items` has one row per distinct text with its latest input. `recall_fts` (FTS5, trigram) indexes `recall_items` for the search. Writers in parallel are safe: each write is one `BEGIN IMMEDIATE` transaction with a busy timeout of five seconds, and the schema sets the busy timeout before it turns on WAL, so two sessions that open a new store at the same moment wait for each other.
+
+Earlier kit versions kept the store in `~/.pi/agent/cross-session-recall`. The first open of the default store copies the inputs of that old store one time, and writes the marker `old_store_taken_over` in the same transaction. The extension only reads the old store: it copies the bytes of `history.sqlite3` and of its `-wal` file into a private folder of the new store, reads the copy with SQLite and removes the copy. A read-only SQLite connection on the old file would create `-wal` and `-shm` files beside it, so the extension does not open the old file with SQLite. A `history.json` in the old directory is imported in the same way as below, but stays in place with its name. The old directory stays unchanged; delete it yourself when you no longer need it. A store in `CROSS_SESSION_RECALL_DIR` takes over nothing. A session of an earlier kit version that still runs keeps its inputs in the old folder; inputs that it adds after the copy do not reach the new store. `/recall-clear` empties the new store only, so the old folder keeps its history until you delete it.
 
 On the first launch with a store that has the old `history.json`, the extension imports its entries in one transaction, writes a marker in the `metadata` table and renames the file to `history.json.migrated`. The marker keeps the import one-time, also when the rename fails. A `history.json` that appears after the marker stays untouched.
 

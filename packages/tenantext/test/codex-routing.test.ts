@@ -166,6 +166,15 @@ test("registered response hook validates selected accounts and ignores unrelated
 	assert.equal(states.at(-1)?.selectedAccount, undefined);
 	await h.fire("after_provider_response", { status: 200, headers: { "x-codex-account": "secret\nvalue" } });
 	assert.equal(states.at(-1)?.selectedAccount, undefined);
+	// The gateway passes the router header with the prefix llm_provider-; that name wins.
+	await h.fire("after_provider_response", { status: 200, headers: { "llm_provider-x-codex-account": "codex2" } });
+	assert.equal(states.at(-1)?.selectedAccount, "codex2");
+	await h.fire("after_provider_response", { status: 200, headers: { "llm_provider-x-codex-account": "codex3", "x-codex-account": "codex1" } });
+	assert.equal(states.at(-1)?.selectedAccount, "codex3");
+	await h.fire("after_provider_response", { status: 200, headers: { "llm_provider-x-codex-account": "codex0", "x-codex-account": "codex1" } });
+	assert.equal(states.at(-1)?.selectedAccount, "codex1");
+	await h.fire("after_provider_response", { status: 200, headers: { "llm_provider-x-codex-account": "secret\nvalue" } });
+	assert.equal(states.at(-1)?.selectedAccount, undefined);
 	const count = states.length;
 	await h.fire("after_provider_response", { status: 409, headers: {} }, { model: { provider: "unrelated" } } as ExtensionContext);
 	assert.equal(states.length, count);
@@ -186,13 +195,13 @@ const history: TranscriptContext = normalizeContext({ messages: [
 	{ role: "toolResult", toolCallId: "call_a", toolName: "lookup", content: [{ type: "text", text: "Tool result" }], isError: false, timestamp: 4 },
 	{ role: "user", content: "Second user message", timestamp: 5 },
 ] });
-function sse() {
+function sse(accountHeader = "x-codex-account") {
 	const chunks = [
 		{ choices: [{ index: 0, delta: { role: "assistant", content: "Result " }, finish_reason: null }] },
 		{ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_b", type: "function", function: { name: "lookup", arguments: '{"value":' } }] }, finish_reason: null }] },
 		{ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '"ok"}' } }] }, finish_reason: "tool_calls" }] },
 	];
-	return new Response(chunks.map((chunk) => `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", model: model.id, ...chunk })}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream", "x-codex-account": "codex1" } });
+	return new Response(chunks.map((chunk) => `data: ${JSON.stringify({ id: "fixture", object: "chat.completion.chunk", model: model.id, ...chunk })}\n\n`).join("") + "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream", [accountHeader]: "codex1" } });
 }
 
 test("real serializer sends full history, reasoning, tools and valid streamed tool arguments", async (t) => {
@@ -225,6 +234,18 @@ test("real serializer sends full history, reasoning, tools and valid streamed to
 	assert.ok(!("previous_response_id" in sent));
 	assert.ok(!("conversation" in sent));
 	assert.equal((states.at(-1) as any).selectedAccount, "codex1");
+});
+
+test("a streamed gateway response names the account in the prefixed router header", async (t) => {
+	environment(t, true);
+	const h = harness();
+	const states: any[] = [];
+	registerGateway(h.api, (state) => states.push(state));
+	await gatewayStream(model, history, { apiKey: "fixture-only", maxRetries: 0,
+		onResponse: (event) => h.fire("after_provider_response", event),
+		fetch: async () => sse("LLM_Provider-X-Codex-Account"),
+	}).result();
+	assert.equal(states.at(-1).selectedAccount, "codex1");
 });
 
 test("the Pi session id reaches the Codex account proxy as extra_body.litellm_session_id", async () => {
@@ -261,10 +282,11 @@ test("HTTP 409 reaches the real response hook and returns only a safe error", as
 	const result = await gatewayStream(model, history, {
 		apiKey: "fixture-only", maxRetries: 0,
 		onResponse: (event) => h.fire("after_provider_response", event),
-		fetch: async () => new Response("private response body", { status: 409 }),
+		fetch: async () => new Response("private response body", { status: 409, headers: { "llm_provider-x-codex-account": "codex2" } }),
 	}).result();
 	assert.equal(result.errorMessage, CONTINUATION_ERROR);
 	assert.equal(states.at(-1).summary, CONTINUATION_ERROR);
+	assert.equal(states.at(-1).selectedAccount, "codex2");
 	assert.ok(!JSON.stringify(result).includes("private response body"));
 });
 

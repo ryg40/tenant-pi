@@ -196,14 +196,17 @@ Standard error reports `model: <name> (from models.json)` or `model: <name> (fro
 The name is the handle for `ask.py` and `close.py`. Tell the user
 the name, harness, role, model and thinking level.
 
-Before the agent starts, `spawn.py` sets one variable in the shell of the new
-pane, so the agent and each command that it runs inherit it (also Pi-Bolt
-through the `pi` function). `session_env` in the output shows it.
+Before the agent starts, `spawn.py` sets the variables of the session in the shell
+of the new pane, so the agent and each command that it runs inherit them (also
+Pi-Bolt through the `pi` function). `session_env` in the output shows them.
 
-| Session | `HERDR_SKILL_SESSION` |
-| --- | --- |
-| Task session (`worker`, `reviewer`, `scout`, `researcher`) | `task` |
-| Primary session (`coordinator`, or `--interactive`) | not set |
+| Session | `HERDR_SKILL_SESSION` | `OPENVIKING_RECALL_COMPRESS` |
+| --- | --- | --- |
+| Task session (`worker`, `reviewer`, `scout`, `researcher`) | `task` | `off` |
+| Primary session (`coordinator`, or `--interactive`) | not set | default of the harness |
+
+`OPENVIKING_RECALL_COMPRESS=off` turns the recall compressor of the memory
+plugin off, so a task session makes no compressor model call.
 
 The startup assessment of the herdr-idle-cleanup skill claims nothing in a
 session with `task`; the handoff entries wait for a session that the user

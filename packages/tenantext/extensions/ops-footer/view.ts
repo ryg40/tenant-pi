@@ -13,7 +13,8 @@ import type { DashboardSnapshot, GitSnapshot, IntegrationSnapshot, LimitsSnapsho
 export type AlertKind = "error" | "warning" | "accent";
 export interface Alert { key: string; text: string; compact: string; glyph: string; kind: AlertKind }
 export interface Group extends Alert { alert: boolean }
-export interface MemoryGroup extends Group { minimal: string }
+/** `url`: the render step makes the row an OSC 8 hyperlink to it. The row text never holds the URL. */
+export interface MemoryGroup extends Group { minimal: string; url?: string }
 export type QuotaLevel = "normal" | "low" | "exhausted" | "unavailable";
 export interface QuotaWindow { name: string; percent?: number; level: QuotaLevel; resetsAt?: number; alert?: Alert }
 export interface QuotaAccount {
@@ -248,6 +249,17 @@ export function memoryGroups(data: DashboardSnapshot, now: number): MemoryGroup[
     rows.push({ key: `memory:ok:${shown}:${failed}`, text: [`OpenKnowledge ${glyph} ${shown}`, activity(ok)].join(" · "),
       compact: `OK ${glyph} ${shown} · ${activity(ok)}`, minimal: `OK ${glyph} ${shown}`, glyph, alert: error || warning,
       kind: error ? "error" : warning ? "warning" : "accent" });
+  }
+  const artifacts = data.memory?.artifacts;
+  if (artifacts) {
+    const words = {
+      running: ["✓", "local running", "running"], stopped: ["○", "local stopped · /artifacts start", "stopped"], remote: ["✓", "remote", "remote"],
+      unreachable: ["⚠", "unreachable", "unreachable"], error: ["✗", "error", "error"],
+    }[artifacts.state];
+    const [glyph, full, short] = words;
+    const alert = artifacts.state === "unreachable" || artifacts.state === "error";
+    rows.push({ key: `memory:artifacts:${artifacts.state}`, text: `Artifacts ${glyph} ${full}`, compact: `Artifacts ${glyph} ${short}`, minimal: `Art ${glyph} ${short}`,
+      glyph, alert, kind: artifacts.state === "error" ? "error" : alert ? "warning" : "accent", ...(artifacts.url ? { url: artifacts.url } : {}) });
   }
   return rows;
 }

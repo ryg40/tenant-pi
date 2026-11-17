@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CustomEditor, getAgentDir, type ExtensionAPI, type ExtensionContext, type ExtensionUIContext } from "@earendil-works/pi-coding-agent";
 import type { EditorComponent } from "@earendil-works/pi-tui";
-import { RecallStore, isRecallableText, normalizeText, storeDir, type HistoryItem } from "./store.ts";
+import { DIRECTORY_VARIABLE, RecallStore, isRecallableText, normalizeText, oldStoreDir, storeDir, type HistoryItem } from "./store.ts";
 
 /**
  * Cross-session input recall: every interactive input goes to one SQLite store shared by the Pi
@@ -46,8 +46,18 @@ export default function crossSessionRecall(pi: ExtensionAPI): void {
       ctx.ui.notify(`Cross-session recall is off, the store did not open: ${reason(error)}`, "warning");
       return undefined;
     }
+    // The default store takes over the store of the earlier kit versions once, and only reads it.
+    if (!process.env[DIRECTORY_VARIABLE]) {
+      try {
+        const taken = store.takeOver(oldStoreDir());
+        if (taken > 0) ctx.ui.notify(`Copied ${taken} recall entries from ${oldStoreDir()} to ${store.dir}`, "info");
+      } catch (error) {
+        ctx.ui.notify(`Cross-session recall: the old store was not copied: ${reason(error)}`, "warning");
+      }
+    }
     try {
-      const imported = store.migrateLegacy();
+      const imported = store.migrateLegacy() +
+        (process.env[DIRECTORY_VARIABLE] ? 0 : store.migrateLegacy(oldStoreDir(), true));
       if (imported > 0) ctx.ui.notify(`Migrated ${imported} recall entries to SQLite`, "info");
     } catch (error) {
       ctx.ui.notify(`Cross-session recall: history.json not imported: ${reason(error)}`, "warning");

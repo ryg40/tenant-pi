@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { claudeExecutable, launchArgs, modeAction, MODE_HELP } from "../scripts/permission-profile.mjs";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 const LAUNCHER_HELP = `${MODE_HELP}\nLaunch: tenant-claude launch [Claude arguments...]\nHelp: tenant-claude help\nPermission, settings, session-routing and known native command tokens are reserved, even after --.\nUse ordinary claude for exact command words as values or administration.\nUse separate short flags or full long flags. Single-dash values with attached content are refused.`;
 
@@ -11,7 +13,12 @@ try {
 		const argv = launchArgs(args);
 		const executable = claudeExecutable();
 		// Replace this process: preserve Claude's terminal, signals and exit status.
-		process.execve(executable, [executable, ...argv], process.env);
+		if (existsSync(".credsync.json")) {
+			const wrapper = fileURLToPath(new URL("../../skills/herdr/scripts/credsync-launch.sh", import.meta.url));
+			process.execve("/bin/sh", ["/bin/sh", wrapper, executable, ...argv], process.env);
+		} else {
+			process.execve(executable, [executable, ...argv], process.env);
+		}
 	} else if ((action === "help" || action === "--help") && !args.length) {
 		console.log(LAUNCHER_HELP);
 	} else {

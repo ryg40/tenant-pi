@@ -216,6 +216,48 @@ The lines of `scripts/host-values.allow-lines` stay in the portable publication,
 
 A scan at level `fail` on the tree of `portable` passes with this list. A change of an accepted line needs a new decision. When a maintainer accepts a new line, add its path and hash to the file. If its rule, value class or reason is new, add it to this section. Delete an entry that matches no file. Do not write a host value here.
 
+## Project session launchers
+
+`credsync` and `fnox` are optional command-line tools that this kit does not ship and does not install.
+Without them, a launcher starts the session unchanged.
+
+The kit launchers use one shared script, `packages/tenantext/skills/herdr/scripts/credsync-launch.sh`.
+The wrapper looks for `.credsync.json` only in the current directory.
+A directory without `.credsync.json` keeps its existing start. The script asks
+`credsync check` for read-only approval verification before `credsync run --fallback --keep-ambient --`.
+A missing dependency or an unapproved file gives one warning and starts unchanged.
+Before a store read, fallback mode prints a progress line and limits the whole resolve to 30 seconds.
+Resolution failures print one warning and start unchanged; a child exit never triggers a second start.
+A plain `credsync run` keeps its existing limits and filtered environment.
+With `--keep-ambient`, the child keeps the whole ambient environment, including the wrapper's provider credentials.
+Only secrets named in the approved project file are added; they replace ambient variables with the same names.
+Approval checks and store reads stay unchanged.
+This transitional mode keeps model, MCP and memory credentials available to the session.
+A later release can drop `--keep-ambient` from the shared helper's `credsync run` command; all launcher paths use that one setting.
+
+Warning: the session still holds every ambient secret in this mode. The wrapper provides no secret isolation.
+
+`install.sh` writes this path for either Pi runtime, including a launcher named `bolt`.
+`node packages/tenantext/claude-code/install-launcher.mjs --claude` links the ordinary
+Claude launcher without selecting a permission mode. It keeps existing files and links.
+Put its directory before the native Claude directory on PATH. Without the flag, the
+installer continues to install `tenant-claude`, whose launch action uses the same script.
+Herdr uses that script in its new pane shell for either harness.
+
+The launchers need no `CREDSYNC_PASS` list in this mode.
+An installed login file remains accessible to a harness with the same user identity.
+A portable copy has no project declaration. Create one for your project, using this format:
+
+```json
+{
+  "secrets": {
+    "GITEA_TOKEN": {"store": "bw", "hosts": ["forgejo.example.test"]}
+  }
+}
+```
+
+Replace the example host before the owner reviews and approves the file.
+
 ## Identities that leave with a portable snapshot
 
 The scan does not read commit metadata (section "Blind spots"). A commit and an annotated tag carry the Git identity of the host that writes them.

@@ -2,7 +2,7 @@
 
 `<pin>` is `runtime.piVersion` in `config/manifest.json`. Read that field for the current value.
 
-Each component of `config/manifest.json` is one module of the kit. The core install of [install.sh](../../INSTALL.md#run-installsh) loads `core`, every component of `packages/tenantext` and the question extension. Each other module is one `pi install` line of [the optional modules](../../INSTALL.md#optional-modules).
+Each component of `config/manifest.json` is one module of the kit. The core install of [install.sh](../../INSTALL.md#run-installsh) loads `core`, every component of `packages/tenantext` and the question extension. Each other module is one `pi install` line of [the optional modules](../../INSTALL.md#optional-modules). In a terminal, `install.sh` shows each module on [one screen](../../INSTALL.md#choose-on-one-screen), with its state, its plan and the effect of on and off.
 
 With [Pi-Bolt](../../INSTALL.md#pi-bolt-an-alternative-runtime) as the runtime, `pi-bolt install` installs a module the same way. Source reading of Pi-Bolt: it reads the shared `packages` list of the profile, and an optional `piBolt.packages` list adds or removes packages for Pi-Bolt only. The kit writes no `piBolt` key. Observed with Pi-Bolt 1.0.1: the module install of `install.sh` with `--runtime pi-bolt` added the question package to `packages`. Not verified: each other module in a Pi-Bolt session. Pi-Bolt runs an extension without a JIT by default, so a heavy extension can be slower than in Pi.
 
@@ -36,11 +36,13 @@ Facts that hold for every component:
 - `herdr-relay` needs the herdr skill at `~/.agents/skills/herdr`, or the folder in `HERDR_SKILL_HOME`.
 - `herdr-idle-cleanup` reads every Herdr workspace and closes idle ones only after your yes. Its handoff files hold the report text of your sessions in `~/.local/share/tenant-pi/handoffs/`. Nothing leaves the host unless you run `publish --upload`; see [the guide](herdr-idle-cleanup.md).
 - `herdr-idle-cleanup-prompt` adds the command `/herdr-idle-cleanup` to Pi.
-- `handoffs` runs the skill at each Pi session start and shows the open handoff entries of the repository.
+- `handoffs` runs the skill at each Pi session start and shows the open handoff entries of the repository. An upgrade adds it once to a Tenantext filter list that does not name it; see [the kit step](../../INSTALL.md#choose-on-one-screen).
 - `next-prompt` shows the next action of the final dummies report as faint text in the empty editor of a coordinator session. It makes no model call and no request; see [its document](../../packages/tenantext/docs/next-prompt.md).
   It needs DUMMIES on for Pi; see [DUMMIES](#dummies).
-- `command-rules` blocks a shell command that matches a deny rule. The first rule denies `find / *` and sends the agent to `rg`. It makes no model call and no request.
-- `cross-session-recall` keeps each interactive input in one SQLite store of the user, shared by all Pi profiles of that user: `~/.pi/agent/cross-session-recall/history.sqlite3`, or the directory in `CROSS_SESSION_RECALL_DIR`. It seeds the Up/Down history of the editor and adds `/recall [query]` and `/recall-clear`. The inputs are clear text, readable by the user only; see [its document](../../packages/tenantext/docs/cross-session-recall.md).
+- `command-rules` blocks a shell command that matches a deny rule. The first rule denies `find / *` and sends the agent to `rg`. In Pi and Claude Code, it denies `credsync allow` as the command to run, not a mention in an argument. It accepts executable paths, leading assignments, and one `sudo` or `env` prefix with options and assignments. Only the owner approves projects, in an owner terminal. With the same prefixes, it denies the AWS CLI read of a Secrets Manager secret value (`secretsmanager` with `get-secret-value` or `batch-get-secret-value`), also with global options before the service or the operation. The rule is in each profile, with or without an AWS row: the rule table cannot depend on a module. It makes no model call and no request.
+- `cross-session-recall` keeps each interactive input in one SQLite store of the user, shared by all Pi profiles of that user: `~/.local/share/tenant-pi/cross-session-recall/history.sqlite3` (or below `$XDG_DATA_HOME`), or the directory in `CROSS_SESSION_RECALL_DIR`. It copies the inputs of an old store in `~/.pi/agent/cross-session-recall` one time and leaves that directory unchanged. It seeds the Up/Down history of the editor and adds `/recall [query]` and `/recall-clear`. The inputs are clear text, readable by the user only; see [its document](../../packages/tenantext/docs/cross-session-recall.md).
+
+Warning: the command guard is not a security boundary. A root agent with intent can bypass it through another spelling, a script file, quoted `bash -c`, or a direct write.
 
 Source documents: [in-tree packages](../packages.md), [memory modules](../memory-modules.md), [providers](providers.md).
 
@@ -56,6 +58,7 @@ PI_CODING_AGENT_DIR=<profile> python3 <clone>/packages/tenantext/skills/coordina
 - The autostart block is a marked block in the instruction file of the profile: the first that exists of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md` and `CLAUDE.MD`, in the order of `state.py`. When none exists, the script creates `AGENTS.md`. It appends the block when the file has no block. Each new coordinator session reads the block and starts the report form.
 - `state.py log off` turns off the entry on the page `DUMMIES` for both harnesses; the reports stay. `log on` (the default) turns it on again.
 - A repeat install finds the block and changes neither file.
+- The inventory and the installer screen show DUMMIES on for a profile only when the profile has the block and the state file says on for Pi. A profile without the block shows off, also when the switch is on for Pi. After the screen, a profile with DUMMIES on gets no DUMMIES question.
 - The completion report shows the line of `state.py status` and the file that got the block.
 - The installer never turns DUMMIES off and does not change the Claude Code state or `~/.claude/CLAUDE.md`. For Claude Code, run `state.py on --harness claude --autostart`. To turn DUMMIES off for Pi, run the same line with `off --harness pi`. It turns Pi off for every profile and removes the block from every profile that got one.
 
@@ -85,7 +88,9 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 - **Computer use** (`computer-use`): control of the desktop on Linux. Ask about desktop control before you install it. Read [computer use](#computer-use) first.
 - **Computer use on macOS** (`computer-use-macos`): control of the desktop on a Mac. Ask about desktop control before you install it. Read [computer use on macOS](#computer-use-on-macos) first.
 - **OpenKnowledge** (`okknow`): the skill and the CLI for one OpenKnowledge server of the user. Read [okknow](#okknow) first.
+- **Artifacts** (`artifacts`): the skill and the CLI that store an HTML or Markdown file on the artifact server of the user and give the view link. Read [artifacts](#artifacts) first.
 - **Walkr** (`walkr`): the review tool for pages, text and options of a change, with a browser page for the user. Read [walkr](#walkr) first.
+- **Agent Toolkit for AWS** (`aws-core`, `aws-agents`, `aws-data-analytics`, `aws-agents-for-devsecops`, `aws-startup-advisor`, `aws-emulator`): the AWS skills of the five plugins and the `aws-emulator` skill from one clone at the pinned commit, the server `aws-mcp` with `aws-core` and `mcp` or `mcp-codemode`, and the Claude Code plugins after their own yes. They need `git`, network access and `uv`. Read [Agent Toolkit for AWS](aws-agent-toolkit.md) first.
 
 ## Computer use
 
@@ -304,6 +309,61 @@ A server host keeps the content directory of the server on its disk. There, `okk
 
 To remove the module: delete the `packages/okknow` entry from the profile settings, the link `~/.local/bin/okknow`, the link `~/.claude/skills/okknow` and the `okknow` entry of `<profile>/mcp-adapter.json` or `<profile>/mcp.json`.
 
+## artifacts
+
+The `artifacts` module is the in-tree package `packages/artifacts`: the skill `artifacts` and its CLI `scripts/artifacts`, for one artifact server of the user. An agent stores an HTML or Markdown file there with `artifacts upload <file>` and gives the user the view link. Its manifest status is `unverified`; the manifest gaps name the open facts. The kit ships and installs no artifact server: the module is for a user who runs a server with the `/v1/artifacts` API.
+
+`install.sh --with artifacts` does these steps:
+
+1. It adds `<clone>/packages/artifacts` to the `packages` list of the profile settings. Pi then loads the skill.
+2. It links `~/.local/bin/artifacts` to the CLI of the clone. It keeps another file or link of that name. The profile launcher adds `~/.local/bin` at the end of `PATH`.
+3. When `~/.claude` exists, it links the skill to `~/.claude/skills/artifacts`, as for the other kit skills.
+4. It runs the setup. With `ARTIFACTS_ORIGIN` and `ARTIFACTS_TOKEN_FILE` set, it runs `artifacts setup --origin "$ARTIFACTS_ORIGIN" --token-file "$ARTIFACTS_TOKEN_FILE" --yes`. When a user configuration exists and the two variables are not set, it keeps that configuration. Else it runs the wizard in the terminal. Without a terminal, the two variables or a configuration, it stops before its first write. When the configuration has a different origin, the installer stops before its first write; run `artifacts setup --origin <url> --token-file <path> --yes --replace-origin` to replace it.
+
+The configuration file is `~/.config/tenant-artifacts/config.json`, or `$XDG_CONFIG_HOME/tenant-artifacts/config.json` when `XDG_CONFIG_HOME` is set. It has mode 0600 and holds the keys `origin` and `tokenFile`, and for a local server `clone` and `port`. `artifacts setup` sets these keys and keeps each other key. An origin is `https://<host>[:port]`, for example `https://artifacts.example.com`, or `http://` for a loopback address only.
+
+The token file holds one bearer token of the artifact server and nothing else. Give it mode 0600; `artifacts doctor` names a file that others can read. The kit writes no token, and the CLI reads the token inside its process: the token is never in the argument list, a log or the output.
+
+Before each upload, the CLI runs the secret scanner of the kit (`scripts/scan.sh --level warn tree`) on the file. A finding stops the upload. Outside a kit tree, the CLI prints one warning line and uploads. The CLI talks only to the configured origin, follows no redirect and ignores the proxy variables. With no configuration, each command except `setup` exits 4 before any request. See [the package README](../../packages/artifacts/README.md).
+
+`artifacts open [slug]` prints the URL of the browse page or of one artifact. In a Herdr pane (`HERDR_ENV=1`) with the Sheprd command, it also runs `sheprd browser open <url>` to show the page. The CLI looks for `sheprd` on `PATH`, then `~/.local/bin/sheprd`, then the old path `~/.local/state/herdr/gpui/bin/herdr-gpui`. It starts no other browser.
+
+The view link is confidential: each holder of the link can read the page.
+
+### Local server
+
+`artifacts start` runs one artifact server on the loopback address of this computer, from a clone of the artifact server project that has its localhost mode (the file `loopback-auth.mjs`). The kit fetches no server and runs no npm step.
+
+1. Run `npm ci` in the clone. The clone needs its `node_modules` and the Node version of its `package.json`.
+2. Run `artifacts setup --clone <clone> --port 6790 --yes`. The origin becomes `http://127.0.0.1:6790`. Without `--token-file`, the token file is `local-token` beside the configuration file.
+3. Run `artifacts start`. The last line is the URL of the browse page. `artifacts upload` and `artifacts open` then use that server.
+
+`start` refuses a clone without the localhost mode, a Node version below the minimum of the clone, a clone without `node_modules` and a port that another program uses. When the token file is absent, it makes one with a random token and mode 0600, and prints only its path. The server always listens on `127.0.0.1`, in the localhost mode, with only `PATH`, `HOME` and its own `ARTIFACT_` settings in its environment. Its data directory is `~/.local/share/tenant-artifacts/data` (`$XDG_DATA_HOME/tenant-artifacts/data`). The state file `server.json` and the log `server.log` are in `~/.local/state/tenant-artifacts` (`$XDG_STATE_HOME/tenant-artifacts`).
+
+Only one local server runs at a time. When one runs already, on any port, `start` starts no second one and prints its URL. When the origin is a remote server, `start` starts nothing, says so and prints the URL.
+
+`artifacts off` (or `artifacts stop`) stops each local server of this user: the server of the state file and each other process of this user that runs `server.mjs` of the configured clone: the base name of `argv[0]` is exactly `node`, and the first argument without a leading `-` has the real path of that `server.mjs`. On Linux a relative argument is resolved against the working directory of the process; on macOS the argument must be an absolute path. On Linux the process must also be in the PID namespace of the CLI, so a container process never matches. The last line gives the count; the exit is 0 also when no server ran.
+
+`artifacts status` prints `state:`, `health:` and `url:`. `artifacts --json status` prints one JSON object `{"state": ..., "url": ...}`. The state is `running`, `stopped`, `remote` (a remote server that answers), `unreachable` or `unconfigured`; `url` is `null` only for `unconfigured`.
+
+In Pi, the prompt `artifacts` of the package gives `/artifacts start`, `/artifacts off` and `/artifacts status`. In Claude Code, the skill `artifacts` takes the same words.
+
+The operations footer of Pi shows the state of the artifact server in one row below the OpenKnowledge row, from `artifacts --json status`. A shift-click on the row opens the browse page in a terminal that opens OSC 8 links; the click is not verified. See [the artifact server row](../../packages/tenantext/docs/ops-footer.md#artifact-server-row).
+
+Warning: the pages of a local server need no login. Each local user of the computer can read them through the loopback address.
+
+### Reach the pages from another computer
+
+The kit sets up no proxy and opens no port. Use a connection that you authorized:
+
+- An SSH port forward with the same local port as the server: `ssh -L 6790:127.0.0.1:6790 <user>@<server-computer>`, then open `http://127.0.0.1:6790/browse` on your computer. The localhost mode accepts only the `Host` values `127.0.0.1:<port>`, `[::1]:<port>` and `localhost:<port>` with the port of its origin, so a different local port gets 403.
+- A Sheprd port forward of the same port: forward port 6790 of the server computer to local port 6790 in Sheprd, then open the same URL.
+- The proxy mode of the artifact server: a deployment behind a reverse proxy with a login and an HTTPS origin, for example `https://artifacts.example.com`. Then run `artifacts setup --origin https://artifacts.example.com --token-file <path> --yes --replace-origin`. A deployed server behind a proxy is not a local server: `artifacts off` does not stop it.
+
+To remove the module: run `artifacts off`. Then delete the `packages/artifacts` entry from the profile settings, the link `~/.local/bin/artifacts`, the link `~/.claude/skills/artifacts` and the folder `~/.config/tenant-artifacts`. The token file, the stored artifacts on the server and the folders `tenant-artifacts` of the data and state homes stay.
+
+Not verified: an upload from a Pi or Claude Code session to a real server, the Sheprd page request, a Sheprd port forward, `/artifacts` in a live Pi or Claude Code session, and the module on macOS (with the `ps` process match of `start` and `off`).
+
 ## walkr
 
 The `walkr` module is the in-tree package `packages/walkr`: the review tool Walkr with its commands `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare`. The agent prepares a review session, you open a private page in a browser, and the agent reads your notes, your pick and your rating. [The package README](../../packages/walkr/README.md) and [the mode guide](../../packages/walkr/docs/modes.md) describe each mode. The source of Walkr lives in this kit; the kit has no second copy of it.
@@ -349,9 +409,12 @@ The Pi profile is the reference. The Claude Code form of the kit carries each co
 | `herdr-relay`, `coordinator-skills`, `knowledge-skills`, `tracker-site` | The skills | The links of `install.sh`, or the plugin |
 | `herdr-idle-cleanup`, `herdr-idle-cleanup-prompt`, `handoffs` | The skill, `/herdr-idle-cleanup`, `/handoffs`, `/herdr-idle` and the startup assessment of the `SessionStart` hook | The skill: a link of `install.sh`, or the plugin. The commands and the hook: the plugin |
 | `okknow` | The skill; the MCP server is a step of the user | The link of `install.sh --with okknow` |
+| `artifacts` | The skill | The link of `install.sh --with artifacts` |
 | `walkr` | The skills `walkr`, `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare` | The files that the Walkr setup of `install.sh --with walkr` writes; they are not links |
 | `agentcore` | The plugin `packages/agentcore-claude` | `claude --plugin-dir`; see [in-tree packages](../packages.md) |
 | `computer-use` | The plugin of the package | [The Claude Code plugin](#claude-code-plugin) |
+| `aws-core`, `aws-agents`, `aws-data-analytics`, `aws-agents-for-devsecops`, `aws-startup-advisor` | The upstream plugin of the row, with its skills, MCP servers and hooks. The kit server `aws-mcp` replaces the `aws-mcp` servers of the plugins | `install.sh --claude-aws`: a folder marketplace at the kit clone; see [the Claude Code AWS plugins](aws-agent-toolkit.md#claude-code) |
+| `aws-emulator` | The skill; with `aws-core`, the plugin carries it | The link `~/.claude/skills/aws-emulator` of `install.sh --claude-aws` |
 
 The skill links of `install.sh` are the default form of the kit skills. A pull of the kit updates them at once.
 The `tenantext` plugin is for the `SessionStart` hook, `/ste`, `/spawn_agent` and `/handoff_coordinator`.
@@ -372,4 +435,4 @@ The other components have no Claude Code form in the kit:
 
 ## Change a selection
 
-To switch a single extension or skill off or on, use `/resources` inside Pi. To remove an optional module, run `pi remove` with its source; see [POST_INSTALL.md](../../POST_INSTALL.md#add-or-remove-an-optional-module).
+To switch a single extension or skill off or on, use `/resources` inside Pi. To remove an optional module, run `pi remove` with its source; see [POST_INSTALL.md](../../POST_INSTALL.md#add-or-remove-an-optional-module). To turn an AWS row off, run an upgrade with a selection without it; see [Agent Toolkit for AWS](aws-agent-toolkit.md#turn-a-row-off-or-move-the-pin).

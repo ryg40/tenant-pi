@@ -88,8 +88,12 @@ class ContractTests(unittest.TestCase):
             ({"kind": "npm", "spec": "fake@^1.0.0"}, "exact_npm_pin"),
             ({"kind": "npm", "spec": "fake@1.x"}, "exact_npm_pin"),
             ({"kind": "npm", "spec": "fake@1.0.0", "path": "packages/tenantext"}, "source_form"),
-            # A git or a local source has no form in the contract.
-            ({"kind": "git", "url": "https://user:CANARY_SECRET@example.invalid/x"}, "unknown_fields"),
+            # A git source is an HTTPS URL without a user part and one full commit; a local source has no form.
+            ({"kind": "git", "url": "https://user:CANARY_SECRET@example.invalid/x.git", "commit": "0" * 40}, "git_url"),
+            ({"kind": "git", "url": "https://example.invalid/x.git"}, "source_form"),
+            ({"kind": "git", "url": "https://example.invalid/x.git", "commit": "0" * 7}, "exact_git_commit"),
+            ({"kind": "git", "url": "https://example.invalid/x.git", "commit": "0" * 40}, "reviewed_source"),
+            ({"kind": "git", "url": "https://example.invalid/x.git", "commit": "0" * 40, "ref": "main"}, "unknown_fields"),
             ({"kind": "local"}, "source_form"),
             (None, "object"),
         ]:

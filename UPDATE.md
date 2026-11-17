@@ -90,6 +90,14 @@ Pi 1.5.2 adds a fork choice when a session's folder no longer exists, including 
 
 Each npm module of the kit has an exact version in `source.spec` of `config/manifest.json`: `mcp`, `hermes`, `wiki`, `questions`, `computer-use` and `computer-use-macos`. `pi update --extensions` does not move an exact `npm:` spec. After a kit update that moves a version, run `install.sh --upgrade <name> --with <modules>`. It installs each spec of the manifest, and npm replaces an older range of the profile, also one major behind. To move a module, the maintainer reviews the new version, edits its `source.spec` in `config/manifest.json` and changes each doc line that names the old version. The steps below for `computer-use` add the Claude Code plugin.
 
+The AWS rows (`aws-core`, `aws-agents`, `aws-data-analytics`, `aws-agents-for-devsecops`, `aws-startup-advisor`, `aws-emulator`) have a `git` source. It is one URL and one full commit in `source.commit`, the same for the six rows. To move them, the maintainer does these steps:
+
+1. Read the upstream diff from the old commit: the skill lists, the hooks, the MCP entries and the proxy version.
+2. Set the new commit in the six rows.
+3. Change each gap fact and doc line that names the old commit or the old proxy version.
+
+Then `install.sh --upgrade <name> --with <the AWS rows>` checks out the new commit in the clone. With `--claude-aws`, it also updates the Claude Code plugins that the kit installed. The run fails when a kit plugin is not at the new commit after the update. See [Agent Toolkit for AWS](docs/guides/aws-agent-toolkit.md#turn-a-row-off-or-move-the-pin).
+
 ## The computer-use version
 
 A new version of `computer-use` needs three moves (`pi update --extensions` skips a pinned npm version, from a source reading of the Pi package manager).

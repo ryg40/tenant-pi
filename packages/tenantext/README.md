@@ -15,7 +15,7 @@ The Pi extensions that `pi.extensions` of `package.json` lists form the installa
 - **herdr-watch**: `herdr_spawn` starts a task session in a new Herdr pane and sends its task; `herdr_watch_start` prompts a pane that exists. Both wait on the pane in the background and deliver its reply as a task notification. See [docs/herdr-watch.md](docs/herdr-watch.md).
 - **handoffs**: at session start, runs `idle_cleanup.py startup` of the herdr-idle-cleanup skill and starts one assessment turn when it claims open handoff entries of the repository. `/handoffs` lists the entries (this repository first), shows one, and sets `ack`, `done`, `dismiss` or `reopen`. `/herdr-idle on|off|status` turns the startup check on or off, or shows its state. Task sessions of `spawn.py` and Pi reloads claim nothing. See [the skill](skills/herdr-idle-cleanup/SKILL.md).
 - **next-prompt**: One faint next-action suggestion in the empty editor, read from the final dummies report; Tab takes it as a draft. See [docs/next-prompt.md](docs/next-prompt.md).
-- **command-rules**: Blocks a shell command that matches a deny rule of `claude-code/scripts/command-rules.mjs`. The first rule sends `find / ...` to `rg`. Two rules deny a bare `env` or `printenv`, alone or before a pipe, because they print every secret; `printenv NAME`, `env NAME=value command` and `env -i ...` pass. The Claude Code plugin applies the same rules.
+- **command-rules**: Blocks a shell command that matches a deny rule of `claude-code/scripts/command-rules.mjs`. The first rule sends `find / ...` to `rg`. Two rules deny a bare `env` or `printenv`, alone or before a pipe, because they print every secret; `printenv NAME`, `env NAME=value command` and `env -i ...` pass. One rule denies the AWS CLI read of a Secrets Manager secret value, also with global options of the AWS CLI. The Claude Code plugin applies the same rules.
 - **cross-session-recall**: Every interactive input in one SQLite store of the user; the newest distinct inputs seed Up/Down, `/recall [query]` searches all of them. See [docs/cross-session-recall.md](docs/cross-session-recall.md).
 
 The suite also ships the **tracker-site** skill: restart briefs that tell you where a repository stands after a long session or days away. It is a Python package in `tracker/`, not a Pi extension.
@@ -223,8 +223,8 @@ Automatic routes use the optional `litellm-codex` provider. Set `TENANTEXT_LITEL
 Supply `TENANTEXT_LITELLM_API_KEY`, or save a separate gateway API key in Pi's credential storage.
 The supported model IDs are `codex-auto/luna`, `codex-auto/sol`, `codex-auto/astra`, and `codex-auto/terra`.
 Terra targets `gpt-6.1-terra`, not the older unavailable `gpt-6-terra` ID.
-Each request sends complete active history. The gateway applies its own account policy and can fall back once.
-Fallback cannot succeed when both accounts are exhausted.
+Each request sends complete active history. The gateway applies its own account policy; its default routes fall back to the other accounts, up to three in all.
+Fallback cannot succeed when all accounts are exhausted.
 See [Codex routing](docs/codex-routing.md) for configuration, explicit account routes, and verification limits.
 
 To change the account list, create `codex-accounts/settings.json` in the profile's Pi agent directory.

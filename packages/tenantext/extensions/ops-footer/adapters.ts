@@ -2,8 +2,9 @@ import type { AnthropicStatusSnapshot } from "../anthropic-usage/status.ts";
 import type { CodexStatusSnapshot } from "../codex-accounts/status.ts";
 import type { CopilotStatusSnapshot } from "../copilot-usage/status.ts";
 import { CLOCK_SKEW_MS, parseZonedTimestamp } from "../../src/period-end.ts";
+import { checkArtifacts } from "./artifacts.ts";
 import { checkOkknow } from "./okknow.ts";
-import type { IntegrationSnapshot, IntegrationSource, LimitsAccount, LimitsPeriod, LimitsSnapshot, LimitsWindow, OkknowState, StatusSnapshot, StatusState } from "./types.ts";
+import type { ArtifactsServer, IntegrationSnapshot, IntegrationSource, LimitsAccount, LimitsPeriod, LimitsSnapshot, LimitsWindow, OkknowState, StatusSnapshot, StatusState } from "./types.ts";
 
 const states = new Set(["ok", "warning", "error", "unknown"]);
 export function state(value: unknown): StatusState {
@@ -206,17 +207,26 @@ export function anthropicStatus(value: unknown, now = Date.now(), lifetimeFloor 
 
 export type HealthFetch = typeof fetch;
 export type OkknowCheck = typeof checkOkknow;
+export type ArtifactsCheck = typeof checkArtifacts;
 export class HealthAdapter {
   private controllers = new Set<AbortController>();
   private disposed = false;
   private fetcher: HealthFetch;
   private okknowCheck: OkknowCheck;
+  private artifactsCheck: ArtifactsCheck;
   private stops = new Set<() => void>();
-  constructor(fetcher: HealthFetch = fetch, okknowCheck: OkknowCheck = checkOkknow) { this.fetcher = fetcher; this.okknowCheck = okknowCheck; }
+  constructor(fetcher: HealthFetch = fetch, okknowCheck: OkknowCheck = checkOkknow, artifactsCheck: ArtifactsCheck = checkArtifacts) {
+    this.fetcher = fetcher; this.okknowCheck = okknowCheck; this.artifactsCheck = artifactsCheck;
+  }
   /** The okknow state from its CLI, in the background. `undefined`: okknow has no origin or no CLI. */
   async okknow(): Promise<OkknowState | undefined> {
     if (this.disposed) return undefined;
     return this.okknowCheck(stop => { this.stops.add(stop); return () => this.stops.delete(stop); });
+  }
+  /** The artifact server state from the `artifacts` CLI, in the background. `undefined`: no CLI or no configuration. */
+  async artifacts(): Promise<ArtifactsServer | undefined> {
+    if (this.disposed) return undefined;
+    return this.artifactsCheck(stop => { this.stops.add(stop); return () => this.stops.delete(stop); });
   }
   async check(source: "OK" | "OV", url: string, timeout: number, lifetime: number): Promise<IntegrationSnapshot> {
     const controller = new AbortController();

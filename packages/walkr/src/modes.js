@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { withFoot } from "./brand.js";
 
 const modes = new Set(["core", "double", "coinflip", "trainer"]);
 
@@ -41,7 +42,7 @@ export function modePage(mode, { hosted = false } = {}) {
     : `<p><code>walkr-${mode}</code>: not implemented. Execution returns a nonzero status; <code>--help</code> explains this limit.</p>
       <p>No generation, server, browser, or review-file access is available for ${title}.</p>
       <p>Use <code>walkr-core</code> for original review, or <code>walkr-double --help</code> or <code>walkr-coinflip --help</code> for local guidance.</p>`;
-  return fs.readFileSync(new URL("./mode-home.html", import.meta.url), "utf8")
+  return withFoot(fs.readFileSync(new URL("./mode-home.html", import.meta.url), "utf8"))
     .replaceAll("__MODE__", title).replace("__GUIDANCE__", guidance)
     .replace(`href="/_walkr/modes/${mode}"`, `href="/_walkr/modes/${mode}" aria-current="page"`);
 }

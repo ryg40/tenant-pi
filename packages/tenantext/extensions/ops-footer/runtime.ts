@@ -3,13 +3,14 @@ import { anthropicStatus, codexStatus, copilotStatus, HealthAdapter, integration
 import { collectSession } from "./collector.ts";
 import { GitAdapter } from "./git.ts";
 import { MemoryTracker, vikingCounters } from "./memory.ts";
+import { ARTIFACTS_CACHE_MS } from "./artifacts.ts";
 import { OKKNOW_CACHE_MS } from "./okknow.ts";
 import { themePaint } from "./paint.ts";
 import { defaultLayout, hasRowsAbove, isLayoutName, layoutNames, layouts, type LayoutName } from "./layouts/index.ts";
 import { detailedReport, FooterRenderer } from "./render.ts";
 import { defaults, ensureSettings, loadSettings, saveSettings, settingsPath, type Settings } from "./settings.ts";
 import { ANTHROPIC_REFRESH, ANTHROPIC_STATUS, CODEX_REFRESH, CODEX_STATUS, COPILOT_REFRESH, COPILOT_STATUS, INTEGRATION_STATUS, OWNERSHIP, OWNERSHIP_QUERY,
-  type AgentState, type ContextService, type DashboardSnapshot, type IntegrationSnapshot, type IntegrationSource, type OkknowState } from "./types.ts";
+  type AgentState, type ArtifactsServer, type ContextService, type DashboardSnapshot, type IntegrationSnapshot, type IntegrationSource, type OkknowState } from "./types.ts";
 
 export interface RuntimeDependencies {
   context: (pi: ExtensionAPI) => ContextService;
@@ -60,6 +61,8 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
   let gitFlight = false, gitQueued = false, lastGit = 0;
   // The okknow state: one background doctor run at a time, cached for OKKNOW_CACHE_MS.
   let okknow: OkknowState | undefined, okknowAt = 0, okknowFlight = false;
+  // The artifact server state: one background status run at a time, cached for ARTIFACTS_CACHE_MS.
+  let artifacts: ArtifactsServer | undefined, artifactsAt = 0, artifactsFlight = false;
   const memory = new MemoryTracker();
   const integrations = new Map<IntegrationSource, IntegrationSnapshot>();
   const published = new Map<IntegrationSource, IntegrationSnapshot>();
@@ -89,6 +92,7 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
     data.extensionStatuses = values.size;
     data.languageStatus = languageStatus(values.get("tenantext"));
     data.memory = memory.snapshot(values, pi.getActiveTools(), okknow);
+    if (artifacts && settings.showArtifactServer) data.memory.artifacts = artifacts;
     data.conflict = pi.getCommands().some(command => command.source === "extension" &&
       /(?:^|[:/@])pi-powerline-footer(?:$|[/@])/.test(command.sourceInfo.source)) || values.has("powerline");
     const next = publicStatuses(values);
@@ -138,6 +142,12 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
         if (!closed && generation === currentGeneration) { okknow = state; refreshStatuses(); bump(); }
       }).catch(() => {}).finally(() => { if (generation === currentGeneration) okknowFlight = false; });
     }
+    if (adapter.artifacts && settings.showArtifactServer && !artifactsFlight && Date.now() - artifactsAt >= ARTIFACTS_CACHE_MS) {
+      artifactsFlight = true; artifactsAt = Date.now();
+      void adapter.artifacts().then(state => {
+        if (!closed && generation === currentGeneration) { artifacts = state; refreshStatuses(); bump(); }
+      }).catch(() => {}).finally(() => { if (generation === currentGeneration) artifactsFlight = false; });
+    }
     if (healthFlight) return;
     healthFlight = Promise.all((["OK", "OV"] as const).map(async source => {
       const url = settings.healthUrls[source];
@@ -163,7 +173,7 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
   function stopCollectors() {
     clearInterval(timer); timer = undefined; generation++;
     git?.dispose(); health?.dispose(); git = undefined; health = undefined; healthFlight = undefined;
-    gitFlight = false; gitQueued = false; lastGit = 0; okknowFlight = false;
+    gitFlight = false; gitQueued = false; lastGit = 0; okknowFlight = false; artifactsFlight = false;
   }
   function enable() {
     if (!ctx || !started || closed || active || ctx.mode !== "tui") { announce(); return; }

@@ -1,0 +1,554 @@
+{
+  "schemaVersion": 1,
+  "groups": [
+    {"id": "core", "title": "Core & model defaults"},
+    {"id": "tenantext", "title": "Tenantext extensions"},
+    {"id": "memory", "title": "Memory"},
+    {"id": "skills", "title": "Skills"},
+    {"id": "walkr", "title": "Walkr"},
+    {"id": "herdr", "title": "Herdr and questions"},
+    {"id": "mcp", "title": "MCP"},
+    {"id": "aws", "title": "Agent Toolkit for AWS"},
+    {"id": "desktop", "title": "Computer use"},
+    {"id": "shell", "title": "Shell and launcher"}
+  ],
+  "items": [
+    {
+      "name": "core",
+      "group": "core",
+      "title": "Pi coding agent",
+      "description": "Pi itself, at the version that the kit tested. Each Pi item of this list needs it. Walkr, the Herdr skills and the Claude Code plugin also work without Pi.",
+      "when_on": "Pi sends your conversation to the model provider with your login or key, and a request can cost money. Pi writes sessions and logins into the profile and can download a missing search tool. The installer does not install Pi; install it at the pin first.",
+      "when_off": "No Pi session starts with this profile. Core cannot be turned off.",
+      "default": "on",
+      "needs": ["node24"],
+      "docs": "INSTALL.md#prerequisites"
+    },
+    {
+      "name": "model-routing",
+      "group": "core",
+      "title": "Default model settings",
+      "description": "Pi settings for the default provider, model and thinking level, and the model cycle. A provider is the company that runs the model; the cycle is the list that a key steps through.",
+      "when_on": "Pi starts with the default model of the profile.",
+      "when_off": "Pi picks a model itself: the model of a resumed session, a default of the provider or a provider that you logged in to. /model selects another one.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/guides/providers.md"
+    },
+    {
+      "name": "tenantext",
+      "group": "tenantext",
+      "title": "Tenantext base extension",
+      "description": "The base extension of the Tenantext package: the Simplified English rules, a guard at session start, a context report and the /tenantext settings menu. The other Tenantext items load through the same package entry.",
+      "when_on": "Pi loads the Tenantext package from this clone; keep the clone in its place. The rules go into each prompt to the model provider. It writes its own settings file in the profile.",
+      "when_off": "No Simplified English rules, start guard or context report. The other Tenantext extensions, skills and prompts keep their own switches.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/packages.md"
+    },
+    {
+      "name": "codex-accounts",
+      "group": "tenantext",
+      "title": "Codex accounts and gateway",
+      "description": "Adds extra Codex accounts, their quota reports and an optional model gateway, a server that forwards model requests.",
+      "when_on": "It reads the Codex login files and sends their tokens and account IDs to the Codex usage endpoint, also without a gateway. With a gateway URL and an API key, from the environment or a stored key, the provider litellm-codex sends your conversation to that gateway. Codex and gateway requests can cost money.",
+      "when_off": "No extra Codex accounts, no Codex quota reports and no gateway provider. Your native provider logins still work.",
+      "default": "on",
+      "needs": ["credentials"],
+      "docs": "docs/guides/providers.md"
+    },
+    {
+      "name": "context-meter",
+      "group": "tenantext",
+      "title": "Context meter",
+      "description": "Shows how much of the model context the session uses.",
+      "when_on": "It counts the context locally and writes its settings file when you save. With nextMoveUrl set, it sends counters and the last 300 characters of your last message to that URL, with an optional key from the environment. That service can call a decision model, which can cost money.",
+      "when_off": "No context widget. The status footer has its own copy of the meter, so the footer can still show context readings.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "ops-footer",
+      "group": "tenantext",
+      "title": "Status footer",
+      "description": "A footer with the quota, context and health readings.",
+      "when_on": "It polls the health URLs that you set. It runs okknow doctor, which signs in to your OpenKnowledge server, and artifacts status, which asks your artifact server. It also runs its own copy of the context meter: with nextMoveUrl set in context-meter/settings.json, it sends counters and the last 300 characters of your last message to that URL, and that service can call a decision model, which can cost money. It writes its settings file and an example file in the profile. Set \"enabled\": false in ops-footer/settings.json to turn it off.",
+      "when_off": "Pi shows its own footer. No health polls, no runs of okknow or artifacts and no context decisions from the footer. The context-meter extension can still send its own.",
+      "default": "on",
+      "needs": ["credentials"],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "copilot-usage",
+      "group": "tenantext",
+      "title": "Copilot quota meter",
+      "description": "Reads the GitHub Copilot quota of your account. It is on by default; set its mode to off when it must not use your login.",
+      "when_on": "It looks for a Copilot login: the Pi login, an environment variable, the editor login, the Copilot CLI, then gh. It sends the token that it finds to the Copilot usage endpoint. Mode auto shows the meter when that works, on also shows errors, off sends nothing. TENANTEXT_COPILOT_USAGE overrides the mode.",
+      "when_off": "No Copilot quota reading from this meter. /tenantext-doctor can still probe the endpoint when you run it.",
+      "default": "on",
+      "needs": ["credentials", "consent"],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "anthropic-usage",
+      "group": "tenantext",
+      "title": "Claude quota meter",
+      "description": "Reads the Claude quota of your Claude login. It is on by default; set its mode to off when it must not use your login.",
+      "when_on": "It reads the Claude Code login, then the Pi anthropic login, and sends the token to the Claude usage endpoint. It writes the reading to a shared cache file, normally ~/.cache/claude-pi-footer/usage.json. Modes auto, on and off work as for the Copilot meter; TENANTEXT_ANTHROPIC_USAGE overrides the mode.",
+      "when_off": "No Claude quota reading from this meter. /tenantext-doctor can still probe the endpoint when you run it.",
+      "default": "on",
+      "needs": ["credentials", "consent"],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "doctor",
+      "group": "tenantext",
+      "title": "Setup doctor",
+      "description": "The command /tenantext-doctor checks the setup of the Tenantext extensions. /tenantext-doctor fix repairs it.",
+      "when_on": "The check reads the credential sources of the meters and can send their tokens to the usage endpoints, also for a meter that is off. The fix writes settings files and backups. The fix script of the kit can also add a package entry and repair peer links.",
+      "when_off": "No setup check or repair inside Pi. The meters keep their own switches.",
+      "default": "on",
+      "needs": ["credentials"],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "resources",
+      "group": "tenantext",
+      "title": "Resource switches",
+      "description": "The command /resources turns each extension, skill, prompt and MCP server on or off. An MCP server is a tool server that the agent connects to.",
+      "when_on": "You switch items inside Pi and save sets of states as named profiles. A save writes the filter lists, the named profiles and the enabled state of MCP servers to the files that define them.",
+      "when_off": "No /resources menu. You switch items in settings.json, with /mcp for MCP servers, or with other commands of Pi.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/resources.md"
+    },
+    {
+      "name": "command-rules",
+      "group": "tenantext",
+      "title": "Command guard",
+      "description": "Blocks a shell command that matches a deny rule and tells the agent why.",
+      "when_on": "For example, find / -name x is refused with a pointer to rg. A bare env or printenv is refused, only the owner can approve a credsync project, and the AWS CLI read of a Secrets Manager secret value is refused. It is not a security boundary.",
+      "when_off": "The agent can run each command that your other settings allow.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "next-prompt",
+      "group": "tenantext",
+      "title": "Next prompt draft",
+      "description": "Shows the next action of the last DUMMIES report as faint text in the empty editor of a coordinator session.",
+      "when_on": "It works only in a coordinator session, with DUMMIES on and its own enabled switch on. Tab takes the draft into the editor. It sends no request.",
+      "when_off": "The editor stays empty after a report. Other editor extensions can still put text there.",
+      "default": "on",
+      "needs": [],
+      "docs": "packages/tenantext/docs/next-prompt.md"
+    },
+    {
+      "name": "cross-session-recall",
+      "group": "tenantext",
+      "title": "Input history across sessions",
+      "description": "Keeps your typed prompts in one local SQLite store of your user and adds /recall.",
+      "when_on": "Up and Down also show prompts from your other sessions. Only interactive input goes into the store. The store is clear text that only your user can read, with no age or count limit. A pasted secret stays there until /recall-clear.",
+      "when_off": "Each session has only its own input history. The store and its old entries stay on disk.",
+      "default": "on",
+      "needs": [],
+      "docs": "packages/tenantext/docs/cross-session-recall.md"
+    },
+    {
+      "name": "hermes",
+      "group": "memory",
+      "title": "Hermes local memory",
+      "description": "Local memory: it keeps notes of your sessions as files in the profile.",
+      "when_on": "By default it sends session text to a model for reviews, flushes (a memory save before a compaction or the end of a session), corrections and consolidation (a merge of memory entries when the memory is full), and these calls can cost money. At session start it also indexes the earlier sessions of the profile into its local session database. A config file of its own does not turn the calls off; check its switches.",
+      "when_off": "No local session memory. The stored files stay in the profile.",
+      "default": "ask",
+      "needs": ["consent"],
+      "docs": "docs/memory-modules.md"
+    },
+    {
+      "name": "wiki",
+      "group": "memory",
+      "title": "LLM Wiki vault",
+      "description": "A personal wiki vault in ~/.llm-wiki, outside the profile, that the agent reads and writes. An existing vault keeps its pages, but a session start can add an index folder and a lock file to it, and each write tool updates its index files.",
+      "when_on": "The first start makes the vault and its index files when they are absent. With the default settings, vault text goes into each prompt, and so to the model provider. Ingest makes model calls that can cost money. With an embedding key, pages and queries also go to that embedding service.",
+      "when_off": "No wiki in the sessions. The vault stays on disk.",
+      "default": "ask",
+      "needs": ["consent"],
+      "docs": "docs/memory-modules.md"
+    },
+    {
+      "name": "openviking",
+      "group": "memory",
+      "title": "OpenViking memory",
+      "description": "Sends sessions and memories to an OpenViking server that you set up, and recalls them.",
+      "when_on": "By default each turn goes to that server; tool results go only when you turn that on. The key and the config come from the environment or a config file. A local queue and a recall ledger are shared by your sessions. The server can store and process the text, which can cost money. The installer does not install it; follow the guide.",
+      "when_off": "This extension stops. Other remote memory tools of your setup keep working.",
+      "default": "off",
+      "needs": ["consent", "credentials"],
+      "docs": "docs/memory-modules.md"
+    },
+    {
+      "name": "agentcore",
+      "group": "memory",
+      "title": "AgentCore memory",
+      "description": "Shared memory in AWS AgentCore Memory: recall before each prompt and a propose tool that asks you first.",
+      "when_on": "Each typed prompt goes to AWS for recall, and a proposal that you confirm goes there too. It uses your AWS credentials and needs a memory resource in your account; AWS charges for the service. Answers and tool output are not captured. The installer does not install it; follow the guide.",
+      "when_off": "No AWS memory recall and no proposals.",
+      "default": "off",
+      "needs": ["consent", "credentials"],
+      "docs": "docs/memory-modules.md"
+    },
+    {
+      "name": "coordinator-skills",
+      "group": "skills",
+      "title": "Coordinator skills",
+      "description": "Skills for a coordinator session: grilling, research, specs, tickets, review and status.",
+      "when_on": "Pi gets the skills. Claude Code gets them only through the links that the installer makes. Some skills run external tools and use GITEA_TOKEN to read and write issues. skill-doctor reads your transcripts and writes report files. The DUMMIES skill can log report text.",
+      "when_off": "No coordinator workflow skills in Pi. The links in ~/.claude/skills stay.",
+      "default": "on",
+      "needs": ["credentials"],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "dummies",
+      "group": "skills",
+      "title": "DUMMIES reports",
+      "description": "A coordinator session ends each reply with a short report for a junior developer.",
+      "when_on": "All your Pi profiles share the switch. The autostart block goes into the instruction file of this profile. By default each report is logged: through okknow to the DUMMIES page of the project, else to a local log of your user. The log has its own switch.",
+      "when_off": "Replies have no fixed report form, and the next prompt draft shows nothing. Earlier reports and logs stay.",
+      "default": "ask",
+      "needs": ["consent"],
+      "docs": "docs/guides/modules.md#dummies"
+    },
+    {
+      "name": "knowledge-skills",
+      "group": "skills",
+      "title": "OpenKnowledge skills",
+      "description": "Instructions for the agent about OpenKnowledge and the Open Knowledge Format. They are skills, not a server.",
+      "when_on": "The agent knows how to read and write knowledge bundles. Real OpenKnowledge operations need the separate server and client.",
+      "when_off": "No OpenKnowledge guidance from the kit. A skill of the same name in a project stays.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "tracker-site",
+      "group": "skills",
+      "title": "Tracker brief",
+      "description": "A skill that builds a short restart brief and a site from the repository and its issue tracker.",
+      "when_on": "It reads the issue API token and sends GET requests to the tracker. It writes the brief and its tracker state, by default under ~/.pi/agent, not in the selected profile. Publishing is optional and uses a login; its receipts hold edit tokens.",
+      "when_off": "No tracker brief.",
+      "default": "on",
+      "needs": ["credentials"],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "okknow",
+      "group": "skills",
+      "title": "OpenKnowledge client",
+      "description": "The okknow skill and command for one OpenKnowledge server of yours.",
+      "when_on": "The agent reads and writes pages on that server. The user name and password come from the environment and go only to the configured origin (the scheme, host and port of the server address). The setup probes the origin and writes a user config and local backups. The installer links the command and the Claude Code skill, and can add an MCP entry.",
+      "when_off": "Pi does not load the skill. The command and other harnesses still work.",
+      "default": "ask",
+      "needs": ["consent", "credentials"],
+      "docs": "docs/guides/modules.md#okknow"
+    },
+    {
+      "name": "artifacts",
+      "group": "skills",
+      "title": "Artifact uploads",
+      "description": "The artifacts skill and command: store an HTML or Markdown file on your artifact server and get a view link.",
+      "when_on": "A file goes to the configured origin (the scheme, host and port of the server address) after a secret scan, with the token from your token file. The view link is confidential. It writes a user config and scratch files of the scan.",
+      "when_off": "Pi does not load the skill. Other ways to publish a file still work.",
+      "default": "ask",
+      "needs": ["consent", "credentials"],
+      "docs": "docs/guides/modules.md#artifacts"
+    },
+    {
+      "name": "artifacts-prompt",
+      "group": "skills",
+      "title": "/artifacts command",
+      "description": "A Pi prompt that starts, stops or checks an artifact server. It comes with artifacts.",
+      "when_on": "/artifacts start runs a local server on 127.0.0.1 from a separate server clone with its dependencies. It writes a local token, data, state and logs when needed, and each local user can read its pages. With a remote origin (a server address on another host), it starts no local server.",
+      "when_off": "You run the artifacts command by hand. A running server does not stop.",
+      "default": "ask",
+      "needs": ["consent"],
+      "docs": "docs/guides/modules.md#local-server"
+    },
+    {
+      "name": "walkr",
+      "group": "walkr",
+      "title": "Walkr review tool",
+      "description": "The agent prepares a review, you look at it in a browser page, and the agent reads your notes, pick and rating.",
+      "when_on": "The installer links six walkr commands into ~/.local/bin, writes the skills to ~/.claude, ~/.codex and ~/.agents, and downloads missing dependencies. In use, it starts a local web server of your account and keeps sessions and reports on disk. The page URL holds a secret; a bind-all override sends plain HTTP over your network.",
+      "when_off": "Reviews happen in the chat only. Old records stay, and a running server does not stop.",
+      "default": "ask",
+      "needs": ["consent", "node24"],
+      "docs": "docs/guides/modules.md#walkr"
+    },
+    {
+      "name": "walkr-prompts",
+      "group": "walkr",
+      "title": "Walkr commands",
+      "description": "One Pi prompt for each Walkr mode, for example /walkr and /walkr-compare. They come with walkr.",
+      "when_on": "The Walkr setup writes the prompts into the profile.",
+      "when_off": "No Walkr prompts in Pi. The Walkr commands, skills and sessions stay.",
+      "default": "ask",
+      "needs": ["consent"],
+      "docs": "docs/guides/modules.md#walkr"
+    },
+    {
+      "name": "herdr",
+      "group": "herdr",
+      "title": "Herdr skill",
+      "description": "The skill that starts and drives other agent panes in Herdr. It does not install the Herdr application.",
+      "when_on": "It needs Herdr, Python and its scripts. The agents that it starts get your access and can make paid model calls.",
+      "when_off": "No Herdr guidance for the agent. The Herdr application stays, and agents can still start in other ways. The other Herdr items need this skill.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/herdr-setup.md"
+    },
+    {
+      "name": "herdr-relay",
+      "group": "herdr",
+      "title": "Herdr relay",
+      "description": "Runs a blocked shell command through a standing worker pane in Herdr.",
+      "when_on": "It needs the herdr skill, or HERDR_SKILL_HOME, and Python. The command runs with the access of the worker pane; this is not a security sandbox. It does nothing until it is used.",
+      "when_off": "The relay is not offered. This does not stop a command from running in another way.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/herdr-setup.md"
+    },
+    {
+      "name": "herdr-watch",
+      "group": "herdr",
+      "title": "Herdr pane watch",
+      "description": "Starts new task sessions or prompts existing Herdr panes, waits in the background and delivers the reply as a notification.",
+      "when_on": "It needs Herdr, Python and its scripts. It keeps local records of tasks and replies. Work that it starts can make paid model calls.",
+      "when_off": "The agent waits for each pane in the foreground.",
+      "default": "on",
+      "needs": [],
+      "docs": "packages/tenantext/docs/herdr-watch.md"
+    },
+    {
+      "name": "herdr-idle-cleanup",
+      "group": "herdr",
+      "title": "Idle pane cleanup",
+      "description": "A skill that scans each Herdr workspace, keeps the reports of idle panes and closes them after your yes.",
+      "when_on": "A scan writes scan.json, and the reports go to handoff files under ~/.local/share/tenant-pi/handoffs. publish --upload sends report text with a configured token.",
+      "when_off": "No scan from the skill. Its scripts and old handoff files stay. The handoff check and its command need this skill.",
+      "default": "on",
+      "needs": [],
+      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
+    },
+    {
+      "name": "handoffs",
+      "group": "herdr",
+      "title": "Handoff check at start",
+      "description": "The startup check of the idle pane cleanup, with /handoffs and /herdr-idle.",
+      "when_on": "At the start of a new interactive session, it claims the open handoff entries of the repository and writes their state. A claimed entry can start one assessment model turn, which can cost money. Task sessions and reloads claim nothing. /herdr-idle shows the state; /herdr-idle off turns the check off.",
+      "when_off": "No check at session start and no assessment turn.",
+      "default": "on",
+      "needs": [],
+      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
+    },
+    {
+      "name": "herdr-idle-cleanup-prompt",
+      "group": "herdr",
+      "title": "/herdr-idle-cleanup command",
+      "description": "A Pi prompt that loads the idle pane cleanup skill and runs its default run.",
+      "when_on": "/herdr-idle-cleanup is a command in Pi.",
+      "when_off": "Only this shortcut goes. The skill and its scripts still work; ask for the skill in plain words.",
+      "default": "on",
+      "needs": [],
+      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
+    },
+    {
+      "name": "questions",
+      "group": "herdr",
+      "title": "Question tool",
+      "description": "Gives Pi the ask_user_question tool. The core install adds it.",
+      "when_on": "Skills can ask you questions with choices in an interactive Pi session. It reads shared user guidance outside the selected profile.",
+      "when_off": "Skills ask in plain text. A session without a terminal has no question dialog in either case.",
+      "default": "on",
+      "needs": [],
+      "docs": "docs/herdr-setup.md"
+    },
+    {
+      "name": "mcp",
+      "group": "mcp",
+      "title": "MCP adapter",
+      "description": "Connects MCP servers through pi-mcp-adapter. MCP is a standard connection between the agent and tool servers.",
+      "when_on": "It starts the commands of your server file or connects to its endpoints, and configured credential and header helpers can run. OAuth and bearer tokens go to the keyring of the system, and large results can go to temporary files. What a server does and costs depends on its configuration. The adapter replaces the MCP support of Pi.",
+      "when_off": "No MCP servers through the adapter. The -builtin:mcp entry that the adapter wrote can stay and keep the MCP support of Pi off.",
+      "default": "ask",
+      "needs": [],
+      "docs": "docs/guides/modules.md"
+    },
+    {
+      "name": "mcp-codemode",
+      "group": "mcp",
+      "title": "MCP with codemode",
+      "description": "The MCP client of Pi and its codemode tool, without the adapter. In codemode, the model writes scripts that call the tools. For a comparison profile.",
+      "when_on": "The installer adds +codemode to defaultTools and removes the adapter entry, -builtin:mcp and -builtin:codemode. It does not convert the server file of the adapter. At session start, Pi connects to each enabled server of mcp.json; a server with \"enabled\": false gets no connection. The servers get the credentials of their configuration: environment values, headers, OAuth tokens or a provider login. A script that the model writes runs when the model calls the codemode tool, and it can call each tool of the connected servers. What a server does with the data and what it costs depends on the server.",
+      "when_off": "The installer changes nothing. Pi still turns codemode on for an enabled server with codemode exposure (the server setting that makes its tools callable only from codemode scripts, the default), and its MCP client stays on unless -builtin:mcp is set.",
+      "default": "off",
+      "needs": [],
+      "docs": "docs/guides/modules.md#mcp-with-codemode"
+    },
+    {
+      "name": "computer-use",
+      "group": "desktop",
+      "title": "Computer use on Linux",
+      "description": "Tools that read the screen and send clicks, keys and text to your Linux desktop.",
+      "when_on": "Screenshots and screen text go into the conversation, and so to the model provider. The setup downloads a release binary. It needs a graphical session, AT-SPI and an input backend, and its setup tools can change desktop settings.",
+      "when_off": "This Pi module does not load. Other desktop tools of your system stay.",
+      "default": "ask",
+      "needs": ["linux", "consent"],
+      "docs": "docs/guides/modules.md#computer-use"
+    },
+    {
+      "name": "computer-use-macos",
+      "group": "desktop",
+      "title": "Computer use on macOS",
+      "description": "Tools that read the screen and send input to your Mac through Cua Driver, on macOS 13 or later. Not verified on a Mac.",
+      "when_on": "Screenshots, screen text and typed text go to the model provider. Cua Driver sends telemetry by default. At the first desktop tool call, the driver starts and macOS asks for Accessibility and Screen Recording. The core tool profile is not an allowlist, and a yes to an app launch is not a yes to each action.",
+      "when_off": "The agent cannot see or control your Mac through this module.",
+      "default": "ask",
+      "needs": ["macos", "consent"],
+      "docs": "docs/guides/modules.md#computer-use-on-macos"
+    },
+    {
+      "name": "claude-code-plugin",
+      "group": "desktop",
+      "title": "Claude Code desktop plugin",
+      "description": "The computer-use-linux plugin for Claude Code, from its own marketplace.",
+      "when_on": "It needs its own yes. The marketplace and the install use the network, and the first start downloads a binary to a cache. Screenshots and screen text go to the model provider. New Claude Code sessions get the desktop tools, except read-role panes. The marketplace version can be newer than the kit pin.",
+      "when_off": "Claude Code has no tools from this plugin. Other plugins stay.",
+      "default": "ask",
+      "needs": ["linux", "consent"],
+      "docs": "docs/guides/modules.md#claude-code-plugin"
+    },
+    {
+      "name": "shell-rc",
+      "group": "shell",
+      "title": "Shell alias",
+      "description": "A marked block with an alias for the launcher of the profile, in ~/.bashrc, or in .zshrc in ZDOTDIR or your home.",
+      "when_on": "You type the profile name to start Pi with this profile. The installer backs up the file first.",
+      "when_off": "No alias. You run the launcher directly, or start Pi with PI_CODING_AGENT_DIR set.",
+      "default": "ask",
+      "needs": [],
+      "docs": "INSTALL.md#run-installsh"
+    },
+    {
+      "name": "launcher",
+      "group": "shell",
+      "title": "Profile launcher",
+      "description": "A small script in ~/.local/bin that starts the selected runtime with this profile.",
+      "when_on": "It sets the profile and PATH, clears an inherited session directory and can start through the credsync launch wrapper. It records the runtime path; run an upgrade after you move Pi, Pi-Bolt or Node. It keeps configurations apart; it is not an OS sandbox.",
+      "when_off": "No launcher; you start Pi by hand.",
+      "default": "ask",
+      "needs": [],
+      "docs": "INSTALL.md#run-installsh"
+    },
+    {
+      "name": "aws-core",
+      "group": "aws",
+      "title": "AWS core skills and MCP server",
+      "description": "The aws-core plugin of the Agent Toolkit for AWS: skills for infrastructure as code, core services, databases, observability, messaging, the AWS SDKs, cost and Well-Architected reviews, and the AWS MCP Server. The other AWS plugin rows need it.",
+      "when_on": "install.sh clones the upstream repository at the pinned commit into ~/.local/share/tenant-pi/git, which needs git and network access, and adds the skills folder of the plugin to the profile settings. With mcp or mcp-codemode, it adds the server aws-mcp. The kit launcher starts the AWS proxy with uvx, and the proxy sends tool calls to the AWS MCP endpoint. The calls are unsigned: the launcher closes each credential source of the proxy, the AWS and Boto variables, the shared, config and Boto files, and instance metadata. AWS_MCP_PROXY_PROFILES names a profile that signs. The skills guide the agent to run AWS commands with your AWS access, which can change resources and cost money. The installer writes no AWS profile and no credential.",
+      "when_off": "No AWS skills and no aws-mcp entry from the kit. The run removes only the entries that the kit wrote; the clone and your own entries stay. The other AWS plugin rows go off with it.",
+      "default": "off",
+      "needs": [
+        "consent",
+        "credentials"
+      ],
+      "docs": "docs/guides/aws-agent-toolkit.md"
+    },
+    {
+      "name": "aws-agents",
+      "group": "aws",
+      "title": "AWS agents skills",
+      "description": "The aws-agents plugin: skills to build, connect, deploy, debug and harden AI agents on AWS with Amazon Bedrock AgentCore. It needs aws-core.",
+      "when_on": "install.sh clones the upstream repository at the pinned commit into ~/.local/share/tenant-pi/git, which needs git and network access, and adds the skills folder of the plugin to the profile settings. The skills guide the agent to run AWS commands with your AWS access, which can change resources and cost money. Pi gets the skills only; the Claude Code plugin also brings the MCP server awsknowledge.",
+      "when_off": "No agent skills from the kit. The run removes only the skills entry that the kit wrote; the clone stays.",
+      "default": "off",
+      "needs": [
+        "consent",
+        "credentials"
+      ],
+      "docs": "docs/guides/aws-agent-toolkit.md"
+    },
+    {
+      "name": "aws-data-analytics",
+      "group": "aws",
+      "title": "AWS data analytics skills",
+      "description": "The aws-data-analytics plugin: skills for data lakes, AWS Glue, Athena, Amazon Redshift, OpenSearch, Amazon MSK, Flink, Amazon MWAA and the data catalogs. It needs aws-core.",
+      "when_on": "install.sh clones the upstream repository at the pinned commit into ~/.local/share/tenant-pi/git, which needs git and network access, and adds the skills folder of the plugin to the profile settings. The skills guide the agent to run AWS commands with your AWS access, which can change resources and cost money. Pi gets the skills only. In Claude Code, the kit turns off the own aws-mcp server of the plugin, and the kit server aws-mcp serves instead.",
+      "when_off": "No data analytics skills from the kit. The run removes only the skills entry that the kit wrote; the clone stays.",
+      "default": "off",
+      "needs": [
+        "consent",
+        "credentials"
+      ],
+      "docs": "docs/guides/aws-agent-toolkit.md"
+    },
+    {
+      "name": "aws-agents-for-devsecops",
+      "group": "aws",
+      "title": "AWS DevOps and security agent skills",
+      "description": "The aws-agents-for-devsecops plugin: skills for incident investigation, release readiness, code scans and penetration tests with AWS DevOps Agent and AWS Security Agent. It needs aws-core.",
+      "when_on": "install.sh clones the upstream repository at the pinned commit into ~/.local/share/tenant-pi/git, which needs git and network access, and adds the skills folder of the plugin to the profile settings. The skills guide the agent to run AWS commands with your AWS access, which can change resources and cost money. A penetration test or a scan acts on the targets that you name. Pi gets the skills only; the Claude Code plugin also brings the MCP server aws-devops-agent, which needs a token in DEVOPS_AGENT_TOKEN that the kit does not set.",
+      "when_off": "No DevOps and security agent skills from the kit. The run removes only the skills entry that the kit wrote; the clone stays.",
+      "default": "off",
+      "needs": [
+        "consent",
+        "credentials"
+      ],
+      "docs": "docs/guides/aws-agent-toolkit.md"
+    },
+    {
+      "name": "aws-startup-advisor",
+      "group": "aws",
+      "title": "AWS startup advisor skills",
+      "description": "The aws-startup-advisor plugin: skills that recommend and scaffold a small AWS architecture, plan a move from another cloud, move model calls to Amazon Bedrock and answer AWS Activate questions. It needs aws-core.",
+      "when_on": "install.sh clones the upstream repository at the pinned commit into ~/.local/share/tenant-pi/git, which needs git and network access, and adds the skills folder of the plugin to the profile settings. The skills guide the agent to run AWS commands with your AWS access, which can change resources and cost money. Pi gets the skills only. The Claude Code plugin also brings a hook, commands and agents; the kit turns off its own aws-mcp server, and the kit server aws-mcp serves instead.",
+      "when_off": "No startup advisor skills from the kit. The run removes only the skills entry that the kit wrote; the clone stays.",
+      "default": "off",
+      "needs": [
+        "consent",
+        "credentials"
+      ],
+      "docs": "docs/guides/aws-agent-toolkit.md"
+    },
+    {
+      "name": "aws-emulator",
+      "group": "aws",
+      "title": "AWS Emulator skill",
+      "description": "The aws-emulator skill of the aws-core plugin, alone: install, start and connect AWS Emulator, a local emulator of AWS service APIs, and check whether a project works on it. It works without aws-core.",
+      "when_on": "install.sh clones the upstream repository at the pinned commit into ~/.local/share/tenant-pi/git, which needs git and network access, and adds the skill folder to the profile settings. The skill holds documents only. It guides installs that can need sudo and a local service; the kit installs no emulator. With aws-core on, the plugin brings the same skill.",
+      "when_off": "No aws-emulator skill from this row; with aws-core on, that row still brings it. The run removes only the skills entry that the kit wrote; the clone stays.",
+      "default": "off",
+      "needs": [
+        "consent"
+      ],
+      "docs": "docs/guides/aws-agent-toolkit.md#test-against-aws-emulator"
+    },
+    {
+      "name": "claude-aws-plugins",
+      "group": "aws",
+      "title": "Claude Code AWS plugins",
+      "description": "The Claude Code plugins of the chosen AWS rows, from a folder marketplace at the kit clone.",
+      "when_on": "It needs its own yes, one for all AWS rows: --claude-aws or a yes in a terminal; --yes does not give it. Each new Claude Code session gets the skills and the hooks of the plugins, with the secret-safety hook of aws-core. The kit server aws-mcp starts the proxy with the kit launcher, unsigned by default, as in Pi. A deniedMcpServers entry turns off the aws-mcp server of each kit plugin, and also each server of yours with the same command. With aws-emulator and no aws-core, the kit links the skill to ~/.claude/skills/aws-emulator. The run removes the kit parts of the rows that are off. A marketplace, a plugin or a server of your own stays unless --adopt-aws.",
+      "when_off": "Without the yes, the run changes no AWS part in Claude Code, and the kit parts of earlier runs stay. With --claude-aws and no AWS row, the run removes the parts that the kit record names. Plugins that you installed stay.",
+      "default": "ask",
+      "needs": [
+        "consent",
+        "credentials"
+      ],
+      "docs": "docs/guides/aws-agent-toolkit.md#claude-code"
+    }
+  ]
+}

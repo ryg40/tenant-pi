@@ -1,4 +1,5 @@
 """Installer integration tests use disposable homes and a fake Pi executable."""
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -58,11 +59,11 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         return {str(p.relative_to(self.home)): (p.read_bytes() if p.is_file() else None)
                 for p in self.home.rglob('*')}
 
-    def interactive(self, answers, *args):
+    def interactive(self, answers, *args, script=SCRIPT):
         master, slave = pty.openpty()
         self.addCleanup(os.close, master)
         self.addCleanup(os.close, slave)
-        process = subprocess.Popen(['sh', str(SCRIPT), *args], env=self.env | {'INSTALL_TEST_TTY': os.ttyname(slave)},
+        process = subprocess.Popen(['sh', str(script), *args], env=self.env | {'INSTALL_TEST_TTY': os.ttyname(slave)},
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         transcript = ''
         for prompt, answer in answers:
@@ -223,8 +224,11 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         other.chmod(0o700)
         launcher = self.home / '.local/bin/demo'
 
+        launch_cwd = self.base / 'empty-launch-cwd'
+        launch_cwd.mkdir()
+
         def launched():
-            subprocess.run([str(launcher), 'x'], env=self.env, check=True)
+            subprocess.run([str(launcher), 'x'], cwd=launch_cwd, env=self.env, check=True)
             return json.loads((self.profile / 'calls.jsonl').read_text().splitlines()[-1])
 
         self.success(self.run_install('--new', 'demo', '--shell', 'bash', '--with', 'none', '--yes', '--runtime', 'pi-bolt'))
@@ -325,10 +329,38 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         shutil.copy(SCRIPT, kit / 'install.sh')
         for file in ('settings.example.json', 'models.example.json', 'manifest.json'):
             shutil.copy(ROOT / 'config' / file, kit / 'config' / file)
+        # The AWS rows of each run: the plan, the skills entries and the aws-mcp step.
+        (kit / 'scripts').mkdir()
+        shutil.copy(ROOT / 'scripts/kit_aws.py', kit / 'scripts/kit_aws.py')
         for skill in skills:
             (kit / 'packages/tenantext' / skill).mkdir(parents=True)
             (kit / 'packages/tenantext' / skill / 'SKILL.md').write_text('skill')
         return kit
+
+    def test_plain_and_yes_bypass_the_screen(self):
+        # Stubs in a kit copy: the screen records its start outside HOME and aborts; the inventory and the catalog exist.
+        kit = self.kit_copy(self.base / 'kit')
+        (kit / 'scripts/kit_inventory.py').write_text('print("{}")\n')
+        (kit / 'config/catalog.json').write_text('[]\n')
+        calls = self.base / 'tui-calls'
+        (kit / 'scripts/kit_tui.py').write_text('import sys\nopen(%r, "a").close()\nsys.exit(1)\n' % str(calls))
+
+        def checksum():
+            return hashlib.sha256(repr(sorted(self.snapshot().items())).encode()).hexdigest()
+        # Without --plain and --yes, a terminal gets the screen; its abort cancels the run before a write.
+        before = checksum()
+        result = self.interactive([], '--new', 'demo', '--shell', 'none', script=kit / 'install.sh')
+        self.assertEqual(2, result.returncode)
+        self.assertTrue(calls.exists())
+        self.assertEqual(before, checksum())
+        calls.rename(self.base / 'tui-calls-first')
+        result = self.interactive([('Optional modules', 'none'), ('DUMMIES', 'n'), ('Apply', 'no')],
+                                  '--new', 'demo', '--shell', 'none', '--plain', script=kit / 'install.sh')
+        self.assertEqual(2, result.returncode)
+        result = self.interactive([('Optional modules', 'none'), ('DUMMIES', 'n')],
+                                  '--new', 'demo', '--shell', 'none', '--yes', script=kit / 'install.sh')
+        self.success(result)
+        self.assertFalse(calls.exists())
 
     def test_clone_quoting_and_claude_links(self):
         kit = self.kit_copy(self.base / 'kit " quote & |', DECLARED_SKILL)
@@ -375,7 +407,9 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                 for name in ('node', 'npm'):
                     self.command(name, 'echo "' + name + ' $*" >>"$HOME/walkr-calls"\n')
                 self.success(self.install(mode='new' if platform == 'Linux' else 'upgrade', shell='none',
-                                          modules='all', env={'OKKNOW_ORIGIN': 'http://127.0.0.1:1'}))
+                                          modules='all', env={'OKKNOW_ORIGIN': 'http://127.0.0.1:1',
+                                                              'ARTIFACTS_ORIGIN': 'http://127.0.0.1:1',
+                                                              'ARTIFACTS_TOKEN_FILE': str(self.base / 'token')}))
                 calls = [json.loads(line)['args'] for line in (self.profile / 'calls.jsonl').read_text().splitlines()]
                 requested = {args[1] for args in calls if args[0] == 'install'}
                 for name in ('wiki', 'hermes', 'mcp', desktop):
@@ -386,6 +420,25 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                     # The Darwin subtest shares this home, so only the first run proves the link.
                     self.assertTrue((self.home / '.local/bin/okknow').is_symlink())
                 (self.profile / 'calls.jsonl').write_text('')
+
+    def test_artifacts_links_the_cli_and_writes_the_config(self):
+        token = self.base / 'token'
+        env = {'ARTIFACTS_ORIGIN': 'https://artifacts.example.com', 'ARTIFACTS_TOKEN_FILE': str(token)}
+        self.success(self.install(shell='none', modules='artifacts', env=env))
+        cli = ROOT / 'packages/artifacts/skills/artifacts/scripts/artifacts'
+        self.assertEqual(cli.resolve(), (self.home / '.local/bin/artifacts').resolve())
+        config = self.home / '.config/tenant-artifacts/config.json'
+        self.assertEqual({'origin': 'https://artifacts.example.com', 'tokenFile': str(token)},
+                         json.loads(config.read_text()))
+        packages = json.loads((self.profile / 'settings.json').read_text())['packages']
+        self.assertIn(str(ROOT / 'packages/artifacts'), [entry.get('source') if isinstance(entry, dict) else entry
+                                                         for entry in packages])
+        # A repeat run changes no file; calls.jsonl is the log of the fake Pi.
+        calls = str((self.profile / 'calls.jsonl').relative_to(self.home))
+        before = self.snapshot()
+        self.success(self.install(mode='upgrade', shell='none', modules='artifacts', env=env))
+        self.assertEqual({k: v for k, v in before.items() if k != calls},
+                         {k: v for k, v in self.snapshot().items() if k != calls})
 
     @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
     def test_walkr_runs_the_setup_of_the_package_for_claude_and_for_the_profile(self):
@@ -558,6 +611,37 @@ print('dummies: on for pi | autostart: AGENTS.md')
         self.command('herdr', 'echo "$PI_CODING_AGENT_DIR $*" >> "$HOME/herdr-calls"\n')
         self.success(self.install(mode='upgrade', shell='none'))
         self.assertEqual(str(self.profile) + ' integration install pi\n', (self.home / 'herdr-calls').read_text())
+
+    def test_dry_run_and_inventory_write_nothing(self):
+        # A moved package entry: the plan proposes a settings change, and the dry run still writes nothing.
+        self.command('uname', 'echo Linux\n')
+        self.command('claude', 'echo "$*" >> "$HOME/claude-calls"\n')
+        (self.home / '.claude').mkdir()
+        self.profile.mkdir(parents=True)
+        (self.profile / 'settings.json').write_text(json.dumps({'packages': ['/old/kit/packages/tenantext']}))
+
+        def state():
+            # The mode, the link target or the bytes of each path of the home directory.
+            return {str(p.relative_to(self.home)): (stat.S_IMODE(p.lstat().st_mode), os.readlink(p) if p.is_symlink()
+                                                    else p.read_bytes() if p.is_file() else None)
+                    for p in self.home.rglob('*')}
+        before = state()
+        result = self.run_install('--upgrade', 'demo', '--shell', 'bash', '--with', 'wiki', '--dummies', '--dry-run')
+        self.success(result)
+        self.assertIn('npm:' + MANIFEST['components']['wiki']['source']['spec'], result.stdout)
+        self.assertEqual(before, state())
+        # The plugin question comes before the dry-run exit, so its yes is in the plan.
+        result = self.interactive([('Claude Code plugin', 'yes')],
+                                  '--upgrade', 'demo', '--shell', 'none', '--with', 'computer-use', '--dry-run')
+        self.success(result)
+        self.assertTrue(any('claude-code-plugin' in line and 'install' in line for line in result.stdout.splitlines()),
+                        result.stdout)
+        self.assertEqual(before, state())
+        self.success(self.run_install('--upgrade', 'demo', '--inventory'))
+        # --inventory passes --runtime on and refuses a runtime that a run refuses.
+        result = self.run_install('--upgrade', 'demo', '--inventory', '--runtime', str(self.home / 'missing-runtime'))
+        self.assertEqual(2, result.returncode, result.stdout)
+        self.assertEqual(before, state())
 
     def test_symlink_profiles_cannot_target_live_or_clone(self):
         self.profile.parent.mkdir(parents=True)

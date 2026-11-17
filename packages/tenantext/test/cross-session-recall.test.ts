@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFile } from "node:child_process";
-import { existsSync, mkdtempSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { renderFakeCursor } from "@earendil-works/pi-tui";
 import crossSessionRecall from "../extensions/cross-session-recall/index.ts";
-import { DATABASE_NAME, DIRECTORY_VARIABLE, RecallStore } from "../extensions/cross-session-recall/store.ts";
+import { DATABASE_NAME, DIRECTORY_VARIABLE, RecallStore, storeDir } from "../extensions/cross-session-recall/store.ts";
 import { createNextPrompt } from "../extensions/next-prompt/index.ts";
 
 // A final report with one agent action, so that next-prompt has a draft to show.
@@ -122,4 +122,55 @@ test("a print-mode run stores nothing: Pi sends its prompt with the source inter
   await p.fire("input", { type: "input", text: "pi -p prompt with a secret", source: "interactive" });
   await p.fire("session_shutdown");
   assert.equal(existsSync(dir), false, "no store directory after a print-mode input");
+});
+
+/** Runs one interactive session of the extension with the default store in a scratch home, and stores `text`. */
+async function sessionInHome(home: string, text: string): Promise<void> {
+  const saved = { home: process.env.HOME, dir: process.env[DIRECTORY_VARIABLE], data: process.env.XDG_DATA_HOME };
+  process.env.HOME = home;
+  delete process.env[DIRECTORY_VARIABLE];
+  delete process.env.XDG_DATA_HOME;
+  try {
+    const p = profile("recall-first");
+    await p.fire("session_start", { reason: "startup" });
+    await p.fire("input", { type: "input", text, source: "interactive" });
+    await p.fire("session_shutdown");
+  } finally {
+    for (const [name, value] of [["HOME", saved.home], [DIRECTORY_VARIABLE, saved.dir], ["XDG_DATA_HOME", saved.data]] as const) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  }
+}
+
+const storedTexts = (dir: string): string[] => {
+  const store = new RecallStore(dir);
+  const texts = store.query("", 100).map((item) => item.text).sort();
+  store.close();
+  return texts;
+};
+
+test("a clean home: the default store is outside ~/.pi and nothing is written under ~/.pi/agent", async () => {
+  const home = mkdtempSync(join(tmpdir(), "recall-home-"));
+  await sessionInHome(home, "typed in a clean home");
+  assert.equal(existsSync(join(home, ".pi", "agent")), false, "no path under ~/.pi/agent");
+  const dir = storeDir({}, home);
+  assert.equal(dir, join(home, ".local", "share", "tenant-pi", "cross-session-recall"));
+  assert.deepEqual(storedTexts(dir), ["typed in a clean home"]);
+});
+
+test("a home with an old store: the inputs move to the new store, the old files keep their names and bytes", async () => {
+  const home = mkdtempSync(join(tmpdir(), "recall-home-"));
+  const oldDir = join(home, ".pi", "agent", "cross-session-recall");
+  const old = new RecallStore(oldDir);
+  old.add({ text: "old input one", timestamp: 1 });
+  old.add({ text: "old input two", timestamp: 2 });
+  old.close();
+  mkdirSync(oldDir, { recursive: true });
+  writeFileSync(join(oldDir, "history.json"), JSON.stringify([{ text: "old json input", timestamp: 3, source: "interactive" }]));
+  const snapshot = () => readdirSync(oldDir).sort().map((name) => [name, readFileSync(join(oldDir, name)).toString("base64")]);
+  const before = snapshot();
+  await sessionInHome(home, "new input");
+  await sessionInHome(home, "second session");
+  assert.deepEqual(snapshot(), before, "the old store folder is unchanged");
+  assert.deepEqual(storedTexts(storeDir({}, home)), ["new input", "old input one", "old input two", "old json input", "second session"]);
 });

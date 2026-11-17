@@ -1436,9 +1436,19 @@
      "label": "Computer use",
      "sub": "npm @agent-sh/computer-use-linux (Linux); npm @amaster.ai/pi-computer-use (macOS)",
      "x": 820,
-     "y": 884,
+     "y": 1040,
      "cols": 1,
      "tone": "live",
+     "nodeW": 320
+    },
+    {
+     "id": "g-c-aws",
+     "label": "Agent Toolkit for AWS",
+     "sub": "git agent-toolkit-for-aws at one commit",
+     "x": 430,
+     "y": 1120,
+     "cols": 1,
+     "tone": "service",
      "nodeW": 320
     }
    ],
@@ -1756,6 +1766,34 @@
      ]
     },
     {
+     "id": "artifacts",
+     "component": "artifacts",
+     "group": "g-c-skills",
+     "label": "artifacts",
+     "kind": "comp-skills",
+     "summary": "Optional: the artifacts skill and CLI. An agent stores an HTML or Markdown file on the artifact server of the user after a secret scan and gives the view link. install.sh --with artifacts links the CLI and runs its setup.",
+     "inputs": "an artifact server; a token file; ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE or artifacts setup",
+     "consent": "your agreement to uploads to that server",
+     "doc": "docs/guides/modules.md#artifacts",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "artifacts-prompt",
+     "component": "artifacts-prompt",
+     "group": "g-c-skills",
+     "label": "artifacts prompt",
+     "kind": "comp-skills",
+     "summary": "Optional: the Pi prompt /artifacts with the words start, off and status. It runs the artifacts CLI: one local artifact server on 127.0.0.1 from a clone of the server project, and the browse URL.",
+     "inputs": "the artifacts component; a clone of the artifact server with its localhost mode and node_modules",
+     "consent": "your agreement to a local web server of your account; each local user can read its pages",
+     "doc": "docs/guides/modules.md#local-server",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
      "id": "walkr",
      "component": "walkr",
      "group": "g-c-walkr",
@@ -1922,6 +1960,90 @@
      "tags": [
       "not a detected installation"
      ]
+    },
+    {
+     "id": "aws-core",
+     "component": "aws-core",
+     "group": "g-c-aws",
+     "label": "aws-core",
+     "kind": "comp-skills",
+     "summary": "Optional: the skills of the upstream plugin aws-core from the kit clone at the pinned commit, and with mcp or mcp-codemode the server aws-mcp (uvx mcp-proxy-for-aws-cli at the pinned version). The other AWS plugin rows need it.",
+     "inputs": "git and network access for the clone; AWS access of your own for real AWS work; uv for aws-mcp",
+     "consent": "your agreement to AWS commands with your access, and a separate yes for the Claude Code plugins",
+     "doc": "docs/guides/aws-agent-toolkit.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "aws-agents",
+     "component": "aws-agents",
+     "group": "g-c-aws",
+     "label": "aws-agents",
+     "kind": "comp-skills",
+     "summary": "Optional: the skills of the upstream plugin aws-agents for AI agents on AWS. It needs aws-core.",
+     "inputs": "git and network access for the clone; AWS access of your own for real AWS work",
+     "consent": "your agreement to AWS commands with your access, and a separate yes for the Claude Code plugins",
+     "doc": "docs/guides/aws-agent-toolkit.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "aws-data-analytics",
+     "component": "aws-data-analytics",
+     "group": "g-c-aws",
+     "label": "aws-data-analytics",
+     "kind": "comp-skills",
+     "summary": "Optional: the skills of the upstream plugin aws-data-analytics for data lakes, analytics and streaming. It needs aws-core.",
+     "inputs": "git and network access for the clone; AWS access of your own for real AWS work",
+     "consent": "your agreement to AWS commands with your access, and a separate yes for the Claude Code plugins",
+     "doc": "docs/guides/aws-agent-toolkit.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "aws-agents-for-devsecops",
+     "component": "aws-agents-for-devsecops",
+     "group": "g-c-aws",
+     "label": "aws-agents-for-devsecops",
+     "kind": "comp-skills",
+     "summary": "Optional: the skills of the upstream plugin aws-agents-for-devsecops for AWS DevOps Agent and AWS Security Agent. It needs aws-core.",
+     "inputs": "git and network access for the clone; AWS access of your own for real AWS work",
+     "consent": "your agreement to AWS commands with your access, and a separate yes for the Claude Code plugins",
+     "doc": "docs/guides/aws-agent-toolkit.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "aws-startup-advisor",
+     "component": "aws-startup-advisor",
+     "group": "g-c-aws",
+     "label": "aws-startup-advisor",
+     "kind": "comp-skills",
+     "summary": "Optional: the skills of the upstream plugin aws-startup-advisor for startups on AWS. It needs aws-core.",
+     "inputs": "git and network access for the clone; AWS access of your own for real AWS work",
+     "consent": "your agreement to AWS commands with your access, and a separate yes for the Claude Code plugins",
+     "doc": "docs/guides/aws-agent-toolkit.md",
+     "tags": [
+      "not a detected installation"
+     ]
+    },
+    {
+     "id": "aws-emulator",
+     "component": "aws-emulator",
+     "group": "g-c-aws",
+     "label": "aws-emulator",
+     "kind": "comp-skills",
+     "summary": "Optional: the aws-emulator skill of the plugin aws-core alone, for AWS Emulator, a local emulator of AWS service APIs. It works without aws-core.",
+     "inputs": "git and network access for the clone; an AWS Emulator that you install",
+     "consent": "your agreement to AWS commands with your access, and a separate yes for the Claude Code plugins",
+     "doc": "docs/guides/aws-agent-toolkit.md#test-against-aws-emulator",
+     "tags": [
+      "not a detected installation"
+     ]
     }
    ],
    "edges": [
@@ -2007,6 +2129,34 @@
      "to": "herdr",
      "label": "fan-out",
      "style": "optional",
+     "detailOnly": true
+    },
+    {
+     "from": "aws-agents",
+     "to": "aws-core",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "aws-data-analytics",
+     "to": "aws-core",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "aws-agents-for-devsecops",
+     "to": "aws-core",
+     "label": "requires",
+     "style": "requires",
+     "detailOnly": true
+    },
+    {
+     "from": "aws-startup-advisor",
+     "to": "aws-core",
+     "label": "requires",
+     "style": "requires",
      "detailOnly": true
     }
    ]

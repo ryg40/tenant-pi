@@ -67,6 +67,22 @@ class PiLauncher(unittest.TestCase):
                                         capture_output=True, text=True, check=True)
                 self.assertEqual(result.stdout, kept + "\n")
 
+    def test_project_wrapper_runs_in_new_pane_directory_for_both_harnesses(self):
+        root = Path(tempfile.mkdtemp(prefix="spawn-credsync-test-"))
+        (root / ".credsync.json").write_text("unapproved")
+        executable = root / "harness"
+        executable.write_text('#!/bin/sh\n[ "$1" = --version ] || printf "%s\\n" "$@"\n')
+        executable.chmod(0o700)
+        info = {"result": {"process_info": {"foreground_processes": [{"name": "bash"}]}}}
+        for harness in ("pi", "claude"):
+            with patch.object(spawn, "herdr", side_effect=[(0, info, ""), (0, {"result": {}}, "")]) as call:
+                spawn.prepare_pi_launcher("new-pane", str(executable), project=True, harness=harness)
+            command = call.call_args.args[-1]
+            result = subprocess.run(["/bin/bash", "-c", command + f"; {harness} literal"], cwd=root,
+                                    env={"PATH": "/usr/bin:/bin", "HOME": str(root)}, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, "literal\n")
+
     def test_unsupported_shell_is_not_modified(self):
         info = {"result": {"process_info": {"foreground_processes": [{"name": "fish"}]}}}
         with patch.object(spawn, "herdr", return_value=(0, info, "")) as call:

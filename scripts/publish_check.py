@@ -32,6 +32,7 @@ PUBLISH = (
     "UPDATE.md",
     "install.sh",
     "config/manifest.json",
+    "config/catalog.json",
     "config/settings.example.json",
     "config/models.example.json",
     "extensions/peer-override-reminder.ts",
@@ -62,6 +63,7 @@ PUBLISH_DIRS = (
     ("packages/agentcore-claude", ("node_modules/",)),
     ("packages/agentcore-memory-admin", ("node_modules/",)),
     ("packages/okknow", ()),
+    ("packages/artifacts", ()),
     # The Walkr package. Its hosted deployment and upstream design files are in the private-copy list.
     ("packages/walkr", ("node_modules/",)),
 )

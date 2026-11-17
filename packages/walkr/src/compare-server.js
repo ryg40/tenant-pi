@@ -6,6 +6,7 @@ import { DoubleStoreError, hash } from "./double-archive.js";
 import { escapeHtml } from "./hosted.js";
 import { CompareStore, SCHEMA, VERSION, sessionName } from "./compare-store.js";
 import { POSIX_ONLY_CODE, posixOnlyRefusal } from "./posix-only.js";
+import { withFoot } from "./brand.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PREFIX = "/_walkr/compare/";
@@ -20,7 +21,13 @@ const STATIC = {
 const SHELL_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 // An HTML option is untrusted. The sandbox gives it an opaque origin and no scripts; the policy allows no network at all.
 // Inline styles, inline SVG and data: images render, so a diagram needs no file beside the option.
-const OPTION_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'; sandbox";
+const OPTION_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'; sandbox";
+// Only the page of this server frames an option. The policy also names the origin of the request: an engine that
+// compares 'self' with the sandboxed, opaque origin of the option (Servo 0.8) blocks every frame without it.
+// The server refuses an unknown Host before this handler; the pattern keeps any other text out of the header.
+// An IPv6 literal is not a valid CSP source, so such a Host gets 'self' alone.
+const HOST = /^[a-z0-9.-]+:\d{1,5}$/i;
+const optionPolicy = (host) => `${OPTION_CSP}; frame-ancestors 'self'${HOST.test(host ?? "") ? ` http://${host}` : ""}`;
 const HEADERS = { "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" };
 const STATUS = {
   INVALID_REQUEST: 400, INVALID_ID: 400, UNSAFE_PATH: 400, NOT_FOUND: 404, METHOD_NOT_ALLOWED: 405,
@@ -85,7 +92,7 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
       if (raw.startsWith(`${PREFIX}g/`)) {
         if (!matches(raw.slice(`${PREFIX}g/`.length), page.shell)) fail("NOT_FOUND", "This private Compare URL is unavailable. Use walkr-compare open for a new one.");
         method("GET");
-        const shell = await fs.readFile(path.join(here, "compare.html"), "utf8");
+        const shell = withFoot(await fs.readFile(path.join(here, "compare.html"), "utf8"));
         send(res, 200, shell.replace(/__TOKEN__|__FRAMES__/g, (name) => escapeHtml(name === "__TOKEN__" ? page.token : `${PREFIX}o/${page.shell}`)),
           "text/html; charset=utf-8", { "content-security-policy": SHELL_CSP });
         return true;
@@ -97,7 +104,7 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
         const view = await store.read(sessionName(frame[2]));
         const option = view.options.find((item) => item.optionId === frame[3]);
         if (!option || option.format !== "html") fail("NOT_FOUND", "This session has no HTML option of that name.");
-        send(res, 200, option.content, "text/html; charset=utf-8", { "content-security-policy": OPTION_CSP });
+        send(res, 200, option.content, "text/html; charset=utf-8", { "content-security-policy": optionPolicy(req.headers.host) });
         return true;
       }
       if (!raw.startsWith(`${PREFIX}api/`)) fail("NOT_FOUND", "Unknown Compare route.");

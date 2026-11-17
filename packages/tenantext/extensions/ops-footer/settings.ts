@@ -8,12 +8,14 @@ export interface Settings {
   minimumRows: number; maximumRows: number;
   healthPollSeconds: number; healthTimeoutMs: number; gitCacheMs: number; gitIdlePollSeconds: number;
   showHealthyServices: boolean; showUnavailableOptionalSources: boolean;
+  /** The artifact server row of the Memory place. Off: no row and no run of the `artifacts` CLI. */
+  showArtifactServer: boolean;
   healthUrls: Partial<Record<"OK" | "OV", string>>;
 }
 export const defaults: Settings = {
   enabled: true, placement: "belowEditor", minimumRows: 1, maximumRows: 8,
   healthPollSeconds: 60, healthTimeoutMs: 2000, gitCacheMs: 1000, gitIdlePollSeconds: 15,
-  showHealthyServices: false, showUnavailableOptionalSources: false, healthUrls: {},
+  showHealthyServices: false, showUnavailableOptionalSources: false, showArtifactServer: true, healthUrls: {},
 };
 export const settingsPath = () => join(agentDir(), "ops-footer", "settings.json");
 export function healthUrl(value: unknown): string | undefined {
@@ -28,7 +30,7 @@ export function parseSettings(value: unknown): Settings {
   const out = { ...defaults, healthUrls: {} } as Settings;
   if (!value || typeof value !== "object") return out;
   const v = value as Record<string, unknown>;
-  for (const key of ["enabled", "showHealthyServices", "showUnavailableOptionalSources"] as const) {
+  for (const key of ["enabled", "showHealthyServices", "showUnavailableOptionalSources", "showArtifactServer"] as const) {
     if (typeof v[key] === "boolean") out[key] = v[key];
   }
   for (const [key, low, high] of [["minimumRows", 1, 12], ["maximumRows", 3, 12],
@@ -85,6 +87,6 @@ export async function ensureSettings(path = settingsPath()): Promise<void> {
     }
   }
   const guide = join(dirname(path), "settings.example.jsonc");
-  try { await writeFile(guide, `// Operations footer options. Copy values into settings.json (plain JSON, without comments).\n{\n  // enabled: true | false — show the operations footer.\n  "enabled": true,\n  // placement: "belowEditor" — fixed location.\n  "placement": "belowEditor",\n  // minimumRows: 1–12, not greater than maximumRows.\n  "minimumRows": 1,\n  // maximumRows: 3–12, not less than minimumRows.\n  "maximumRows": 8,\n  // healthPollSeconds: 10–3600 seconds.\n  "healthPollSeconds": 60,\n  // healthTimeoutMs: 100–10000 milliseconds.\n  "healthTimeoutMs": 2000,\n  // gitCacheMs: 250–60000 milliseconds; the Git poll interval during an agent turn.\n  "gitCacheMs": 1000,\n  // gitIdlePollSeconds: 2–3600 seconds; the Git poll interval while the agent is idle.\n  "gitIdlePollSeconds": 15,\n  // showHealthyServices: true | false.\n  "showHealthyServices": false,\n  // showUnavailableOptionalSources: true | false.\n  "showUnavailableOptionalSources": false,\n  // healthUrls: optional credential-free, query-free HTTP(S) URLs; empty means disabled.\n  "healthUrls": { "OK": "", "OV": "" }\n}\n`, { flag: "wx", mode: 0o600 }); }
+  try { await writeFile(guide, `// Operations footer options. Copy values into settings.json (plain JSON, without comments).\n{\n  // enabled: true | false — show the operations footer.\n  "enabled": true,\n  // placement: "belowEditor" — fixed location.\n  "placement": "belowEditor",\n  // minimumRows: 1–12, not greater than maximumRows.\n  "minimumRows": 1,\n  // maximumRows: 3–12, not less than minimumRows.\n  "maximumRows": 8,\n  // healthPollSeconds: 10–3600 seconds.\n  "healthPollSeconds": 60,\n  // healthTimeoutMs: 100–10000 milliseconds.\n  "healthTimeoutMs": 2000,\n  // gitCacheMs: 250–60000 milliseconds; the Git poll interval during an agent turn.\n  "gitCacheMs": 1000,\n  // gitIdlePollSeconds: 2–3600 seconds; the Git poll interval while the agent is idle.\n  "gitIdlePollSeconds": 15,\n  // showHealthyServices: true | false.\n  "showHealthyServices": false,\n  // showUnavailableOptionalSources: true | false.\n  "showUnavailableOptionalSources": false,\n  // showArtifactServer: true | false — the artifact server row of the module artifacts.\n  "showArtifactServer": true,\n  // healthUrls: optional credential-free, query-free HTTP(S) URLs; empty means disabled.\n  "healthUrls": { "OK": "", "OV": "" }\n}\n`, { flag: "wx", mode: 0o600 }); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
 }

@@ -27,6 +27,12 @@ export function justify(left: string, right: string, max: number): string | unde
   if (l + 2 + r > max) return undefined;
   return `${left}${" ".repeat(max - l - r)}${right}`;
 }
+/**
+ * An OSC 8 terminal hyperlink around `text`. Pi's `visibleWidth` counts only `text`, and `truncateToWidth` closes an open link.
+ * The caller passes only a checked http(s) URL with no control character. Without color (NO_COLOR, TERM=dumb) the text stays plain.
+ */
+export const hyperlink = (paint: Paint, url: string | undefined, text: string): string =>
+  url && paint.color ? `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\` : text;
 export const join = (parts: readonly (string | undefined)[], separator = " · "): string => parts.filter((p): p is string => Boolean(p)).join(separator);
 
 /** Quota chip colors. Normal quota stays calm; only low or exhausted quota brightens. Aged alerts keep the glyph but lose brightness. */

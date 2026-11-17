@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 
 /**
@@ -15,6 +15,8 @@ import { DatabaseSync, type StatementSync } from "node:sqlite";
 export const DIRECTORY_VARIABLE = "CROSS_SESSION_RECALL_DIR";
 export const DATABASE_NAME = "history.sqlite3";
 const LEGACY_NAME = "history.json";
+const JSON_MARKER = "legacy_json_migrated";
+const TAKEOVER_MARKER = "old_store_taken_over";
 
 export type HistoryItem = {
   text: string;
@@ -23,9 +25,20 @@ export type HistoryItem = {
   sessionFile?: string;
 };
 
-/** The store directory: `CROSS_SESSION_RECALL_DIR`, else `~/.pi/agent/cross-session-recall`, shared by all profiles. */
+/**
+ * The store directory, shared by all profiles: `CROSS_SESSION_RECALL_DIR`, else
+ * `$XDG_DATA_HOME/tenant-pi/cross-session-recall`, else `~/.local/share/tenant-pi/cross-session-recall`.
+ * It is outside `~/.pi`: the kit writes no file into `~/.pi/agent`.
+ */
 export function storeDir(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
-  return env[DIRECTORY_VARIABLE] || join(home, ".pi", "agent", "cross-session-recall");
+  if (env[DIRECTORY_VARIABLE]) return env[DIRECTORY_VARIABLE];
+  const data = env.XDG_DATA_HOME && isAbsolute(env.XDG_DATA_HOME) ? env.XDG_DATA_HOME : join(home, ".local", "share");
+  return join(data, "tenant-pi", "cross-session-recall");
+}
+
+/** The store directory of the earlier kit versions. The extension only reads it, for the one-time take-over. */
+export function oldStoreDir(home = homedir()): string {
+  return join(home, ".pi", "agent", "cross-session-recall");
 }
 
 export const normalizeText = (text: string): string => text.replace(/\r\n/g, "\n").trim();
@@ -198,16 +211,17 @@ export class RecallStore {
   }
 
   /**
-   * Imports `history.json` once, inside the write lock, and renames it to `history.json.migrated`.
+   * Imports `history.json` of `dir` once, inside the write lock. In the own directory the file is renamed
+   * to `history.json.migrated`; with `readOnly` (the old store directory) the file stays as it is.
    * The metadata marker keeps a second launch, or a failed rename, from importing it again.
    */
-  migrateLegacy(): number {
-    const legacy = join(this.dir, LEGACY_NAME);
+  migrateLegacy(dir = this.dir, readOnly = false): number {
+    const legacy = join(dir, LEGACY_NAME);
     if (!existsSync(legacy)) return 0;
     let values: unknown;
     try { values = JSON.parse(readFileSync(legacy, "utf8")); } catch { values = []; }
     const imported = this.transaction(() => {
-      if (this.db.prepare("SELECT value FROM metadata WHERE key = 'legacy_json_migrated'").get()) return -1;
+      if (this.marker(JSON_MARKER) !== undefined) return -1;
       let count = 0;
       for (const value of Array.isArray(values) ? values : []) {
         if (!isLegacyItem(value)) continue;
@@ -216,15 +230,72 @@ export class RecallStore {
         this.insert({ text, timestamp: value.timestamp, cwd: value.cwd, sessionFile: value.sessionFile });
         count++;
       }
-      this.db.prepare("INSERT INTO metadata(key, value) VALUES ('legacy_json_migrated', ?)").run(String(Date.now()));
+      this.setMarker(JSON_MARKER, String(Date.now()));
       return count;
     });
     if (imported < 0) return 0;
-    try {
-      chmodSync(legacy, 0o600);
-      renameSync(legacy, `${legacy}.migrated`);
-    } catch { /* the marker keeps the import one-time when the rename fails */ }
+    if (!readOnly) {
+      try {
+        chmodSync(legacy, 0o600);
+        renameSync(legacy, `${legacy}.migrated`);
+      } catch { /* the marker keeps the import one-time when the rename fails */ }
+    }
     return imported;
+  }
+
+  /**
+   * Copies the inputs of the old store in `oldDir` into this store, one time. The first open of this store
+   * decides: the marker is set in the same transaction, also when no old store exists.
+   *
+   * The old store is only read. A read-only SQLite connection creates `-wal` and `-shm` files beside the
+   * database, so the extension copies the bytes of the database and of its `-wal` file into a private
+   * folder of this store, opens the copy, and removes the copy after the import.
+   */
+  takeOver(oldDir: string): number {
+    if (this.marker(TAKEOVER_MARKER) !== undefined) return 0;
+    const oldFile = join(oldDir, DATABASE_NAME);
+    let rows: Record<string, unknown>[] = [];
+    let jsonMarker: string | undefined;
+    const found = existsSync(oldFile);
+    if (found) {
+      const copyDir = mkdtempSync(join(this.dir, ".takeover-"));
+      try {
+        const copy = join(copyDir, DATABASE_NAME);
+        writeFileSync(copy, readFileSync(oldFile), { mode: 0o600 });
+        if (existsSync(`${oldFile}-wal`)) writeFileSync(`${copy}-wal`, readFileSync(`${oldFile}-wal`), { mode: 0o600 });
+        const old = new DatabaseSync(copy);
+        try {
+          rows = old.prepare("SELECT text, timestamp, cwd, session_file FROM inputs ORDER BY id").all() as Record<string, unknown>[];
+          const marker = old.prepare("SELECT value FROM metadata WHERE key = ?").get(JSON_MARKER) as { value?: unknown } | undefined;
+          if (marker) jsonMarker = String(marker.value);
+        } finally {
+          old.close();
+        }
+      } finally {
+        rmSync(copyDir, { recursive: true, force: true });
+      }
+    }
+    const imported = this.transaction(() => {
+      if (this.marker(TAKEOVER_MARKER) !== undefined) return 0;
+      for (const row of rows) {
+        const item = toItem(row);
+        if (item.text) this.insert(item);
+      }
+      // The old store had imported its `history.json` already: that import stays one-time.
+      if (jsonMarker !== undefined && this.marker(JSON_MARKER) === undefined) this.setMarker(JSON_MARKER, jsonMarker);
+      this.setMarker(TAKEOVER_MARKER, found ? String(Date.now()) : "none");
+      return rows.length;
+    });
+    return imported;
+  }
+
+  private marker(key: string): string | undefined {
+    const row = this.db.prepare("SELECT value FROM metadata WHERE key = ?").get(key) as { value?: unknown } | undefined;
+    return row ? String(row.value) : undefined;
+  }
+
+  private setMarker(key: string, value: string): void {
+    this.db.prepare("INSERT INTO metadata(key, value) VALUES (?, ?)").run(key, value);
   }
 
   close(): void {

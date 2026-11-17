@@ -176,6 +176,10 @@
         {
           "code": "kit_test_missing",
           "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
+        },
+        {
+          "code": "artifacts_link_click_unverified",
+          "fact": "The artifact server row reads artifacts --json status of the optional module artifacts and is an OSC 8 link to the browse page. Not verified by a test: the link text shows with no stray characters in a Pi session in a Herdr pane on Linux; no test clicks the link. Herdr sends the links of a frame to its client only while its mouse capture is off; with the capture on it removes them and uses ctrl-click for its own links. A shift-click in Sheprd, a click in other terminals, a click in a Herdr pane and the row in Pi-Bolt are not run."
         }
       ]
     },
@@ -551,7 +555,7 @@
         },
         {
           "code": "shell_parsing",
-          "fact": "A rule reads each simple command from its first word. It does not see a command in a subshell, in a script file, or after a prefix such as sudo, time or FOO=1. The rule find / * needs text after the slash, so it allows a bare find / and find -L /. A heredoc line that starts with find / counts as a command and is denied."
+          "fact": "A rule reads each simple command from its first word. It does not see a command in a subshell or in a script file. Only the credsync and Secrets Manager rules accept leading assignments and one sudo or env prefix; no rule sees a command after time. The Secrets Manager rule denies the AWS CLI read in each profile, with or without an AWS row, and does not see an SDK call. The rule find / * needs text after the slash, so it allows a bare find / and find -L /. A heredoc line that starts with find / counts as a command and is denied."
         }
       ]
     },
@@ -627,7 +631,7 @@
         },
         {
           "code": "shared_store",
-          "fact": "The store is the one of the base Pi profile of the user, in the home directory, unless CROSS_SESSION_RECALL_DIR names another. The owner confirms the shared store at acceptance."
+          "fact": "The store is one for all Pi profiles of the user, in ~/.local/share/tenant-pi/cross-session-recall (or below XDG_DATA_HOME), unless CROSS_SESSION_RECALL_DIR names another. The first open copies an old store of ~/.pi/agent/cross-session-recall one time and only reads it. The owner confirms the shared store at acceptance."
         },
         {
           "code": "inputs_in_clear",
@@ -1093,6 +1097,84 @@
         }
       ]
     },
+    "artifacts": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/artifacts"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "artifacts",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "skills/artifacts"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "ARTIFACTS_ORIGIN",
+        "ARTIFACTS_TOKEN_FILE"
+      ],
+      "gaps": [
+        {
+          "code": "server_required",
+          "fact": "The module needs an artifact server of the user with the /v1/artifacts API and a bearer token in a token file of the user. artifacts start runs a local server only from a clone of the server project with its localhost mode and its node_modules; the kit fetches no server, runs no npm step and opens no port beyond loopback."
+        },
+        {
+          "code": "live_upload_unverified",
+          "fact": "No upload from a Pi session or a Claude Code session to a real artifact server. The Linux checks of the kit run the CLI and the installer offline against a loopback test server with a scratch home."
+        },
+        {
+          "code": "sheprd_open_unverified",
+          "fact": "No test runs artifacts open with the real Sheprd: a test checks only that the CLI calls a fake sheprd command with browser open <url>."
+        },
+        {
+          "code": "platform_unverified",
+          "fact": "No macOS run of install.sh --with artifacts or of the CLI. The ps process match of artifacts start and off on macOS is not run."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skill with the kit pin. The profile-load step of scripts/pi_update.py qualify installs no optional module."
+        },
+        {
+          "code": "local_server_live_unverified",
+          "fact": "The Linux checks of the kit run artifacts start and off against a stand-in server.mjs. Not verified in this repository: a hands-on run against a real artifact server."
+        }
+      ]
+    },
+    "artifacts-prompt": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/artifacts"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "artifacts"
+      ],
+      "owner": "artifacts",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [],
+        "prompts": [
+          "prompts/artifacts.md"
+        ],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the prompt with the kit pin, and no Pi or Pi-Bolt session ran /artifacts from this package."
+        }
+      ]
+    },
     "walkr": {
       "source": {
         "kind": "tree",
@@ -1185,6 +1267,264 @@
         {
           "code": "pi_line_unqualified",
           "fact": "No test in this repository loads a Walkr prompt with the kit pin, and no Pi or Pi-Bolt session ran one from this package."
+        }
+      ]
+    },
+    "aws-core": {
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/aws/agent-toolkit-for-aws.git",
+        "commit": "2b762874f54913b9b43d1aa59a464b67486fbd85"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "agent-toolkit-for-aws",
+      "license": "Apache-2.0",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "plugins/aws-core/skills"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [
+        "AWS_MCP_PROXY_PROFILES"
+      ],
+      "gaps": [
+        {
+          "code": "git_source_partly_reviewed",
+          "fact": "The diff of the upstream repository from commit 26c84e3 (2026-10-20) to the pin 2b76287 (2026-11-16) was read for the plugin manifests, the skill lists, the hook and the MCP entries. The skill texts were not reviewed line by line."
+        },
+        {
+          "code": "clone_required",
+          "fact": "install.sh clones the upstream repository with git into ~/.local/share/tenant-pi/git/github.com/aws/agent-toolkit-for-aws and checks out the pin. The first run needs git and network access to GitHub; a run at the same pin fetches nothing."
+        },
+        {
+          "code": "uv_required",
+          "fact": "The aws-mcp server starts with uvx, which downloads mcp-proxy-for-aws-cli 1.8.0 from PyPI at the first start. install.sh checks for uvx and installs nothing."
+        },
+        {
+          "code": "unsigned_by_launcher",
+          "fact": "Read in mcp_proxy_for_aws/sigv4_helper.py at the tag v1.8.0: with --skip-auth, the proxy sends a request unsigned only when the botocore credential chain finds no credentials. The kit entry starts the proxy through scripts/kit_aws_proxy.py, which removes the AWS and Boto variables and points the shared, config and Boto files at /dev/null unless AWS_MCP_PROXY_PROFILES names a profile. Verified offline with botocore 1.43.83, the pin of the proxy: each provider of its credential chain finds no credentials in the launcher environment. Not verified: a session of the real proxy, and a signed session."
+        },
+        {
+          "code": "claude_server_replaced",
+          "fact": "After --claude-aws, Claude Code gets the user-scope server aws-mcp with the kit launcher, as in Pi. A deniedMcpServers entry with the exact command of each plugin aws-mcp server (uvx --from the proxy source) keeps that server off; the plugin files stay as upstream wrote them. Verified with claude mcp list of Claude Code 2.1.326 and a fake uvx. Not verified: a Claude Code session that calls a tool of the kit server."
+        },
+        {
+          "code": "hook_claude_only",
+          "fact": "The PreToolUse hook secret-safety.py of the plugin runs only in Claude Code. In Pi, the command-rules extension of the kit denies the AWS CLI read of a Secrets Manager secret value; it does not see an SDK call."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skills with the kit pin. Not verified in this repository: a hands-on run against AWS Emulator."
+        }
+      ]
+    },
+    "aws-agents": {
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/aws/agent-toolkit-for-aws.git",
+        "commit": "2b762874f54913b9b43d1aa59a464b67486fbd85"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "aws-core"
+      ],
+      "owner": "agent-toolkit-for-aws",
+      "license": "Apache-2.0",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "plugins/aws-agents/skills"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "git_source_partly_reviewed",
+          "fact": "The diff of the upstream repository from commit 26c84e3 (2026-10-20) to the pin 2b76287 (2026-11-16) was read for the plugin manifests, the skill lists, the hook and the MCP entries. The skill texts were not reviewed line by line."
+        },
+        {
+          "code": "clone_required",
+          "fact": "install.sh clones the upstream repository with git into ~/.local/share/tenant-pi/git/github.com/aws/agent-toolkit-for-aws and checks out the pin. The first run needs git and network access to GitHub; a run at the same pin fetches nothing."
+        },
+        {
+          "code": "pi_skills_only",
+          "fact": "Pi gets the skills of the plugin only. Its MCP server awsknowledge comes only with the Claude Code plugin."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skills with the kit pin. Not verified in this repository: a hands-on run against AWS Emulator."
+        }
+      ]
+    },
+    "aws-data-analytics": {
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/aws/agent-toolkit-for-aws.git",
+        "commit": "2b762874f54913b9b43d1aa59a464b67486fbd85"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "aws-core"
+      ],
+      "owner": "agent-toolkit-for-aws",
+      "license": "Apache-2.0",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "plugins/aws-data-analytics/skills"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "git_source_partly_reviewed",
+          "fact": "The diff of the upstream repository from commit 26c84e3 (2026-10-20) to the pin 2b76287 (2026-11-16) was read for the plugin manifests, the skill lists, the hook and the MCP entries. The skill texts were not reviewed line by line."
+        },
+        {
+          "code": "clone_required",
+          "fact": "install.sh clones the upstream repository with git into ~/.local/share/tenant-pi/git/github.com/aws/agent-toolkit-for-aws and checks out the pin. The first run needs git and network access to GitHub; a run at the same pin fetches nothing."
+        },
+        {
+          "code": "pi_skills_only",
+          "fact": "Pi gets the skills of the plugin only. Its own aws-mcp server comes only with the Claude Code plugin; in Pi the entry of aws-core serves it."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skills with the kit pin. Not verified in this repository: a hands-on run against AWS Emulator."
+        }
+      ]
+    },
+    "aws-agents-for-devsecops": {
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/aws/agent-toolkit-for-aws.git",
+        "commit": "2b762874f54913b9b43d1aa59a464b67486fbd85"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "aws-core"
+      ],
+      "owner": "agent-toolkit-for-aws",
+      "license": "Apache-2.0",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "plugins/aws-agents-for-devsecops/skills"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "git_source_partly_reviewed",
+          "fact": "The diff of the upstream repository from commit 26c84e3 (2026-10-20) to the pin 2b76287 (2026-11-16) was read for the plugin manifests, the skill lists, the hook and the MCP entries. The skill texts were not reviewed line by line."
+        },
+        {
+          "code": "clone_required",
+          "fact": "install.sh clones the upstream repository with git into ~/.local/share/tenant-pi/git/github.com/aws/agent-toolkit-for-aws and checks out the pin. The first run needs git and network access to GitHub; a run at the same pin fetches nothing."
+        },
+        {
+          "code": "pi_skills_only",
+          "fact": "Pi gets the skills of the plugin only. Its MCP server aws-devops-agent, with a bearer token from DEVOPS_AGENT_TOKEN, comes only with the Claude Code plugin; the kit sets no token."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skills with the kit pin. Not verified in this repository: a hands-on run against AWS Emulator."
+        }
+      ]
+    },
+    "aws-startup-advisor": {
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/aws/agent-toolkit-for-aws.git",
+        "commit": "2b762874f54913b9b43d1aa59a464b67486fbd85"
+      },
+      "status": "unverified",
+      "requires": [
+        "core",
+        "aws-core"
+      ],
+      "owner": "agent-toolkit-for-aws",
+      "license": "Apache-2.0",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "plugins/aws-startup-advisor/skills"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "git_source_partly_reviewed",
+          "fact": "The diff of the upstream repository from commit 26c84e3 (2026-10-20) to the pin 2b76287 (2026-11-16) was read for the plugin manifests, the skill lists, the hook and the MCP entries. The skill texts were not reviewed line by line."
+        },
+        {
+          "code": "clone_required",
+          "fact": "install.sh clones the upstream repository with git into ~/.local/share/tenant-pi/git/github.com/aws/agent-toolkit-for-aws and checks out the pin. The first run needs git and network access to GitHub; a run at the same pin fetches nothing."
+        },
+        {
+          "code": "pi_skills_only",
+          "fact": "Pi gets the skills of the plugin only. Its own aws-mcp server, its hook, commands and agents come only with the Claude Code plugin."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skills with the kit pin. Not verified in this repository: a hands-on run against AWS Emulator."
+        }
+      ]
+    },
+    "aws-emulator": {
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/aws/agent-toolkit-for-aws.git",
+        "commit": "2b762874f54913b9b43d1aa59a464b67486fbd85"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "agent-toolkit-for-aws",
+      "license": "Apache-2.0",
+      "resources": {
+        "extensions": [],
+        "skills": [
+          "plugins/aws-core/skills/aws-emulator"
+        ],
+        "prompts": [],
+        "themes": []
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "git_source_partly_reviewed",
+          "fact": "The diff of the upstream repository from commit 26c84e3 (2026-10-20) to the pin 2b76287 (2026-11-16) was read for the plugin manifests, the skill lists, the hook and the MCP entries. The skill texts were not reviewed line by line."
+        },
+        {
+          "code": "clone_required",
+          "fact": "install.sh clones the upstream repository with git into ~/.local/share/tenant-pi/git/github.com/aws/agent-toolkit-for-aws and checks out the pin. The first run needs git and network access to GitHub; a run at the same pin fetches nothing."
+        },
+        {
+          "code": "emulator_not_installed",
+          "fact": "The skill holds documents only. It guides the install and the use of AWS Emulator; the kit installs no emulator and checks no AWS CLI version for it."
+        },
+        {
+          "code": "pi_line_unqualified",
+          "fact": "No test in this repository loads the skills with the kit pin. Not verified in this repository: a hands-on run against AWS Emulator."
         }
       ]
     }

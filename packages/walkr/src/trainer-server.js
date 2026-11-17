@@ -6,6 +6,7 @@ import { DoubleStoreError, hash } from "./double-archive.js";
 import { escapeHtml } from "./hosted.js";
 import { TrainerStore, repoName, sessionName } from "./trainer-store.js";
 import { POSIX_ONLY_CODE, posixOnlyRefusal } from "./posix-only.js";
+import { withFoot } from "./brand.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PREFIX = "/_walkr/trainer/";
@@ -112,7 +113,7 @@ export function createTrainerHandler({ token, root, hosted, notify = () => {}, g
         }
         if (req.method !== "GET") fail("METHOD_NOT_ALLOWED", "Use GET for the Trainer page.");
         await store.read(value.repo, value.sessionId);
-        const shell = await fs.readFile(path.join(here, "trainer.html"), "utf8");
+        const shell = withFoot(await fs.readFile(path.join(here, "trainer.html"), "utf8"));
         const html = shell.replace(/__TOKEN__|__REPO__|__SESSION__/g, (placeholder) => escapeHtml(
           placeholder === "__TOKEN__" ? value.token : placeholder === "__REPO__" ? value.repo : value.sessionId));
         send(res, 200, html, "text/html; charset=utf-8", { "content-security-policy": SHELL_CSP });

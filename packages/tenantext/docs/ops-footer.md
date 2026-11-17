@@ -15,7 +15,7 @@ All rows are the Pi footer below the editor. Layout v4 sets no widget. In layout
 | 3 Location and repository | Directory name, branch, original `pwd`, changed `cwd`, and Git facts on the left. Right: agent state, `queued`, duration, session name, `@host`, and the `/ops-footer report` hint | From 40 columns |
 | 4 Context bar | Proportional `sys`, `prompt`, `assistant`, `think`, `tools`, and `free` blocks; threshold markers; totals inside the bar | Always |
 | 5 and later: Quota | One row per configured account: `Codex1`, `Codex2`, `Codex3`, then `Claude`, then `Copilot`. A Copilot-only machine has one Copilot row | When quotas exist and the row budget permits |
-| Right of the quota rows: Memory | OpenViking connectivity and activity; LLM Wiki status, assigned model, and manual capture advice below it; OpenKnowledge (okknow) state and activity below that. In layout v3 this place is directly below the costs | When an integration is present |
+| Right of the quota rows: Memory | OpenViking connectivity and activity; LLM Wiki status, assigned model, and manual capture advice below it; OpenKnowledge (okknow) state and activity below that; the artifact server state below OpenKnowledge. In layout v3 this place is directly below the costs | When an integration is present or the `artifacts` CLI reports a configured server |
 | Last: Services and alerts | Failed or stale services, MCP problems, pending prompts, blocked work, reviews, deployments, flagged output, footer conflict | When it has content |
 
 A healthy session with two Codex accounts shows five rows below the editor at 138 columns: model, directory, bar, `Codex1`, `Codex2`. Below 40 columns the footer shows one compact row and then the bar. Below 20 columns it shows the bar only.
@@ -109,14 +109,14 @@ Reset times are never raw ISO text. Every window shows a relative reset, such as
 
 Each row picks its own form. Candidates run from full account names with resets to short names `C1 C2`, then one window. Narrow rows prefer an alert window. Usage on the location row never displaces a quota chip.
 
-`◂ routed` marks the row of the account that served the last gateway response. `route ✗` marks routing failure and `stale` marks an expired snapshot; both sit on the last Codex row that has a login. A quota reading expires at its lifetime, and not before two poll periods plus 33 seconds: the footer asks each source one time in a poll period, so one late or skipped poll shows no `stale`. The 33 seconds are 30 seconds for one fetch and a margin of 3 seconds. The Codex collection stops after 16 seconds, and a Claude or Copilot probe stops at its first request that times out (15 and 10 seconds). With the default `healthPollSeconds` of 60 the floor is 153 seconds. When the refresh stops, `stale` shows at the larger of the lifetime and the floor: 153 seconds after the last Codex reading with the default settings. Known limit: when the poll time of the Claude or Copilot source is equal to `healthPollSeconds`, a probe that takes over 33 seconds longer than the probe before it shows `stale` for some seconds. The Claude row and the Copilot row never carry the Codex route. Routing with no selected account and no failure shows nothing.
+`◂ routed` marks the row of the account that served the last gateway response. The mark needs an account name in the account header of that response: `llm_provider-x-codex-account` through the gateway, or `X-Codex-Account` from a direct connection to the router. Only the quota router of the gateway sends it; the default gateway routes send none, so the mark does not show (see [Codex routing](codex-routing.md#local-status)). Not verified: the mark after a live request through the gateway and the router. `route ✗` marks routing failure and `stale` marks an expired snapshot; both sit on the last Codex row that has a login. A quota reading expires at its lifetime, and not before two poll periods plus 33 seconds: the footer asks each source one time in a poll period, so one late or skipped poll shows no `stale`. The 33 seconds are 30 seconds for one fetch and a margin of 3 seconds. The Codex collection stops after 16 seconds, and a Claude or Copilot probe stops at its first request that times out (15 and 10 seconds). With the default `healthPollSeconds` of 60 the floor is 153 seconds. When the refresh stops, `stale` shows at the larger of the lifetime and the floor: 153 seconds after the last Codex reading with the default settings. Known limit: when the poll time of the Claude or Copilot source is equal to `healthPollSeconds`, a probe that takes over 33 seconds longer than the probe before it shows `stale` for some seconds. The Claude row and the Copilot row never carry the Codex route. Routing with no selected account and no failure shows nothing.
 
 Whole rows move between layouts. Agent facts stay on the right of the directory row; usage and costs stay on the right of the model row.
 In layout v3, Pi keeps widgets above the editor in the order extensions add them. A widget that another extension adds later can sit between the bar and the editor. Layout v4 has no widget, so this does not apply.
 
 ### Memory status stack
 
-OpenViking sits on the right of the first quota row, below the bar (in layout v3: below session costs). LLM Wiki sits directly below OpenViking. OpenKnowledge sits below LLM Wiki.
+OpenViking sits on the right of the first quota row, below the bar (in layout v3: below session costs). LLM Wiki sits directly below OpenViking. OpenKnowledge sits below LLM Wiki. The artifact server sits below OpenKnowledge.
 At 100 columns or more, these rows share space with quota accounts when both columns fit.
 At narrower widths, memory gets separate right-aligned rows within `maximumRows`.
 
@@ -134,6 +134,26 @@ At narrower widths, memory gets separate right-aligned rows within `maximumRows`
 | `OK · search running`, `exec returned` | Observed `okknow_*` MCP calls, direct or through the `mcp` proxy tool |
 
 The OpenKnowledge row comes from the `okknow` CLI (on `PATH`, else `~/.local/bin/okknow`). The footer runs `okknow --json doctor` in the background at the external poll, at most once in 5 minutes, and stops a run after 30 seconds. It reads only the `state` word. The CLI sends the credentials only to its configured origin; the footer sends no request of its own and shows no origin or credential.
+
+#### Artifact server row
+
+The row shows the state of the artifact server of the optional module `artifacts` (see [artifacts](../../../docs/guides/modules.md#artifacts)). Each form has a narrow form: `Artifacts ✓ running`, then `Art ✓ running`.
+
+| Row | State word | Meaning |
+| --- | --- | --- |
+| `Artifacts ✓ local running` | `running` | The local server runs and answers |
+| `Artifacts ○ local stopped · /artifacts start` | `stopped` | The configuration names a local server, and no local server runs |
+| `Artifacts ✓ remote` | `remote` | The configured remote server answers |
+| `Artifacts ⚠ unreachable` | `unreachable` | The server does not answer |
+| `Artifacts ✗ error` | an unknown word, a bad JSON, a failed or stopped run | The footer cannot read the state |
+
+Source: the `artifacts` CLI, on `PATH`, else `~/.local/bin/artifacts`. The footer runs `artifacts --json status` in the background at the external poll, one run at a time, at most once a minute, and stops a run after 15 seconds. It reads only the `state` word and the `url`. The CLI sends the health request only to its configured origin; the footer sends no request of its own. With no CLI, or the state `unconfigured`, no row appears.
+
+The row text is an OSC 8 terminal hyperlink to the `url` of the CLI, the browse page. The visible text shows no URL, no slug and no token. The footer accepts only an `http` or `https` URL without a user name or a password, and it gives no link when the URL holds a control character. The width count of the footer uses Pi's `visibleWidth`, which does not count the link sequences, so the other rows keep their layout. Without color (`NO_COLOR` or `TERM=dumb`) the row is plain text with no link.
+
+A shift-click on the row opens the artifacts page in a terminal that opens OSC 8 links; Sheprd is the terminal of this design. Herdr keeps the link of each cell, and it sends the links to its client only while its mouse capture is off. With the mouse capture on, Herdr removes the links of the frame and uses ctrl-click for its own link handling, so a shift-click gets no link from Herdr. The click only opens the page; it starts no server. With a stopped server, type `/artifacts start`. The setting `showArtifactServer` turns the row off, and the footer then runs no `artifacts` command.
+
+Not verified: the shift-click in Sheprd, the click in other terminals, the click in a Herdr pane, and the row in Pi-Bolt.
 
 #### Memory label states
 
@@ -295,6 +315,7 @@ The default file is `~/.pi/agent/ops-footer/settings.json`. `PI_CODING_AGENT_DIR
   "gitIdlePollSeconds": 15,
   "showHealthyServices": false,
   "showUnavailableOptionalSources": false,
+  "showArtifactServer": true,
   "healthUrls": {}
 }
 ```

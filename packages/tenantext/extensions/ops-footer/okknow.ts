@@ -13,14 +13,16 @@ const STATES: ReadonlySet<string> = new Set<OkknowState>(["connected", "no-crede
 const executable = (path: string): boolean => {
   try { accessSync(path, constants.X_OK); return statSync(path).isFile(); } catch { return false; }
 };
-/** The okknow CLI: the first on PATH, else the kit link `~/.local/bin/okknow`. */
-export function okknowCommand(env: NodeJS.ProcessEnv = process.env, home = homedir()): string | undefined {
+/** A kit CLI: the first `name` on PATH, else the kit link `~/.local/bin/<name>`. */
+export function kitCommand(name: string, env: NodeJS.ProcessEnv = process.env, home = homedir()): string | undefined {
   for (const dir of (env.PATH ?? "").split(delimiter)) {
-    if (dir && isAbsolute(dir) && executable(join(dir, "okknow"))) return join(dir, "okknow");
+    if (dir && isAbsolute(dir) && executable(join(dir, name))) return join(dir, name);
   }
-  const link = join(home, ".local/bin/okknow");
+  const link = join(home, ".local/bin", name);
   return executable(link) ? link : undefined;
 }
+/** The okknow CLI: the first on PATH, else the kit link `~/.local/bin/okknow`. */
+export const okknowCommand = (env: NodeJS.ProcessEnv = process.env, home = homedir()): string | undefined => kitCommand("okknow", env, home);
 
 /**
  * The footer state from the exit code and the JSON of `okknow --json doctor`. `undefined`: no origin is configured, so no row.

@@ -11,6 +11,7 @@ import { checkedCopies, injectDouble } from "./double-copies.js";
 import { escapeHtml } from "./hosted.js";
 import { overlaps } from "./canonical-path.js";
 import { POSIX_ONLY_CODE, posixOnlyRefusal } from "./posix-only.js";
+import { withFoot } from "./brand.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PANES = ["left", "right"];
@@ -230,7 +231,7 @@ export function createDoubleHandler({ token, archiveDir, stateDir, hosted, train
       if (raw.startsWith("/double-gui/")) {
         if (!gui || raw !== `/double-gui/${gui.shell}`) fail("NOT_FOUND", "Explicitly reconnect Pi to obtain a private GUI URL.");
         if (req.method !== "GET") fail("METHOD_NOT_ALLOWED", "Use GET for the GUI.");
-        const shell = await fs.readFile(path.join(here, "double-session-shell.html"), "utf8");
+        const shell = withFoot(await fs.readFile(path.join(here, "double-session-shell.html"), "utf8"));
         const panels = (await Promise.all(SHARED_GUI_MODE_PANELS.map((file) => fs.readFile(path.join(here, file), "utf8")))).join("");
         // Page structure: one thin top bar (mode shown, title, state, connection, sessions, guides, theme),
         // the stage of the candidates, and the prompt as a docked composer below the stage.
@@ -305,7 +306,7 @@ export function createDoubleHandler({ token, archiveDir, stateDir, hosted, train
         if (req.method !== "GET") fail("METHOD_NOT_ALLOWED", "Use GET for the session shell.");
         await sessionStore.read(value.sessionId);
         // Escaped data attributes only; the shell module reads the view through the session API.
-        const shell = await fs.readFile(path.join(here, "double-session-shell.html"), "utf8");
+        const shell = withFoot(await fs.readFile(path.join(here, "double-session-shell.html"), "utf8"));
         const html = shell.replace(/__DOUBLE_SESSION_ID__|__TOKEN__/g,
           (placeholder) => escapeHtml(placeholder === "__TOKEN__" ? value.token : value.sessionId));
         send(res, 200, html, MIME[".html"], { "content-security-policy": SHELL_CSP });
@@ -369,7 +370,7 @@ export function createDoubleHandler({ token, archiveDir, stateDir, hosted, train
         if (!value) fail("NOT_FOUND", "This private URL is unavailable. Use authenticated Double reopen after a restart.");
         if (req.method !== "GET") fail("METHOD_NOT_ALLOWED", "Use GET for the shell.");
         await store.read(value.comparisonId);
-        const shell = await fs.readFile(path.join(here, "double.html"), "utf8");
+        const shell = withFoot(await fs.readFile(path.join(here, "double.html"), "utf8"));
         const html = shell.replace(/__DOUBLE_COMPARISON_ID__|__TOKEN__/g,
           (placeholder) => escapeHtml(placeholder === "__TOKEN__" ? value.token : value.comparisonId));
         send(res, 200, html, MIME[".html"], { "content-security-policy": SHELL_CSP });

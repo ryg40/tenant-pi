@@ -6,7 +6,7 @@ import type { Settings } from "./settings.ts";
 import type { ContextService, DashboardSnapshot, IntegrationSnapshot, StatusSnapshot } from "./types.ts";
 import { periodState } from "../../src/period-end.ts";
 import { buildView, formatDay, formatLocalTime, formatRelative, formatWhen, isCodexLabel, memoryGroups, type Alert, type QuotaView, type View } from "./view.ts";
-import { fit, join as joinParts, justify, pick, quotaChip, width as visibleWidth, type Candidate } from "./widgets.ts";
+import { fit, hyperlink, join as joinParts, justify, pick, quotaChip, width as visibleWidth, type Candidate } from "./widgets.ts";
 
 export { fit } from "./widgets.ts";
 export type { Paint } from "./paint.ts";
@@ -228,7 +228,8 @@ export function modelUsageRow(view: View, width: number, paint: Paint): string {
 /** Pair the memory stack with quota rows. On narrow terminals keep separate rows, not overlapping columns. */
 function quotaMemoryRows(view: View, width: number, paint: Paint, aged: Aged, now: number): QuotaRow[] {
   const quotas = view.quota ? quotaRows(view.quota, width, paint, aged, now) : [];
-  const memory = view.memory.map(g => ({ group: g, candidates: [g.text, g.compact, g.minimal].map(text => g.alert ? paintAlert(paint, g, aged, text) : paint.fg("muted", text)) }));
+  const memory = view.memory.map(g => ({ group: g, candidates: [g.text, g.compact, g.minimal]
+    .map(text => hyperlink(paint, g.url, g.alert ? paintAlert(paint, g, aged, text) : paint.fg("muted", text))) }));
   if (!memory.length) return quotas;
   if (width >= 100) {
     // Reserve the minimum memory width first; try richer forms in the remaining space.

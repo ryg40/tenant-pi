@@ -8,7 +8,8 @@ body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 
 .cmp-app.is-list-closed .cmp-list { display: none; }
 
 .cmp-bar { grid-area: bar; display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 12px; border-bottom: 1px solid var(--hair); background: var(--rail); }
-.cmp-mark { flex: none; color: var(--strong-txt); font: 700 17px/1 var(--sans); }
+.cmp-mark { flex: none; color: var(--strong-txt); font: 700 17px/1 var(--sans); white-space: nowrap; }
+.cmp-mark .walkr-foot { margin-right: 5px; vertical-align: -2px; }
 .cmp-mark-r { color: var(--accent); }
 .cmp-bar h1 { flex: 0 1 auto; min-width: 0; margin: 0; overflow: hidden; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .cmp-state { flex: none; color: var(--mute-2, var(--mute)); font-size: 12.5px; }

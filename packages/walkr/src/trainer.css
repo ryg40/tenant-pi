@@ -10,7 +10,8 @@ body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.5 v
   padding: 0 16px 24px;
 }
 .trainer-bar { grid-area: bar; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-.trainer-brand { font-weight: 700; color: var(--brand, var(--accent)); }
+.trainer-brand { display: flex; align-items: center; gap: 6px; font-weight: 700; color: var(--brand, var(--accent)); }
+.trainer-brand .walkr-foot { flex: none; }
 .trainer-bar h1 { margin: 0; font-size: 20px; }
 .trainer-id { color: var(--mute); font-family: var(--mono); font-size: 12px; }
 .theme-control { margin-left: auto; color: var(--mute); }

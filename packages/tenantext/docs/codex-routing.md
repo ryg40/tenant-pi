@@ -42,9 +42,12 @@ It uses exact Pi catalog prices when available and pinned API-equivalent estimat
 A missing GPT-6 Astra catalog entry disables the gateway instead of inventing limits.
 The gateway uses `openai-completions`, not native Responses or Codex WebSockets.
 The provider sends the Pi session ID as `extra_body.litellm_session_id`.
-The Codex account proxies turn that value into the ChatGPT `session_id` header, which selects the prompt-cache server.
-Without it each request gets a random session ID, and the cache-read rate drops to about half of the direct providers.
-Only `extra_body` carries the value through the gateway; a top-level `litellm_session_id` is consumed by the gateway.
+The gateway routes are `openai/` deployments. LiteLLM sends the keys of the client's `extra_body` to the account proxy as top-level body keys and drops only `model` (source reading of LiteLLM 1.103.0, 1.108.5 and 1.109.1).
+The account proxy turns `litellm_session_id` into the ChatGPT `session_id` header, which selects the prompt-cache server.
+A top-level `litellm_session_id` stays in the gateway and does not reach the account proxy.
+Without a client ID, an account proxy with a session hook, if you run one, derives a stable ID from the model, the system and developer messages, and the first user message.
+Two conversations with the same model, system text, and first user message then share one ID.
+Not verified: a live request that shows the Pi session ID in the log of an account proxy.
 The standard Pi serializer and stream parser handle messages, reasoning settings, images, and function tools.
 Grammar tools use Pi's function-tool fallback because gateway grammar support is not verified.
 Price rates are USD per million tokens. Luna, Sol, and Astra fallback rates come from Pi's GPT-6 catalog.
@@ -72,6 +75,7 @@ Reload Pi after updating this extension to use the new fallback rates.
 | `litellm-codex/codex-auto/*` | Separate gateway bearer key | The gateway chooses the account by its own policy |
 | Gateway `codex1/<model>` | Separate gateway bearer key | Gateway account 1 only |
 | Gateway `codex2/<model>` | Separate gateway bearer key | Gateway account 2 only |
+| Gateway `codex3/<model>` | Separate gateway bearer key | Gateway account 3 only; the route exists only with three accounts |
 | `openai-codex` | Pi's built-in OAuth provider | Direct Pi account 1 |
 | `openai-codex-2` | Pi's isolated second OAuth provider | Direct Pi account 2 |
 
@@ -80,12 +84,15 @@ Explicit gateway routes require separate client configuration; this extension do
 Direct Pi account credentials and gateway account credentials have separate refresh owners.
 The extension does not assume those independent logins represent the same accounts.
 
-The gateway falls back once before response bytes reach the client.
+The default gateway routes use up to three accounts.
+With three accounts, `codex-auto/*` uses account 3 first, then account 2, then account 1: two fallbacks.
+With two accounts, it uses account 2, then account 1: one fallback.
+A fallback happens before response bytes reach the client.
 A reported account limit or HTTP 429 can cause fallback.
 The gateway applies its own account policy after a later reset.
 Authentication errors and mid-stream failures do not cause an account switch.
 
-Warning: Fallback cannot complete a request when both accounts have exhausted their allowance.
+Warning: Fallback cannot complete a request when all accounts have exhausted their allowance.
 
 ## Conversation safety
 
@@ -136,8 +143,15 @@ Redirects fail instead of forwarding credentials to another URL.
 ## Local status
 
 `/codex-accounts routing` displays local routing information without making a model call.
-The `after_provider_response` hook accepts a gateway account name of the form `codexN` (`codex1`, `codex2`, `codex3`, ...) from `X-Codex-Account`.
+The `after_provider_response` hook accepts a gateway account name of the form `codexN` (`codex1`, `codex2`, `codex3`, ...) from the account header of the response.
 The selected account means the last response account, not a promise about the next request.
+Only a quota router in front of the account proxies, if you run one, sets `X-Codex-Account`.
+The default `codex-auto/*` routes go to an account proxy with the native fallback of LiteLLM, not through that router.
+Their responses carry no account name, so the selected account stays unknown.
+LiteLLM returns the headers of an upstream response with the prefix `llm_provider-` (source reading of LiteLLM 1.109.1), so the router header reaches Pi as `llm_provider-x-codex-account`.
+The hook reads `llm_provider-x-codex-account` first and the bare `X-Codex-Account` second, for a direct connection to the router.
+When both names carry a valid account name, the prefixed one wins: it is the value of the router behind the gateway.
+Not verified: a live request from Pi through the gateway and the router that shows the selected account.
 
 The report also shows a preferred account. The extension does not know the policy of a gateway, so the default is `not set`.
 To show the account that your gateway prefers, add `preferredAccount` to `codex-accounts/settings.json` in the Pi agent directory:
@@ -236,7 +250,7 @@ Observed with LiteLLM 1.101.0: streamed tool responses can report `stop` instead
 The gateway must map a completed streamed response with tool calls to `finish_reason: "tool_calls"`, which Pi reads as `toolUse`.
 Not verified: a streamed tool call through every gateway version.
 Not verified: a non-streaming tool request.
-Not verified: live requests for every alias, or preservation of `X-Codex-Account`.
+Not verified: live requests for every alias, or the account header of a live router response.
 
 ## Node child loader compatibility
 

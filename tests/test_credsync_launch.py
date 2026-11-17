@@ -25,7 +25,10 @@ os.environ['PROJECT_TOKEN']='fixture'
 os.execvpe(command[0],command,os.environ)
 ''')
         cli.chmod(0o700)
-        (tools / 'fnox').symlink_to('/bin/true')
+        # A small script, not a link to /bin/true: macOS has no /bin/true.
+        fnox = tools / 'fnox'
+        fnox.write_text('#!/bin/sh\nexit 0\n')
+        fnox.chmod(0o700)
         env = {'PATH': str(tools) + ':/usr/bin:/bin', 'HOME': str(root), 'UNRELATED_TOKEN': 'fixture',
                'PI_CODING_AGENT_DIR': str(root / 'profile'), 'HERDR_PANE_ID': 'fixture'}
 

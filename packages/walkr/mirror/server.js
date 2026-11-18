@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createCompareHandler } from "../src/compare-server.js";
 import { compareRoot } from "../src/compare-store.js";
 import { allowedHosts } from "../src/allowed-hosts.js";
+import { mirrorSources } from "../src/history.js";
 
 const src = fileURLToPath(new URL("../src/", import.meta.url));
 const PREFIX = "/_walkr/compare/";
@@ -14,6 +15,8 @@ const HEADERS = { "cache-control": "no-store", "x-content-type-options": "nosnif
 // The file name comes from this table, never from the request.
 const THEME = { "/theme.css": ["theme.css", "text/css; charset=utf-8"], "/theme.js": ["theme.js", "text/javascript; charset=utf-8"] };
 const READ_ONLY = "This page is a read-only mirror. Pick, rate and submit on the Walkr page of the computer that made the session.";
+// The history of the page: Compare in <root>/sessions, and the Core, Double, Coinflip and Trainer records of each
+// computer in <root>/hosts/<host>/. The handler reads them and writes nothing.
 
 function json(res, status, body) {
   res.writeHead(status, { ...HEADERS, "content-type": "application/json; charset=utf-8" });
@@ -21,14 +24,14 @@ function json(res, status, body) {
 }
 
 /**
- * A persistent, read-only Compare page over one root of session records. It is optional: no install step of the kit
+ * A persistent, read-only Walkr history page over one root of session records of one or more computers. It is optional: no install step of the kit
  * starts it. It writes nothing and accepts GET only, so the root can be a read-only copy of the records of other
  * computers. The address `/` always leads to the page, also after a restart. The server has no login of its own:
  * each client that reaches the port reads each session. Keep it on loopback or behind a proxy that asks for a login.
  */
 export async function startMirror({ root = compareRoot(), port = 0, bind = "127.0.0.1", hosts = allowedHosts() } = {}) {
   const agent = randomBytes(32).toString("hex");
-  const compare = createCompareHandler({ token: agent, root, hosted: false });
+  const compare = createCompareHandler({ token: agent, root, hosted: false, mirror: true, sources: () => mirrorSources(root) });
   let page;
 
   const server = http.createServer(async (req, res) => {
@@ -76,7 +79,7 @@ export async function startMirror({ root = compareRoot(), port = 0, bind = "127.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const { port } = await startMirror({ port: Number(process.env.HUMAN_REVIEW_PORT || 0), bind: process.env.HUMAN_REVIEW_BIND || "127.0.0.1" });
-    console.log(`Walkr Compare mirror (read-only): port ${port}, root ${compareRoot()}`);
+    console.log(`Walkr history mirror (read-only): port ${port}, root ${compareRoot()}`);
   } catch (error) {
     console.error(`walkr mirror: ${error.message}`);
     process.exit(1);

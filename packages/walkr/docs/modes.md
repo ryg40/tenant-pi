@@ -34,7 +34,8 @@ No command opens a chat, loads a Pi extension or requests a model.
 ## Mode bar
 
 The Core review page and the Double, Coinflip and Trainer pages show a bar with four modes: Core, Double, Coinflip and Trainer.
-The Compare page has no mode bar: it is one view of every Compare session, with a session list and two selectors. See [Compare: The page](compare.md#the-page).
+The Compare page has no mode bar: it is the Walkr history page, one view of the sessions of every type, with a session list and two selectors.
+A type with no session shows the text of its guide page. See [Compare: The history page](compare.md#the-history-page).
 The active mode has `aria-current="page"`. Each link names its command in the title.
 The reviewed page itself gets no bar.
 

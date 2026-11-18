@@ -3,6 +3,7 @@ import http from "node:http";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { DoubleStore } from "./double-store.js";
+import { doubleArchiveRoot } from "./double-archive.js";
 import { SERVER_PROTOCOL } from "./paths.js";
 import { overlaps } from "./canonical-path.js";
 import { assertPosixOnly } from "./posix-only.js";
@@ -13,11 +14,11 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 export function configuration(env = process.env, platform = process.platform) {
   assertPosixOnly(platform); // Before any configuration or path access.
   if (env.HUMAN_REVIEW_HOSTED === "1") fail("Double is not available in hosted mode.");
-  const archiveDir = env.HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR;
+  const archiveDir = doubleArchiveRoot(env);
   const stateDir = env.HUMAN_REVIEW_STATE_DIR;
   // Constructors validate paths only; neither path is accessed here.
   try { new DoubleStore({ archiveDir }); }
-  catch { fail("Double requires an explicit canonical absolute HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR."); }
+  catch { fail("HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR must be a canonical absolute directory. Unset it for ~/.local/.walkr/double."); }
   try { new DoubleStore({ archiveDir: stateDir }); }
   catch { fail("Double requires an explicit canonical absolute HUMAN_REVIEW_STATE_DIR."); }
   if (overlaps(stateDir, archiveDir)) {

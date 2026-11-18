@@ -15,8 +15,8 @@ const HELP = `walkr-coinflip
                                              print its manifest pane; use it when the winner's copy folder is gone
 
 Coinflip runs only in the local shared GUI. Choose, Stop, Submit, Retry and recovery are GUI actions.
-Requires explicit absolute HUMAN_REVIEW_STATE_DIR and HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR and an existing
-server started with walkr-double serve. This command never starts, replaces, or restarts a service,
+Requires an explicit absolute HUMAN_REVIEW_STATE_DIR and an existing server started with walkr-double serve.
+The archive is ~/.local/.walkr/double, or HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR when it is set (an explicit value wins). This command never starts, replaces, or restarts a service,
 opens a browser, launches a chat, loads an extension, or requests inference.
 For the shared GUI, separately approve and load integrations/pi/shared-gui.ts in the originating
 persistent Pi chat, then explicitly run /shared-gui {"action":"connect"} and use its private URL.

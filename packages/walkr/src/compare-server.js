@@ -7,6 +7,8 @@ import { escapeHtml } from "./hosted.js";
 import { CompareStore, SCHEMA, VERSION, sessionName } from "./compare-store.js";
 import { POSIX_ONLY_CODE, posixOnlyRefusal } from "./posix-only.js";
 import { withFoot } from "./brand.js";
+import { TYPES, createHistory } from "./history.js";
+import { modeGuidance } from "./modes.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PREFIX = "/_walkr/compare/";
@@ -15,6 +17,7 @@ const STATIC = {
   "/_walkr/compare/app.js": ["compare.js", SCRIPT],
   "/_walkr/compare/compare-stars.js": ["compare-stars.js", SCRIPT],
   "/_walkr/compare/frame-zoom.js": ["frame-zoom.js", SCRIPT],
+  "/_walkr/compare/history-view.js": ["history-view.js", SCRIPT],
   "/_walkr/compare/compare.css": ["compare.css", "text/css; charset=utf-8"],
 };
 // The page frames only option documents of this server. No other origin can frame the page.
@@ -68,9 +71,17 @@ async function readBody(req) {
  * capability URL for each server run. The agent relays that URL to the owner and can therefore reach the page
  * credential, so this split guards against mistakes, not against a hostile or steered agent.
  */
-export function createCompareHandler({ token, root, hosted, platform = process.platform }) {
+/**
+ * The page is also the history of every Walkr type: `sources` gives the record places of Core, Double, Coinflip and
+ * Trainer (src/history.js). Only Compare sessions take a pick, a comment, a submit and a rating; the other types show
+ * read-only. `mirror` marks the read-only mirror: the start guidance then says that this page cannot run a mode.
+ */
+export function createCompareHandler({ token, root, hosted, platform = process.platform, sources, mirror = false }) {
   let store;
   const opened = () => store ??= new CompareStore({ root, platform });
+  const history = createHistory({ compare: opened, platform, ...(sources ? { sources } : {}) });
+  // Static guidance from src/modes.js, one template for each type. The page clones it for a type with no session.
+  const guides = TYPES.map((type) => `<template data-guide="${type}">${modeGuidance(type, { hosted: mirror })}</template>`).join("\n");
   const page = { shell: secret(), token: secret() };
   const pagePath = (sessionId) => `${PREFIX}g/${page.shell}${sessionId ? `#${sessionId}` : ""}`;
 
@@ -93,7 +104,7 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
         if (!matches(raw.slice(`${PREFIX}g/`.length), page.shell)) fail("NOT_FOUND", "This private Compare URL is unavailable. Use walkr-compare open for a new one.");
         method("GET");
         const shell = withFoot(await fs.readFile(path.join(here, "compare.html"), "utf8"));
-        send(res, 200, shell.replace(/__TOKEN__|__FRAMES__/g, (name) => escapeHtml(name === "__TOKEN__" ? page.token : `${PREFIX}o/${page.shell}`)),
+        send(res, 200, shell.replace(/__TOKEN__|__FRAMES__/g, (name) => escapeHtml(name === "__TOKEN__" ? page.token : `${PREFIX}o/${page.shell}`)).replace("<!--walkr-guides-->", guides),
           "text/html; charset=utf-8", { "content-security-policy": SHELL_CSP });
         return true;
       }
@@ -123,6 +134,19 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
       if (route === "page") {
         agentOnly(); method("GET");
         send(res, 200, { path: pagePath() });
+        return true;
+      }
+      if (route === "history") {
+        method("GET");
+        send(res, 200, await history.list());
+        return true;
+      }
+      const record = route.match(/^history\/(h-[a-f0-9]{24})$/);
+      if (record) {
+        method("GET");
+        const view = await history.read(record[1]);
+        if (!view) fail("NOT_FOUND", "This history row is not in the saved records.");
+        send(res, 200, { view });
         return true;
       }
       if (route === "sessions") {

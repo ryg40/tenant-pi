@@ -4,9 +4,31 @@ import type { McpBridge } from "./lib/mcp-bridge.mjs";
 
 export const TOOL_NAME_PREFIX = "openviking_";
 
-export function registerMcpTools(pi: any, bridge: McpBridge): string[] {
+/**
+ * The Pi-only allowlist `OPENVIKING_PI_TOOLS`: comma-separated server tool
+ * names without the prefix. Unset or empty means every tool (null).
+ */
+export function toolAllowlist(env: Record<string, string | undefined> = process.env): Set<string> | null {
+  const names = String(env.OPENVIKING_PI_TOOLS || "").split(",").map((name) => name.trim()).filter(Boolean);
+  return names.length ? new Set(names) : null;
+}
+
+export interface RegisterOptions {
+  env?: Record<string, string | undefined>;
+  /** Called once for each allowlist name that the catalogue does not have. */
+  onUnknown?: (name: string) => void;
+}
+
+export function registerMcpTools(pi: any, bridge: McpBridge, options: RegisterOptions = {}): string[] {
   const validator = new AjvJsonSchemaValidator();
-  return bridge.state.tools.map((tool) => {
+  const allow = toolAllowlist(options.env);
+  const catalogue = bridge.state.tools;
+  if (allow) {
+    const known = new Set(catalogue.map((tool) => tool.name));
+    for (const name of allow) if (!known.has(name)) options.onUnknown?.(name);
+  }
+  const selected = allow ? catalogue.filter((tool) => allow.has(tool.name)) : catalogue;
+  return selected.map((tool) => {
     const name = TOOL_NAME_PREFIX + tool.name;
     const validate = validator.getValidator(tool.inputSchema);
     pi.registerTool({

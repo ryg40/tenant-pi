@@ -25,7 +25,8 @@ async function setup(t) {
 }
 
 async function serve(t, f) {
-  const s = await listen(t, f, { HUMAN_REVIEW_COMPARE_ROOT: f.root });
+  // The history of the page also reads Trainer: a disposable root keeps the datasets of this computer out of the test.
+  const s = await listen(t, f, { HUMAN_REVIEW_COMPARE_ROOT: f.root, HUMAN_REVIEW_TRAINER_ROOT: path.join(f.dir, "trainer") });
   return { ...s, agent: (route, options) => s.api(`${API}/${route}`, options) };
 }
 
@@ -285,7 +286,8 @@ test("the page lists the sessions newest first, shows the type and the format of
   const rows = [...page.$("sessions").querySelectorAll("button")];
   assert.deepEqual(rows.map((row) => row.dataset.session), [text.result.sessionId, html.result.sessionId], "newest first");
   assert.equal(rows[0].querySelector(".cmp-badge")?.textContent, "New");
-  assert.equal(page.$("type").textContent, "cfn-options");
+  assert.equal(page.$("type").dataset.type, "compare");
+  assert.equal(page.$("type").dataset.workflow, "cfn-options");
   assert.equal(page.$("title").textContent, "Add a dead-letter queue");
   const frames = [...page.$("stage").querySelectorAll("iframe")];
   assert.equal(frames.length, 3);
@@ -327,7 +329,8 @@ test("the page lists the sessions newest first, shows the type and the format of
 
   // The older and newer buttons step through the list; a text session shows each version as clean text, with the original folded above.
   await page.click(page.$("newer"));
-  assert.equal(page.$("type").textContent, "text-revision");
+  assert.equal(page.$("type").dataset.type, "compare");
+  assert.equal(page.$("type").dataset.workflow, "text-revision");
   assert.equal(page.$("viewMode").value, "columns");
   assert.deepEqual([...page.$("viewMode").options].map((item) => item.value), ["columns", "single"]);
   assert.equal(page.$("original").hidden, false);
@@ -349,7 +352,7 @@ test("the page lists the sessions newest first, shows the type and the format of
   assert.equal(none.pick, null);
   assert.equal(none.note, "All three are too long");
 
-  page.$("typeFilter").value = "cfn-options";
+  page.$("typeFilter").value = "compare:cfn-options";
   page.$("typeFilter").dispatchEvent(new page.window.Event("change"));
   assert.deepEqual([...page.$("sessions").querySelectorAll("button")].map((row) => row.dataset.session), [html.result.sessionId]);
 });
@@ -541,7 +544,8 @@ test("a late answer for an earlier session never replaces the selected session",
   release();
   await new Promise((resolve) => setTimeout(resolve, 300));
   assert.equal(page.$("title").textContent, "Simplify the ticket update", "the held answer of the first session is dropped");
-  assert.equal(page.$("type").textContent, "text-revision");
+  assert.equal(page.$("type").dataset.type, "compare");
+  assert.equal(page.$("type").dataset.workflow, "text-revision");
   assert.equal(page.$("stage").querySelectorAll("iframe").length, 0);
 });
 

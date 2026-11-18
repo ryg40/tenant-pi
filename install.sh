@@ -518,7 +518,7 @@ try:
             # A list of plain names replaces the defaults, and it takes no + entry.
             additive = tools and all(isinstance(tool, str) and tool[:1] in ('+', '-') for tool in tools)
             tools.append('+codemode' if additive else 'codemode')
-    aws_lines = kit_aws.pi_skills(settings, aws_clone, aws_rows, aws_selected, adopt)
+    aws_lines = kit_aws.pi_skills(settings, aws_clone, aws_rows, aws_selected, adopt, profile)
     changed = before != settings
     models = (kit / 'config/models.example.json').read_text()
     # Claude Code gets the skills that the manifest declares for the package, not each folder with a SKILL.md.

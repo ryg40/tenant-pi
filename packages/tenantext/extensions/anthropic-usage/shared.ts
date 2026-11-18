@@ -8,6 +8,7 @@ import { parseAnthropicUsage, type AnthropicWindow } from "./usage.ts";
  * that uses the same file, reads it before it asks the endpoint, because the endpoint answers HTTP 429 when several
  * clients poll. Shape: `{ attemptAt, at, limits: [{ kind, percent, resets_at, scope: { model: { display_name } } }] }`.
  * `at` is the time of the last good reading. `attemptAt` is the time of the last request of any client. No token is in the file.
+ * With an account store the file of a slot also has `account`, a short hash of the account id of the reading.
  */
 export const ATTEMPT_MS = 5 * 60_000;
 export interface SharedReading { at?: number; attemptAt?: number; windows: AnthropicWindow[] }
@@ -18,8 +19,11 @@ export interface SharedStore {
 	write(now: number, windows: AnthropicWindow[]): void;
 }
 
-export const sharedReadingPath = (env: NodeJS.ProcessEnv = process.env, home = homedir()): string =>
-	join(env.XDG_CACHE_HOME || join(home, ".cache"), "claude-pi-footer", "usage.json");
+export const sharedCacheDir = (env: NodeJS.ProcessEnv = process.env, home = homedir()): string =>
+	join(env.XDG_CACHE_HOME || join(home, ".cache"), "claude-pi-footer");
+/** With an account store (`claude-account`), each slot has its own file, so a reading never crosses to the other account. */
+export const sharedReadingPath = (env: NodeJS.ProcessEnv = process.env, home = homedir(), slot?: string): string =>
+	join(sharedCacheDir(env, home), slot ? `usage-${slot}.json` : "usage.json");
 
 const finite = (value: unknown): number | undefined => typeof value === "number" && Number.isFinite(value) ? value : undefined;
 function load(path: string): Record<string, unknown> {
@@ -50,10 +54,12 @@ export function limitsOf(windows: AnthropicWindow[]) {
 	});
 }
 
-export function fileSharedStore(path = sharedReadingPath()): SharedStore {
+/** `account`: the hash of the account id that the reading must have. A reading of another account reads as no reading. */
+export function fileSharedStore(path = sharedReadingPath(), account: () => string | undefined = () => undefined): SharedStore {
 	return {
 		read() {
-			const v = load(path);
+			const v = load(path), key = account();
+			if (key !== undefined && v.account !== key) return { attemptAt: finite(v.attemptAt), windows: [] };
 			return { at: finite(v.at), attemptAt: finite(v.attemptAt), windows: parseAnthropicUsage({ limits: v.limits }).windows };
 		},
 		claim(now) {
@@ -64,7 +70,8 @@ export function fileSharedStore(path = sharedReadingPath()): SharedStore {
 			return true;
 		},
 		write(now, windows) {
-			try { save(path, { attemptAt: now, at: now, limits: limitsOf(windows) }); } catch { /* The shared file is optional. */ }
+			const key = account();
+			try { save(path, { attemptAt: now, at: now, limits: limitsOf(windows), ...(key !== undefined ? { account: key } : {}) }); } catch { /* The shared file is optional. */ }
 		},
 	};
 }

@@ -84,7 +84,8 @@ walkr-coinflip session export-winner '<session-id>' /absolute/new-folder
 walkr-coinflip session output '<submitted-session-id>'
 ```
 
-The commands need the same `HUMAN_REVIEW_STATE_DIR` and `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR` as the server.
+The commands need the same `HUMAN_REVIEW_STATE_DIR` as the server. The archive is `~/.local/.walkr/double`; when the server uses `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR`, set the same value.
+The Walkr history page lists the saved Coinflip sessions read-only ([Compare](compare.md#the-history-page)).
 Choose, Send instruction, Stop, Submit, Retry and recovery are browser actions. The CLI has no command for them, and the server refuses them for the agent credential.
 
 ## HTTP routes

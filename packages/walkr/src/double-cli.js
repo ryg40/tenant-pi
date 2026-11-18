@@ -22,7 +22,8 @@ const HELP = `walkr-double (compatibility: human-review double)
   session <actions|next|end|ack|fail|retry|attach> <session-id> <absolute-request.json>
                                              Submit the exact saved request; never generate IDs on retry
 
-Requires explicit absolute HUMAN_REVIEW_STATE_DIR and HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR.
+Requires an explicit absolute HUMAN_REVIEW_STATE_DIR. The archive is ~/.local/.walkr/double, or
+HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR when it is set (an explicit value wins).
 Double never starts, replaces, or restarts a service from a client command.
 Serve refuses existing records and locks. After a crash, use a fresh state directory with the same archive.
 No browser is opened automatically. Keep private URLs private.
@@ -74,7 +75,7 @@ function parse(args) {
   fail("Invalid Double arguments. Use human-review double --help. Ack requires an exact batch ID and --action-id.");
 }
 
-async function serve({ stateDir }) {
+async function serve({ stateDir, archiveDir }) {
   // Never call legacy start(): its old-protocol replacement is not authorized here.
   try { await fs.mkdir(stateDir, { mode: 0o700 }); }
   catch (error) { if (error.code !== "EEXIST") fail("Cannot create the disposable Double state directory."); }
@@ -94,7 +95,7 @@ async function serve({ stateDir }) {
     await handle.close();
     handle = null;
     const { createServer } = await import("./server.js");
-    service = createServer();
+    service = createServer({ doubleArchiveDir: archiveDir });
     await new Promise((resolve, reject) => {
       service.server.once("error", reject);
       service.server.listen(0, "127.0.0.1", resolve);

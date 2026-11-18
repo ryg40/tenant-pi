@@ -32,7 +32,7 @@ A `steer` request comes from the owner's prompt box; follow `payload.steer.text`
 Without it, no winner exists: create two new candidates. Never infer a winner or a rejection.
 If the winner's copy folder changed or is gone, run `session export-winner` with a new folder and use its printed pane on the winner side.
 Only for explicitly approved checkout-local work, use these POSIX shell commands with the approved absolute
-`HUMAN_REVIEW_STATE_DIR` and `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR`:
+`HUMAN_REVIEW_STATE_DIR`. The archive is `~/.local/.walkr/double`; keep the approved `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR` when the server uses one:
 
 ```sh
 {{LOCAL_COINFLIP_COMMAND}} gui view

@@ -2,7 +2,8 @@ import { readStoredCredential, type ExtensionAPI } from "@earendil-works/pi-codi
 import { Text } from "@earendil-works/pi-tui";
 import { loadAnthropicSettings, type AnthropicUsageSettings } from "./settings.ts";
 import { fileSharedStore } from "./shared.ts";
-import { ANTHROPIC_REFRESH_EVENT, createAnthropicStatus } from "./status.ts";
+import { createAnthropicMeter } from "./accounts.ts";
+import { ANTHROPIC_REFRESH_EVENT } from "./status.ts";
 
 const ENTRY_TYPE = "anthropic-usage-report";
 const COMMANDS = ["report", "refresh", "help"];
@@ -12,7 +13,7 @@ const TURN_REFRESH_MS = 60_000;
 export default function anthropicUsage(pi: ExtensionAPI) {
 	let settings: AnthropicUsageSettings = loadAnthropicSettings();
 	let provider: string | undefined;
-	const status = createAnthropicStatus({
+	const status = createAnthropicMeter({
 		settings: () => settings,
 		detect: () => ({ readPiCredential: () => readStoredCredential("anthropic") }),
 		emit: (event, value) => pi.events.emit(event, value),

@@ -113,6 +113,8 @@ Credential environment variables:
 | `OPENVIKING_RECALL_PEER_SCOPE` | `all` recalls other project memories with a score penalty; `actor` only sees global plus the current project |
 | `OPENVIKING_DEBUG_LOG` | Write JSON Lines debug records to this path. `OV_DEBUG_LOG` is a deprecated alias kept for existing setups |
 
+`OPENVIKING_PI_TOOLS` is a Pi-only allowlist for the registered OpenViking tools: a comma-separated list of server tool names without the `openviking_` prefix, for example `OPENVIKING_PI_TOOLS=find,read,search,remember,rule_search,list`. Unset or empty registers all tools. An unknown name is logged once (with `OPENVIKING_DEBUG_LOG`) and is not an error. The `viking://` guard of the built-in file tools names `openviking_read`, `openviking_grep`, `openviking_glob`, `openviking_list`, `openviking_write` and `openviking_edit` in its hint; keep the tools in the list that you want that hint to offer.
+
 Recall asks the server to assemble the context block in one request
 (`POST /api/v1/search/search` with `mode="context"`), so token budgeting, detail
 tiers and cross-turn dedup are shared with every other harness. Deployments

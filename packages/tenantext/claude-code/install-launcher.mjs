@@ -4,11 +4,13 @@ import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 try {
-	const ordinary = process.argv.length === 3 && process.argv[2] === "--claude";
-	if (process.argv.length !== 2 && !ordinary) throw new Error("Usage: node packages/tenantext/claude-code/install-launcher.mjs [--claude]");
+	// No flag: tenant-claude. `--claude`: the ordinary claude launcher. `--account`: the claude-account command.
+	const LAUNCHERS = { "": ["tenant-claude", "./bin/tenant-claude.mjs"], "--claude": ["claude", "./bin/claude.sh"], "--account": ["claude-account", "./bin/claude-account.mjs"] };
+	const flag = process.argv.length === 3 && process.argv[2] ? process.argv[2] : process.argv.length === 2 ? "" : undefined;
+	if (flag === undefined || !Object.hasOwn(LAUNCHERS, flag)) throw new Error("Usage: node packages/tenantext/claude-code/install-launcher.mjs [--claude | --account]");
 	if (!process.env.HOME || !isAbsolute(process.env.HOME)) throw new Error("HOME must be absolute.");
-	const name = ordinary ? "claude" : "tenant-claude";
-	const target = fileURLToPath(new URL(ordinary ? "./bin/claude.sh" : "./bin/tenant-claude.mjs", import.meta.url));
+	const [name, file] = LAUNCHERS[flag];
+	const target = fileURLToPath(new URL(file, import.meta.url));
 	const directory = join(process.env.HOME, ".local", "bin");
 	const link = join(directory, name);
 	let exists = false;

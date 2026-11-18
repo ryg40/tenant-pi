@@ -617,7 +617,9 @@ Files:
 | `claude-code/scripts/permission-profile.mjs` | Shared mode state and launch validation |
 | `claude-code/scripts/claude-mode.mjs` | Controller used by the user-only `/claude-mode` command |
 | `claude-code/bin/tenant-claude.mjs` | Separate shell selection and launch actions |
-| `claude-code/install-launcher.mjs` | Standalone, collision-preserving launcher installation |
+| `claude-code/install-launcher.mjs` | Standalone, collision-preserving launcher installation. `--account` links `claude-account` |
+| `claude-code/bin/claude-account.mjs` | The `claude-account` command: log in two Claude accounts and switch the live login. See [Claude accounts](docs/claude-accounts.md) |
+| `claude-code/scripts/claude-accounts.mjs` | The account store of `claude-account`. The Anthropic meter and the status line read it |
 | `claude-code/scripts/herdr-idle.mjs` | Backs `/herdr-idle`: runs `idle_cleanup.py switch` of the herdr-idle-cleanup skill |
 | `claude-code/scripts/idle-script.mjs` | Finds `idle_cleanup.py` for the `SessionStart` hook and `/herdr-idle` |
 | `claude-code/scripts/pre-tool-use.mjs` | `PreToolUse` hook for `Bash`. Denies a command that matches a rule, and allows the call on every failure |

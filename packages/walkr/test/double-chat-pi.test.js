@@ -27,13 +27,10 @@ for (const failPersistence of [false, true]) {
     const host = await import(pathToFileURL(path.join(piPackage, "dist/index.js")));
     const { createAssistantMessageEventStream } = await import(pathToFileURL(path.join(piPackage, "node_modules/@earendil-works/pi-ai/dist/index.js")));
     const f = await fixture(t);
-    const s = await listen(t, f);
+    // listen() keeps the state, archive and HOSTED=0 variables set until the server closes.
+    const s = await listen(t, f, { HUMAN_REVIEW_HOSTED: "0" });
     await fs.writeFile(path.join(f.stateDir, "server.json"), JSON.stringify({ protocol: SERVER_PROTOCOL, port: s.port, token: s.token }), { mode: 0o600 });
     assert.equal((await s.api("/api/double", { method: "POST", body: f.manifest })).status, 200);
-    const env = { HUMAN_REVIEW_STATE_DIR: f.stateDir, HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR: f.archiveDir, HUMAN_REVIEW_HOSTED: "0" };
-    const old = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
-    Object.assign(process.env, env);
-    t.after(() => { for (const [key, value] of Object.entries(old)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; } });
     const agentDir = path.join(f.root, "pi-agent");
     await fs.mkdir(agentDir);
     const settingsManager = host.SettingsManager.inMemory({ compaction: { enabled: false }, retry: { enabled: false }, cacheWarming: "off" });

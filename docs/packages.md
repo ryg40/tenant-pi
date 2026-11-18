@@ -67,6 +67,16 @@ It preserves unrelated `~/.local/bin/tenant-claude` entries and selects no mode.
 The main `install.sh` remains unchanged. The plugin directory already belongs to the package's shipped file set.
 See [the command interface and safety boundaries](../packages/tenantext/README.md#tenant-claude-permission-profile) before selecting a mode.
 
+### Claude accounts
+
+`claude-account` keeps the logins of two Claude subscription accounts and switches the live login of Claude Code. It changes only the login data, so both accounts share one set of memory, settings and sessions. Install its link from the kit root:
+
+```sh
+node packages/tenantext/claude-code/install-launcher.mjs --account
+```
+
+See [Claude accounts](../packages/tenantext/docs/claude-accounts.md) for the commands, the store and the quota rows.
+
 ### Publish set
 
 `PUBLISH_DIRS` in `scripts/publish_check.py` publishes tracked package files except installed dependencies and build output.

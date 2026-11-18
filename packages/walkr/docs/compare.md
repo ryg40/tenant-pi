@@ -26,20 +26,20 @@ A code change with no visual output works for other code too. The agent then use
 
 ## The page
 
-There is one page for all sessions. It has no mode menu.
+There is one page for all sessions. It has no mode menu. It is also the Walkr history page: see [The history page](#the-history-page).
 The private URL belongs to one server run. A page that is open shows a new session without a new URL.
 
 | Part | Content |
 | --- | --- |
 | Bar | The foot logo and the theme-coloured `walkr` wordmark, Sessions, the session type, title and state, Newer, Older, Type, View, Show all and the theme |
-| Session list | Every saved session, the newest first: type, title, time, your pick and the stars. A session shows New until you open it. |
+| Session list | Every saved session of every type, the newest first: type, title, time and state. A Compare row also shows your pick and the stars, and New until you open it. |
 | Stage | The options in their original order. Side by side adds Fold left, Fold right and Solo to each option head. |
 | Folded rail | A narrow button in the option's place, with its label and pick mark. Select it to open that option again. |
 | Show all | Opens all folded options. This control appears in the bar only when Side by side has a folded option. |
 | Decision line | Your pick, No option fits, the note, Submit result, and the rating |
 
 - Sessions opens and closes the list. A closed list gives the stage the full width.
-- Type shows only the sessions of one type in the list.
+- Type shows only the sessions of one type in the list: `All types`, `Core`, `Double`, `Coinflip`, `Trainer` or `Compare`. The group Compare workflows selects one workflow, for example `logo-options`.
 - View changes the display: Side by side, or One option (with one tab for each option).
 - Fold left and Fold right close one column into a rail with its label facing that direction. Open columns share the free width.
 - Solo opens the chosen option and folds its neighbours in place. Show all restores equal columns.
@@ -59,6 +59,32 @@ The private URL belongs to one server run. A page that is open shows a new sessi
 | `markdown` | Plain text. Markdown source shows as it is, never as live HTML. |
 
 Zoom changes only the display. The levels are 25%, 33%, 50%, 67%, 75% and 100%.
+
+## The history page
+
+The history page is this page with the saved sessions of every Walkr type. A session is one saved record of one type:
+a Core page with feedback, a Double comparison or shared GUI session, a Coinflip session, a Trainer dataset or a Compare session.
+
+- Compare sessions keep pick, comment, submit and rating.
+- The other types show read-only, in the format of their type. The view names the command that opens the session live, for example `walkr-trainer open <repo> <session-id>`.
+- Core lists only pages with at least one comment, edit or batch. Core pages without feedback are not listed.
+- Double and Coinflip show the brief, the mode, the state, the pairs or panes, the result and the instruction history. The page loads no candidate HTML; the candidates show in the shared GUI.
+- Trainer shows the repository, the dataset, the group plan and the ranking progress.
+- A type with no session shows how to start it, with the text of the mode guide pages.
+
+The page reads the records of this computer: the Core state file (`HUMAN_REVIEW_STATE_DIR/state.json`), the Double archive (`~/.local/.walkr/double` or `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR`), the Trainer root and the Compare root.
+It writes nothing in them and takes no lock. The process that owns a directory keeps it. A missing directory gives no row. A record that it cannot read, for example of a newer schema, gives one row with its error code.
+The page shows each time in the local time of your browser, as `YYYY-MM-DD HH:MM`. The list sorts by the same time, the newest first.
+
+| Type | Row time | View times |
+| --- | --- | --- |
+| Compare | The creation time of the session | None |
+| Trainer | The creation time of the dataset | `Updated` and `Created`: the creation time |
+| Core | The last update of the page (`updatedAt`) | `Updated` and `Last update`: the last update; each comment shows its creation time; `Batch` shows the batch time |
+| Double, Coinflip | The modification time of the record file | `Updated`: the modification time |
+
+An edit of a Double or Coinflip session moves its row to the top. A Trainer row stays at its creation time.
+It reads a record again only when the file changed (other inode, modification time or size).
 
 ## Pick, comment and submit
 
@@ -206,6 +232,8 @@ All routes sit under `/_walkr/compare/` and refuse query strings. The Host must 
 | `POST api/sessions` | Agent | Create a session; returns the page path with the session ID as the fragment |
 | `GET api/sessions` | Agent or page | The session list, oldest first |
 | `GET api/sessions/<id>` | Agent or page | One record |
+| `GET api/history` | Agent or page | `{ rows, hosts }`: the history rows of every type, newest first. A row has `ref`, `type`, `host`, `title`, `time` and `state`; a Compare row also has the fields of the session list. |
+| `GET api/history/<ref>` | Agent or page | `{ view }`: the read-only view of one row that is not a Compare session |
 | `POST api/sessions/<id>/seen` | Page only | `{}`; saves the first look |
 | `POST api/sessions/<id>/submit` | Page only | `{ actionId, pick, comments?, note? }` |
 | `POST api/sessions/<id>/rate` | Page only | `{ actionId, rating, note? }`; `rating` is a whole number from 1 to 10 |
@@ -224,7 +252,9 @@ The policy also has `frame-ancestors 'self'` and the origin of the request, so o
 ## Tests
 
 `test/compare.test.js` uses real authenticated HTTP servers, disposable roots, jsdom for the page module, and the spawned command with its background server.
-It covers the exact option bytes, one final result, a restart, a changed record, the rating limits and replacement, the New mark,
+`test/history.test.js` covers the history reader: it writes nothing, and a broken or missing record gives an error row or no row.
+It also covers the GET-only mirror, the copy script, the default archive directory and the hosted refusal.
+`test/compare.test.js` covers the exact option bytes, one final result, a restart, a changed record, the rating limits and replacement, the New mark,
 refused create requests, the frame policy, hosted refusal, and the page with its list, selectors, pick, rating and steps.
 
 ## Limits
@@ -234,9 +264,9 @@ refused create requests, the frame policy, hosted refusal, and the page with its
 - One server process owns a root. Two servers on the same root are not supported; the record check refuses outside changes but is not a lock.
 - A result is final after Submit. There is no edit and no second round in the same session. A new round is a new session.
 - Rendering of a template or a diagram is the work of the agent. Walkr does not parse CloudFormation and does not check that a diagram matches its template.
-- The Core, Double, Coinflip and Trainer pages keep their mode bar. Their sessions are not in the Compare list and have no rating.
+- The Core, Double, Coinflip and Trainer pages keep their mode bar. Their sessions show read-only in the history and have no rating.
 - The background server stops after the idle time of `HUMAN_REVIEW_IDLE_MS` (default 45 minutes) when no page is open. A `/health` check does not count as use. The server also stops when its state directory or its `server-entry.js` file is deleted. The page URL then changes.
 - The server listens on `127.0.0.1` only. To open the page from another computer, start the server with `HUMAN_REVIEW_BIND=0.0.0.0` and `HUMAN_REVIEW_PORT`, and name the address in `HUMAN_REVIEW_ALLOWED_HOSTS`, for example `desk.example:4802`. `walkr-compare` then prints the URL with that address. The named address opens the Compare page only. Core and other non-Compare routes require a loopback Host and a loopback connection peer, including IPv6 and IPv4-mapped loopback. A remote peer with a forged loopback Host still reaches only the Compare routes and their theme files. The traffic is plain HTTP, and only the secret in the URL protects the page.
-- To read the results of more than one computer on one persistent page, use the optional [Compare mirror](../mirror/README.md). It is read-only, and no install step starts it.
+- To read the history of more than one computer on one persistent page, use the optional [history mirror](../mirror/README.md). It is read-only, and no install step starts it.
 - `walkr-compare` and `walkr-core` stop a server of an older Walkr version that still runs for the same state directory, then start a new one. A record without a protocol counts as older. They stop it only when its `/health` answer has the pid of `server.json`. When the stop fails, the command says so; stop the server by hand, then run the command again. They never stop a server of a newer Walkr version: the command fails and starts no server. Use that newer version, or set another `HUMAN_REVIEW_STATE_DIR`.
 - Not verified: accessibility with assistive technology, and option quality from a real model.

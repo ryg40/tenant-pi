@@ -380,6 +380,9 @@ export class DoubleStore {
     });
   }
 
+  /** The saved identities, for the read-only history. No lock, no write. */
+  identities(known) { return this.#archive.identities(known); }
+
   async read(comparisonId) {
     return this.#archive.run(async () => view((await this.#archive.load(comparisonId)).doc));
   }

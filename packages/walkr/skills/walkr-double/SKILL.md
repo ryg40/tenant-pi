@@ -29,7 +29,8 @@ The existing themes and future server-only hosting plans do not enable hosted Do
 ## Inspect and recover
 
 Only for explicitly approved checkout-local work, use the exact entry below. It supplies the existing `double` command prefix.
-Set the approved absolute `HUMAN_REVIEW_STATE_DIR` and `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR`; retain the hosted guard.
+Set the approved absolute `HUMAN_REVIEW_STATE_DIR`; retain the hosted guard. The archive is `~/.local/.walkr/double`;
+keep the approved `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR` when the server uses one.
 These are POSIX shell commands, independent of any installed managed alias:
 
 ```sh

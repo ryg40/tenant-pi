@@ -215,10 +215,25 @@ Sheprd is a separate tool that receives Walkr page URLs; the kit neither install
 | `HUMAN_REVIEW_PORT` | A fixed port for the server. The default is a free port. |
 | `HUMAN_REVIEW_BIND` | The address that the server listens on. The default is `127.0.0.1`. `0.0.0.0` listens on every interface. |
 | `HUMAN_REVIEW_ALLOWED_HOSTS` | Extra `Host` header values that the server accepts, as a comma-separated list of exact `name:port` values. The default is none. Such a host reaches only the Compare page and the theme files; every other route stays on `127.0.0.1`. |
+| `HUMAN_REVIEW_TRUSTED_PROXIES` | Proxy peers that hosted mode trusts, as a comma-separated list of exact IP addresses (IPv4 or IPv6). The default is none. No CIDR range, host name or wildcard is accepted. A value that is not an IP address stops the server at start, in every mode. Outside hosted mode (`HUMAN_REVIEW_HOSTED=1`) a valid list has no effect, and the server says so on start. See [Hosted mode behind a proxy](#hosted-mode-behind-a-proxy). |
 | `HUMAN_REVIEW_IDLE_MS` | The idle time before the server stops. The default is 45 minutes. A `/health` check does not count as use. An open page or a waiting agent keeps the server running. The background server also stops when its state directory or its `server-entry.js` file is deleted. |
 | `HUMAN_REVIEW_SWEEP_MS` | How often the server checks the idle time and its files. The default is 60 seconds. Tests use a short value. |
 | `HUMAN_REVIEW_CORE_COMMAND` | The command of the wake-up watcher, as a JSON array |
 | `WALKR_SHEPRD_CONNECT` | With `1`, a Herdr pane and `sheprd` on the `PATH`, Core sends its page URL to Sheprd. Core skips the system browser when `sheprd walkr connect` exits with code 0. The default is off. See [the Sheprd link](compare.md#sheprd-link-optional). |
+
+## Hosted mode behind a proxy
+
+Hosted mode (`HUMAN_REVIEW_HOSTED=1`) is the review server of the package `Dockerfile`. A reverse proxy, for example Caddy, sends the browser traffic to it.
+The Core routes (`/s/<id>`, `/artifact/...`, `/events/...`, the API, the page modules) need a loopback `Host` and a loopback connection peer. The proxy is not a loopback peer, so these routes answer `403` until you name the proxy.
+
+1. Give the proxy a fixed IP address on the network that it shares with the review server. The server trusts exact addresses only.
+2. Set `HUMAN_REVIEW_TRUSTED_PROXIES` to that address, for example `192.0.2.10`. A request from this peer then counts as a loopback peer.
+3. Make the proxy send the `Host` header `127.0.0.1:<HUMAN_REVIEW_PORT>`, for example `127.0.0.1:3000`. A listed peer with another `Host` still gets `403`.
+4. Set `HUMAN_REVIEW_PUBLIC_URL` to the public address of the proxy. The CLI prints the review URL with it.
+
+A peer that is not listed keeps the `403`. It reaches only the Compare routes and the theme files, as before.
+
+Warning: a listed proxy reaches every Core route. Name only the proxy, and keep the review port off other networks.
 
 ## Errors
 

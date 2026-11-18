@@ -1,5 +1,6 @@
 import { constants } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -7,6 +8,15 @@ import { isCanonicalAbsolute } from "./canonical-path.js";
 import { POSIX_ONLY_CODE, posixOnlyRefusal } from "./posix-only.js";
 
 const queues = new Map();
+const PREFIXES = ["double", "double-session", "shared-gui", "coinflip-session", "trainer-gui"];
+
+/**
+ * The Double archive directory: HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR when it is set, else ~/.local/.walkr/double, beside the
+ * Compare and Trainer roots. A set value always wins, also an empty or a relative one: the path checks then refuse it.
+ */
+export function doubleArchiveRoot(env = process.env, home = os.homedir()) {
+  return env.HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR ?? path.join(home, ".local", ".walkr", "double");
+}
 export const hash = (value) => createHash("sha256").update(value).digest("hex");
 const clone = (value) => structuredClone(value);
 const equal = isDeepStrictEqual;
@@ -139,7 +149,7 @@ export class DoubleArchive {
     const refusal = posixOnlyRefusal(platform);
     if (refusal) fail(POSIX_ONLY_CODE, refusal);
     absolute(archiveDir);
-    if (!["double", "double-session", "shared-gui", "coinflip-session", "trainer-gui"].includes(prefix)) fail("UNSAFE_PATH", "Unknown Double archive namespace.");
+    if (!PREFIXES.includes(prefix)) fail("UNSAFE_PATH", "Unknown Double archive namespace.");
     this.#archiveDir = archiveDir;
     this.#prefix = prefix;
     this.#identity = identity;
@@ -159,6 +169,44 @@ export class DoubleArchive {
   #file(comparisonId) {
     id(comparisonId);
     return path.join(this.#archiveDir, `${this.#prefix}-${hash(comparisonId)}.json`);
+  }
+
+  /**
+   * The identities of the records of this namespace, for a read-only history. It takes no lock and writes nothing.
+   * It reads only the identity field of each record; `load` checks the whole record. A record that is not readable
+   * gives an entry with an error code. A missing directory gives no entry.
+   * `known` maps a file name to the `stamp` of an earlier call; a record with the same stamp is not read again.
+   */
+  async identities(known = new Map()) {
+    const pattern = new RegExp(`^${this.#prefix}-([a-f0-9]{64})\\.json$`);
+    let names;
+    try {
+      await inspect(this.#archiveDir, true, true);
+      names = await fs.readdir(this.#archiveDir);
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+    const found = [];
+    for (const name of names.sort()) {
+      const match = pattern.exec(name);
+      if (!match) continue;
+      const file = path.join(this.#archiveDir, name);
+      try {
+        const stat = await inspect(file, false, true);
+        // A writer replaces a record by rename, so a new version has a new inode, time or size.
+        const stamp = `${stat.ino}:${stat.mtimeNs}:${stat.size}`;
+        const updatedAt = new Date(Number(stat.mtimeMs)).toISOString();
+        const earlier = known.get(name);
+        if (earlier?.stamp === stamp && earlier.id) { found.push({ id: earlier.id, file: name, stamp, updatedAt }); continue; }
+        const identity = JSON.parse((await readBytes(file, true)).toString("utf8"))?.[this.#identity];
+        if (typeof identity !== "string" || hash(identity) !== match[1]) fail("RECOVERY_REQUIRED", "The record does not match its file name.");
+        found.push({ id: identity, file: name, stamp, updatedAt });
+      } catch (error) {
+        found.push({ id: null, file: name, error: error.code || "UNREADABLE" });
+      }
+    }
+    return found;
   }
 
   async load(comparisonId) {

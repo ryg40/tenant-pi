@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { tmpRoot } from "./tmp-root.js";
+import { trustedProxies } from "../src/trusted-proxies.js";
 
 const tmp = fs.mkdtempSync(path.join(tmpRoot, "human-review-security-"));
 process.env.HUMAN_REVIEW_STATE_DIR = path.join(tmp, "state");
@@ -145,6 +148,73 @@ test("a loopback Host reaches legacy routes only from a loopback peer", async (t
     for (const peer of ["127.0.0.1", "127.1.2.3", "::1", "::ffff:127.0.0.1", "::ffff:7f00:1"]) {
       assert.equal(await status(host, peer, "/health"), 200);
     }
+  }
+});
+
+/** Status of `url` from `remoteAddress` with `host`, on a server made with `env` set for its creation. */
+async function statusWith(t, env, cases) {
+  const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, env);
+  let service;
+  try {
+    service = createServer();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+  t.after(() => service.dispose());
+  const [handle] = service.server.listeners("request");
+  const out = [];
+  for (const [host, remoteAddress, url] of cases) {
+    let code;
+    await handle({ method: "GET", url, headers: { host }, socket: { localPort: 4802, remoteAddress } }, {
+      writeHead(value) { code = value; }, end() {},
+    });
+    out.push(code);
+  }
+  return out;
+}
+
+const PROXY = "192.0.2.10";
+const PROXY6 = "2001:db8::10";
+const OTHER = "192.0.2.11";
+
+test("hosted mode treats a listed proxy peer as a loopback peer, with a loopback Host only", async (t) => {
+  const codes = await statusWith(t, { HUMAN_REVIEW_HOSTED: "1", HUMAN_REVIEW_TRUSTED_PROXIES: `${PROXY}, ${PROXY6}` }, [
+    ["127.0.0.1:4802", PROXY, "/health"],
+    ["127.0.0.1:4802", `::ffff:${PROXY}`, "/health"],
+    ["localhost:4802", PROXY6, "/health"],
+    ["127.0.0.1:4802", OTHER, "/health"],
+    ["review.example:4802", PROXY, "/health"],
+    ["127.0.0.1:4802", "127.0.0.1", "/health"],
+  ]);
+  assert.deepEqual(codes, [200, 200, 200, 403, 403, 200]);
+});
+
+test("outside hosted mode a listed proxy peer stays refused", async (t) => {
+  const codes = await statusWith(t, { HUMAN_REVIEW_HOSTED: "", HUMAN_REVIEW_TRUSTED_PROXIES: PROXY }, [
+    ["127.0.0.1:4802", PROXY, "/health"],
+    ["127.0.0.1:4802", "127.0.0.1", "/health"],
+  ]);
+  assert.deepEqual(codes, [403, 200]);
+});
+
+test("a trusted proxy value that is not an IP address is refused, and the start stops with a cause", () => {
+  // A CIDR, a host name, a wildcard and an IPv6 zone id: BlockList would drop the zone silently, so it is refused too.
+  for (const value of ["192.0.2.0/24", "proxy.example", "*", "fe80::1%eth0"]) assert.throws(() => trustedProxies(value), value);
+  const entry = fileURLToPath(new URL("../src/server-entry.js", import.meta.url));
+  for (const hosted of ["1", ""]) {
+    const dir = fs.mkdtempSync(path.join(tmp, "proxy-"));
+    const run = spawnSync(process.execPath, [entry], {
+      env: { ...process.env, HUMAN_REVIEW_STATE_DIR: dir, HUMAN_REVIEW_HOSTED: hosted, HUMAN_REVIEW_TRUSTED_PROXIES: "192.0.2.0/24" },
+      encoding: "utf8", timeout: 15000,
+    });
+    assert.equal(run.status, 1, `hosted=${hosted}`);
+    // The cause must reach the log: the container restarts on exit, and an empty log hides why.
+    assert.match(run.stderr, /HUMAN_REVIEW_TRUSTED_PROXIES/, `hosted=${hosted}`);
+    assert.equal(fs.existsSync(path.join(dir, "server.json")), false);
   }
 });
 

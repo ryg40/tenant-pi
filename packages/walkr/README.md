@@ -61,7 +61,10 @@ Then ask your agent for a review, or type `/walkr <file>`.
 
 Double, Coinflip and Trainer share one browser view, the shared GUI. You type a brief there, and the connected agent makes the candidates.
 In Double and Coinflip, the prompt box also [steers](docs/steering.md) an active review.
-Compare has its own page with a list of every session. Type `/walkr compare cfn options` or `/walkr simplify ticket` to your agent to start one.
+Compare has its own page, the history page: it lists the sessions of every type, newest first. Compare sessions take your pick and rating there; the other types show read-only.
+Type `/walkr compare cfn options` or `/walkr simplify ticket` to your agent to start a Compare session. `walkr-compare open` prints the private URL of the page.
+The optional [history mirror](mirror/README.md) shows the history of several computers on one read-only page.
+The `Dockerfile` of the package builds the review server of hosted mode.
 [Modes, commands and skills](docs/modes.md) lists every command and skill. The [glossary](GLOSSARY.md) defines the words.
 
 ## Pi integrations

@@ -120,7 +120,7 @@ export function combinedLimits(data: DashboardSnapshot, now: number): LimitsSnap
 }
 /** A Codex account label is `Codex` or `Codex<N>`. The route and the Codex tail never go to another provider's row. */
 export const isCodexLabel = (label: string): boolean => /^Codex\d*\s*$/.test(label);
-const shortLabel = (label: string): string => label === "Copilot" ? "CP" : label === "Claude" ? "CL" : label.replace(/^Codex/, "C");
+const shortLabel = (label: string): string => label === "Copilot" ? "CP" : label.replace(/^Claude/, "CL").replace(/^Codex/, "C");
 const windowName = (name: string): string => ({ weekly: "week", daily: "24h" })[name] ?? name;
 export function quotaView(limits: LimitsSnapshot, now: number): QuotaView {
   const alerts: Alert[] = [];

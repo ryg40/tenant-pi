@@ -4,6 +4,8 @@
 
 The extension only reads. It never refreshes a token and never writes a credential file.
 
+One command of the kit writes a credential: `claude-account`, which the owner runs to switch between two Claude accounts. See [Claude accounts](claude-accounts.md). The meter still writes no credential. With that account store, the meter shows one row for each account.
+
 ## Verification state
 
 | Fact | State |
@@ -62,6 +64,7 @@ The meter tries each active credential in order. HTTP 401 or 403 moves to the ne
 | State | Footer |
 | --- | --- |
 | A source gives a reading | A `Claude` row (short form `CL`) after the Codex accounts and before Copilot: `Claude [5h 72%] [7d 41%]` |
+| An account store of `claude-account` exists | One row per slot, `Claude1` and `Claude2` (short forms `CL1`, `CL2`). `*` marks the slot of the live login. See [Claude accounts](claude-accounts.md#meters) |
 | No active credential, or `mode: off` | Nothing, and no request. An earlier reading is not reused |
 | An active credential, but the request fails or the response has no known window (`mode: auto`), with an earlier good reading | The row stays with the last good reading and no error chip. The snapshot state is `unknown`. This lasts until a window of that reading resets, or until the reading is 24 hours old |
 | The same failure with no earlier good reading, or after that limit | Nothing. `/anthropic-usage` shows the fixed error text |
@@ -81,6 +84,8 @@ The endpoint answers HTTP 429 when several clients of one login poll it. So ever
 - On each refresh, the meter reads the file. A reading of another client that is newer than its own and younger than `pollSeconds` replaces its own reading, with no request.
 - Before a request, the meter claims it: it writes the time to `attemptAt`. When any client asked less than 5 minutes ago, the meter sends no request and takes that client's reading on a later refresh.
 - After a good reading, the meter writes `at` and the windows as the `limits` list of the endpoint.
+
+With an account store of `claude-account`, each slot has its own file, `usage-<slot>.json`, with the same rules. One request in 5 minutes per account stays the limit.
 
 The file holds only the times and the percentages, with mode `600`. A Claude Code status line that uses the same file and the same rules shares the reading too. A meter that uses the Pi login does not use the file. `/tenantext-doctor` still asks the endpoint directly.
 
@@ -114,6 +119,6 @@ Optional file: `~/.pi/agent/anthropic-usage/settings.json` (or under `PI_CODING_
 
 The token stays inside the Authorization header. The bus snapshot, the footer, `/anthropic-usage` and the doctor name the source id, never the value and never a file path. The snapshot holds only the state, a fixed error text, the source id, the plan, the window labels, the percents and the reset times. Error text is one of a fixed set of strings, for example `HTTP 401`.
 
-The footer adapter accepts only the window labels `5h`, `7d`, `opus` and `sonnet`, the source ids `claude-code` and `pi`, and the five plan values. Any other value does not cross.
+The footer adapter accepts only the window labels `5h`, `7d`, `opus`, `sonnet` and `fable`, the source ids `claude-code` and `pi`, the slots `1` and `2`, and the five plan values. Any other value does not cross. A slot entry crosses only as its slot, its active mark, its state, its plan and its windows: no token, path or email.
 
 Warning: The extension reads a live OAuth access token from a file of another program. Keep `~/.claude/.credentials.json` at mode `0600`.

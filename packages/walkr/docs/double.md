@@ -21,21 +21,22 @@ Only one shared review can be active at a time across the three modes.
 
 Double needs two separate, absolute directories:
 
-- `HUMAN_REVIEW_STATE_DIR`: the runtime state. It holds the local agent credential in `server.json`.
-- `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR`: the archive. It holds every saved action, batch and final page.
+- `HUMAN_REVIEW_STATE_DIR`: the runtime state. It holds the local agent credential in `server.json`. You must set it.
+- The archive. It holds every saved action, batch and final page. It is `~/.local/.walkr/double`, beside the Compare and Trainer roots.
+  Set `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR` to use another absolute directory. A set value always wins; an empty or relative value is refused.
 
 The two directories must not be nested. They need mode `0700`, the current user as owner and no symbolic links.
 The parent of the archive must exist. The state directory must be empty or absent.
 
 ```sh
 export HUMAN_REVIEW_STATE_DIR=/absolute/path/walkr-state
-export HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR=/absolute/path/walkr-archive
 walkr-double serve
 ```
 
 `serve` runs in the foreground on `127.0.0.1` with a free port. It prints a ready line and no credential.
 Run it in its own terminal. Stop it with Ctrl-C. The archive and your files stay.
-Set the same two variables in every terminal that runs a client command, and in the Pi chat.
+Set the same `HUMAN_REVIEW_STATE_DIR`, and the same `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR` when you use one, in every terminal that runs a client command, and in the Pi chat.
+The Walkr history page lists the saved Double sessions read-only ([Compare](compare.md#the-history-page)).
 
 Only one server can write to an archive.
 After a crash, start the server with a new empty state directory and the same archive.

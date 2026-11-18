@@ -20,6 +20,16 @@ The pin is commit `2b762874f54913b9b43d1aa59a464b67486fbd85` of 2026-11-16, with
 - Pi gets only the skills of the four other plugins, not their MCP servers, hooks or commands.
 - The kit item `claude-aws-plugins` shows the state of the Claude Code plugins in the inventory and on the screen.
 
+### Skills in some projects only
+
+By default, a row adds one skills entry to `settings.json` of the Pi profile, so its skills load in every project. To load them only in some projects:
+
+1. Turn on the module `hermes`.
+2. Make one symbolic link for each skill folder of the row in `<profile>/projects-memory/<repo>/skills/`. Each link points to a skill folder in the kit clone, for example `plugins/aws-core/skills/aws-cdk`. The `hermes` extension loads that folder only in the repository `<repo>` and its worktrees. A link to a file, to a missing path or to a folder outside the kit clone does not count.
+3. Run `install.sh`. When it finds such a link for a row, it adds no skills entry for the row and removes the entry of the kit. It prints a `kept:` line with the projects. For each linked project without a link to a skill folder of the row, it prints a line, for example for a new skill after a pin move.
+
+Projects without links get none of the skills of the row.
+
 `--with all` leaves the AWS rows out. Name them in `--with`:
 
 ```sh

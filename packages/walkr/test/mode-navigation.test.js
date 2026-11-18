@@ -42,13 +42,8 @@ test("every application shell retains navigation and all themes without insertin
 });
 
 test("public guidance routes create no private Double authority or archive and retain hosted guard precedence", async (t) => {
+  // listen() keeps HUMAN_REVIEW_HOSTED=1 set until the server closes.
   const f = await fixture(t), s = await listen(t, f, { HUMAN_REVIEW_HOSTED: "1" });
-  const previous = process.env.HUMAN_REVIEW_HOSTED;
-  process.env.HUMAN_REVIEW_HOSTED = "1";
-  t.after(() => {
-    if (previous === undefined) delete process.env.HUMAN_REVIEW_HOSTED;
-    else process.env.HUMAN_REVIEW_HOSTED = previous;
-  });
   const home = await request(s.port, "/");
   assert.equal(home.status, 200);
   checkShell(home.text, "core");

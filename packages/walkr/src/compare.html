@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Compare · Walkr</title>
+  <title>Walkr sessions</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/_walkr/compare/compare.css">
   <script type="module" src="/theme.js"></script>
@@ -40,7 +40,8 @@
 
     <aside class="cmp-list" id="list" aria-label="Sessions, newest first">
       <ol id="sessions"></ol>
-      <p id="empty" hidden>No session yet. An agent starts one with walkr-compare create.</p>
+      <p id="empty" hidden>No session of this type yet.</p>
+      <p id="coreNote">Core pages without a comment, an edit or a batch are not listed.</p>
     </aside>
 
     <main class="cmp-main">
@@ -49,6 +50,8 @@
         <button type="button" id="resolve" class="btn-primary" hidden>Retry the same request</button>
       </div>
       <p class="cmp-hint" id="hint">Select a session in the list.</p>
+      <div class="cmp-record" id="guide" hidden></div>
+      <div class="cmp-record" id="record" hidden></div>
       <details class="cmp-context" id="context" hidden>
         <summary>Brief and answers</summary>
         <div id="contextBody"></div>
@@ -76,6 +79,7 @@
       </footer>
     </main>
   </div>
+  <!--walkr-guides-->
   <script type="module" src="/_walkr/compare/app.js"></script>
 </body>
 </html>

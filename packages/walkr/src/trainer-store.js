@@ -314,6 +314,55 @@ export class TrainerStore {
     }));
   }
 
+  /**
+   * The history page: every dataset of every repository, oldest first in each repository. A record that cannot be
+   * read gives one entry with an error code. A missing root gives no entry. It writes nothing and takes no lock.
+   * `cache` maps "<repo>/<session>" to the stamp and row of an earlier call; a record with the same stamp is not read
+   * again. The call keeps only the entries that it saw.
+   */
+  async history(cache = new Map()) {
+    return this.run(async () => {
+      let repos;
+      try {
+        await this.#ensureRoot(false);
+        repos = (await fs.readdir(this.#root, { withFileTypes: true })).filter((e) => e.isDirectory() && REPO.test(e.name)).map((e) => e.name).sort();
+      } catch (error) {
+        if (error.code === "ENOENT" || error.code === "NOT_FOUND") return [];
+        throw error;
+      }
+      const rows = [], seen = new Set();
+      for (const repo of repos) {
+        let names;
+        try {
+          await inspect(path.join(this.#root, repo), true, true);
+          await inspect(this.#datasetDir(repo), true, true);
+          names = await fs.readdir(this.#datasetDir(repo));
+        } catch (error) {
+          if (error.code !== "ENOENT") rows.push({ repo, sessionId: null, error: error.code || "UNREADABLE" });
+          continue;
+        }
+        for (const name of names.filter((entry) => SESSION.test(entry)).sort()) {
+          const key = `${repo}/${name}`;
+          seen.add(key);
+          try {
+            // A writer replaces the record by rename, so a new version has a new inode, time or size.
+            const stat = await fs.lstat(path.join(this.#sessionDir(repo, name), RECORD), { bigint: true });
+            const stamp = `${stat.ino}:${stat.mtimeNs}:${stat.size}`;
+            const earlier = cache.get(key);
+            if (earlier?.stamp === stamp) { rows.push(earlier.row); continue; }
+            const { doc } = await this.#load(repo, name);
+            const row = { repo, sessionId: name, status: doc.status, createdAt: doc.createdAt, updatedAt: doc.updatedAt, task: doc.task.slice(0, 200), progress: progress(doc) };
+            cache.set(key, { stamp, row });
+            rows.push(row);
+          }
+          catch (error) { cache.delete(key); if (error.code !== "NOT_FOUND" && error.code !== "ENOENT") rows.push({ repo, sessionId: name, error: error.code || "UNREADABLE" }); }
+        }
+      }
+      for (const key of [...cache.keys()]) if (!seen.has(key)) cache.delete(key);
+      return rows;
+    });
+  }
+
   async create(input) {
     const body = capture(input);
     shape(body, ["actionId", "repo", "task", "items", "plan"], ["gui"]);

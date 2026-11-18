@@ -112,7 +112,9 @@ export default async function (pi: ExtensionAPI) {
   ): void => {
     if (!bridge || closed || toolsRegistered) return;
     if (state.connected) {
-      toolNames.push(...registerMcpTools(pi, bridge));
+      toolNames.push(...registerMcpTools(pi, bridge, {
+        onUnknown: (name) => logger.log("mcp_tools", { unknownAllowlistName: name }),
+      }));
       toolsRegistered = true;
       toolsReady = toolNames.length > 0;
       logger.log("mcp_tools", { registered: toolNames.length });

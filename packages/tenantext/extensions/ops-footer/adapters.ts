@@ -179,16 +179,15 @@ const ANTHROPIC_PLANS = new Set(["free", "pro", "max", "team", "enterprise"]);
 /** The fixed windows and the known model-scoped weekly windows. Any other label never crosses the boundary. */
 const ANTHROPIC_WINDOWS = new Set(["5h", "7d", "opus", "sonnet", "fable"]);
 const ANTHROPIC_SOURCES = new Set(["claude-code", "pi"]);
-/** Anthropic quota as one `Claude` account after the Codex accounts and before Copilot. `absent` or a malformed value clears the meter. */
-export function anthropicStatus(value: unknown, now = Date.now(), lifetimeFloor = 0): (LimitsSnapshot & { source?: string; plan?: string }) | undefined {
-  const v = record(value);
-  if (!v || !Array.isArray(v.windows) || (v.state !== "ok" && v.state !== "error" && v.state !== "unknown")) return;
-  const typed = value as AnthropicStatusSnapshot;
+/** The slots of the account store (`claude-account`). Any other slot never crosses the boundary. */
+const ANTHROPIC_SLOTS = new Set(["1", "2"]);
+/** The windows of one reading through the label allow-list, and the severity they give. */
+function anthropicWindows(rawWindows: unknown, state: unknown): { windows: LimitsWindow[]; severity: StatusState } {
   const windows: LimitsWindow[] = [];
   // `unknown`: the last request failed and the windows are the last good reading. It shows no error chip.
-  let severity: StatusState = v.state === "error" ? "error" : v.state === "unknown" ? "unknown" : "ok";
+  let severity: StatusState = state === "error" ? "error" : state === "unknown" ? "unknown" : "ok";
   // The label filter comes first, so unknown windows cannot push a known one out of the row.
-  for (const raw of typed.windows) {
+  for (const raw of Array.isArray(rawWindows) ? rawWindows : []) {
     if (windows.length >= ANTHROPIC_WINDOWS.size) break;
     const w = record(raw);
     if (!w || typeof w.label !== "string" || !ANTHROPIC_WINDOWS.has(w.label)) continue;
@@ -197,11 +196,42 @@ export function anthropicStatus(value: unknown, now = Date.now(), lifetimeFloor 
     windows.push({ name: w.label, percent, unavailable: false, resetsAt: resetEpoch(w.resetsAt) });
     if (percent <= 10 && severity !== "error") severity = "warning";
   }
-  // A reading with no valid window has nothing to meter.
-  if (severity !== "error" && !windows.length) return;
+  return { windows, severity };
+}
+const accountState = (state: unknown): StatusState => state === "error" ? "error" : state === "unknown" ? "unknown" : "ok";
+const rankState = (s: StatusState) => ({ ok: 0, unknown: 1, warning: 2, error: 3 })[s];
+/**
+ * Anthropic quota as one `Claude` account after the Codex accounts and before Copilot. With an account store, one
+ * `Claude1` and one `Claude2` account; the active one has the label mark `*`. `absent` or a malformed value clears the meter.
+ */
+export function anthropicStatus(value: unknown, now = Date.now(), lifetimeFloor = 0): (LimitsSnapshot & { source?: string; plan?: string }) | undefined {
+  const v = record(value);
+  if (!v || !Array.isArray(v.windows) || (v.state !== "ok" && v.state !== "error" && v.state !== "unknown")) return;
+  const typed = value as AnthropicStatusSnapshot;
   const source = typeof v.source === "string" && ANTHROPIC_SOURCES.has(v.source) ? v.source : undefined;
   const plan = typeof v.plan === "string" && ANTHROPIC_PLANS.has(v.plan) ? v.plan : undefined;
-  return { state: severity, summary: severity, accounts: [{ label: "Claude", order: 900, state: v.state === "error" ? "error" : v.state === "unknown" ? "unknown" : "ok", windows: v.state === "error" ? [] : windows, ...(plan ? { plan } : {}) }],
+  if (Array.isArray(v.accounts)) {
+    const accounts: LimitsAccount[] = [];
+    let severity: StatusState = "ok";
+    for (const raw of v.accounts.slice(0, ANTHROPIC_SLOTS.size)) {
+      const a = record(raw);
+      if (!a || typeof a.slot !== "string" || !ANTHROPIC_SLOTS.has(a.slot) || accounts.some(x => x.order === 900 + Number(a.slot))) continue;
+      if (a.state !== "ok" && a.state !== "error" && a.state !== "unknown") continue;
+      const { windows, severity: s } = anthropicWindows(a.windows, a.state);
+      if (s !== "error" && !windows.length) continue;
+      const accountPlan = typeof a.plan === "string" && ANTHROPIC_PLANS.has(a.plan) ? a.plan : undefined;
+      accounts.push({ label: `Claude${a.slot}${a.active === true ? "*" : ""}`, order: 900 + Number(a.slot), state: accountState(a.state),
+        windows: a.state === "error" ? [] : windows, ...(accountPlan ? { plan: accountPlan } : {}) });
+      if (rankState(s) > rankState(severity)) severity = s;
+    }
+    if (!accounts.length) return;
+    accounts.sort((a, b) => a.order - b.order);
+    return { state: severity, summary: severity, accounts, route: { state: "unknown" }, source, plan, ...times(v, now, MAX_QUOTA_LIFETIME_MS, lifetimeFloor) };
+  }
+  const { windows, severity } = anthropicWindows(typed.windows, v.state);
+  // A reading with no valid window has nothing to meter.
+  if (severity !== "error" && !windows.length) return;
+  return { state: severity, summary: severity, accounts: [{ label: "Claude", order: 900, state: accountState(v.state), windows: v.state === "error" ? [] : windows, ...(plan ? { plan } : {}) }],
     route: { state: "unknown" }, source, plan, ...times(v, now, MAX_QUOTA_LIFETIME_MS, lifetimeFloor) };
 }
 

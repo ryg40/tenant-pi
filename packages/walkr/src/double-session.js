@@ -263,6 +263,9 @@ export class DoubleSessionStore {
     });
   }
 
+  /** The saved identities, for the read-only history. No lock, no write. */
+  identities(known) { return this.#archive.identities(known); }
+
   async read(sessionId) { return this.#archive.run(async () => view((await this.#archive.load(sessionId)).doc)); }
   async snapshot(sessionId) { return this.#archive.run(async () => clone((await this.#archive.load(sessionId)).doc)); }
   async events(sessionId) {

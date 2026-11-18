@@ -10,9 +10,19 @@ export function modeForRoute(raw) {
   return modes.has(mode) ? mode : null;
 }
 
-export function modePage(mode, { hosted = false } = {}) {
+/**
+ * How to start one mode, as static HTML. The mode pages and the empty view of the history page both show it.
+ * `hosted` is true where the page cannot run the mode: the hosted server and the read-only mirror.
+ */
+export function modeGuidance(mode, { hosted = false } = {}) {
   const title = mode[0].toUpperCase() + mode.slice(1);
-  const guidance = mode === "coinflip"
+  return mode === "core"
+    ? `<p>Launch name: <code>walkr-core</code>. The agent opens a page for review with <code>walkr-core &lt;file.html | file.md | http://localhost:port&gt;</code>.</p>
+      <p>You comment and edit in the page, then send one batch to the chat. A Core page appears in this history after its first comment, edit or batch.</p>`
+    : mode === "compare"
+    ? `<p>Launch name: <code>walkr-compare</code>. An agent starts a session with <code>walkr-compare create</code> and 2 or 3 prepared options.</p>
+      <p>${hosted ? "This read-only page shows the result. Pick, rate and submit on the Walkr page of the computer that made the session." : "<code>walkr-compare open</code> prints the private URL of this page. You pick one option, comment, submit and rate here."}</p>`
+    : mode === "coinflip"
     ? `<p>Launch name: <code>walkr-coinflip</code>. Coinflip runs only in the local shared GUI. Hosted Coinflip is not available.</p>
       <p>${hosted ? "This hosted menu cannot run Coinflip." : "This menu cannot inspect your chat connection or recover a private GUI URL."}</p>
       <p>After separate approval, load <code>integrations/pi/shared-gui.ts</code> in the originating persistent Pi chat.
@@ -24,7 +34,7 @@ export function modePage(mode, { hosted = false } = {}) {
       <p>${hosted ? "This hosted menu cannot run Double." : "This menu cannot inspect your chat connection or recover a private GUI URL."}</p>
       <p>Use <code>walkr-double --help</code> for the launch/connect boundary. The managed host command refuses execution.</p>
       <p>For approved local use, run <code>node /absolute/checkout/src/walkr-double.js --help</code>.
-      Set explicit absolute <code>HUMAN_REVIEW_STATE_DIR</code> and <code>HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR</code>.</p>
+      Set an explicit absolute <code>HUMAN_REVIEW_STATE_DIR</code>. The archive is <code>~/.local/.walkr/double</code>, or <code>HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR</code> when you set it.</p>
       <p>After separate approval, load <code>integrations/pi/shared-gui.ts</code> in the originating persistent Pi chat.
       Explicitly run <code>/shared-gui {&quot;action&quot;:&quot;connect&quot;}</code> there and use its returned private URL.</p>
       <p>This page does not load extensions, start servers, launch chats, request inference, or reconnect.
@@ -42,6 +52,11 @@ export function modePage(mode, { hosted = false } = {}) {
     : `<p><code>walkr-${mode}</code>: not implemented. Execution returns a nonzero status; <code>--help</code> explains this limit.</p>
       <p>No generation, server, browser, or review-file access is available for ${title}.</p>
       <p>Use <code>walkr-core</code> for original review, or <code>walkr-double --help</code> or <code>walkr-coinflip --help</code> for local guidance.</p>`;
+}
+
+export function modePage(mode, { hosted = false } = {}) {
+  const title = mode[0].toUpperCase() + mode.slice(1);
+  const guidance = modeGuidance(mode, { hosted });
   return withFoot(fs.readFileSync(new URL("./mode-home.html", import.meta.url), "utf8"))
     .replaceAll("__MODE__", title).replace("__GUIDANCE__", guidance)
     .replace(`href="/_walkr/modes/${mode}"`, `href="/_walkr/modes/${mode}" aria-current="page"`);

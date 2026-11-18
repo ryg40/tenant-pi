@@ -1,6 +1,5 @@
 import http from "node:http";
 import https from "node:https";
-import { BlockList, isIP } from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -16,6 +15,7 @@ import { canonicalTarget, ensureStateDir, localUrl, SERVER_PROTOCOL, serverPath,
 import { commandArg, reviewInvocation } from "./setup.js";
 import { assertHostedTarget, escapeHtml } from "./hosted.js";
 import { allowedHosts } from "./allowed-hosts.js";
+import { localPeerCheck, trustedProxies } from "./trusted-proxies.js";
 import { createDoubleHandler } from "./double-server.js";
 import { createTrainerHandler } from "./trainer-server.js";
 import { trainerRoot } from "./trainer-store.js";
@@ -26,9 +26,6 @@ import { BATCH_ID, carriedIds, newBatchId, normalizeRecord } from "./batch-id.js
 import { withFoot } from "./brand.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const loopbackPeers = new BlockList();
-loopbackPeers.addSubnet("127.0.0.0", 8, "ipv4");
-loopbackPeers.addAddress("::1", "ipv6");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -245,7 +242,12 @@ function sweepStagedPastes(store) {
   }
 }
 
-export function createServer({ ownFiles = [] } = {}) {
+/**
+ * `doubleArchiveDir` is the Double archive of `walkr-double serve`, which applies the default directory.
+ * The background server of Core and Compare passes none: it runs Double only with an explicit HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR,
+ * so it never owns the default archive. Its history page only reads the records there, with no lock and no write.
+ */
+export function createServer({ ownFiles = [], doubleArchiveDir = process.env.HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR } = {}) {
   const store = new Store();
   sweepStagedPastes(store);
   const cliInvocation = reviewInvocation();
@@ -256,13 +258,15 @@ export function createServer({ ownFiles = [] } = {}) {
    * The CLI reads it from server.json; the chrome page gets it injected.
    */
   const token = crypto.randomBytes(16).toString("hex");
+  const localPeer = localPeerCheck({ hosted: process.env.HUMAN_REVIEW_HOSTED === "1", proxies: trustedProxies() });
   // The shared GUI starts Trainer: it reads Trainer datasets and page grants, and Trainer links GUI-started datasets back.
   let double;
   const trainer = createTrainerHandler({ token, root: trainerRoot(), hosted: process.env.HUMAN_REVIEW_HOSTED === "1",
     gui: { link: (body, create) => double.trainerGui.link(body, create), connected: () => double.trainerGui.connected() } });
-  double = createDoubleHandler({ token, archiveDir: process.env.HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR,
+  double = createDoubleHandler({ token, archiveDir: doubleArchiveDir,
     stateDir: stateDir(), hosted: process.env.HUMAN_REVIEW_HOSTED === "1", trainer: trainer.service });
 
+  // The history of the page reads the records of this computer. It owns none of them and writes nothing there.
   const compare = createCompareHandler({ token, root: compareRoot(), hosted: process.env.HUMAN_REVIEW_HOSTED === "1" });
 
   /** Browser windows. Ephemeral — nothing durable lives here. */
@@ -1087,8 +1091,8 @@ export function createServer({ ownFiles = [] } = {}) {
       // Host protects against DNS rebinding, not remote clients forging a loopback Host.
       // Legacy routes need both a loopback Host and peer; other peers get only Compare and its theme files.
       const loopbackHost = [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`].includes(host);
-      const peer = req.socket.remoteAddress || "";
-      const local = loopbackHost && loopbackPeers.check(peer, isIP(peer) === 6 ? "ipv6" : "ipv4");
+      // In hosted mode a HUMAN_REVIEW_TRUSTED_PROXIES peer (the reverse proxy) counts as a loopback peer.
+      const local = loopbackHost && localPeer(req.socket.remoteAddress || "");
       const pathname = String(req.url || "").split("?")[0];
       const remote = (loopbackHost || allowedHosts().includes(host.toLowerCase()))
         && (pathname.startsWith("/_walkr/compare/") || pathname === "/theme.css" || pathname === "/theme.js");
@@ -1916,6 +1920,16 @@ process.on("exit", releaseServerSlot);
 
 /** `exitWhenFilesGone`: the detached server ends when its entry file or its state directory is deleted. */
 export async function start(port = 0, { exitWhenFilesGone = false } = {}) {
+  let proxies;
+  try {
+    proxies = trustedProxies();
+  } catch (err) {
+    console.error(`human-review server did not start: ${err.message}`);
+    throw err;
+  }
+  if (proxies.length && process.env.HUMAN_REVIEW_HOSTED !== "1") {
+    console.error("human-review server: HUMAN_REVIEW_TRUSTED_PROXIES has no effect without HUMAN_REVIEW_HOSTED=1; no proxy peer is trusted.");
+  }
   const claim = await claimServerSlot();
   if (!claim.proceed) {
     const err = new Error("a human-review server is already running for this state directory");

@@ -20,6 +20,18 @@ export interface AnthropicStatusSnapshot {
 	plan?: AnthropicPlan;
 	windows: AnthropicWindow[];
 	error?: string;
+	/** Present only with an account store (`claude-account`): one entry per slot. The fields above are then those of the active slot. */
+	accounts?: AnthropicAccountSnapshot[];
+}
+/** One slot of the account store. `active`: the slot holds the live Claude Code login. */
+export interface AnthropicAccountSnapshot {
+	slot: string;
+	active: boolean;
+	state: AnthropicStatusSnapshot["state"];
+	plan?: AnthropicPlan;
+	windows: AnthropicWindow[];
+	checkedAt: number;
+	staleAfter: number;
 }
 export interface AnthropicProbe { credential?: AnthropicCredential; result?: AnthropicUsageResult; tried: { source: AnthropicSourceId; detail: string; error?: string }[] }
 export type Fetcher = (credential: AnthropicCredential, signal: AbortSignal) => Promise<AnthropicUsageResult>;

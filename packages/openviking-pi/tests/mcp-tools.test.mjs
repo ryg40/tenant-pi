@@ -4,13 +4,13 @@ import { readFileSync } from "node:fs";
 import { registerMcpTools } from "../tools.ts";
 
 const { tools } = JSON.parse(readFileSync(new URL("fixtures/mcp-tools-list.json", import.meta.url)));
-function register(descriptors = tools) {
+function register(descriptors = tools, options) {
   const definitions = new Map();
   const calls = [];
   const names = registerMcpTools({ registerTool: (tool) => definitions.set(tool.name, tool) }, {
     state: { tools: descriptors },
     callTool: async (...args) => { calls.push(args); return { content: [] }; },
-  });
+  }, options);
   return { definitions, names, calls };
 }
 
@@ -66,4 +66,15 @@ test("enforces additionalProperties and required fields without adding defaults"
   const args = { value: 1 };
   tool.prepareArguments(args);
   assert.deepEqual(args, { value: 1 });
+});
+
+test("OPENVIKING_PI_TOOLS registers only the named tools; no list registers all", () => {
+  const unknown = [];
+  const listed = register(tools, { env: { OPENVIKING_PI_TOOLS: " find, read ,no_such_tool," }, onUnknown: (name) => unknown.push(name) });
+  assert.deepEqual(listed.names.sort(), ["openviking_find", "openviking_read"]);
+  assert.deepEqual([...listed.definitions.keys()].sort(), ["openviking_find", "openviking_read"]);
+  assert.deepEqual(unknown, ["no_such_tool"]);
+  for (const env of [{}, { OPENVIKING_PI_TOOLS: "" }]) {
+    assert.deepEqual(register(tools, { env }).names, tools.map((tool) => "openviking_" + tool.name));
+  }
 });

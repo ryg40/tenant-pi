@@ -337,8 +337,47 @@ def user_skills(entries, clone, component):
             and any(one.rstrip("/").endswith(tail) for tail in tails)]
 
 
-def pi_skills(settings, clone, rows, selected, adopt):
-    """Change settings['skills'] for the selection; return the report lines. Only the kit entries are removed."""
+def skill_folders(clone, component):
+    """The skill folders of a row in the clone: the folder itself when it holds SKILL.md, else its subfolders that do."""
+    found = []
+    for one in expected_skills(clone, component):
+        path = Path(one)
+        if (path / "SKILL.md").is_file():
+            found.append(path)
+        elif path.is_dir():
+            found += sorted(sub for sub in path.iterdir() if (sub / "SKILL.md").is_file())
+    return found
+
+
+def project_links(profile, folders):
+    """{project: the skill folders that a symbolic link in <profile>/projects-memory/<project>/skills reaches}.
+
+    The hermes extension loads such a store only in its repository, so these links scope the skills of a row."""
+    found = {}
+    real = [(folder, folder.resolve()) for folder in folders]
+    for store in sorted((Path(profile) / "projects-memory").glob("*/skills")):
+        try:
+            links = [one for one in sorted(store.iterdir()) if one.is_symlink()]
+        except OSError:
+            continue
+        for link in links:
+            try:
+                target = link.resolve()
+            except (OSError, RuntimeError):
+                # A link loop does not count.
+                continue
+            for folder, path in real:
+                # Only a link to the skill folder itself counts: not a file in it, not a missing sub-path.
+                if target == path and path.is_dir():
+                    found.setdefault(store.parent.name, set()).add(folder)
+    return found
+
+
+def pi_skills(settings, clone, rows, selected, adopt, profile):
+    """Change settings['skills'] for the selection; return the report lines. Only the kit entries are removed.
+
+    A selected row whose skill folders have links in the hermes project stores of the profile stays project-scoped:
+    the kit adds no global entry for it and removes its own entry."""
     entries = settings.get("skills")
     if entries is not None and not isinstance(entries, list):
         # The kit wrote no entry into a value that is not a list; only a selected row needs the list.
@@ -350,6 +389,21 @@ def pi_skills(settings, clone, rows, selected, adopt):
     for cid, component in rows.items():
         wanted = expected_skills(clone, component)
         if cid in selected:
+            folders = skill_folders(clone, component)
+            linked = project_links(profile, folders)
+            if linked:
+                for one in wanted:
+                    if one in entries:
+                        entries[:] = [entry for entry in entries if entry != one]
+                        lines.append(f"{cid}: project scope: removes the skills entry {one}")
+                lines.append(f"kept: {cid}: project scope: the skills load only in {', '.join(sorted(linked))}"
+                             f" (links in {Path(profile) / 'projects-memory'}/<project>/skills); no global entry")
+                for project in sorted(linked):
+                    missing = [one.name for one in folders if one not in linked[project]]
+                    if missing:
+                        lines.append(f"{cid}: project {project} has no link for {', '.join(missing)}; add one in"
+                                     f" {Path(profile) / 'projects-memory' / project / 'skills'}")
+                continue
             theirs = user_skills(entries, clone, component)
             if theirs and not adopt:
                 lines += [f"kept: {cid}: your skills entry {one}; --adopt-aws moves it to the kit clone" for one in theirs]
@@ -364,7 +418,7 @@ def pi_skills(settings, clone, rows, selected, adopt):
         else:
             for one in wanted:
                 if one in entries:
-                    entries.remove(one)
+                    entries[:] = [entry for entry in entries if entry != one]
                     lines.append(f"{cid}: off: removes the skills entry {one}")
     if entries or "skills" in settings:
         settings["skills"] = entries
@@ -1074,7 +1128,8 @@ def plan_lines(home, profile, rows, modules, claude, adopt, skills=True):
     except ValueError:
         raise Refusal(f"{settings_path} is not valid JSON") from None
     if skills:
-        lines += pi_skills(settings if isinstance(settings, dict) else {}, clone, rows, selected, adopt)
+        lines += pi_skills(settings if isinstance(settings, dict) else {}, clone, rows, selected, adopt,
+                           profile)
     lines += [line for _, _, _, line in mcp_plan(profile, clone, modules, adopt, commit)]
     if "aws-core" in selected and not shutil.which("uvx"):
         lines.append(UV_LINE)

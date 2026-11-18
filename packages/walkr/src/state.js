@@ -126,6 +126,22 @@ function writeThroughTmp(file, data, overrides) {
 }
 
 /**
+ * The saved pages, batches and bindings of one state file, or null when it is missing or not readable.
+ * A pure read: the history page uses it and never writes, prunes or takes a lock.
+ */
+export function readState(file = statePath()) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (parsed && typeof parsed === "object" && parsed.pages) {
+      return { pages: parsed.pages, batches: parsed.batches || {}, bindings: parsed.bindings || {} };
+    }
+  } catch {
+    // Missing or unreadable state is not an error; start empty.
+  }
+  return null;
+}
+
+/**
  * All durable state lives in one JSON file. No database, no network.
  *
  * Shape:
@@ -153,15 +169,7 @@ export class Store {
   }
 
   load() {
-    try {
-      const raw = fs.readFileSync(statePath(), "utf8");
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object" && parsed.pages) {
-        this.data = { pages: parsed.pages, batches: parsed.batches || {}, bindings: parsed.bindings || {} };
-      }
-    } catch {
-      // Missing or unreadable state is not an error; start empty.
-    }
+    this.data = readState() || this.data;
     for (const [key, page] of Object.entries(this.data.pages)) {
       // A state file from before pristine copies moved out still embeds
       // them; that copy is kept and lands in its own file on the next save.

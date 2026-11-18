@@ -4,6 +4,18 @@
 
 ### Added
 
+- History page: the Compare page of the background server is now the Walkr history page. It lists the sessions of every type, newest first: Core, Double, Coinflip, Trainer and Compare. The `Type` selector filters by type, and Compare workflows stay selectable under Compare. Compare sessions keep pick, comment, submit and rating; the other types show read-only, with the command that opens the session live. Core pages without a comment, an edit or a batch are not listed. A type with no session shows how to start it. The reader writes nothing; a broken or missing record gives an error row.
+- Mirror: the history mirror shows the same page at `/` from a root with one folder for each computer (`hosts/<host>/core/state.json`, `hosts/<host>/double/`, `hosts/<host>/trainer/`). Each row names its computer when the root holds more than one. `sync.sh DEST_ROOT NAME=HOME...` copies the Compare sessions, the Core state file, the Double archive and the Trainer datasets of each computer. It never copies `server.json`, `server.lock`, `pristine/`, the shared GUI record or review copies. The old form `sync.sh DEST_ROOT SOURCE_COMPARE_ROOT...` still works.
+- `Dockerfile` in the package: the review server of hosted mode, on the pinned Node 24 Alpine image.
+- `HUMAN_REVIEW_TRUSTED_PROXIES`: in hosted mode, a listed proxy IP address with a loopback `Host` reaches the Core routes, so the hosted server works behind Caddy again. A value that is not an IP address stops the start in every mode; outside hosted mode a valid list has no effect.
+
+### Changed
+
+- Double and Coinflip: when `HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR` is unset, the archive is `~/.local/.walkr/double`, beside the Compare and Trainer roots. A set value always wins. The background server of Core and Compare still runs Double only with an explicit value, so it never owns the default archive. Its history page only reads the records there.
+- The mode page `/_walkr/modes/core` shows the Core guidance: the launch name `walkr-core` and how the agent opens a page. Before, it showed the fallback text of a mode that is not available. The history page shows the same text for an empty Core list.
+- History page: each time in the list and in the views shows in the local time of the browser, as `YYYY-MM-DD HH:MM`. The live commands quote each value from a record for the shell. The page reads a Double, Coinflip or Trainer record again only when its file changed. When a writer replaces a record during the read, the page reads it one more time, so a healthy record gives no "Not readable" row; a record that fails twice gives the error row.
+- Mirror: `sync.sh` puts `--` before the source and the destination of each rsync call. In the `NAME=HOME` form a computer without a Compare directory yet gives a note, not a failure; a computer that does not answer still fails the run. The old form still fails for a Compare root that is gone.
+
 - The page headers show a foot logo before the text Walkr: Core, the mode pages, the hosted home, Double, the shared GUI, Trainer and Compare. The foot replaces the dot before the brand. It is inline SVG in the colour of the brand text, so the page policies stay the same.
 - The optional Compare mirror in `mirror/`: a persistent, read-only Compare page over a root of session records, with `sync.sh` to copy records from other computers. No install step installs or starts it.
 - Mirror: the documented container command sets `HUMAN_REVIEW_ALLOWED_HOSTS` for the published port, so the browser no longer gets `403`. The theme files use file names from a fixed table, not from the request path.

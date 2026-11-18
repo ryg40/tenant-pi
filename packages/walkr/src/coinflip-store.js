@@ -315,6 +315,9 @@ export class CoinflipStore {
     });
   }
 
+  /** The saved identities, for the read-only history. No lock, no write. */
+  identities(known) { return this.#archive.identities(known); }
+
   read(sessionId) { return this.#archive.run(async () => view((await this.#archive.load(sessionId)).doc)); }
   events(sessionId) {
     return this.#archive.run(async () => {

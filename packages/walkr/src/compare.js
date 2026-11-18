@@ -1,15 +1,22 @@
 import { RATING_MAX, RATING_MIN, isRating, starsLabel, starsText, stepRating } from "./compare-stars.js";
 import { mountFrameZoom } from "./frame-zoom.js";
+import { TYPE_LABELS, localTime, recordNodes } from "./history-view.js";
 
 // These codes prove that the server did not save the request. Anything else stays unresolved.
 const NOT_SAVED = new Set(["INVALID_REQUEST", "INVALID_ID", "ACTION_CONFLICT", "INVALID_TRANSITION", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "WRITE_FAILED"]);
 const VIEWS = { columns: "Side by side", single: "One option" };
 const SESSION = /^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$/;
+const REF = /^h-[a-f0-9]{24}$/;
+// A Compare row opens the Compare stage with pick, comment, submit and rating. Every other row shows read-only.
+const isCompare = (row) => row?.type === "compare" && !row.error;
 
-/** The one Compare page: the session list, and the selected session in the display format of its type. */
+/**
+ * The Walkr history page: the session list of every type, newest first, and the selected session in the display
+ * format of its type. Compare sessions keep pick, comment, submit and rating; the other types show read-only.
+ */
 export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refreshMs = 2000 } = {}) {
   const doc = win.document, $ = (id) => doc.getElementById(id), body = doc.body.dataset;
-  const api = "/_walkr/compare/api/sessions";
+  const api = "/_walkr/compare/api";
   const stored = (key, fallback = null) => { try { return win.localStorage.getItem(`walkr-compare:${key}`) ?? fallback; } catch { return fallback; } };
   const store = (key, value) => { try { value === null ? win.localStorage.removeItem(`walkr-compare:${key}`) : win.localStorage.setItem(`walkr-compare:${key}`, value); } catch {} };
   // A browser policy can make the localStorage getter throw. The zoom then keeps no preference.
@@ -20,9 +27,9 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     if (text !== undefined) node.textContent = text;
     return node;
   };
-  const hashId = () => { const value = win.location.hash.slice(1); return SESSION.test(value) ? value : null; };
+  const hashId = () => { const value = win.location.hash.slice(1); return SESSION.test(value) || REF.test(value) ? value : null; };
 
-  let sessions = [], selected = hashId(), view = null, loaded = "", stageKey = "", single = 0;
+  let sessions = [], hosts = [], selected = hashId(), view = null, record = null, loaded = "", stageKey = "", recordKey = "", single = 0;
   let draft = { pick: null, comments: {}, note: "", none: false }, ratingDraft = null;
   let busy = false, error = "", closed = false, timer, zooms = [], readGeneration = 0;
   let listOpen = stored("list") ? stored("list") === "open" : !selected;
@@ -31,7 +38,10 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
   try { pending = JSON.parse(stored("pending", "null")); } catch {}
 
   const newId = () => win.crypto?.randomUUID ? win.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  const shown = () => { const type = $("typeFilter").value; return sessions.filter((item) => !type || item.workflow === type); };
+  const shown = () => {
+    const [type, workflow] = $("typeFilter").value.split(":");
+    return sessions.filter((item) => (!type || item.type === type) && (!workflow || item.workflow === workflow));
+  };
   const viewMode = () => {
     const saved = view && stored(`view:${view.workflow}`);
     return VIEWS[saved] ? saved : "columns";
@@ -59,7 +69,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     setPending(item);
     busy = true; error = ""; render();
     try {
-      const answer = await call(`/${item.sessionId}/${item.op}`, { method: "POST", body: JSON.stringify(item.body) });
+      const answer = await call(`/sessions/${item.sessionId}/${item.op}`, { method: "POST", body: JSON.stringify(item.body) });
       // Only an answer for this session with a result proves the save. Any other answer keeps the request for a retry.
       if (answer?.view?.sessionId !== item.sessionId || !answer.result) throw Object.assign(new Error("The server answer did not confirm the save."), { code: "MALFORMED" });
       setPending(null);
@@ -75,7 +85,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
   function select(sessionId) {
     if (sessionId === selected) return;
     readGeneration += 1;
-    selected = sessionId; view = null; loaded = ""; single = 0; ratingDraft = null;
+    selected = sessionId; view = null; record = null; loaded = ""; single = 0; ratingDraft = null;
     folds.clear();
     draft = { pick: null, comments: {}, note: "", none: false };
     for (const id of ["note", "rateNote"]) $(id).value = "";
@@ -90,21 +100,30 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     const generation = ++readGeneration;
     const stale = () => closed || busy || generation !== readGeneration;
     try {
-      const answer = await call("");
+      const answer = await call("/history");
       if (stale()) return;
-      sessions = answer.sessions.reverse(); // Newest first.
-      const row = sessions.find((item) => item.sessionId === selected);
-      if (selected && !row) { error = "This session is not in the saved sessions."; selected = null; view = null; }
+      sessions = answer.rows; // Newest first.
+      hosts = answer.hosts;
+      const row = sessions.find((item) => item.ref === selected);
+      if (selected && !row) { error = "This session is not in the saved sessions."; selected = null; view = null; record = null; }
+      // A read-only row: read its view again only after the row changed.
+      if (row && !isCompare(row) && loaded !== `${row.ref}/${row.time}/${row.state}`) {
+        const wanted = row.ref;
+        const fresh = (await call(`/history/${wanted}`)).view;
+        if (stale() || wanted !== selected || fresh.ref !== wanted) return;
+        record = fresh;
+        loaded = `${row.ref}/${row.time}/${row.state}`;
+      }
       // Read the record again only after it changed, so a frame and a draft stay while you read.
-      if (row && !busy && loaded !== `${row.sessionId}/${row.updatedAt}/${row.isNew}`) {
+      if (isCompare(row) && !busy && loaded !== `${row.sessionId}/${row.updatedAt}/${row.isNew}`) {
         // A selection, mutation or newer read can invalidate this answer while it is in flight.
         const wanted = row.sessionId;
-        const fresh = (await call(`/${wanted}`)).view;
+        const fresh = (await call(`/sessions/${wanted}`)).view;
         if (stale() || wanted !== selected || fresh.sessionId !== wanted) return;
         if (view?.sessionId === wanted && fresh.revision < view.revision) return;
         view = fresh;
         loaded = `${row.sessionId}/${row.updatedAt}/${row.isNew}`;
-        if (view.isNew) call(`/${wanted}/seen`, { method: "POST", body: "{}" }).catch(() => {});
+        if (view.isNew) call(`/sessions/${wanted}/seen`, { method: "POST", body: "{}" }).catch(() => {});
       }
       if (!pending && error.startsWith("Could not read")) error = "";
     } catch (failure) {
@@ -112,6 +131,15 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
       error = `Could not read saved state: ${failure.message}`;
     }
     render();
+  }
+
+  function chipText(item) {
+    return item.type === "compare" && item.workflow ? `Compare · ${item.workflow}` : TYPE_LABELS[item.type] ?? item.type;
+  }
+
+  function rowState(item) {
+    if (!isCompare(item)) return item.state;
+    return item.status === "open" ? "Waiting for your pick" : item.pick === null ? "No option fitted" : `Picked: ${item.pickLabel}`;
   }
 
   function option(item, mode, readOnly) {
@@ -256,30 +284,46 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     $("toggleList").setAttribute("aria-expanded", String(listOpen));
     $("newCount").hidden = !fresh;
     $("newCount").textContent = fresh ? `${fresh} new` : "";
-    const types = [...new Set(sessions.map((item) => item.workflow))].sort();
+    // The types are fixed. The Compare workflows of the saved sessions stay selectable in a group under Compare.
+    const workflows = [...new Set(sessions.filter((item) => item.type === "compare" && item.workflow).map((item) => item.workflow))].sort();
     const filter = $("typeFilter");
-    if ([...filter.options].slice(1).map((item) => item.value).join() !== types.join()) {
+    if (filter.dataset.workflows !== workflows.join()) {
       const keep = filter.value;
-      filter.replaceChildren(new win.Option("All types", ""), ...types.map((type) => new win.Option(type, type)));
-      filter.value = types.includes(keep) ? keep : "";
+      const group = doc.createElement("optgroup");
+      group.label = "Compare workflows";
+      group.append(...workflows.map((name) => new win.Option(name, `compare:${name}`)));
+      filter.replaceChildren(new win.Option("All types", ""), ...Object.entries(TYPE_LABELS).map(([type, label]) => new win.Option(label, type)), ...(workflows.length ? [group] : []));
+      filter.value = [...filter.options].some((item) => item.value === keep) ? keep : "";
+      filter.dataset.workflows = workflows.join();
     }
+    const type = filter.value.split(":")[0];
     $("empty").hidden = list.length > 0;
+    $("coreNote").hidden = Boolean(type && type !== "core");
     $("sessions").replaceChildren(...list.map((item) => {
       const li = make("li"), button = make("button");
       button.type = "button";
-      button.dataset.session = item.sessionId;
-      if (item.sessionId === selected) button.setAttribute("aria-current", "true");
+      button.dataset.session = item.ref;
+      button.dataset.type = item.type;
+      if (item.ref === selected) button.setAttribute("aria-current", "true");
       const top = make("span", "cmp-row-top");
       if (item.isNew) top.append(make("span", "cmp-badge", "New"));
-      top.append(make("span", "cmp-type", item.workflow), make("span", "cmp-row-stars", starsText(item.rating)));
-      const state = item.status === "open" ? "Waiting for your pick" : item.pick === null ? "No option fitted" : `Picked: ${item.pickLabel}`;
-      button.append(top, make("span", "cmp-row-title", item.title), make("span", "cmp-row-meta", `${item.createdAt.slice(0, 16).replace("T", " ")} · ${state}`));
-      button.setAttribute("aria-label", `${item.isNew ? "New. " : ""}${item.workflow}: ${item.title}. ${state}. ${starsLabel(item.rating)}.`);
-      button.addEventListener("click", () => select(item.sessionId));
+      const chip = chipText(item);
+      const typeChip = make("span", "cmp-type", chip);
+      typeChip.dataset.type = item.type;
+      if (item.workflow) typeChip.dataset.workflow = item.workflow;
+      top.append(typeChip);
+      // The computer of the record, on a mirror page with the records of more than one computer.
+      if (hosts.length > 1 && item.host) top.append(make("span", "cmp-host", item.host));
+      if (isCompare(item)) top.append(make("span", "cmp-row-stars", starsText(item.rating)));
+      const state = rowState(item);
+      const when = localTime(item.time, "time unknown");
+      button.append(top, make("span", "cmp-row-title", item.title), make("span", "cmp-row-meta", `${when} · ${state}`));
+      button.setAttribute("aria-label", `${item.isNew ? "New. " : ""}${chip}${item.host && hosts.length > 1 ? ` on ${item.host}` : ""}: ${item.title}. ${state}.${isCompare(item) ? ` ${starsLabel(item.rating)}.` : ""}`);
+      button.addEventListener("click", () => select(item.ref));
       li.append(button);
       return li;
     }));
-    const index = list.findIndex((item) => item.sessionId === selected);
+    const index = list.findIndex((item) => item.ref === selected);
     $("newer").disabled = !list.length || index === 0;
     $("older").disabled = !list.length || index === list.length - 1;
 
@@ -290,12 +334,29 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
 
     for (const id of ["context", "stage", "decide"]) $(id).hidden = !view;
     $("original").hidden = !view?.source;
-    $("hint").hidden = Boolean(view);
-    $("type").hidden = !view;
+    $("record").hidden = !record;
+    // A selected type with no session shows how to start it, from the guidance of src/modes.js.
+    const guide = !view && !record && !list.length;
+    $("guide").hidden = !guide;
+    if (guide && $("guide").dataset.type !== type) {
+      $("guide").dataset.type = type;
+      $("guide").replaceChildren(...[...doc.querySelectorAll("template[data-guide]")].filter((item) => !type || item.dataset.guide === type).map((item) => {
+        const part = make("section", "cmp-record-part");
+        part.append(make("h2", "", `Start ${TYPE_LABELS[item.dataset.guide]}`), item.content.cloneNode(true));
+        return part;
+      }));
+    }
+    $("hint").hidden = Boolean(view || record || guide);
+    $("type").hidden = !view && !record;
     $("viewMode").disabled = !view;
     if (!view) {
-      $("title").textContent = "Walkr sessions";
-      $("state").textContent = "";
+      $("title").textContent = record ? record.title : "Walkr sessions";
+      $("state").textContent = record ? record.state : "";
+      $("type").textContent = record ? chipText(record) : "";
+      $("type").dataset.type = record?.type ?? "";
+      delete $("type").dataset.workflow;
+      const key = record ? `${record.ref}/${record.time}/${record.state}` : "";
+      if (key !== recordKey) { recordKey = key; $("record").replaceChildren(...(record ? recordNodes(record, make) : [])); }
       $("tabs").hidden = true;
       $("showAll").hidden = true;
       folds.clear();
@@ -306,7 +367,8 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     }
     const readOnly = view.status !== "open";
     const mode = viewMode();
-    $("type").textContent = view.workflow;
+    $("type").textContent = `Compare · ${view.workflow}`;
+    Object.assign($("type").dataset, { type: "compare", workflow: view.workflow });
     $("title").textContent = view.title;
     $("state").textContent = `${readOnly ? "Submitted" : "Waiting for your pick"}${view.rating ? ` · ${starsLabel(view.rating.value)}` : ""}`;
     const modeSelect = $("viewMode");
@@ -380,7 +442,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     $("rate").disabled = busy || Boolean(pending) || !rating || rating === savedRating && !$("rateNote").value.trim();
   }
 
-  const step = (by) => { const list = shown(); const next = list[list.findIndex((item) => item.sessionId === selected) + by]; if (next) select(next.sessionId); };
+  const step = (by) => { const list = shown(); const next = list[list.findIndex((item) => item.ref === selected) + by]; if (next) select(next.ref); };
   const handlers = [
     [$("toggleList"), "click", () => { listOpen = !listOpen; store("list", listOpen ? "open" : "closed"); render(); }],
     [$("newer"), "click", () => step(-1)],

@@ -306,6 +306,51 @@ class AwsRowTests(unittest.TestCase):
         self.assertEqual(other, kit_aws.head_of(self.clone))
 
 
+class ProjectScopeTests(unittest.TestCase):
+    """Links in the hermes project stores of the profile keep a row project-scoped (pi_skills)."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix="aws-scope-test-")
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name)
+        self.clone = self.root / "clone"
+        for name in ("aws-cdk", "aws-iam"):
+            (self.clone / "plugins/aws-core/skills" / name).mkdir(parents=True)
+            (self.clone / "plugins/aws-core/skills" / name / "SKILL.md").write_text("---\nname: " + name + "\n---\n")
+        self.profile = self.root / "profile"
+        self.store = self.profile / "projects-memory/demo-repo/skills"
+        self.store.mkdir(parents=True)
+        self.kit_entry = kit_aws.expected_skills(self.clone, ROWS["aws-core"])[0]
+
+    def run_skills(self, settings):
+        return kit_aws.pi_skills(settings, self.clone, ROWS, ["aws-core"], False, self.profile)
+
+    def test_a_link_into_the_clone_keeps_the_row_project_scoped(self):
+        (self.store / "aws-cdk").symlink_to(self.clone / "plugins/aws-core/skills/aws-cdk")
+        settings = {"skills": [self.kit_entry, "/elsewhere/own-skills"]}
+        lines = self.run_skills(settings)
+        self.assertEqual(["/elsewhere/own-skills"], settings["skills"])
+        self.assertTrue(any("demo-repo" in line for line in lines), lines)
+        self.assertTrue(any("aws-iam" in line for line in lines), lines)
+
+    def test_a_link_outside_the_clone_does_not_count(self):
+        outside = self.root / "other/aws-cdk"
+        outside.mkdir(parents=True)
+        (outside / "SKILL.md").write_text("---\nname: aws-cdk\n---\n")
+        (self.store / "aws-cdk").symlink_to(outside)
+        settings = {"skills": []}
+        self.run_skills(settings)
+        self.assertEqual([self.kit_entry], settings["skills"])
+
+    def test_a_dangling_link_or_a_link_to_a_file_does_not_count(self):
+        folder = self.clone / "plugins/aws-core/skills/aws-cdk"
+        (self.store / "aws-cdk").symlink_to(folder / "missing/deeper")
+        (self.store / "aws-iam").symlink_to(self.clone / "plugins/aws-core/skills/aws-iam/SKILL.md")
+        settings = {"skills": []}
+        self.run_skills(settings)
+        self.assertEqual([self.kit_entry], settings["skills"])
+
+
 class LauncherTests(unittest.TestCase):
     def test_the_proxy_starts_unsigned_unless_a_profile_is_named(self):
         temp = Path(tempfile.mkdtemp(prefix="aws-launcher-test-"))

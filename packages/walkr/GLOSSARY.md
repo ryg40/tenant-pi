@@ -152,6 +152,14 @@ _Avoid_: Score, rank
 The short report of the agent on what it did with the pick.
 _Avoid_: Result
 
+**History page**:
+The Compare page as one list of the saved sessions of every type: Core, Double, Coinflip, Trainer and Compare. Only Compare sessions take a pick and a rating there.
+_Avoid_: Dashboard, home page
+
+**History mirror**:
+A persistent, read-only history page over a mirror root that holds copies of the records of one or more computers ([mirror](mirror/README.md)).
+_Avoid_: Compare mirror
+
 
 [Trainer](docs/trainer.md) builds a preference dataset from ranked groups.
 

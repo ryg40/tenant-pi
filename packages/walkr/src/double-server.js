@@ -113,7 +113,7 @@ export function createDoubleHandler({ token, archiveDir, stateDir, hosted, train
     if (hosted) fail("HOSTED_UNSUPPORTED", "Double is not available in hosted mode.");
     const refusal = posixOnlyRefusal(platform);
     if (refusal) fail(POSIX_ONLY_CODE, refusal);
-    if (!archiveDir) fail("DOUBLE_DISABLED", "Double requires an explicit absolute HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR.");
+    if (!archiveDir) fail("DOUBLE_DISABLED", "Start `walkr-double serve`, or set an absolute HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR for this server.");
     if (overlaps(stateDir, archiveDir)) {
       fail("UNSAFE_PATH", "Double archive and runtime state must be separate, not nested.");
     }

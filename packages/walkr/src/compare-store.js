@@ -274,6 +274,30 @@ export class CompareStore {
     return (await this.run(() => this.#sessions())).map(summary);
   }
 
+  /**
+   * The history page: one summary per session, oldest first, like `list`. A record that cannot be read gives one
+   * entry with an error code instead of a failure of the whole list. A missing root gives no entry. It writes nothing.
+   */
+  async history() {
+    return this.run(async () => {
+      let names;
+      try {
+        await this.#ensureRoot(false);
+        await inspect(this.#sessionsDir(), true, true);
+        names = await fs.readdir(this.#sessionsDir());
+      } catch (error) {
+        if (error.code === "ENOENT" || error.code === "NOT_FOUND") return [];
+        throw error;
+      }
+      const rows = [];
+      for (const name of names.filter((entry) => SESSION.test(entry)).sort()) {
+        try { rows.push(summary((await this.#load(name)).doc)); }
+        catch (error) { if (error.code !== "NOT_FOUND") rows.push({ sessionId: name, error: error.code || "UNREADABLE" }); }
+      }
+      return rows;
+    });
+  }
+
   /** Agent: create a session from 2 or 3 prepared options. */
   async create(input) {
     const body = capture(input);

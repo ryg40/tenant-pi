@@ -1,4 +1,4 @@
-/* Compare page: one view of every session. Uses the shared theme variables; all themes apply.
+/* Walkr history page (the Compare layout): one view of every session of every type. Uses the shared theme variables; all themes apply.
    The page does not scroll: the bar is one line, and the stage gets the height that is left. */
 html, body { height: 100%; }
 body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 var(--sans); }
@@ -25,7 +25,7 @@ body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 
 .cmp-list button:hover { border-color: var(--strong-border); }
 .cmp-list button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .cmp-list button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
-.cmp-row-top { display: flex; align-items: center; gap: 6px; }
+.cmp-row-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .cmp-row-stars { margin-left: auto; color: var(--accent); font-size: 12px; }
 .cmp-row-title { overflow-wrap: anywhere; font-weight: 600; }
 .cmp-row-meta, .cmp-list p { color: var(--mute); font-size: 12px; }
@@ -42,6 +42,21 @@ body { margin: 0; background: var(--canvas); color: var(--txt); font: 14px/1.45 
 .cmp-context dd { margin-bottom: 4px; }
 .cmp-pre { white-space: pre-wrap; overflow-wrap: anywhere; }
 .cmp-meta { color: var(--mute); font: 12px var(--mono); }
+
+/* The read-only stage of a Core, Double, Coinflip or Trainer row, and the start guidance of a type with no session. */
+.cmp-record { flex: 1; min-height: 0; overflow: auto; padding: 4px 14px 12px; border: 1px solid var(--card-border); border-radius: 9px; background: var(--card); font-size: 13.5px; }
+.cmp-record-part h2 { margin: 12px 0 4px; color: var(--mute); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.cmp-record-part p { margin: 4px 0; }
+.cmp-record code { padding: 1px 5px; border-radius: 5px; background: var(--accent-soft); font: 12.5px var(--mono); overflow-wrap: anywhere; }
+.cmp-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; margin: 0; }
+.cmp-facts dt { color: var(--mute); }
+.cmp-facts dd { margin: 0; overflow-wrap: anywhere; }
+.cmp-items { display: grid; gap: 6px; margin: 0; padding-left: 20px; }
+.cmp-items li { display: grid; gap: 2px; }
+.cmp-quote { margin: 0; padding: 4px 8px; border-left: 3px solid var(--strong-border); background: var(--paper, transparent); font: 12.5px/1.45 var(--mono); }
+.cmp-live { margin-top: 6px; }
+.cmp-record-error { color: var(--danger); font-weight: 600; }
+.cmp-host { flex: none; padding: 1px 7px; border-radius: 999px; background: var(--accent-soft); color: var(--txt); font: 11px/1.5 var(--mono); }
 
 .cmp-tabs { display: flex; flex: none; gap: 4px; }
 .cmp-tabs button { padding: 4px 12px; border: 1px solid var(--hair); border-radius: 7px 7px 0 0; background: var(--card); color: var(--txt); font: inherit; cursor: pointer; }

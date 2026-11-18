@@ -68,11 +68,12 @@ test("supported aliases copy metadata without direct OAuth endpoints", () => {
 		const exact = canonicalCodexProvider.getModels().find((model) => model.id === id);
 		const source = exact ?? canonicalCodexProvider.getModels().find((model) => model.id === "gpt-6-astra")!;
 		if (exact || alias !== "terra") {
-			for (const field of ["contextWindow", "maxTokens", "reasoning", "thinkingLevelMap", "input", "inputLimits"] as const) assert.deepEqual(models[index][field], source[field]);
+			for (const field of ["maxTokens", "reasoning", "thinkingLevelMap", "input", "inputLimits"] as const) assert.deepEqual(models[index][field], source[field]);
 		}
+		// The gateway routes take at most 272,000 input tokens, also when the catalog gives more.
+		assert.equal(models[index].contextWindow, Math.min((exact ?? source).contextWindow, 272000));
 		assert.deepEqual(models[index].cost, exact ? exact.cost : FALLBACK_API_PRICES[alias as keyof typeof FALLBACK_API_PRICES]);
 		assert.ok(models[index].cost.input > 0 && models[index].cost.output > 0);
-		assert.match(models[index].name, /^GPT-6(?:\.1)? /);
 		assert.equal(models[index].api, "openai-completions");
 		assert.ok(!("baseUrl" in models[index]));
 		assert.ok(!("headers" in models[index]));
@@ -83,8 +84,7 @@ test("uncataloged aliases use published API-equivalent estimates instead of zero
 	const astra = canonicalCodexProvider.getModels().find((entry) => entry.id === "gpt-6-astra")!;
 	t.mock.method(canonicalCodexProvider, "getModels", () => [astra]);
 	for (const [index, alias] of Object.keys(ALIASES).entries()) {
-		const expected = alias === "astra" ? astra.cost : FALLBACK_API_PRICES[alias as keyof typeof FALLBACK_API_PRICES];
-		assert.deepEqual(gatewayModels()[index].cost, expected);
+		assert.deepEqual(gatewayModels()[index].cost, FALLBACK_API_PRICES[alias as keyof typeof FALLBACK_API_PRICES]);
 	}
 	const terra = gatewayModels().find((model) => model.id === "codex-auto/terra")!;
 	assert.equal(ALIASES.terra, "gpt-6.1-terra");

@@ -19,7 +19,8 @@ Actions:
   claude-installed  exit 0 when the Claude Code record of the kit names a part, else 1
 
 Ownership: the kit removes or replaces only a part that a kit record names, and only while the part still equals
-the record. The profile record kit-aws.json holds each `aws-mcp` entry that the kit wrote, by file name. The record
+the record. The profile record kit-aws.json holds each `aws-mcp` entry that the kit wrote, by file name, and the
+choice (on or off) of the last run for each row with project links (`chosen`). The record
 ~/.local/share/tenant-pi/kit-aws-claude.json holds the Claude Code plugins (id and scope), the kit server, the
 deniedMcpServers entries and the emulator skill link that the kit made. A part that differs from its record, or that
 has no record, is the user's: it stays, with one line, unless --adopt makes it the kit's. A Claude Code plugin in
@@ -371,6 +372,27 @@ def project_links(profile, folders):
                 if target == path and path.is_dir():
                     found.setdefault(store.parent.name, set()).add(folder)
     return found
+
+
+def chosen_rows(profile):
+    """{row: on} of the record: the choice of the last run for each AWS row with project links."""
+    found = read_record(Path(profile) / PROFILE_RECORD).get("chosen")
+    return {cid: on for cid, on in found.items() if isinstance(on, bool)} if isinstance(found, dict) else {}
+
+
+def record_choice(profile, clone, rows, modules):
+    """Record on or off for each AWS row whose skill folders have project links.
+
+    The kit does not make or remove those links, so they cannot show an off: the inventory reads this record."""
+    path = Path(profile) / PROFILE_RECORD
+    chosen = chosen_rows(profile)
+    for cid, component in rows.items():
+        if project_links(profile, skill_folders(clone, component)):
+            chosen[cid] = cid in modules
+    record = read_record(path)
+    if chosen and chosen != record.get("chosen"):
+        record["chosen"] = chosen
+        write_record(path, record)
 
 
 def pi_skills(settings, clone, rows, selected, adopt, profile):
@@ -1177,6 +1199,8 @@ def main(argv=None):
         elif args.action == "clone":
             print(ensure_clone(home, url, commit))
         elif args.action == "mcp":
+            # The choice first: a refusal of the aws-mcp step does not undo the choice of the user.
+            record_choice(Path(args.profile), clone, rows, modules)
             mcp_apply(Path(args.profile), clone, modules, args.adopt)
         elif args.action == "claude":
             if not args.claude:

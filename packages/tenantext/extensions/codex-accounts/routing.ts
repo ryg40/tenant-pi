@@ -8,18 +8,26 @@ import type { CodexStatusSnapshot } from "./status.ts";
 export { ACCOUNT_NAME };
 
 export const GATEWAY_PROVIDER = "litellm-codex";
-// The gateway maps the short name sol to the newest Sol, gpt-6.1-sol. The pinned names do not move.
-export const ALIASES = { luna: "gpt-6-luna", sol: "gpt-6.1-sol", astra: "gpt-6-astra", terra: "gpt-6.1-terra" } as const;
-// USD per million tokens from the Pi GPT-6 catalog; current API prices are not verified.
-// These are API-equivalent estimates, not charges to a Codex subscription.
+// The gateway maps the short names sol and astra to the newest models, gpt-6.2-sol and gpt-6.2-astra.
+// The pinned names do not move.
+export const ALIASES = { luna: "gpt-6-luna", sol: "gpt-6.2-sol", astra: "gpt-6.2-astra", terra: "gpt-6.1-terra" } as const;
+// USD per million tokens. These are API-equivalent estimates, not charges to a Codex subscription.
 export const FALLBACK_API_PRICES: Record<keyof typeof ALIASES, Model<"openai-completions">["cost"]> = {
+	// From the Pi GPT-6 catalog; current API prices are not verified.
 	luna: { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
-	sol: { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
-	astra: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+	// https://developers.openai.com/api/docs/models/gpt-6.2-sol and .../gpt-6.2-astra (2026-11-18).
+	// The cache-write prices and the tiers come from the OpenRouter listing.
+	sol: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5,
+		tiers: [{ inputTokensAbove: 272000, input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5 }] },
+	astra: { input: 8, output: 40, cacheRead: 0.4, cacheWrite: 10,
+		tiers: [{ inputTokensAbove: 272000, input: 16, output: 60, cacheRead: 0.8, cacheWrite: 20 }] },
 	// https://developers.openai.com/api/docs/models/gpt-6.1-terra (2026-10-26).
 	terra: { input: 1, output: 5, cacheRead: 0.05, cacheWrite: 1.25,
 		tiers: [{ inputTokensAbove: 272000, input: 2, output: 7.5, cacheRead: 0.1, cacheWrite: 2.5 }] },
 } as const;
+// Each gateway alias takes at most 272,000 context tokens, the input limit of the gateway routes,
+// also when the Pi catalog gives a larger value (gpt-6.1-terra: 500,000).
+const GATEWAY_CONTEXT_LIMIT = 272000;
 const TERRA_METADATA = {
 	reasoning: true, input: ["text", "image"] as ("text" | "image")[],
 	// The API advertises 1.05M; keep the Codex limit conservative until its catalog confirms it.
@@ -75,7 +83,9 @@ export function gatewayModels() {
 		const { provider: _provider, api: _api, baseUrl: _url, headers: _headers, compat: _compat, ...metadata } = source;
 		if (!exact && alias === "terra") Object.assign(metadata, TERRA_METADATA);
 		const label = alias.charAt(0).toUpperCase() + alias.slice(1);
-		return { ...structuredClone(metadata), id: `codex-auto/${alias}`, name: alias === "terra" ? "GPT-6.1 Terra (automatic)" : `GPT-6 ${label} (automatic)`,
+		// gpt-6.2-sol gives "GPT-6.2 Sol (automatic)".
+		const version = id.split("-")[1];
+		return { ...structuredClone(metadata), contextWindow: Math.min(metadata.contextWindow, GATEWAY_CONTEXT_LIMIT), id: `codex-auto/${alias}`, name: `GPT-${version} ${label} (automatic)`,
 			cost: exact ? structuredClone(exact.cost) : structuredClone(FALLBACK_API_PRICES[alias as keyof typeof ALIASES]),
 			api: "openai-completions" as const,
 			compat: { supportsStore: false, supportsReasoningEffort: true, thinkingFormat: "openai" as const, supportsOpenAIGrammarTools: false } };

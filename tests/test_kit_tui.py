@@ -77,6 +77,51 @@ class KitTuiTests(unittest.TestCase):
         # The fixture item needs consent, so the screen marks it as requested.
         self.assertEqual([target.name], selection['consent'])
 
+    def profile_choice(self, folder, keys):
+        """Run the profile choice in a pty, send the keys after the first paint, and return the finished process."""
+        master, slave = pty.openpty()
+        self.addCleanup(os.close, master)
+        self.addCleanup(os.close, slave)
+        fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+        env = {'PATH': os.environ.get('PATH', '/usr/bin:/bin'), 'TERM': 'xterm', 'PYTHONDONTWRITEBYTECODE': '1',
+               'INSTALL_TEST_TTY': os.ttyname(slave)}
+        process = subprocess.Popen([sys.executable, str(SCRIPT), '--profiles', str(folder)], env=env,
+                                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.addCleanup(self.stop, process)
+        deadline = time.monotonic() + 20
+        sent = False
+        while process.poll() is None and time.monotonic() < deadline:
+            if select.select([master], [], [], .1)[0]:
+                os.read(master, 65536)
+                if not sent:
+                    os.write(master, keys)
+                    sent = True
+        if process.poll() is None:
+            self.fail('no exit after the keys: ' + self.stop(process))
+        out, err = process.communicate(timeout=10)
+        return process.returncode, out.decode(), err.decode()
+
+    def test_the_profile_choice_gives_a_known_profile_or_a_new_valid_name(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for name in ('alpha', 'beta', 'Not-A-Profile'):
+                (Path(folder) / name).mkdir()
+            self.assertEqual(['alpha', 'beta'], kit_tui.known_profiles(folder))
+            choice = kit_tui.ProfileChoice(kit_tui.known_profiles(folder))
+            choice.move(1)
+            self.assertEqual({'mode': 'upgrade', 'name': 'beta'}, choice.choice())
+            choice.move(1)
+            # The name rule of install.sh: a refused name and the name of a known profile give no choice.
+            for typed in ('', 'Upper', '9x', 'a' * 33, 'alpha'):
+                choice.typed = typed
+                self.assertIsNone(choice.choice(), typed)
+            choice.typed = ''
+            for key in 'xyz-pi':
+                choice.type(key)
+            self.assertEqual({'mode': 'new', 'name': 'xyz-pi'}, choice.choice())
+            # On the terminal, the screen prints the choice that install.sh reads.
+            code, out, err = self.profile_choice(folder, DOWN + b'\r')
+            self.assertEqual((0, {'mode': 'upgrade', 'name': 'beta'}), (code, json.loads(out or 'null')), err)
+
     def test_a_module_and_its_prompt_resource_get_the_plan_of_the_planner(self):
         # The planner is the real inventory of an absent profile in a throwaway HOME, as install.sh passes it.
         with tempfile.TemporaryDirectory() as home:

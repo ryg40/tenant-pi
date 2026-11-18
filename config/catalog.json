@@ -280,7 +280,7 @@
     {
       "name": "walkr",
       "group": "walkr",
-      "title": "Walkr review tool",
+      "title": "Walkr local server",
       "description": "The agent prepares a review, you look at it in a browser page, and the agent reads your notes, pick and rating.",
       "when_on": "The installer links six walkr commands into ~/.local/bin, writes the skills to ~/.claude, ~/.codex and ~/.agents, and downloads missing dependencies. In use, it starts a local web server of your account and keeps sessions and reports on disk. The page URL holds a secret; a bind-all override sends plain HTTP over your network.",
       "when_off": "Reviews happen in the chat only. Old records stay, and a running server does not stop.",
@@ -298,6 +298,17 @@
       "default": "ask",
       "needs": ["consent"],
       "docs": "docs/guides/modules.md#walkr"
+    },
+    {
+      "name": "walkr-proxy",
+      "group": "walkr",
+      "title": "Walkr proxy (hosted mode)",
+      "description": "A guide for Walkr hosted mode: the review server of packages/walkr/Dockerfile behind a reverse proxy, for example Caddy. Most environments do not need it. It does not need the Walkr local server.",
+      "when_on": "The installer writes nothing and installs nothing for this row. At the end of the run, it prints the three values HUMAN_REVIEW_HOSTED, HUMAN_REVIEW_TRUSTED_PROXIES and HUMAN_REVIEW_PUBLIC_URL and the path of the docs section. You set up the server and the proxy by hand.",
+      "when_off": "The installer prints no guide. A hosted server that runs does not change.",
+      "default": "off",
+      "needs": [],
+      "docs": "packages/walkr/docs/core.md#hosted-mode-behind-a-proxy"
     },
     {
       "name": "herdr",

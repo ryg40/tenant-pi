@@ -27,17 +27,20 @@ Warning: Do not copy Pi OAuth refresh tokens into LiteLLM token directories.
 | Pi model ID | Upstream catalog model |
 | --- | --- |
 | `codex-auto/luna` | `gpt-6-luna` |
-| `codex-auto/sol` | `gpt-6.1-sol` |
-| `codex-auto/astra` | `gpt-6-astra` |
+| `codex-auto/sol` | `gpt-6.2-sol` |
+| `codex-auto/astra` | `gpt-6.2-astra` |
 | `codex-auto/terra` | `gpt-6.1-terra` |
 
 Terra targets GPT-6.1, not the older unavailable `gpt-6-terra` ID.
-When Pi lacks Terra, the provider uses a conservative 272,000-token context limit and a 128,000-token output limit.
+When Pi lacks Terra, the provider uses a 128,000-token output limit.
+An exact Terra entry in Pi's Codex catalog gives its limits; the context limit below still applies.
+The provider limits the context of each model entry to 272,000 tokens, the input limit of the gateway routes.
+This limit also applies when Pi's catalog gives a larger value, as for Terra (500,000).
 The API advertises 1,050,000 context tokens. Not verified: that larger limit through ChatGPT Codex.
-An exact Terra entry in Pi's Codex catalog takes precedence when available.
 Terra accepts text and images, with `none`, `low`, `medium`, `high`, `xhigh`, and `max` reasoning.
 Pi maps `off` to `none` and `minimal` to `low`.
 The provider copies GPT-6 Astra limits for other uncataloged GPT-6 variants.
+Without a catalog entry, Sol 6.2 and Astra 6.2 have no `off` level.
 It uses exact Pi catalog prices when available and pinned API-equivalent estimates for uncataloged variants.
 A missing GPT-6 Astra catalog entry disables the gateway instead of inventing limits.
 The gateway uses `openai-completions`, not native Responses or Codex WebSockets.
@@ -50,8 +53,10 @@ Two conversations with the same model, system text, and first user message then 
 Not verified: a live request that shows the Pi session ID in the log of an account proxy.
 The standard Pi serializer and stream parser handle messages, reasoning settings, images, and function tools.
 Grammar tools use Pi's function-tool fallback because gateway grammar support is not verified.
-Price rates are USD per million tokens. Luna, Sol, and Astra fallback rates come from Pi's GPT-6 catalog.
-Not verified: whether those older fallback rates match current API prices.
+Price rates are USD per million tokens. The Luna fallback rate comes from Pi's GPT-6 catalog.
+Not verified: whether that older fallback rate matches the current API price.
+Sol 6.2 and Astra 6.2 input, cache-read and output prices come from the OpenAI model pages, checked on 2026-11-18.
+Their cache-write prices and their prices above 272,000 input tokens come from the OpenRouter listing.
 Terra limits and prices come from the [OpenAI model documentation](https://developers.openai.com/api/docs/models/gpt-6.1-terra), checked on 2026-10-26.
 Terra cache writes use the 30-minute retention price.
 Above 272,000 input tokens, Terra doubles input and cache prices and multiplies output prices by 1.5.
@@ -59,8 +64,8 @@ Above 272,000 input tokens, Terra doubles input and cache prices and multiplies 
 | Model | Input | Output | Cache read | Cache write |
 | --- | ---: | ---: | ---: | ---: |
 | Luna | $0.10 | $0.50 | $0.01 | $0.125 |
-| Sol | $2 | $10 | $0.20 | $2.50 |
-| Astra | $10 | $50 | $1 | $12.50 |
+| Sol 6.2 | $2 | $10 | $0.10 | $2.50 |
+| Astra 6.2 | $8 | $40 | $0.40 | $10 |
 | Terra | $1 | $5 | $0.05 | $1.25 |
 
 Pi uses these rates for session costs, footer totals, subagent costs, and stored assistant-message usage.

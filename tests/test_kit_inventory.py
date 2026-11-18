@@ -19,7 +19,7 @@ CATALOG = json.loads((ROOT / "config/catalog.json").read_text())
 FIELDS = {"name", "group", "title", "description", "when_on", "when_off", "default", "needs", "docs"}
 NEEDS = {"linux", "macos", "consent", "credentials", "node24", "root"}
 # The catalog items that are not manifest components, from the specification of the catalog.
-EXTRAS = {"mcp-codemode", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc", "launcher"}
+EXTRAS = {"mcp-codemode", "walkr-proxy", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc", "launcher"}
 ITEM_KEYS = {"name", "group", "installed", "active", "version_installed", "version_pinned", "state_source", "plan"}
 RUNTIME_KEYS = {"installed", "required", "status"}
 
@@ -286,6 +286,39 @@ class InventoryTests(unittest.TestCase):
         with self.subTest("plain table"):
             self.assertNotIn("\x1b[", self.inventory(demo, "--plain"))
         self.assertEqual(before, tree(self.base))
+
+    def test_project_links_keep_aws_mcp_and_an_off_of_aws_core_holds(self):
+        source = MANIFEST["components"]["aws-core"]["source"]
+        clone = kit_inventory.kit_aws.clone_dir(self.home, source["url"])
+        skill = clone / MANIFEST["components"]["aws-core"]["resources"]["skills"][0] / "aws-demo"
+        self.write(skill / "SKILL.md", "---\nname: aws-demo\ndescription: Demo.\n---\n")
+        self.write(clone / ".git/HEAD", source["commit"] + "\n")
+        self.write(clone / "plugins/aws-core/mcp.json", {"mcpServers": {"aws-mcp": {"command": "uvx", "args": [
+            "mcp-proxy-for-aws-cli==1.8.0", "https://example.invalid/mcp"]}}})
+        demo = self.profile("demo", {"skills": [], "packages": ["npm:" + "@".join(pin("mcp"))]})
+        self.npm(demo, "mcp")
+        # No link and no skills entry: the row is absent.
+        self.assertEqual((False, None), self.states(demo)["aws-core"][:2])
+        store = demo / "projects-memory/demo-repo/skills"
+        store.mkdir(parents=True)
+        (store / "aws-demo").symlink_to(skill)
+        # The links and a kit-owned aws-mcp entry, no skills entry: a run without --with keeps the row and the entry.
+        entry = kit_inventory.kit_aws.kit_entry(clone, False)
+        self.write(demo / "mcp-adapter.json", {"mcpServers": {"aws-mcp": entry}})
+        self.write(demo / "kit-aws.json", {"mcp": {"mcp-adapter.json": entry}})
+        before = tree(self.base)
+        self.assertEqual((True, True, "keep"), self.states(demo)["aws-core"])
+        self.assertEqual(before, tree(self.base))
+        # A run with aws-core off removes the kit entry; the links stay. The next run without --with keeps it off.
+        done = subprocess.run([sys.executable, str(ROOT / "scripts/kit_aws.py"), "mcp", "--kit", str(ROOT),
+                               "--profile", str(demo), "--with", "mcp"], env=self.env, text=True, capture_output=True,
+                              timeout=60)
+        self.assertEqual(0, done.returncode, done.stderr)
+        self.assertNotIn("aws-mcp", json.loads((demo / "mcp-adapter.json").read_text())["mcpServers"])
+        self.assertTrue((store / "aws-demo").is_symlink())
+        installed, active, plan = self.states(demo)["aws-core"]
+        self.assertNotEqual(True, active)
+        self.assertNotIn(plan, ("install", "upgrade"))
 
     def test_a_kit_step_turns_an_item_on_and_a_command_link_of_another_clone_stays(self):
         # A plain filter list that predates the kit step of herdr-idle-cleanup: no handoffs extension, no skills.

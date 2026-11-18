@@ -388,6 +388,8 @@ See [the Sheprd link](../../packages/walkr/docs/compare.md#sheprd-link-optional)
 
 The package also holds an optional [Compare mirror](../../packages/walkr/mirror/README.md): a persistent, read-only page for the session records of more than one computer. `install.sh --with walkr` does not install, link or start it, on Linux or on macOS. You start it by hand when you want it.
 
+`install.sh --with walkr-proxy` is a guide for Walkr hosted mode: the review server of `packages/walkr/Dockerfile` behind a reverse proxy, for example Caddy. Most environments do not need it. The row writes nothing and installs nothing, and it does not need `walkr`. At the end of the run, the installer prints the three values `HUMAN_REVIEW_HOSTED`, `HUMAN_REVIEW_TRUSTED_PROXIES` and `HUMAN_REVIEW_PUBLIC_URL` and the path of [Hosted mode behind a proxy](../../packages/walkr/docs/core.md#hosted-mode-behind-a-proxy). The value `all` does not include `walkr-proxy`.
+
 `walkr setup --help` and `walkr-core setup --help` print help without writing files. The other four commands have no `setup` form.
 
 The Walkr server listens on `127.0.0.1`. Core and other non-Compare routes require both a loopback Host header and a loopback connection peer. A remote peer cannot reach those routes with a forged loopback Host. To open the Compare page from another computer, read [the Compare limits](../../packages/walkr/docs/compare.md#limits) for `HUMAN_REVIEW_BIND` and `HUMAN_REVIEW_ALLOWED_HOSTS` first.

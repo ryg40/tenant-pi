@@ -93,12 +93,13 @@ from scripts.validate import Invalid, load, manifest as checked_manifest, npm_pa
 PLANS = ("install", "upgrade", "keep", "remove", "skip")
 # The --with names of install.sh. questions is in the core install; its old --with name stays valid.
 MODULES = ("wiki", "hermes", "mcp", "mcp-codemode", "computer-use", "computer-use-macos", "okknow", "artifacts",
-           "walkr", "questions", "aws-core", "aws-agents", "aws-data-analytics", "aws-agents-for-devsecops",
+           "walkr", "walkr-proxy", "questions", "aws-core", "aws-agents", "aws-data-analytics", "aws-agents-for-devsecops",
            "aws-startup-advisor", "aws-emulator")
 # Catalog items that one --with name selects.
 MODULE_ITEMS = {"artifacts": ("artifacts", "artifacts-prompt"), "walkr": ("walkr", "walkr-prompts")}
 # Catalog items that are not manifest components.
-EXTRA_ITEMS = ("mcp-codemode", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc", "launcher")
+EXTRA_ITEMS = ("mcp-codemode", "walkr-proxy", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc",
+               "launcher")
 # install.sh does not install these two; a run keeps them as they are.
 MANUAL = ("openviking", "agentcore")
 PLUGIN = "computer-use-linux@computer-use-linux"
@@ -898,7 +899,7 @@ class Inventory:
 def state(installed, active=None, version_installed=None, version_pinned=None, sources=(), change=False, installs=True,
           turns_on=False):
     """The facts of one item. change: the run changes the installed item. installs: the run of a selected, absent
-    item makes it present and on; false when the run leaves it absent (only mcp-codemode). turns_on: the kit step of
+    item makes it present and on; false when the run leaves it absent (mcp-codemode, and the guide row walkr-proxy). turns_on: the kit step of
     the run adds the installed item that is off to a filter list of the profile, and the settings after the step load
     it for the selected runtime, so the item is on after the run."""
     return {"installed": installed, "active": active, "version_installed": version_installed,
@@ -1325,6 +1326,10 @@ def aws_state(inv, cid, component):
     aws-mcp counts as a part when one MCP file of the profile holds it as kit-aws.json records it). A skills entry of the user for the same
     folders of another clone counts as present; the run keeps it unless --adopt-aws. `owned` is true when the
     kit wrote a part: a run that leaves the row out removes those parts.
+
+    Links to the skill folders of the row in the hermes project stores of the profile (kit_aws.project_links) register
+    the row too: it is installed and on, also with no skills entry. Pi loads those skills only in the linked projects.
+    A row that the last run turned off (`chosen` of kit-aws.json, kit_aws.record_choice) is not registered by them.
     """
     url, commit = component["source"]["url"], component["source"]["commit"]
     clone = kit_aws.clone_dir(inv.home, url)
@@ -1336,10 +1341,19 @@ def aws_state(inv, cid, component):
     folders = [posix(one) for one in (present or theirs)]
     rows = [row for row in inv.pi.rows if row["kind"] == "skills" and any(
         row["posix"].startswith(folder.rstrip("/") + "/") for folder in folders)]
-    registered = bool(present or theirs)
-    sources = [inv.settings_path] if registered else []
-    # A skills entry counts when Pi finds skills below it; the entries of the user count as all of them.
-    found = (len(wanted) if theirs or present == wanted else len(present)) if rows else 0
+    linked = kit_aws.project_links(inv.profile, kit_aws.skill_folders(clone, component))
+    try:
+        # The kit leaves the links in place: after a run that turned the row off, they do not register it.
+        if kit_aws.chosen_rows(inv.profile).get(cid) is False:
+            linked = {}
+    except kit_aws.Refusal:
+        pass
+    registered = bool(present or theirs or linked)
+    sources = [inv.settings_path] if present or theirs else []
+    sources += [inv.profile / "projects-memory" / project / "skills" for project in sorted(linked)]
+    # A skills entry counts when Pi finds skills below it; the entries of the user count as all of them, and so do
+    # the project links.
+    found = len(wanted) if linked else (len(wanted) if theirs or present == wanted else len(present)) if rows else 0
     total = len(wanted)
     mcp_kit, mcp_change = False, False
     if cid == "aws-core":
@@ -1362,9 +1376,10 @@ def aws_state(inv, cid, component):
     if not registered and not mcp_kit:
         return {**state(False, None, None, commit[:7], sources), "owned": False}
     installed = parts(found, total) or "partial"
-    active = any(row["enabled"] for row in rows) if rows else False
-    version = head[:7] if present and head else None
-    change = (bool(present) and (head != commit or present != wanted)) or mcp_change or (bool(theirs) and inv.adopt)
+    active = bool(linked) or any(row["enabled"] for row in rows)
+    version = head[:7] if (present or linked) and head else None
+    change = (bool(present) and (head != commit or present != wanted)) or (bool(linked) and head != commit) or (
+        mcp_change) or (bool(theirs) and inv.adopt)
     return {**state(installed, active, version, commit[:7], sources, change=change),
             "owned": bool(present) or mcp_kit}
 
@@ -1682,6 +1697,9 @@ def inventory(kit, profile, home, name, env, modules=None, shell=None, dummies=F
             states[cid] = walkr_state(inv, cid, component)
         elif cid == "mcp-codemode":
             states[cid] = codemode_state(inv)
+        elif cid == "walkr-proxy":
+            # A guide row: install.sh prints the hosted-mode guide and writes nothing, so the row is never installed.
+            states[cid] = state(False, installs=False)
         elif cid == "claude-code-plugin":
             states[cid] = plugin_state(inv)
         elif cid == "dummies":
@@ -1700,6 +1718,15 @@ def inventory(kit, profile, home, name, env, modules=None, shell=None, dummies=F
             modules.remove("mcp-codemode")
     # The Claude Code AWS plugins follow the AWS rows of the run.
     states["claude-aws-plugins"] = aws_claude_state(inv, modules)
+    # The aws-mcp entry that the run of these modules writes (the rule of kit_aws.mcp_plan) is a change of aws-core.
+    core = inv.components.get("aws-core")
+    if core and "aws-core" in modules and states["aws-core"]["installed"] is not False:
+        try:
+            steps = kit_aws.mcp_plan(inv.profile, kit_aws.clone_dir(inv.home, core["source"]["url"]), modules,
+                                     inv.adopt, core["source"]["commit"])
+        except (kit_aws.Refusal, OSError):
+            steps = []
+        states["aws-core"]["change"] |= any(action == "write" for _, action, _, _ in steps)
     selected = {"core", "model-routing", "questions"}
     selected |= {cid for cid, component in inv.components.items()
                  if component["source"] == {"kind": "tree", "path": "packages/tenantext"}}

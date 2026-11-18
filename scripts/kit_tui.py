@@ -45,6 +45,11 @@ Options for a caller such as install.sh:
   --runtimes A,B    the runtimes that `r` switches between (default: the start runtime only); without a planner,
                     `r` offers no other runtime, because the screen cannot read the state for it
   -- PLANNER...     the planner command, for example: python3 scripts/kit_inventory.py --kit K --profile P --json
+
+The profile choice: --profiles DIR draws another screen and needs no --inventory and no --catalog. The screen lists
+each folder of DIR with a valid profile name, for an upgrade, and one row for a new profile, where the user types the
+name. Output on stdout, one line: {"mode": "upgrade|new", "name": "NAME"}. Exit 0 on a choice, 1 on an abort (Esc,
+Ctrl-C, or q outside the name row), 2 on an error.
 """
 import argparse
 import curses
@@ -52,6 +57,7 @@ import json
 import locale
 import os
 import platform
+import re
 import subprocess
 import sys
 import textwrap
@@ -748,6 +754,8 @@ class Screen:
         if item.active is False and item.installed is not False and plan in ('upgrade', 'skip'):
             # Its own switch, a filter or a link of the profile keeps it off, also after a kit step.
             notes.append('it is off; the run ' + ('repairs it and ' if plan == 'upgrade' else '') + 'leaves it off')
+        if item.name == 'walkr-proxy' and item.on:
+            notes.append('guide only: the run prints the hosted-mode steps and writes nothing')
         replacing = model.replacing(item)
         if plan == 'remove' and replacing:
             notes.append(', '.join(other.name for other in replacing) + ' replaces it: the run removes it')
@@ -939,6 +947,93 @@ class Screen:
             put(pane, y, 14, value, self.style['plain'], box_width - 16)
 
 
+# The profile name rule of install.sh.
+PROFILE_NAME = re.compile(r'[a-z][a-z0-9-]{0,31}')
+
+
+def known_profiles(folder):
+    """The folders of `folder` with a valid profile name, sorted. A missing folder gives none."""
+    try:
+        found = sorted(one for one in os.listdir(folder)
+                       if PROFILE_NAME.fullmatch(one) and os.path.isdir(os.path.join(folder, one)))
+    except OSError:
+        found = []
+    return found
+
+
+class ProfileChoice:
+    """The profile choice: one row for each known profile (an upgrade), then one row for a new name."""
+
+    def __init__(self, profiles):
+        self.profiles = list(profiles)
+        self.cursor = 0
+        self.typed = ''
+        self.message = ''
+
+    @property
+    def on_new(self):
+        return self.cursor == len(self.profiles)
+
+    def move(self, steps):
+        self.cursor = max(0, min(len(self.profiles), self.cursor + steps))
+        self.message = ''
+
+    def type(self, key):
+        """A key on the row of the new name: a character joins the name, Backspace takes the last one away."""
+        if key in (curses.KEY_BACKSPACE, '\x7f', '\b'):
+            self.typed = self.typed[:-1]
+        elif isinstance(key, str) and key.isprintable():
+            self.typed += key
+        self.message = ''
+
+    def choice(self):
+        """{'mode', 'name'} of the row under the cursor, or None with a message when the new name is refused."""
+        if not self.on_new:
+            return {'mode': 'upgrade', 'name': self.profiles[self.cursor]}
+        if not PROFILE_NAME.fullmatch(self.typed):
+            self.message = 'invalid name: use [a-z][a-z0-9-]{0,31}'
+        elif self.typed in self.profiles:
+            self.message = 'the profile ' + self.typed + ' exists: choose its row for an upgrade, or another name'
+        else:
+            return {'mode': 'new', 'name': self.typed}
+        return None
+
+
+def choose_profile(window, model):
+    """The key loop of the profile choice. The choice, or None on an abort."""
+    style = styles()
+    top = 0
+    while True:
+        height, width = window.getmaxyx()
+        rows = max(1, height - 6)
+        top = max(0, min(top, model.cursor)) if model.cursor < top + rows else model.cursor - rows + 1
+        window.erase()
+        put(window, 0, 0, fit(' Profile: choose one for an upgrade, or name a new one', width).ljust(width), style['bar'])
+        labels = [name + '  (upgrade)' for name in model.profiles] + ['New profile, name: ' + model.typed + '_']
+        for line, label in enumerate(labels[top:top + rows]):
+            here = top + line == model.cursor
+            put(window, 2 + line, 2, fit(label, width - 4), curses.A_REVERSE if here else curses.A_NORMAL)
+        put(window, height - 3, 2, fit(model.message, width - 4), style['warn'])
+        put(window, height - 2, 2, fit('The name is your choice, for example xyz-pi. The launcher command takes the'
+                                       ' same name.', width - 4), style['off'])
+        put(window, height - 1, 0, fit(' Up/Down move   Enter choose   Esc abort', width).ljust(width), style['bar'])
+        window.refresh()
+        try:
+            key = read_key(window)
+        except curses.error:
+            continue
+        if key in ('\n', '\r', curses.KEY_ENTER):
+            found = model.choice()
+            if found:
+                return found
+        elif key == '\x1b' or key in ('q', 'Q') and not model.on_new:
+            return None
+        elif key in (curses.KEY_UP, curses.KEY_DOWN):
+            model.move(-1 if key == curses.KEY_UP else 1)
+        elif model.on_new and key != curses.KEY_RESIZE:
+            model.type(key)
+
+
 def read_key(window):
     """A character as a string, a special key as a number; get_wch needs a wide-character curses."""
     if hasattr(window, 'get_wch'):
@@ -999,8 +1094,9 @@ def names(value):
 def main(argv=None):
     global ASCII
     parser = argparse.ArgumentParser(description=__doc__.split('\n', 1)[0])
-    parser.add_argument('--inventory', required=True)
-    parser.add_argument('--catalog', required=True)
+    parser.add_argument('--inventory')
+    parser.add_argument('--catalog')
+    parser.add_argument('--profiles', help='the profile choice: the folder of the profiles, for example ~/.pi/profiles')
     parser.add_argument('--choices')
     parser.add_argument('--exclusive', action='append', default=[])
     parser.add_argument('--replaces', action='append', default=[])
@@ -1010,6 +1106,8 @@ def main(argv=None):
     parser.add_argument('--runtimes', default='')
     parser.add_argument('planner', nargs='*', help='after --: the planner command, without --with and --runtime')
     args = parser.parse_args(argv)
+    if args.profiles is None and (args.inventory is None or args.catalog is None):
+        parser.error('--inventory and --catalog are required without --profiles')
     replaces = [value.split('=') for value in args.replaces]
     if not all(len(pair) == 2 and all(pair) for pair in replaces):
         parser.error('--replaces needs the form NEW=OLD')
@@ -1021,6 +1119,27 @@ def main(argv=None):
     except locale.Error:
         pass
     ASCII = 'utf' not in locale.getpreferredencoding(False).lower()
+    if args.profiles is not None:
+        try:
+            profiles = ProfileChoice(known_profiles(args.profiles))
+
+            def profile_screen(window):
+                window.keypad(True)
+                return choose_profile(window, profiles)
+            try:
+                chosen = on_terminal(profile_screen)
+            except KeyboardInterrupt:
+                chosen = None
+        except (Invalid, curses.error) as error:
+            print('kit_tui: ' + text(error), file=sys.stderr)
+            return 2
+        except Exception as error:
+            print('kit_tui: unexpected error: ' + type(error).__name__ + ': ' + text(error), file=sys.stderr)
+            return 2
+        if chosen is None:
+            return 1
+        print(json.dumps(chosen))
+        return 0
     try:
         model = Model(read_json(args.inventory, 'inventory'), read_json(args.catalog, 'catalog'),
                       None if args.choices is None else set(names(args.choices)),

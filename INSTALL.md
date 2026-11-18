@@ -116,6 +116,8 @@ When `~/.claude` exists, the installer also links kit skills into `~/.claude/ski
 
 ### Choose on one screen
 
+The profile name is your choice, for example `xyz-pi`, and the launcher command takes the same name. Without `--new` or `--upgrade`, a first screen lists the profiles in `~/.pi/profiles` for an upgrade and has one row for a new name.
+
 In a terminal, `install.sh` shows one screen (`--tui`). The screen replaces the module question and the runtime question. It reads the state of the profile with `scripts/kit_inventory.py` and the descriptions in `config/catalog.json`. The left pane lists each resource of the kit by group, with its state in the profile and the plan of this run. The right pane describes the selected row. It starts with the effect when the row is on and when it is off, then says what the row does. It also shows what the row needs and the files that show its state. The top line shows the runtime, its installed version and the pin of the kit. The selected row has reverse video. The drawing shows the first view of a new test profile, with `ops-footer` turned off in its settings file:
 
 ```text

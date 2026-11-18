@@ -124,9 +124,18 @@ for (const failPersistence of [false, true]) {
         assert.equal((await fs.stat(sessionFile)).isDirectory(), true);
         await assertPending();
         await fs.rmdir(sessionFile);
-        // A supported command appends normally and lets Pi retry its initial flush.
-        // The extension itself never writes session bytes or fabricates a user prompt.
+        // Since Pi 1.5.0 a failed write drops its entry (here the assistant reply), and Pi
+        // creates the session file only with a user or assistant message. A command entry
+        // stays in memory, so the receipt still waits.
         await session.prompt('/double-chat {"action":"status","comparisonId":"trial"}');
+        await assertPending();
+        // The next user prompt creates the file with every earlier entry, the batch included.
+        // The extension itself never writes session bytes or fabricates a user prompt.
+        const followUp = session.prompt("Follow-up after the failed session write.");
+        await until(() => modelRequests.length > 1);
+        for (const finish of pending) finish();
+        await followUp;
+        await session.waitForIdle();
       } else {
         assert.deepEqual(errors, []);
       }
@@ -134,7 +143,13 @@ for (const failPersistence of [false, true]) {
       const persisted = (await fs.readFile(sessionFile, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
       assert.equal(persisted[0].id, sessionManager.getSessionId());
       assert.deepEqual(persisted.find((item) => item.id === entry.id), entry);
-      assert.equal(modelRequests.length, 1, "recovery does not resend or rehandle the review");
+      assert.equal(persisted.filter((item) => item.customType === BATCH_MESSAGE).length, 1, "recovery does not resend the review");
+      assert.equal(modelRequests.length, failPersistence ? 2 : 1, "only the follow-up prompt starts another run");
+      if (failPersistence) {
+        const packets = modelRequests[1].filter((message) => message.content === entry.content
+          || (Array.isArray(message.content) && message.content.some((block) => block.text === entry.content)));
+        assert.equal(packets.length, 1, "the follow-up context holds the review once, as history");
+      }
       assert.deepEqual(JSON.parse(await fs.readFile(f.record, "utf8")).delivery.batch, expected);
       assert.equal((await s.api("/api/double/~trial/poll")).json.batch, null);
       await f.unchanged(assert);

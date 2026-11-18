@@ -11,6 +11,16 @@ ask() {
   IFS= read -r answer <&3 || fail "cancelled"
   exec 3>&-
 }
+# A [yes/no] question: yes or y, and no or n, in any letter case, set answer to yes or no. Another answer asks again.
+ask_yes_no() {
+  while :; do
+    ask "$1"
+    case $(printf '%s' "$answer" | tr '[:upper:]' '[:lower:]') in
+      yes | y) answer=yes; return 0 ;;
+      no | n) answer=no; return 0 ;;
+    esac
+  done
+}
 mode= name= shell= modules= runtime_choice= approved=no replace=no plugin= dummies= asked=no inventory=no dry_run=no
 claude_aws= adopt=no
 ui= tui_consent= tui_dummies=
@@ -40,6 +50,36 @@ while [ "$#" -gt 0 ]; do
 done
 case ${HOME:-} in /*) ;; *) fail "HOME must be set to an absolute path" ;; esac
 kit=$(cd "$(dirname "$0")" && pwd -P)
+# With a terminal, the user chooses the profile on a screen: a known profile for an upgrade, or a new name. The
+# conditions are those of the module screen below. Without a terminal, and after an error of the screen, the
+# questions follow.
+choice_tty=${INSTALL_TEST_TTY:-/dev/tty}
+if [ -z "$mode" ] && [ -z "$modules" ] && [ "$inventory" != yes ] && [ "$ui" != plain ] && [ "$approved" != yes ] &&
+   [ -f "$kit/scripts/kit_tui.py" ] && [ -c "$choice_tty" ] && (true <"$choice_tty") 2>/dev/null; then
+  trap 'fail "cancelled"' INT
+  if chosen=$(python3 "$kit/scripts/kit_tui.py" --profiles "$HOME/.pi/profiles"); then
+    chosen=$(printf '%s\n' "$chosen" | python3 -c '
+import json, sys
+try:
+    data = json.loads(sys.stdin.read())
+    valid = data["mode"] in ("new", "upgrade") and isinstance(data["name"], str) and "\n" not in data["name"]
+except (ValueError, KeyError, TypeError):
+    valid = False
+if not valid:
+    sys.exit(1)
+print(data["mode"])
+print(data["name"])
+') || fail "the profile choice of the screen is not valid"
+    mode=$(printf '%s\n' "$chosen" | sed -n 1p)
+    name=$(printf '%s\n' "$chosen" | sed -n 2p)
+  else
+    case $? in
+      1) fail "cancelled" ;;
+      *) echo 'tui:     the profile screen stopped with an error (see the line above), so the plain questions follow' >&2 ;;
+    esac
+  fi
+  trap - INT
+fi
 if [ -z "$mode" ]; then
   printf 'Choose upgrade or new. Inherited profile (suggestion only): %s\n' "${PI_CODING_AGENT_DIR:-none}"
   ask 'Profile action [upgrade/new]:'; mode=$answer
@@ -64,7 +104,7 @@ aws_modules=aws-core,aws-agents,aws-data-analytics,aws-agents-for-devsecops,aws-
 check_modules() {
   case ,$modules, in
     ,all,) modules=$optional_modules ;;
-    *,all,*) fail "all stands alone; use $optional_modules, mcp-codemode, $aws_modules, all or none" ;;
+    *,all,*) fail "all stands alone; use $optional_modules, mcp-codemode, walkr-proxy, $aws_modules, all or none" ;;
   esac
   # An AWS plugin row needs aws-core.
   case ,$modules, in
@@ -152,7 +192,7 @@ if [ -z "$modules" ] && [ "$ui" != plain ] && [ "$approved" != yes ] &&
           echo 'tui:     the inventory did not run (see the line above), so the plain questions follow' >&2
         elif selection=$(printf '%s\n' "$profile_state" |
             python3 "$kit/scripts/kit_tui.py" --inventory - --catalog "$kit/config/catalog.json" --no-remove \
-              --choices "$optional_modules,mcp-codemode,$aws_modules" --exclusive mcp,mcp-codemode --replaces mcp-codemode=mcp \
+              --choices "$optional_modules,mcp-codemode,walkr-proxy,$aws_modules" --exclusive mcp,mcp-codemode --replaces mcp-codemode=mcp \
               --requires aws-agents=aws-core --requires aws-data-analytics=aws-core \
               --requires aws-agents-for-devsecops=aws-core --requires aws-startup-advisor=aws-core \
               --runtime "${runtimes%%,*}" --runtimes "$runtimes" -- python3 "$kit/scripts/kit_inventory.py" "$@"); then
@@ -175,7 +215,7 @@ print(",".join(name for name in data["consent"] if name in known and name in dat
                and name not in ("computer-use", "computer-use-macos")))
 # DUMMIES is active in the profile: its block is there and the Pi switch is on.
 print("on" if "dummies" in data["enable"] else "")
-' "$optional_modules,mcp-codemode,$aws_modules") || fail "the selection of the screen is not valid"
+' "$optional_modules,mcp-codemode,walkr-proxy,$aws_modules") || fail "the selection of the screen is not valid"
           modules=$(printf '%s\n' "$parsed" | sed -n 1p)
           [ -n "$runtime_choice" ] || runtime_choice=$(printf '%s\n' "$parsed" | sed -n 2p)
           tui_consent=$(printf '%s\n' "$parsed" | sed -n 3p)
@@ -191,19 +231,20 @@ print("on" if "dummies" in data["enable"] else "")
       fi ;;
   esac
 fi
-# mcp-codemode is a choice for a comparison profile, so all leaves it out. all leaves out the AWS rows too.
-if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, $aws_modules, all or none]:"; modules=$answer; asked=yes; fi
+# mcp-codemode is a choice for a comparison profile, so all leaves it out. all leaves out the AWS rows too, and
+# walkr-proxy, the guide row of Walkr hosted mode.
+if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, walkr-proxy, $aws_modules, all or none]:"; modules=$answer; asked=yes; fi
 check_modules
 # A module that needs consent and that the screen turned on gets an explicit yes here. A no cancels the run.
 if [ -n "$tui_consent" ]; then
-  ask "These modules need your consent: $tui_consent. The screen showed the effect of each one. Install them? [yes/no]:"
+  ask_yes_no "These modules need your consent: $tui_consent. The screen showed the effect of each one. Install them? [yes/no]:"
   [ "$answer" = yes ] || fail "cancelled"
 fi
 case ,$modules, in
   *,computer-use,*)
     # --with computer-use is the yes to desktop control.
     if [ "$asked" = yes ]; then
-      ask 'computer-use lets the agent read your screen and send input to your desktop. Install it? [yes/no]:'
+      ask_yes_no 'computer-use lets the agent read your screen and send input to your desktop. Install it? [yes/no]:'
       [ "$answer" = yes ] || fail "cancelled"
     fi ;;
 esac
@@ -211,7 +252,7 @@ case ,$modules, in
   *,computer-use-macos,*)
     # --with computer-use-macos is the yes to desktop control. The install starts no driver and requests no grant.
     if [ "$asked" = yes ]; then
-      ask 'computer-use-macos lets the agent read your screen and send input to your Mac. Screenshots, accessibility text and typed text go to the model provider. Cua Driver sends telemetry by default. macOS asks for the grants at the first desktop tool call. Install it? [yes/no]:'
+      ask_yes_no 'computer-use-macos lets the agent read your screen and send input to your Mac. Screenshots, accessibility text and typed text go to the model provider. Cua Driver sends telemetry by default. macOS asks for the grants at the first desktop tool call. Install it? [yes/no]:'
       [ "$answer" = yes ] || fail "cancelled"
     fi ;;
 esac
@@ -347,9 +388,9 @@ try:
     if modules == ['none']:
         modules = []
     aws_names = os.environ['aws_modules'].split(',')
-    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'artifacts', 'walkr', 'questions', *aws_names)
+    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'artifacts', 'walkr', 'walkr-proxy', 'questions', *aws_names)
            for module in modules):
-        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, ' + os.environ['aws_modules'] + ', all or none')
+        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, walkr-proxy, ' + os.environ['aws_modules'] + ', all or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
     # questions is mandatory; accept its old --with name without installing twice. Only an npm source is a Pi package
     # install: okknow, artifacts and walkr are tree packages, the AWS rows come from one git clone, and mcp-codemode
@@ -608,6 +649,8 @@ try:
             # Walkr has its own installer for the skills and the Pi prompts; the kit runs it after the profile step.
             print('walkr: package ' + str(kit / manifest['components']['walkr']['source']['path'])
                   + ' (its setup writes the Walkr skills to ~/.claude, ~/.codex and ~/.agents, and the prompts to the profile)')
+        if 'walkr-proxy' in modules:
+            print('walkr-proxy: no write and no install; the run prints the guide of Walkr hosted mode at its end')
         if 'okknow' in modules:
             print('okknow: package ' + str(okknow_package))
             print('okknow: CLI link ' + str(okknow_link) + (' (' + okknow_link_state() + ')' if okknow_link_state() else ''))
@@ -783,7 +826,7 @@ case ,$modules, in
     elif [ -z "$plugin" ]; then
       # A subshell: a failed redirection of a special built-in would end this shell.
       if (true <"${INSTALL_TEST_TTY:-/dev/tty}") 2>/dev/null; then
-        ask "Install the Claude Code plugin computer-use-linux too? Each new Claude Code session then gets the desktop tools. [yes/no]:"
+        ask_yes_no "Install the Claude Code plugin computer-use-linux too? Each new Claude Code session then gets the desktop tools. [yes/no]:"
         plugin=$answer
       else
         echo "plugin:  no terminal and no --claude-plugin, so no Claude Code plugin"
@@ -804,7 +847,7 @@ elif ! command -v claude >/dev/null 2>&1; then
   claude_aws=
 elif [ -z "$claude_aws" ] && [ -n "$aws_chosen" ]; then
   if (true <"${INSTALL_TEST_TTY:-/dev/tty}") 2>/dev/null; then
-    ask "Install the Claude Code plugins of the AWS rows $aws_chosen too, from a folder marketplace at the kit clone? The kit also adds deniedMcpServers entries to ~/.claude/settings.json. They turn off each server with the command of a plugin aws-mcp server, also a server of yours. One yes covers all of them. [yes/no]:"
+    ask_yes_no "Install the Claude Code plugins of the AWS rows $aws_chosen too, from a folder marketplace at the kit clone? The kit also adds deniedMcpServers entries to ~/.claude/settings.json. They turn off each server with the command of a plugin aws-mcp server, also a server of yours. One yes covers all of them. [yes/no]:"
     claude_aws=$answer
   else
     echo "claude-aws: no terminal and no --claude-aws, so no Claude Code AWS plugins"
@@ -836,12 +879,12 @@ if helper conflict; then :; else
   status=$?
   [ "$status" -eq 10 ] || exit "$status"
   if [ "$replace" != yes ]; then
-    ask "Conflict for $name. Replace this alias/function/command with the shown launcher? [yes/no]:"
+    ask_yes_no "Conflict for $name. Replace this alias/function/command with the shown launcher? [yes/no]:"
     [ "$answer" = yes ] || fail "cancelled"
   fi
 fi
 if [ "$approved" != yes ]; then
-  ask 'Apply the shown profile and shell changes? [yes/no]:'
+  ask_yes_no 'Apply the shown profile and shell changes? [yes/no]:'
   [ "$answer" = yes ] || fail "cancelled"
 fi
 # The AWS clone comes first: the skills entries of the profile step name its folders.
@@ -1021,4 +1064,18 @@ if [ "$aws_claude_failed" = yes ]; then
   echo 'install: the Claude Code AWS step failed; the profile and the alias are in place. See docs/guides/aws-agent-toolkit.md' >&2
   exit 1
 fi
+# walkr-proxy: a guide only. The run wrote nothing for it; the user sets up the hosted server and the proxy by hand.
+case ,$modules, in
+  *,walkr-proxy,*)
+    cat <<GUIDE
+walkr-proxy: Walkr hosted mode is the review server of $kit/packages/walkr/Dockerfile behind a reverse proxy.
+walkr-proxy: the installer wrote nothing for it. Set these values for the review server:
+walkr-proxy:   HUMAN_REVIEW_HOSTED=1
+walkr-proxy:   HUMAN_REVIEW_TRUSTED_PROXIES=<the fixed IP address of the proxy>
+walkr-proxy:   HUMAN_REVIEW_PUBLIC_URL=<the public address of the proxy>
+walkr-proxy: the proxy must send the Host header 127.0.0.1:<HUMAN_REVIEW_PORT>, or the server answers 403.
+walkr-proxy: the steps: $kit/packages/walkr/docs/core.md, section "Hosted mode behind a proxy"
+GUIDE
+    ;;
+esac
 printf 'Complete: %s\n' "$name"

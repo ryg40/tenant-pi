@@ -30,6 +30,8 @@ By default, a row adds one skills entry to `settings.json` of the Pi profile, so
 
 Projects without links get none of the skills of the row.
 
+The kit never makes, changes or removes these links. So `<profile>/kit-aws.json` records whether the last run turned each linked row on or off, and the next run without `--with` keeps that choice.
+
 `--with all` leaves the AWS rows out. Name them in `--with`:
 
 ```sh

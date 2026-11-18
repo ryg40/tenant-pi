@@ -269,6 +269,23 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertEqual(2, result.returncode)
         self.assertEqual({}, self.snapshot())
 
+    def test_a_short_answer_is_a_yes_and_an_unknown_answer_asks_again(self):
+        # The answers wait in the terminal queue, so the test names no question. The run asks one yes or no question.
+        def run(*answers):
+            master, slave = pty.openpty()
+            self.addCleanup(os.close, master)
+            self.addCleanup(os.close, slave)
+            os.write(master, ''.join(answer + '\n' for answer in answers).encode())
+            return subprocess.run(['sh', str(SCRIPT), '--new', 'demo', '--shell', 'none', '--with', 'none'],
+                                  env=self.env | {'INSTALL_TEST_TTY': os.ttyname(slave)}, stdin=subprocess.DEVNULL,
+                                  text=True, capture_output=True, timeout=20)
+        # An unknown answer is no yes: the no after it cancels.
+        self.assertEqual(2, run('maybe', 'N').returncode)
+        self.assertEqual({}, self.snapshot())
+        # An unknown answer is no no: the short yes after it applies.
+        self.success(run('maybe', 'Y'))
+        self.assertTrue(self.profile.is_dir())
+
     def test_invalid_names(self):
         for name in ('', 'Upper', '-x', 'a_b', '../x', 'a' * 33, 'a;touch pwn', 'a\nb'):
             with self.subTest(name=name):
@@ -439,6 +456,20 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.success(self.install(mode='upgrade', shell='none', modules='artifacts', env=env))
         self.assertEqual({k: v for k, v in before.items() if k != calls},
                          {k: v for k, v in self.snapshot().items() if k != calls})
+
+    def test_walkr_proxy_prints_the_guide_and_writes_no_file(self):
+        self.success(self.install(shell='none'))
+        self.success(self.install(mode='upgrade', shell='none'))
+
+        def files():
+            # The fake pi appends each of its calls to calls.jsonl.
+            return {name: data for name, data in self.snapshot().items() if not name.endswith('calls.jsonl')}
+
+        before = files()
+        result = self.install(mode='upgrade', shell='none', modules='walkr-proxy')
+        self.success(result)
+        self.assertEqual(before, files())
+        self.assertIn(str(ROOT / 'packages/walkr/docs/core.md'), result.stdout)
 
     @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
     def test_walkr_runs_the_setup_of_the_package_for_claude_and_for_the_profile(self):

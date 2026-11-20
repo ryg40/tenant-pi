@@ -8,6 +8,7 @@ To add a screen, add one entry to ROUTES. To add a content type, add one entry t
 the CLI).
 """
 import argparse
+import faulthandler
 import hashlib
 import html
 import http.server
@@ -17,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import socketserver
 import sys
 import threading
 import time
@@ -452,6 +454,12 @@ class Server(http.server.ThreadingHTTPServer):
         self.listed = None
         super().__init__(('127.0.0.1', port), Handler)
 
+    def server_bind(self):
+        # HTTPServer.server_bind names the server with socket.getfqdn, a reverse lookup that can wait on the network
+        # (macOS) before the server listens. No answer uses the name.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
+
 
 # ---------------------------------------------------------------------------
 # The retention sweep
@@ -482,6 +490,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='the local tenant-artifacts server')
     parser.add_argument('--port', type=int, required=True)
     args = parser.parse_args(argv)
+    # SIGUSR1 writes the stack of each thread to the log: the CLI sends it when the server gives no /healthz answer.
+    faulthandler.register(signal.SIGUSR1)
     store = store_lib.store_dir()
     store_lib.make_store(store)
     server = Server(args.port, store)

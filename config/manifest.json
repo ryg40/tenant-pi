@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runtime": {
-    "piVersion": "1.5.2",
+    "piVersion": "1.6.0",
     "piBoltVersion": "1.2.1",
-    "piAcceptedRange": ">=1.5.0 <1.6",
+    "piAcceptedRange": ">=1.5.0 <1.7",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
@@ -11,7 +11,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.5.2"
+        "spec": "@earendil-works/pi-coding-agent@1.6.0"
       },
       "status": "tested",
       "requires": [],

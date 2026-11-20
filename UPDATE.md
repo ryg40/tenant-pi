@@ -55,7 +55,7 @@ One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `
 
 When plain Pi moves ahead of Pi-Bolt's embedded Pi, supply `pin --range` with a reviewed range that includes both Pi versions.
 
-The current pins are Pi 1.5.2 and Pi-Bolt 1.2.1, which carries Pi 1.5.2. The reviewed range stays `>=1.5.0 <1.6`; the embedded Pi matches the tested pin. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
+The current pins are Pi 1.6.0 and Pi-Bolt 1.2.1, which carries Pi 1.5.2. The reviewed range is `>=1.5.0 <1.7`. It includes the embedded Pi 1.5.2, which is below the tested pin, so `check_runtime.py` reports Pi-Bolt as `untested_in_range`. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
 2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.2.1`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
@@ -85,6 +85,8 @@ The [Pi-Bolt 1.2.1 release notes](https://github.com/opensec-git/Pi-Bolt/release
 The verified npm wrapper tarballs add only the version and a more accurate compiled-extension notice. Their dependencies, signature checks and service-restart behavior are unchanged. No kit settings migration is identified. Remote control, service updates, recompilation and desktop interaction still need separate checks.
 
 Pi 1.5.2 adds a fork choice when a session's folder no longer exists, including extension-driven session switches. It also fixes failed imports leaving copies and updates the Anthropic OAuth client version. No kit installer, settings, extension or skill migration is identified from these changes. Interactive session recovery and native-provider authentication remain outside the offline qualification.
+
+Pi 1.6.0 has one breaking change: `render()` of an extension component returns `readonly string[]`, and `Container` returns a cached array. No kit extension changes render output in place; the Tenantext typecheck passes. Pi 1.6.0 adds GPT-6.2 Sol (500K context on Codex) and GPT-6.2 Astra (272K) to the Pi catalog. The Codex gateway routes now take the exact catalog prices and limits and still cap each route at 272,000 tokens. RPC session replacement runs `session_start` handlers once, and `--mode json` keeps the events of `session_start` handlers. `pi.exec` reports 128 plus the signal number for a command that a signal ends. The `find` tool takes path patterns relative to the search directory. No kit installer, settings, extension or skill migration is identified from these changes. Interactive TUI behavior and live provider requests remain outside the offline qualification.
 
 ## The module versions
 

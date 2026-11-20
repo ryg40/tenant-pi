@@ -12,6 +12,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -264,6 +265,28 @@ class StartOffTests(unittest.TestCase):
         scratch.ok('off')
         self.assertIsNone(health_pid(scratch.port))
         self.assertIsNone(decoy.poll())
+
+    def test_the_server_listens_without_a_name_lookup(self):
+        # A reverse lookup can wait on the network before the server listens (macOS). Here each lookup fails.
+        scratch = Scratch(self)
+        site = scratch.base / 'site'
+        site.mkdir()
+        (site / 'sitecustomize.py').write_text('import socket\n\ndef refuse(*args):\n'
+                                               '    raise AssertionError("a name lookup")\n\n'
+                                               'socket.getfqdn = socket.gethostbyaddr = refuse\n')
+        log = scratch.base / 'server.log'
+        program = ROOT / 'packages/artifacts/server/artifacts_server.py'
+        with log.open('w') as out:
+            server = subprocess.Popen([sys.executable, '-B', str(program), '--port', str(scratch.port)],
+                                      env=scratch.env | {'PYTHONPATH': str(site)}, stdin=subprocess.DEVNULL,
+                                      stdout=out, stderr=out)
+        self.addCleanup(server.wait)
+        self.addCleanup(server.kill)
+        for _ in range(100):
+            if health_pid(scratch.port) == server.pid or server.poll() is not None:
+                break
+            time.sleep(0.1)
+        self.assertEqual(server.pid, health_pid(scratch.port), log.read_text())
 
 
 class RemoteStoreTests(unittest.TestCase):

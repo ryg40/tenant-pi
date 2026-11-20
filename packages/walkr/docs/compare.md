@@ -128,6 +128,7 @@ walkr-compare close                                          # optional Sheprd l
 
 `walkr compare ...` runs the same commands.
 `create` prints `{ sessionId, replay, status, url }`, and `sheprd` only when the [Sheprd link](#sheprd-link-optional) is on. `open` prints the page URL of this server run.
+`walkr-compare open <session-id>` exits 2 when the session is unknown or the ID is not valid, with the cause on standard error. Every other failure exits 1. `walkr compare open <session-id>` through the `walkr` command exits 1 for these causes too.
 `wait` polls each 500 ms until the result or the timeout (default 240 seconds, maximum 3600). It prints `{ status: "ready", result, rating }` or `{ status: "timeout" }`.
 No command opens a browser.
 
@@ -223,7 +224,7 @@ The record is JSON with `schema: "walkr-compare-session"`, `version: 1`, and a `
 
 ## HTTP interface
 
-All routes sit under `/_walkr/compare/` and refuse query strings. The Host must be loopback or an exact `HUMAN_REVIEW_ALLOWED_HOSTS` entry. Hosted mode refuses all of them.
+All routes sit under `/_walkr/compare/` and refuse query strings. The Host must be loopback or an exact `HUMAN_REVIEW_ALLOWED_HOSTS` entry. A loopback connection peer may send a loopback Host (`127.0.0.1`, `localhost`, `[::1]`) with any port for the Compare routes and the theme files `/theme.css` and `/theme.js`, so a local front such as the artifacts server or a Sheprd tunnel can pass the page with its own Host. Every other route still needs the port of the Walkr server in the Host. A request that only this any-port rule admits has one more rule for the page writes `seen`, `submit` and `rate`: after the credential check, an `Origin` header that is present must be an HTTP origin with the host name and the port of the Host (compared in lower case, with a numeric port), or the write gets 403. A write without `Origin` passes. A request that the own port or an allowed host admits has no Origin check. Hosted mode refuses all of them.
 
 | Route | Credential | Purpose |
 | --- | --- | --- |

@@ -6,6 +6,8 @@ The Markdown view of the server renders Markdown in the browser with an unchange
 
 - Project: https://github.com/markedjs/marked
 - Version: `18.0.7`
+- File: `marked.umd.js` (42757 bytes)
+- SHA-256: `7a1f8c5e7226b75ff16644bdb2c0130d2ae7371e7ea3106c2d6dac77ab0ff7b6`
 - License: MIT
 - Copyright: 2018+ MarkedJS, 2011-2018 Christopher Jeffrey
 
@@ -21,6 +23,7 @@ The Markdown view gives a fenced code block with a language its syntax colors wi
 - SHA-256: `8ab71eb09c51f501e5e25157d9cff100e46cc29bcbfc744d0b746d451fca7f53`
 - License: BSD-3-Clause
 - Copyright: 2006 Ivan Sagalaev
+- Copyright in the header of the file: `(c) 2006-2026 Josh Goebel <hello@joshgoebel.com> and other contributors`
 
 The full upstream license text is in [`server/web/vendor/highlight-LICENSE`](server/web/vendor/highlight-LICENSE), a copy of the `LICENSE` file of the npm package.
 

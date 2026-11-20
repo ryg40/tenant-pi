@@ -1,8 +1,9 @@
 """The local tenant-artifacts server: a read-only web server on 127.0.0.1 for the artifacts of the store.
 
-`artifacts start` runs this file: `python3 -B artifacts_server.py --port N`. The server answers GET and HEAD only,
-admits only a loopback peer with a loopback name in the Host header, and runs a retention sweep at its start and
-then once an hour. It runs until `artifacts off`. Python 3 standard library only.
+`artifacts start` runs this file: `python3 -B artifacts_server.py --port N`. The root page links to the index of
+the artifacts (/artifacts) and to the Walkr page (/walkr). The server answers GET and HEAD only, except the requests
+that it passes to the live Walkr server for the Compare page (walkr_front.PASSED). It admits only a loopback peer with
+a loopback name in the Host header, and runs a retention sweep at its start and then once an hour. It runs until `artifacts off`. Python 3 standard library only.
 
 To add a screen, add one entry to ROUTES. To add a content type, add one entry to VIEWS (and to the upload types of
 the CLI).
@@ -22,8 +23,11 @@ import socketserver
 import sys
 import threading
 import time
+import unicodedata
+from urllib.parse import quote
 
 import artifacts_store as store_lib
+import walkr_front
 
 WEB = Path(__file__).resolve().parent / 'web'
 SWEEP_SECONDS = 3600
@@ -66,7 +70,7 @@ def log(message):
 
 
 # ---------------------------------------------------------------------------
-# The views: content type -> (label of the index, renderer of the view)
+# The views: content type -> (label of the index, renderer of the view, file extension of a download)
 # ---------------------------------------------------------------------------
 def html_view(meta, source):
     """An HTML artifact goes out as stored."""
@@ -101,8 +105,8 @@ def markdown_view(meta, source):
 
 
 VIEWS = {
-    'text/html': ('HTML', html_view),
-    'text/markdown': ('Markdown', markdown_view),
+    'text/html': ('HTML', html_view, '.html'),
+    'text/markdown': ('Markdown', markdown_view, '.md'),
 }
 
 
@@ -121,7 +125,7 @@ def facts(meta):
     """The shown facts of one artifact as text; the callers escape each value."""
     slug = meta['slug']
     updated = meta.get('updatedAt') if store_lib.parse_time(meta.get('updatedAt')) else ''
-    return {'slug': slug, 'label': VIEWS.get(meta.get('contentType'), ('Other', None))[0],
+    return {'slug': slug, 'label': (view_of(meta) or ('Other',))[0],
             'title': str(meta.get('title') or slug), 'file': str(meta.get('fileName') or ''),
             'repo': meta.get('repo') if isinstance(meta.get('repo'), str) else '',
             'created': meta['createdAt'], 'updated': updated, 'version': store_lib.version(meta)}
@@ -148,7 +152,8 @@ def index_row(meta):
             f'<td class="thumb"><a href="{view}" tabindex="-1" aria-hidden="true">'
             f'<iframe src="{source}" loading="lazy" sandbox="allow-scripts" tabindex="-1" title=""></iframe></a></td>'
             f'<td class="name" data-sort="{e(f["title"].lower())}"><a class="title" href="{view}">{e(f["title"])}</a>'
-            f'<span class="file">{e(f["file"])}</span></td>'
+            f'<span class="file">{e(f["file"])}</span>'
+            f'<a class="download" href="/d/{e(f["slug"])}" download>Download</a></td>'
             f'<td data-sort="{e(f["label"])}">{e(f["label"])}</td>'
             f'<td data-sort="{e(f["repo"].lower())}">{repo_cell}</td>'
             f'<td data-sort="{e(f["created"])}">{time_tag(f["created"])}{updated}</td>'
@@ -248,7 +253,7 @@ VIEWER_PAGE = """<!doctype html>
 </head>
 <body class="viewer" data-slug="{slug}" data-version="{version}">
 <header class="bar">
-<a class="home" href="/">Artifacts</a>
+<a class="home" href="/artifacts">Artifacts</a>
 <h1 class="name">{title}</h1>
 <p class="facts">{facts}</p>
 <nav class="nav">{nav}</nav>
@@ -267,7 +272,7 @@ def viewer(handler, match):
     slug = match.group('slug')
     items = listing(handler.server, fresh=True)[0] if store_lib.SLUG.fullmatch(slug) else []
     place = next((n for n, meta in enumerate(items) if meta['slug'] == slug), None)
-    if place is None or items[place].get('contentType') not in VIEWS:
+    if place is None or view_of(items[place]) is None:
         return text(404, 'not found')
     f = facts(items[place])
     e = html.escape
@@ -281,6 +286,7 @@ def viewer(handler, match):
         nav.append(f'<a href="/v/{e(items[place - 1]["slug"])}" rel="prev">Newer</a>')
     if place + 1 < len(items):
         nav.append(f'<a href="/v/{e(items[place + 1]["slug"])}" rel="next">Older</a>')
+    nav.append(f'<a href="/d/{e(slug)}" download>Download</a>')
     nav.append(f'<a href="/a/{e(slug)}" target="_blank" rel="noopener">Open alone</a>')
     return page(VIEWER_PAGE.format(title=e(f['title']), slug=e(slug), version=e(f['version']), sandbox=SANDBOX,
                                    facts=''.join(f'<span>{part}</span>' for part in shown), nav=''.join(nav)))
@@ -301,14 +307,107 @@ def api_state(handler, match):
 
 
 def browse(handler, match):
-    return Answer(302, b'', headers={'Location': '/'})
+    return Answer(302, b'', headers={'Location': '/artifacts'})
+
+
+# The root page and the Walkr page: links are paths only (no scheme, host or port), because Sheprd shows the pages
+# through a tunnel on another port.
+SIMPLE_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{title}</title>
+<link rel="stylesheet" href="/static/index.css">
+</head>
+<body>
+<header class="top">
+<h1>{title}</h1>
+</header>
+<main>
+{body}
+</main>
+</body>
+</html>
+"""
+
+
+def root(handler, match):
+    """The root page: one link for each module. The Walkr link is there also without Walkr: its page says so."""
+    body = ('<ul class="modules">\n<li><a href="/artifacts">Artifacts</a></li>\n'
+            '<li><a href="/walkr">Walkr</a></li>\n</ul>')
+    return page(SIMPLE_PAGE.format(title='Local server', body=body))
+
+
+def walkr_page(handler, match):
+    """The Walkr page: installed or not, live or not, and how to open the Walkr page. It holds no value of the Walkr
+    record (no token, no port of the live server)."""
+    nav = '<p><a href="/">Back to the root page</a></p>'
+    if not walkr_front.installed():
+        body = ('<p>Walkr is not installed: the program <code>walkr-compare</code> is not on the PATH of this '
+                'server.</p>\n' + nav)
+        return page(SIMPLE_PAGE.format(title='Walkr', body=body))
+    live = ('The live Walkr server answers now.' if walkr_front.socket_state() == 'open'
+            else 'The live Walkr server does not answer now. A Walkr command starts it.')
+    body = ('<p>Walkr is installed.</p>\n'
+            f'<p>{live}</p>\n'
+            '<p>To open the Walkr page, run <code>artifacts walkr-url</code>.</p>\n' + nav)
+    return page(SIMPLE_PAGE.format(title='Walkr', body=body))
 
 
 def healthz(handler, match):
-    # The user ID lets the CLI tell its own server from the server of another user on the same port.
-    body = json.dumps({'status': 'ok', 'service': store_lib.SERVICE, 'pid': os.getpid(),
-                       'uid': os.getuid()}).encode('utf-8')
-    return Answer(200, body, 'application/json')
+    # The user ID lets the CLI tell its own server from the server of another user on the same port. The keys
+    # status, service, pid and uid are read by the CLI; schema 2 adds the others. No value of the Walkr record goes
+    # out: `walkr` holds only the word open or closed.
+    data = {'status': 'ok', 'service': store_lib.SERVICE, 'pid': os.getpid(), 'uid': os.getuid(), 'schema': 2,
+            'port': handler.server.server_port, 'modules': ['artifacts'],
+            'pages': {'root': '/', 'artifacts': '/artifacts'}}
+    if walkr_front.installed():
+        data['modules'].append('walkr')
+        data['pages']['walkr'] = '/walkr'
+        data['walkr'] = {'socket': walkr_front.socket_state()}
+    return Answer(200, json.dumps(data).encode('utf-8'), 'application/json')
+
+
+def json_error(status, code, message):
+    return Answer(status, json.dumps({'error': {'code': code, 'message': message}}).encode('utf-8'),
+                  'application/json')
+
+
+def walkr_pass(handler):
+    """Pass one request of walkr_front.PASSED to the live Walkr server and give its answer back. The pass adds one
+    rule: an Origin header must be an HTTP origin with a loopback name. The page token and the checks of the live
+    server decide the rest."""
+    origins = handler.headers.get_all('Origin') or []
+    if len(origins) > 1 or origins and not walkr_front.loopback_origin(origins[0].strip().lower(), loopback_host):
+        return json_error(403, 'FORBIDDEN', 'This request comes from a page that is not on a loopback origin.')
+    headers = {}
+    for name in walkr_front.FORWARD:
+        value = handler.headers.get(name)
+        if value is not None:
+            # A value goes out as it came; a control character or a character outside Latin-1 cannot.
+            if re.search(r'[\x00-\x08\x0a-\x1f\x7f]|[^\x00-\xff]', value):
+                return json_error(400, 'INVALID_REQUEST', 'A request header holds a character that is not valid.')
+            headers[name] = value
+    body = b''
+    if handler.command == 'POST':
+        length = handler.headers.get('Content-Length')
+        if handler.headers.get('Transfer-Encoding') or length is None or not re.fullmatch(r'[0-9]{1,10}', length):
+            return json_error(411, 'INVALID_REQUEST', 'A request body needs a Content-Length.')
+        if int(length) > walkr_front.BODY_BYTES:
+            return json_error(413, 'INVALID_REQUEST', 'The request body is too large.')
+        body = handler.rfile.read(int(length))
+    try:
+        status, back, data = walkr_front.forward(handler.command, handler.path, headers, body)
+    except walkr_front.Closed:
+        return json_error(503, 'WALKR_CLOSED', walkr_front.CLOSED_REASON)
+    except TimeoutError:
+        return json_error(504, 'WALKR_TIMEOUT', 'The live Walkr server did not answer in time.')
+    except (OSError, ValueError):
+        return json_error(502, 'WALKR_ANSWER', 'The live Walkr server gave no valid answer.')
+    content_type = back.pop('content-type', 'application/octet-stream')
+    return Answer(status, data, content_type, {name.title(): value for name, value in back.items()})
 
 
 def artifact_policy(handler):
@@ -320,6 +419,13 @@ def artifact_policy(handler):
     return f'sandbox {SANDBOX}; frame-ancestors {parent}'
 
 
+def view_of(meta):
+    """The VIEWS entry of the content type of `meta`, or None. A damaged meta.json can hold a list or an object
+    there, which no dict lookup takes, so only a string is looked up."""
+    content_type = meta.get('contentType') if meta else None
+    return VIEWS.get(content_type) if isinstance(content_type, str) else None
+
+
 def artifact(handler, match):
     slug = match.group('slug')
     # A slug that is not valid reads no file.
@@ -327,12 +433,54 @@ def artifact(handler, match):
         return text(404, 'not found')
     store = handler.server.store
     meta = store_lib.read_meta(store, slug)
-    view = VIEWS.get(meta.get('contentType')) if meta else None
+    view = view_of(meta)
     source = store_lib.read_member(store, slug, store_lib.SOURCE) if view else None
     if source is None:
         return text(404, 'not found')
     return Answer(200, view[1](meta, source), 'text/html; charset=utf-8',
                   {'Content-Security-Policy': artifact_policy(handler)})
+
+
+# The policy of a download answer: the empty sandbox (no script, no same origin), so the stored HTML never runs as
+# a page of the server origin, also when a browser shows it in place of the download.
+DOWNLOAD_POLICY = "sandbox; default-src 'none'; frame-ancestors 'none'"
+# The characters of a file name that RFC 5987 lets stand in `filename*` without a percent escape.
+ATTR_CHARS = "!#$&+-.^_`|~"
+
+
+def disposition(meta, extension):
+    """The Content-Disposition value of a download. The file name comes from an upload, so it is data: only its last
+    path part, no control or format character, a quote or backslash becomes `_`, and a name that is not ASCII goes
+    in `filename*` (RFC 6266) with an ASCII copy in `filename`. The spaces at both ends are removed before the check.
+    A client may save the name with no dialog, so a name that starts with a dot, ends with a dot, or is longer than
+    200 bytes in UTF-8 is not usable.
+    With no usable name: the slug and the extension of the content type."""
+    name = meta.get('fileName') if isinstance(meta.get('fileName'), str) else ''
+    name = re.split(r'[/\\]', name)[-1]
+    name = ''.join(ch for ch in name if not unicodedata.category(ch).startswith('C'))
+    name = name.replace('"', '_').strip()
+    if not name or name.startswith('.') or name.endswith(('.', ' ')) or len(name.encode('utf-8')) > 200:
+        name = meta['slug'] + extension
+    plain = ''.join(ch if ' ' <= ch <= '~' else '_' for ch in name)
+    if plain == name:
+        return f'attachment; filename="{name}"'
+    return f'attachment; filename="{plain}"; filename*=UTF-8\'\'{quote(name, safe=ATTR_CHARS)}'
+
+
+def download(handler, match):
+    """The stored source of an artifact, unchanged, as a file download. The route renders nothing."""
+    slug = match.group('slug')
+    # A slug that is not valid reads no file.
+    if not store_lib.SLUG.fullmatch(slug):
+        return text(404, 'not found')
+    store = handler.server.store
+    meta = store_lib.read_meta(store, slug)
+    view = view_of(meta)
+    source = store_lib.read_member(store, slug, store_lib.SOURCE) if view else None
+    if source is None:
+        return text(404, 'not found')
+    return Answer(200, source, meta['contentType'],
+                  {'Content-Disposition': disposition(meta, view[2]), 'Content-Security-Policy': DOWNLOAD_POLICY})
 
 
 def static(handler, match):
@@ -355,11 +503,14 @@ def static(handler, match):
 
 
 ROUTES = (
-    (re.compile(r'/'), index),
+    (re.compile(r'/'), root),
+    (re.compile(r'/artifacts'), index),
     (re.compile(r'/browse/?'), browse),
+    (re.compile(r'/walkr'), walkr_page),
     (re.compile(r'/healthz'), healthz),
     (re.compile(r'/a/(?P<slug>[^/]*)'), artifact),
     (re.compile(r'/v/(?P<slug>[^/]*)'), viewer),
+    (re.compile(r'/d/(?P<slug>[^/]*)'), download),
     (re.compile(r'/api/state(?:/(?P<slug>[^/]*))?'), api_state),
     (re.compile(r'/static/(?P<name>[A-Za-z0-9_./-]+)'), static),
 )
@@ -402,7 +553,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return store_lib.SERVICE
 
     def log_message(self, format, *args):
-        log(self.address_string() + ' ' + format % args)
+        # The path of the Compare page and of its frames holds the page secret: the log never holds it.
+        log(walkr_front.mask(self.address_string() + ' ' + format % args))
 
     def send(self, answer, body=True):
         self.send_response(answer.status)
@@ -419,6 +571,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def route(self):
         if not admitted(self):
             return text(403, 'forbidden: only a loopback peer with Host 127.0.0.1, localhost or [::1]')
+        # The raw path: a path with a query or a fragment is not in the list.
+        if walkr_front.listed(self.command, self.path):
+            return walkr_pass(self)
         if self.command not in ('GET', 'HEAD'):
             return Answer(405, b'method not allowed\n', headers={'Allow': 'GET, HEAD'})
         path = self.path.split('?', 1)[0].split('#', 1)[0]
@@ -432,7 +587,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         try:
             result = self.route()
         except Exception as error:  # one failed request must not stop the server
-            log(f'error: {type(error).__name__}: {error}')
+            log(walkr_front.mask(f'error: {type(error).__name__}: {error}'))
             result = text(500, 'server error')
         self.send(result, body=self.command != 'HEAD')
 

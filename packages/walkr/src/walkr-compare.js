@@ -11,5 +11,5 @@ try {
   }
 } catch (error) {
   console.error(error.message || String(error));
-  process.exitCode = 1;
+  process.exitCode = error.exitCode === 2 ? 2 : 1;
 }

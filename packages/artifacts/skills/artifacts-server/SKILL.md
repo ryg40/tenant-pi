@@ -1,12 +1,14 @@
 ---
 name: artifacts-server
-description: "/artifacts-server start | off | status: start, stop or show the local artifacts server and give the URL of its index page."
+description: "/artifacts-server start | off | status | walkr: start, stop or show the local artifacts server, give the URLs of its pages, or give the private Walkr address."
 disable-model-invocation: true
 ---
 
 # /artifacts-server
 
-1. Run `artifacts <word>` with the word of the user: `start`, `off`, `stop` or `status`. With no word, run `artifacts status`. For another word, name these four words to the user and run nothing.
-2. Show the output lines to the user. After `start`, give the URL of the last line in your reply.
+1. Run `artifacts <word>` with the word of the user: `start`, `off`, `stop` or `status`. For the word `walkr`, run `artifacts walkr-url`. With no word, run `artifacts status`. For another word, name these five words to the user and run nothing.
+2. Show the output lines to the user. After `start`, give the URL of the last line in your reply, as the command printed it: usually the page `/artifacts` with the stored pages. A server from before the update prints the root address and a `note:` line; give that note too. The line `root:` names the root page with the links to `/artifacts` and `/walkr`. The line `walkr:` comes only when Walkr is installed.
+3. After `walkr`, give the one output line in your reply only: it is the private address of the Walkr page, on the port of this server. Write it in no file and no other command. Exit 2 means that the session is unknown, 3 that no server answered or that the server runs from before the update (give its message), 4 that Walkr or Node is absent.
+4. `off` stops only this server. It stops no Walkr review: a live Walkr server keeps running, and one output line says so.
 
 A refusal names its reason, for example a port that another program uses and the command `artifacts setup --port N`. Give that reason to the user and run no fix of your own.

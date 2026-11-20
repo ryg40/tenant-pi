@@ -508,3 +508,26 @@ test("a watcher save failure preserves feedback and retries without another sour
   assert.deepEqual(saved.edits, []);
   assert.deepEqual(saved.comments, before.comments);
 });
+
+function withHost(service, route, host, { body } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: "127.0.0.1", port: service.port, path: route, method: body ? "POST" : "GET", headers: {
+      host, "x-human-review-token": service.token, ...(body ? { "content-type": "application/json" } : {}),
+    } }, (res) => { res.resume(); res.on("end", () => resolve(res.statusCode)); });
+    req.on("error", reject);
+    req.end(body ? JSON.stringify(body) : undefined);
+  });
+}
+
+test("a loopback Host of another port reaches only Compare: the Core API and the chrome page stay refused", async (t) => {
+  const f = await fixture(t);
+  const file = path.join(f.tmp, "page.html");
+  fs.writeFileSync(file, "<p>Page</p>");
+  const opened = await request(f, "/api/session", { body: { target: file } });
+  assert.equal(opened.status, 200, opened.text);
+  const chrome = JSON.parse(opened.text).path;
+  const other = `127.0.0.1:${f.port === 6790 ? 6791 : 6790}`;
+  assert.equal(await withHost(f, chrome, `127.0.0.1:${f.port}`), 200, "the own port still opens the chrome page");
+  assert.equal(await withHost(f, chrome, other), 403);
+  assert.equal(await withHost(f, "/api/session", other, { body: { target: file } }), 403);
+});

@@ -148,7 +148,7 @@ window.addEventListener("hashchange", () => {
 // row whose artifact did not change stays, with its thumbnail.
 let known = document.body.dataset.state;
 const refresh = async () => {
-  const reply = await fetch("/", { cache: "no-store" });
+  const reply = await fetch("/artifacts", { cache: "no-store" });
   if (!reply.ok) throw new Error(`index: ${reply.status}`);
   const page = new DOMParser().parseFromString(await reply.text(), "text/html");
   const fresh = page.getElementById("artifacts");

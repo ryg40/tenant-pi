@@ -5,7 +5,7 @@ description: Store an HTML or Markdown file in the local artifact store with the
 
 # artifacts
 
-The `artifacts` CLI stores a page in the artifact store of this computer and prints its view link. The local artifacts server shows the stored pages: the user starts and stops it with `/artifacts-server start`, `/artifacts-server off` and `/artifacts-server status`. When the user asks for this in words, run `artifacts start`, `artifacts off` or `artifacts status` yourself.
+The `artifacts` CLI stores a page in the artifact store of this computer and prints its view link. The local artifacts server shows the stored pages on its page `/artifacts`. Its root page `/` links to `/artifacts` and to the Walkr page `/walkr`. The user starts and stops the server with `/artifacts-server start`, `/artifacts-server off` and `/artifacts-server status`. When the user asks for this in words, run `artifacts start`, `artifacts off` or `artifacts status` yourself. `artifacts off` stops only this server and no Walkr review.
 
 ## Commands
 

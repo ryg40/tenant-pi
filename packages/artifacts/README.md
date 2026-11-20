@@ -1,6 +1,6 @@
 # artifacts
 
-The optional kit module `artifacts`: a CLI that stores an HTML or Markdown file in a local artifact store, and a small read-only web server that shows the stored pages on `127.0.0.1`. Python 3, standard library only: no Node, no npm step, no database and no token. The tests of the module ran on Python 3.9 and 3.11; 3.9 is the lowest version that ran them.
+The optional kit module `artifacts`: a CLI that stores an HTML or Markdown file in a local artifact store, and a small web server on `127.0.0.1`. The server has a root page `/`, the page `/artifacts` with the stored pages, and the Walkr page `/walkr`. The routes of the artifacts only read the store. The Walkr pass sends three page writes to the live Walkr server. The artifacts part is Python 3, standard library only: no Node, no npm step, no database and no token. The Walkr pass needs Walkr, which runs on Node.
 
 | Path | What |
 |---|---|
@@ -28,21 +28,42 @@ The old directory `~/.local/share/tenant-artifacts/data` of an earlier server de
 
 ## The server
 
-`artifacts start` starts the server detached on `127.0.0.1:<port>` (default 6790) and prints the URL of the index page as its last line. A second `start` starts nothing. `start` writes the state file `~/.local/state/tenant-artifacts/server.json` right after the server process starts, and removes it when the start fails. `artifacts off` signals a PID only when `/healthz` on the configured port answers with the service `tenant-artifacts`, the user ID of the CLI and the same PID as the state file. The server log is `server.log` in the same directory.
+`artifacts start` starts the server detached on `127.0.0.1:<port>` (default 6790). It prints the line `root: <URL of />` and, when Walkr is installed, the line `walkr: <URL of /walkr>`. Its last line is the URL of `/artifacts`. A second `start` starts nothing and prints the same lines. `start` writes the state file `~/.local/state/tenant-artifacts/server.json` right after the server process starts, and removes it when the start fails. `artifacts off` signals a PID only when `/healthz` on the configured port answers with the service `tenant-artifacts`, the user ID of the CLI and the same PID as the state file. `off` never signals a Walkr process. When a live Walkr server answers, `off` prints one line that says that the Walkr server still runs and that `off` does not stop it. Walkr counts as installed when the program `walkr-compare` is on the `PATH`. The server log is `server.log` in the same directory.
+
+`artifacts status` prints the state, the health, the URL of `/artifacts`, the line `root:` and, with Walkr, the line `walkr:` with the word `open` or `closed`. `artifacts --json status` prints one object, for example:
+
+```json
+{"state": "running", "url": "http://127.0.0.1:6790/artifacts", "schema": 2, "pid": 12345, "port": 6790,
+ "host": "127.0.0.1", "modules": ["artifacts", "walkr"],
+ "pages": {"root": "http://127.0.0.1:6790/", "artifacts": "http://127.0.0.1:6790/artifacts", "walkr": "http://127.0.0.1:6790/walkr"},
+ "walkr": {"socket": "open"}, "store_host": "HOST"}
+```
+
+- `state` is `running` or `stopped`, and no other word. `state` and `url` are always present.
+- `url` is the URL of `/artifacts`. A server from before this version has no `/artifacts`, and its `/healthz` answer has no `schema` key. For that server, `url` and `pages.artifacts` are the root URL, and the text form says that `artifacts off` and `artifacts start` give the new pages.
+- `pid` is present only when the server runs. `store_host` is present only when the key `remote` is set.
+- `modules`, `pages.walkr` and `walkr` come from the `/healthz` answer when the server runs. When it is stopped, the CLI finds them with the same rule as the server. Without Walkr, `pages.walkr` and `walkr` are absent.
+- The CLI builds each URL of `pages` from the configured port. No value of the Walkr record (no token, no port of the live Walkr server) is in the output.
+
+`artifacts doctor` prints one line for Walkr: installed or not, and the live server open or closed. That line does not change the result `PASS` or `FAIL`.
 
 The CLI counts a server only when its `/healthz` answer has the user ID of the CLI. A server of another user on the port is another program: `status` says `stopped`, `start` refuses the port and names `artifacts setup --port N`, and `upload` prints that no server runs.
 
 The artifact server of an earlier kit version (`node server.mjs`) used the same default port, and `artifacts off` does not stop it, because `off` signals only its own server. When the program on the port answers `/healthz` with `{"status": "ok"}` and no `service` key, `start` and `doctor` say that it is probably that server. They name the command that finds its process, `ss -ltnp 'sport = :N'` on Linux or `lsof -nP -iTCP:N -sTCP:LISTEN` on macOS; end that process with `kill`.
 
-The server answers `GET` and `HEAD` only. It admits a request only from a loopback peer with the host name `127.0.0.1`, `localhost` or `[::1]` in the `Host` header, with any port; else it answers 403. This stops DNS rebinding, and a port forward can use another local port.
+The server answers `GET` and `HEAD` only, except the requests of the Walkr Compare page that it passes to the live Walkr server (see [The Walkr pass](#the-walkr-pass)). It admits a request only from a loopback peer with the host name `127.0.0.1`, `localhost` or `[::1]` in the `Host` header, with any port; else it answers 403. This stops DNS rebinding, and a port forward can use another local port.
 
 | Path | Answer |
 |---|---|
-| `/` | The index page: a table of the artifacts with a live thumbnail, sortable columns, a filter and the retention setting. The switch `Table` / `Gallery` shows the same artifacts as a grid of cards with a larger thumbnail, the title, the type, the repo and the created time; a click on a card opens the viewer, and a `Sort` list sets the sort. A narrow window gives one column. A click on a repo name sets the filter `repo:<name>`. A `repo:` word matches only the repo of that name, also typed by hand; for a name with spaces, write `repo:"<name>"`. Each other word matches a part of the title, the file name, the repo or the type. The view, the sort and the filter are in the URL fragment, so a reload and a bookmark keep them; with no fragment, the page shows the table. The page asks `/api/state` every 3 seconds while it is visible, and takes the new rows when the value changes. A thumbnail frame asks `/a/<slug>?thumb`. `/browse` redirects to `/`. |
+| `/` | The root page: a link to `/artifacts` and a link to `/walkr`. |
+| `/artifacts` | The index page: a table of the artifacts with a live thumbnail, sortable columns, a filter and the retention setting. The switch `Table` / `Gallery` shows the same artifacts as a grid of cards with a larger thumbnail, the title, the type, the repo and the created time; a click on a card opens the viewer, and a `Sort` list sets the sort. A narrow window gives one column. A click on a repo name sets the filter `repo:<name>`. A `repo:` word matches only the repo of that name, also typed by hand; for a name with spaces, write `repo:"<name>"`. Each other word matches a part of the title, the file name, the repo or the type. The view, the sort and the filter are in the URL fragment, so a reload and a bookmark keep them; with no fragment, the page shows the table. The page asks `/api/state` every 3 seconds while it is visible, and takes the new rows when the value changes. A thumbnail frame asks `/a/<slug>?thumb`. `/browse` redirects to `/artifacts`. |
 | `/v/<slug>` | The viewer page. A bar shows a link to the index, the title, the file name, the type, the repo and the times, and the links `Newer`, `Older` and `Open alone`. Below the bar, a frame shows the artifact with the sandbox tokens of `/a/<slug>`. When the artifact has a new version, the bar shows a note with a `Reload` button; the frame does not load again by itself. When the artifact is gone, the bar says so. |
 | `/a/<slug>` | The artifact. An HTML artifact goes out as stored. A Markdown artifact goes out as a page that holds the source as text and renders it in the browser with `marked`. A fenced code block with a language name gets syntax colors from `highlight.js`, which the page loads only when it has such a block. A language that `highlight.js` does not know stays plain text; the page does not guess a language. With the query `?thumb`, the page loads no library past `marked`. |
 | `/api/state` | `{"state": <text>, "count": <number>}`. The state is a hash of the slugs, their created times, their versions and the retention setting. The version is the time of the last change, then ` r<revision>` when `revision` is above 0, so two changes in one second give two versions. `/api/state/<slug>` adds `"artifact": {"version": <text>}`, or `"artifact": null` when the artifact is gone. The answer can be up to 2 seconds old: the server keeps its last read of the store for 2 seconds, so many open pages cost one read. |
-| `/healthz` | `{"status": "ok", "service": "tenant-artifacts", "pid": <pid>, "uid": <user ID>}` |
+| `/walkr` | A page that says whether Walkr is installed and whether the live Walkr server answers now. It holds no value of the Walkr record. |
+| `/healthz` | `{"status": "ok", "service": "tenant-artifacts", "pid": <pid>, "uid": <user ID>, "schema": 2, "port": <port>, "modules": [...], "pages": {...}}`. `pages` holds paths: `root`, `artifacts` and, with Walkr, `walkr`. With Walkr, `modules` has `walkr` and the key `walkr` is `{"socket": "open"}` or `{"socket": "closed"}`. |
+| `/d/<slug>` | The download of an artifact: the stored file, unchanged, with `Content-Disposition: attachment` and the empty sandbox policy. The file name is the last path part of the original name with control characters removed and a quote as `_`; a name that is hidden, ends with a dot, or is longer than 200 bytes becomes the slug with the extension of the content type; a name that is not ASCII also goes into `filename*`. |
+| `/_walkr/compare/...`, `/theme.css`, `/theme.js` | The Walkr Compare page, passed to the live Walkr server (see [The Walkr pass](#the-walkr-pass)). |
 | `/static/<file>` | The style and script files of `server/web/`. Each answer has `Cache-Control: no-cache` and an `ETag` of the content: the browser asks each time, so a new kit version shows at once, and a matching `If-None-Match` gets 304 with no body. Chrome does not cache the files that a sandboxed artifact page loads, so these files come in full each time. |
 
 Each `/a/<slug>` answer has the policy `sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads; frame-ancestors http://<host>`, where `<host>` is the admitted `Host` value of the request. So only a page of this server can frame an artifact. The policy does not use `'self'`, because the web view of Sheprd then refuses the frame. A `[::1]` host keeps `'self'`, because a host source of the policy cannot hold an IPv6 address. With no `allow-same-origin`, a stored page gets an opaque origin and cannot act as the server origin. The index and the viewer are pages of the server origin. Their policy allows only the scripts, the styles, the frames and the requests of the server origin, and no inline script or style. Each value of `meta.json` goes into them escaped.
@@ -78,6 +99,27 @@ For tests only, not settings. Each variable holds a command line (shell words, p
 - `ARTIFACTS_SCAN_COMMAND` replaces the kit scanner. The command runs in the scratch repository; exit 0 is a clean scan, exit 1 is a finding, and another exit is a scanner that could not run.
 - `ARTIFACTS_SSH_COMMAND` replaces the program `ssh` of the remote store. It gets the same arguments as `ssh`: the options, `--`, the host and the remote command line.
 
+## The Walkr pass
+
+The server passes the requests of the Walkr Compare page to the live Walkr server, so the page works on the port of this server and through a port forward. The pass covers Compare sessions only. Core, Double, Trainer and Coinflip stay on the port of the live Walkr server.
+
+- The pass sends a request only when its method and its path are in one exact list (`PASSED` in `server/walkr_front.py`). `GET`: the page, its frames, its scripts and styles, `/theme.css`, `/theme.js`, the history and the view of one session. `POST`: only `seen`, `submit` and `rate` of one session. Each other request stays here: a `POST` gets 405, another path 404, and a `HEAD` gets the answer of this server. A path with a query is never passed.
+- The pass sends the method, the path, the `Host` header, the `Origin` header, the content type, the page token header and the body unchanged; a body can have up to 8 MiB. It gives back the status, the content type, the policy headers and the body. The page token and the checks of the live Walkr server decide each request.
+- A request with an `Origin` header that is not an HTTP origin with a loopback name (`127.0.0.1`, `localhost` or `[::1]`, any port) gets 403.
+- The pass reads only the port and the PID of the Walkr record and never sends its agent token. With no live Walkr server, a passed path gets 503 with a JSON reason that names `artifacts walkr-url`. One deadline of 10 seconds covers the check that the live Walkr server answers and the exchange with it. It does not cover the upload of the body from the client.
+- The path of the page holds a secret of the run. `server.log` holds each such secret as `<secret>`.
+
+`artifacts walkr-url [SESSION-ID]` prints one line: the private address of the Compare page on the origin of this server, `http://127.0.0.1:<port>/_walkr/compare/g/<secret>`, with `#<SESSION-ID>` when you give one. It runs `walkr-compare open`, which starts the live Walkr server when none runs. The command stops `walkr-compare open` after 20 seconds. The live Walkr server ends after its own idle time: 45 minutes with no use. It does not start this server. The command turns the Sheprd link of Walkr off for its own call, so Sheprd never gets the address on the Walkr port. The address is not in `status`, `--json status`, `/healthz`, the `start` lines or `server.log`.
+
+| Exit | Meaning |
+|---|---|
+| 0 | Done: the address is on standard output. |
+| 2 | The session is unknown, or the ID is not valid. |
+| 3 | No server answer: the live Walkr server did not start in time, or this server does not run (run `artifacts start`). Also: this server runs from before the update and has no Walkr pass (run `artifacts off`, then `artifacts start`). |
+| 4 | Walkr or Node is absent. |
+
+The secret of the address is valid for one run of the live Walkr server. That server ends after 45 minutes with no use. A plain browser tab then needs a new address: run `artifacts walkr-url` again.
+
 ## Sheprd
 
 `sheprd config set artifacts.url http://127.0.0.1:6790/` puts an Artifacts button in the activity bar of Sheprd. Give the port of your setup; through a port forward, the local port can differ from 6790.
@@ -86,4 +128,4 @@ For tests only, not settings. Each variable holds a command line (shell words, p
 
 ## Exit codes
 
-0 done, 2 refused input, 3 the server did not start or answer, or the remote store did not answer, 5 the scan stopped the upload.
+0 done, 2 refused input, 3 the server did not start or answer, or the remote store did not answer, 4 Walkr or Node is absent (`walkr-url`), 5 the scan stopped the upload. The exit codes of `walkr-url` are in [The Walkr pass](#the-walkr-pass).

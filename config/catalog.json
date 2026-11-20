@@ -271,7 +271,7 @@
       "group": "skills",
       "title": "/artifacts-server command",
       "description": "A Pi prompt that starts, stops or checks the local artifacts server. It comes with artifacts.",
-      "when_on": "/artifacts-server start runs the read-only artifacts server on 127.0.0.1, port 6790 by default. It needs no token and no login, so each local user of the computer can read the pages. It writes a state file and a log. With a retention set by artifacts retention, it deletes the older artifacts.",
+      "when_on": "/artifacts-server start runs the artifacts server on 127.0.0.1, port 6790 by default, with a root page, the artifacts page /artifacts and the Walkr page /walkr. These pages need no token and no login, so each local user of the computer can read them. With Walkr, the server passes the Walkr Compare page to the live Walkr server, and /artifacts-server walkr prints the private address of that page. /artifacts-server off stops only this server and no Walkr review. It writes a state file and a log. With a retention set by artifacts retention, it deletes the older artifacts.",
       "when_off": "You run the artifacts command by hand. A running server does not stop.",
       "default": "ask",
       "needs": ["consent"],

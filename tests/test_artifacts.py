@@ -1,17 +1,23 @@
 """The artifacts module: a scan finding stores nothing; delete and replace; the local server admits only loopback
-Host names, sends the sandbox policy, escapes the facts and reads nothing outside the store; the retention sweep;
-start twice, off, and a decoy PID; the remote store over ssh."""
+Host names, refuses each method but GET and HEAD, sends the sandbox policy, escapes the facts, reads nothing outside
+the store and gives out no value of the Walkr record; the retention sweep; start twice, off, and a decoy PID; the remote
+store over ssh."""
 import datetime
 import http.client
+import http.server
 import json
+import secrets
 import os
+import re
 from pathlib import Path
+import re
 import shlex
 import signal
 import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 
@@ -38,11 +44,11 @@ def free_port():
         return probe.getsockname()[1]
 
 
-def request(port, path, host=None):
-    """(status, headers, body) of one GET; `host` replaces the Host header."""
+def request(port, path, host=None, method='GET'):
+    """(status, headers, body) of one request (GET by default); `host` replaces the Host header."""
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
     try:
-        connection.request('GET', path, headers={'Host': host} if host is not None else {})
+        connection.request(method, path, headers={'Host': host} if host is not None else {})
         reply = connection.getresponse()
         return reply.status, {k.lower(): v for k, v in reply.getheaders()}, reply.read()
     finally:
@@ -136,8 +142,9 @@ class UploadTests(unittest.TestCase):
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.scratch = Scratch(self)
-        self.html = self.scratch.upload('page.html', '<h1>Page</h1>\n')
-        self.markdown = self.scratch.upload('notes.md', '# Notes\n\n| a | b |\n|---|---|\n| 1 | 2 |\n')
+        self.uploaded = {'page.html': '<h1>Page</h1>\n', 'notes.md': '# Notes\n\n| a | b |\n|---|---|\n| 1 | 2 |\n'}
+        self.html = self.scratch.upload('page.html', self.uploaded['page.html'])
+        self.markdown = self.scratch.upload('notes.md', self.uploaded['notes.md'])
         self.scratch.ok('start')
         self.port = self.scratch.port
 
@@ -185,7 +192,7 @@ class ServerTests(unittest.TestCase):
         markup = {mark: '<' + f'b data-mark="{mark}">' for mark in marks}
         slug = self.scratch.upload(markup['f4k'] + '.html', '<p>x</p>\n', '--title', markup['t4k'],
                                    '--repo', markup['r4k'])
-        for path in ('/', '/v/' + slug):
+        for path in ('/artifacts', '/v/' + slug):
             status, _, body = request(self.port, path)
             self.assertEqual(200, status, path)
             for mark in marks:
@@ -210,8 +217,193 @@ class ServerTests(unittest.TestCase):
             status, _, body = request(self.port, path)
             self.assertEqual(404, status, path)
             self.assertNotIn(MARKER.encode(), body, path)
-        self.assertNotIn(MARKER.encode(), request(self.port, '/')[2])
+        self.assertNotIn(MARKER.encode(), request(self.port, '/artifacts')[2])
 
+    def test_a_download_has_the_stored_bytes_the_attachment_and_the_sandbox_without_scripts(self):
+        for slug, name in ((self.html, 'page.html'), (self.markdown, 'notes.md')):
+            status, headers, body = request(self.port, '/d/' + slug)
+            self.assertEqual(200, status)
+            self.assertEqual(self.uploaded[name].encode('utf-8'), body)
+            self.assertEqual(f'attachment; filename="{name}"', headers['content-disposition'])
+            directives = {part.split()[0]: part.split()[1:]
+                          for part in headers['content-security-policy'].split(';') if part.strip()}
+            self.assertEqual([], directives['sandbox'])
+            self.assertEqual('nosniff', headers['x-content-type-options'])
+
+    def test_a_file_name_with_a_quote_a_line_break_and_a_path_adds_no_header(self):
+        meta_file = self.scratch.store / self.html / 'meta.json'
+        meta = json.loads(meta_file.read_text())
+
+        def file_name(name):
+            meta_file.write_text(json.dumps({**meta, 'fileName': name}))
+            status, headers, _ = request(self.port, '/d/' + self.html)
+            self.assertEqual(200, status, name)
+            self.assertNotIn('x-added-mark', headers, name)
+            match = re.fullmatch(r'attachment; filename="([^"]*)"', headers['content-disposition'])
+            self.assertIsNotNone(match, headers['content-disposition'])
+            return match.group(1)
+
+        cleaned = file_name('dir/sub\\a"b\r\nx-added-mark: 1\r\n\r\nc.html')
+        self.assertTrue(cleaned.endswith('.html'), cleaned)
+        for ch in cleaned:
+            self.assertNotIn(ch, '"/\\', cleaned)
+            self.assertTrue(' ' <= ch <= '~', cleaned)
+        # A hidden name, a name of dots and spaces and a name too long for a file system get the slug fallback.
+        for name in ('.report.md', '...', '. . .', 'report.', 'x' * 201 + '.html'):
+            self.assertEqual(self.html + '.html', file_name(name), name)
+
+    def test_a_post_to_a_download_gets_405_and_an_unknown_slug_gets_404(self):
+        self.assertEqual(405, request(self.port, '/d/' + self.html, method='POST')[0])
+        for path in ('/d/' + 'u' * 32, '/d/short'):
+            self.assertEqual(404, request(self.port, path)[0], path)
+        meta_file = self.scratch.store / self.html / 'meta.json'
+        meta_file.write_text(json.dumps({**json.loads(meta_file.read_text()), 'contentType': ['text/html']}))
+        self.assertEqual(404, request(self.port, '/d/' + self.html)[0])
+
+    def test_a_post_to_a_page_gets_405(self):
+        for path in ('/', '/artifacts', '/walkr'):
+            self.assertEqual(405, request(self.port, path, method='POST')[0], path)
+
+
+class FakeWalkr(http.server.BaseHTTPRequestHandler):
+    """A live Walkr server: /health answers with the PID of the test process and protocol 9."""
+
+    def do_GET(self):
+        body = json.dumps({'ok': True, 'pid': os.getpid(), 'protocol': 9}).encode()
+        self.send_response(200 if self.path == '/health' else 404)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        pass
+
+
+def values(data):
+    """Each leaf value of a JSON value."""
+    if isinstance(data, dict):
+        return [v for item in data.values() for v in values(item)]
+    if isinstance(data, list):
+        return [v for item in data for v in values(item)]
+    return [data]
+
+
+def fake_walkr(test, scratch):
+    """Walkr installed (a program walkr-compare on the PATH) and a live fake Walkr server with its record in the
+    scratch home. The fake server answers with the PID of the test process: a signal to that PID ends the test run.
+    Returns (the live server, its port, the token of the record)."""
+    tools = scratch.base / 'bin'
+    tools.mkdir()
+    (tools / 'walkr-compare').write_text('#!/bin/sh\nexit 0\n')
+    (tools / 'walkr-compare').chmod(0o755)
+    scratch.env['PATH'] = f'{tools}:' + scratch.env['PATH']
+    live = http.server.ThreadingHTTPServer(('127.0.0.1', 0), FakeWalkr)
+    test.addCleanup(live.server_close)
+    threading.Thread(target=live.serve_forever, daemon=True).start()
+    test.addCleanup(live.shutdown)
+    token = secrets.token_hex(32)
+    walkr_port = live.server_address[1]
+    record = scratch.home / '.human-review/server.json'
+    record.parent.mkdir()
+    record.write_text(json.dumps({'port': walkr_port, 'pid': os.getpid(), 'protocol': 9, 'agentToken': token}))
+    return live, walkr_port, token
+
+
+class WalkrTests(unittest.TestCase):
+    def test_healthz_and_the_walkr_page_hold_no_value_of_the_walkr_record(self):
+        scratch = Scratch(self)
+        _, walkr_port, token = fake_walkr(self, scratch)
+        scratch.ok('start')
+        status, _, body = request(scratch.port, '/healthz')
+        self.assertEqual(200, status)
+        data = json.loads(body)
+        # The probe reached the fake server, so the record was read.
+        self.assertEqual({'socket': 'open'}, data['walkr'])
+        self.assertNotIn(token.encode(), body)
+        self.assertEqual(scratch.port, data['port'])
+        # pid and uid are numbers of the server process, and one can equal the Walkr port by chance.
+        for value in values({key: item for key, item in data.items() if key not in ('pid', 'uid')}):
+            if isinstance(value, str):
+                self.assertNotIn(str(walkr_port), value)
+            else:
+                self.assertNotEqual(walkr_port, value)
+        status, _, body = request(scratch.port, '/walkr')
+        self.assertEqual(200, status)
+        self.assertNotIn(token.encode(), body)
+        self.assertNotIn(str(walkr_port).encode(), body)
+        log = (scratch.state.parent / 'server.log').read_text()
+        self.assertNotIn(token, log)
+
+
+    def test_status_json_has_two_state_words_and_no_record_value_and_off_spares_walkr(self):
+        scratch = Scratch(self)
+        _, walkr_port, token = fake_walkr(self, scratch)
+
+        def status(expected):
+            raw = scratch.ok('--json', 'status').stdout
+            self.assertNotIn(token, raw)
+            data = json.loads(raw)
+            self.assertEqual(expected, data['state'])
+            self.assertEqual({'socket': 'open'}, data['walkr'])
+            # The Walkr port is in no value: each number, also inside an address, is another number. The PID of the
+            # server can equal the Walkr port by chance.
+            for value in values({key: item for key, item in data.items() if key != 'pid'}):
+                numbers = [int(n) for n in re.findall(r'[0-9]+', value)] if isinstance(value, str) else [value]
+                self.assertNotIn(walkr_port, numbers)
+        status('stopped')
+        scratch.ok('start')
+        status('running')
+        off = scratch.ok('off')
+        self.assertNotIn(token, off.stdout + off.stderr)
+        self.assertIsNone(health_pid(scratch.port))
+        # off sent no signal to the Walkr PID: that PID is this test process, and the test goes on after off.
+        status('stopped')
+
+    def test_a_walkr_port_that_answers_byte_by_byte_leaves_healthz_fast_and_closed(self):
+        scratch = Scratch(self)
+        tools = scratch.base / 'bin'
+        tools.mkdir()
+        (tools / 'walkr-compare').write_text('#!/bin/sh\nexit 0\n')
+        (tools / 'walkr-compare').chmod(0o755)
+        scratch.env['PATH'] = f'{tools}:' + scratch.env['PATH']
+        # A program on the recorded port: it reads the request, then sends one byte each 0.3 s and never ends. Each
+        # byte comes before a socket timeout of 0.5 s, so only a deadline of the whole probe stops the probe.
+        listener = socket.create_server(('127.0.0.1', 0))
+        self.addCleanup(listener.close)
+        done = threading.Event()
+        self.addCleanup(done.set)
+
+        def trickle(connection):
+            with connection:
+                connection.recv(4096)
+                try:
+                    while not done.wait(0.3):
+                        connection.sendall(b'H')
+                except OSError:
+                    pass
+
+        def accept():
+            # One thread for each connection: the probes at `start` must not hold the port for the next probe.
+            while not done.is_set():
+                try:
+                    connection, _ = listener.accept()
+                except OSError:
+                    return
+                threading.Thread(target=trickle, args=(connection,), daemon=True).start()
+        threading.Thread(target=accept, daemon=True).start()
+        record = scratch.home / '.human-review/server.json'
+        record.parent.mkdir()
+        record.write_text(json.dumps({'port': listener.getsockname()[1], 'pid': os.getpid(), 'protocol': 9,
+                                      'agentToken': secrets.token_hex(32)}))
+        scratch.ok('start')
+        began = time.monotonic()
+        status, _, body = request(scratch.port, '/healthz')
+        elapsed = time.monotonic() - began
+        self.assertEqual(200, status)
+        self.assertEqual({'socket': 'closed'}, json.loads(body)['walkr'])
+        # The CLI reads /healthz with a timeout of 2 seconds.
+        self.assertLess(elapsed, 2.0)
 
 class RetentionTests(unittest.TestCase):
     def test_a_sweep_deletes_only_artifacts_older_than_the_setting(self):

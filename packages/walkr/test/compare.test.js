@@ -523,6 +523,30 @@ test("the command starts the background server, creates a session, waits for the
   await fs.writeFile(outcome, JSON.stringify({ actionId: "outcome-1", summary: "Posted the short text to the ticket." }));
   assert.equal(JSON.parse(await cli("outcome", made.sessionId, outcome)).outcome.summary, "Posted the short text to the ticket.");
   assert.equal(JSON.parse(await cli("view", made.sessionId)).outcome.summary, "Posted the short text to the ticket.");
+
+  // An unknown session exits 2, with an empty standard input and no terminal.
+  const unknown = spawn(process.execPath, [CLI, "open", "20260101T000000Z-000000000000"], { env, stdio: ["ignore", "ignore", "pipe"] });
+  unknown.stderr.resume();
+  assert.equal(await new Promise((resolve) => unknown.once("close", resolve)), 2);
+});
+
+test("a local front with a loopback Host and Origin of another port loads the page and writes; a foreign Origin is refused", async (t) => {
+  const f = await setup(t);
+  const s = await serve(t, f);
+  const made = await created(s, textRequest());
+  const front = `127.0.0.1:${s.port === 6790 ? 6791 : 6790}`;
+  const headers = { host: front, origin: `http://${front}` };
+  const page = await request(s.port, made.path.split("#")[0], { headers });
+  assert.equal(page.status, 200);
+  const token = page.text.match(/data-token="([^"]+)"/)[1];
+  const seen = `${API}/sessions/${made.view.sessionId}/seen`;
+  const accepted = await request(s.port, seen, { token, method: "POST", body: {}, headers });
+  assert.equal(accepted.status, 200, accepted.text);
+  assert.equal((await request(s.port, seen, { token, method: "POST", body: {}, headers: { ...headers, origin: "http://foreign.test" } })).status, 403);
+  // The own port keeps the rule of before: a page behind an HTTPS proxy still writes.
+  const own = `127.0.0.1:${s.port}`;
+  const proxied = await request(s.port, seen, { token, method: "POST", body: {}, headers: { host: own, origin: `https://${own}` } });
+  assert.equal(proxied.status, 200, proxied.text);
 });
 
 test("a late answer for an earlier session never replaces the selected session", async (t) => {

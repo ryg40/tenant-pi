@@ -36,6 +36,8 @@ Compare is local-only; hosted Compare is not available. No browser opens automat
 Modes: walkr-core, walkr-double, walkr-coinflip, walkr-trainer, walkr-compare.
 `;
 const fail = (message) => { throw new Error(message); };
+// `open` with an unknown or invalid session ID exits 2, so a caller tells it from a server failure (exit 1).
+const unknownSession = (message) => { throw Object.assign(new Error(message), { exitCode: 2 }); };
 const stdout = (text) => new Promise((resolve) => process.stdout.write(text, resolve));
 const json = (value) => stdout(`${JSON.stringify(value)}\n`);
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,7 +48,10 @@ function parse(args) {
   const session = (value) => { try { return sessionName(value); } catch (error) { fail(error.message); } };
   if (command === "create" && rest.length === 1) return { command, input: file(rest[0]) };
   if (command === "list" && !rest.length) return { command };
-  if (command === "open" && rest.length <= 1) return { command, ...(rest.length ? { session: session(rest[0]) } : {}) };
+  if (command === "open" && rest.length === 1) {
+    try { return { command, session: sessionName(rest[0]) }; } catch (error) { unknownSession(error.message); }
+  }
+  if (command === "open" && !rest.length) return { command };
   if (command === "view" && rest.length === 1) return { command, session: session(rest[0]) };
   if (command === "outcome" && rest.length === 2) return { command, session: session(rest[0]), input: file(rest[1]) };
   if (command === "wait" && (rest.length === 1 || rest.length === 3 && rest[1] === "--timeout")) {
@@ -71,7 +76,7 @@ function request(server, route, { method = "GET", body, timeout = 10000 } = {}) 
         if (res.statusCode !== 200) {
           const code = /^[A-Z_]+$/.test(value?.error?.code) ? value.error.code : `HTTP_${res.statusCode}`;
           const message = typeof value?.error?.message === "string" ? ` ${value.error.message.slice(0, 300)}` : "";
-          return reject(new Error(`Compare ${code}.${message}`));
+          return reject(Object.assign(new Error(`Compare ${code}.${message}`), { code }));
         }
         resolve(value);
       });
@@ -114,7 +119,11 @@ export async function runCompare(args) {
   }
   if (options.command === "list") return json(await request(server, "sessions"));
   if (options.command === "open") {
-    const page = url((await request(server, session ?? "page")).path);
+    const answer = await request(server, session ?? "page").catch((error) => {
+      if (session && error.code === "NOT_FOUND") unknownSession(error.message);
+      throw error;
+    });
+    const page = url(answer.path);
     await connect(page);
     return stdout(`${page}\n`);
   }

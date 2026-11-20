@@ -171,6 +171,16 @@ test("artifact server row: the state word comes from the JSON of the CLI; an unk
   assert.equal(row?.url, artifactsUrl);
 });
 
+test("artifact server row: the status JSON of the combined server parses; the other keys are ignored", () => {
+  const port = 8799;
+  const page = (path: string) => `http://127.0.0.1:${port}${path}`;
+  const status = {
+    state: "running", url: page("/artifacts"), schema: 2, pid: 4242, port, host: "127.0.0.1", modules: ["artifacts", "walkr"],
+    pages: { root: page("/"), artifacts: page("/artifacts"), walkr: page("/walkr") }, walkr: { socket: "open" }, store_host: "store-marker",
+  };
+  assert.deepEqual(artifactsStatus(JSON.stringify(status)), { state: "running", url: page("/artifacts") });
+});
+
 test("artifact server row: the footer width does not count the hyperlink sequences", () => {
   const osc8 = /\x1b\]8;;[^\x1b]*\x1b\\/g;
   for (const width of [160, 100, 60]) {

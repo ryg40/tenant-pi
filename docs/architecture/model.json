@@ -1785,7 +1785,7 @@
      "group": "g-c-skills",
      "label": "artifacts prompt",
      "kind": "comp-skills",
-     "summary": "Optional: the Pi prompt /artifacts-server with the words start, off and status. It runs the artifacts CLI: the read-only artifacts server of the package on 127.0.0.1, and the URL of its index page.",
+     "summary": "Optional: the Pi prompt /artifacts-server with the words start, off, status and walkr. It runs the artifacts CLI: the server of the package on 127.0.0.1, with a root page, the artifacts page /artifacts and the Walkr page /walkr. It passes the Walkr Compare page to the live Walkr server; walkr prints the private address of that page. off stops only this server and no Walkr review.",
      "inputs": "the artifacts component",
      "consent": "your agreement to a local web server of your account; each local user can read its pages",
      "doc": "docs/guides/modules.md#local-server",

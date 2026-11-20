@@ -204,6 +204,15 @@ a.title:hover { text-decoration: underline; }
   overflow-wrap: anywhere;
 }
 
+/* The download link of a row: the look of the title link, in the size of the file name. */
+a.download {
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+a.download:hover { text-decoration: underline; }
+
 .none { color: var(--muted); }
 
 /* A repo name: a click filters by it. */
@@ -273,9 +282,10 @@ time { white-space: nowrap; font-variant-numeric: tabular-nums; }
   transform: scale(var(--card-scale));
 }
 
-/* A click on a card opens the viewer: the title link covers the card. The repo button stays above it. */
+/* A click on a card opens the viewer: the title link covers the card. The repo button and the download link stay
+   above it. */
 [data-view="gallery"] a.title::after { content: ""; position: absolute; inset: 0; }
-[data-view="gallery"] button.repo { position: relative; z-index: 1; }
+[data-view="gallery"] button.repo, [data-view="gallery"] a.download { position: relative; z-index: 1; }
 
 /* The viewer page: a slim bar, and the artifact in a frame that fills the rest of the window. */
 body.viewer {

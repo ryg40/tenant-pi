@@ -1125,7 +1125,7 @@
         },
         {
           "code": "sheprd_open_unverified",
-          "fact": "Verified by hand in the web view of Sheprd on Linux. With Servo 0.8.0, through an SSH port forward: the index, the viewer, the code colors and the gallery load. A click on a link failed there while the web view held a Ctrl key state from an earlier key combination: the web view then asked for a new window, and Sheprd refused it. With a later Servo build and the server on the same computer: the Artifacts button of Sheprd starts the server and opens the index, and a click on a title opens the viewer. Not verified: a click on a link after a Ctrl key combination in the later build, the command artifacts open in a Herdr pane with Sheprd on the same computer, a click on a thumbnail of the table, and Sheprd on macOS. No test runs in a Sheprd web view."
+          "fact": "Verified by hand in the web view of Sheprd on Linux. With Servo 0.8.0, through an SSH port forward: the index, the viewer, the code colors and the gallery load. A click on a link failed there while the web view held a Ctrl key state from an earlier key combination: the web view then asked for a new window, and Sheprd refused it. Not verified: the command artifacts open in a Herdr pane with Sheprd on the same computer, a click on a thumbnail of the table, the root page and the page /walkr in the web view, and Sheprd on macOS. No test runs in a Sheprd web view."
         },
         {
           "code": "platform_unverified",
@@ -1141,7 +1141,7 @@
         },
         {
           "code": "local_server_live_unverified",
-          "fact": "The Linux checks of the kit start and stop the local server, and send it requests, in a scratch home. Not verified by a test: the index page and the viewer page in a browser (the thumbnails, the sort, the filter, the URL fragment and the live refresh), the hourly retention sweep, and the peer check, which no test can reach because the server listens on 127.0.0.1 only."
+          "fact": "The Linux checks of the kit start and stop the local server, and send it requests, in a scratch home. Not verified by a test: the root page, the Walkr page /walkr, the index page /artifacts and the viewer page in a browser (the thumbnails, the sort, the filter, the URL fragment and the live refresh), the hourly retention sweep, and the peer check, which no test can reach because the server listens on 127.0.0.1 only. The tests read the Walkr fields of artifacts status with a fake Walkr server, not with a real one; no test reads the Walkr line of artifacts off."
         }
       ]
     },

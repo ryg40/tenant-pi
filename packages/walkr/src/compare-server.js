@@ -64,6 +64,14 @@ async function readBody(req) {
   catch { fail("INVALID_REQUEST", "Supply a JSON request body."); }
 }
 
+// Canonical compare: lower-case host name, numeric port (80 when absent). `null` and other schemes never match.
+function sameOrigin(origin, host) {
+  try {
+    const sent = new URL(String(origin));
+    return sent.protocol === "http:" && sent.href === `${sent.origin}/` && sent.origin === new URL(`http://${host}`).origin;
+  } catch { return false; }
+}
+
 /**
  * Local-only Compare routes under /_walkr/compare/.
  * The agent credential creates sessions, reads them and records its outcome. It cannot submit, rate or mark a session
@@ -85,7 +93,8 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
   const page = { shell: secret(), token: secret() };
   const pagePath = (sessionId) => `${PREFIX}g/${page.shell}${sessionId ? `#${sessionId}` : ""}`;
 
-  return async function handle(req, res) {
+  // `viaFront`: only the any-port loopback Host of a local front admitted the request (src/server.js).
+  return async function handle(req, res, { viaFront = false } = {}) {
     const raw = req.url.split("?")[0];
     if (!raw.startsWith(PREFIX)) return false;
     try {
@@ -167,6 +176,10 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
       }
       if (operation === "outcome") agentOnly();
       else if (!browser) fail("FORBIDDEN", "The pick, the rating and the seen mark come only from the private Compare page of the user.");
+      // Through a local front, a page write with an Origin must name the HTTP origin of the Host. No Origin passes.
+      if (viaFront && operation !== "outcome" && req.headers.origin !== undefined && !sameOrigin(req.headers.origin, req.headers.host)) {
+        fail("FORBIDDEN", "This request comes from a page of another origin.");
+      }
       method("POST");
       const body = await readBody(req);
       if (operation === "seen" && (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length)) {

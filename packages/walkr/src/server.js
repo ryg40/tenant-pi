@@ -259,6 +259,8 @@ export function createServer({ ownFiles = [], doubleArchiveDir = process.env.HUM
    */
   const token = crypto.randomBytes(16).toString("hex");
   const localPeer = localPeerCheck({ hosted: process.env.HUMAN_REVIEW_HOSTED === "1", proxies: trustedProxies() });
+  // A loopback address only: no proxy peer of hosted mode counts here.
+  const loopbackPeer = localPeerCheck();
   // The shared GUI starts Trainer: it reads Trainer datasets and page grants, and Trainer links GUI-started datasets back.
   let double;
   const trainer = createTrainerHandler({ token, root: trainerRoot(), hosted: process.env.HUMAN_REVIEW_HOSTED === "1",
@@ -1094,7 +1096,13 @@ export function createServer({ ownFiles = [], doubleArchiveDir = process.env.HUM
       // In hosted mode a HUMAN_REVIEW_TRUSTED_PROXIES peer (the reverse proxy) counts as a loopback peer.
       const local = loopbackHost && localPeer(req.socket.remoteAddress || "");
       const pathname = String(req.url || "").split("?")[0];
-      const remote = (loopbackHost || allowedHosts().includes(host.toLowerCase()))
+      // A local front (the artifacts server, a Sheprd tunnel) passes the Compare page with the Host of its own port.
+      // So a loopback peer with a loopback Host of any port reaches Compare and its theme files. Hosted mode never.
+      const anyPort = host.toLowerCase().match(/^(?:127\.0\.0\.1|localhost|\[::1\]):(\d{1,5})$/);
+      const frontHost = Boolean(anyPort) && Number(anyPort[1]) >= 1 && Number(anyPort[1]) <= 65535
+        && process.env.HUMAN_REVIEW_HOSTED !== "1" && loopbackPeer(req.socket.remoteAddress || "");
+      const allowedHost = allowedHosts().includes(host.toLowerCase());
+      const remote = (loopbackHost || frontHost || allowedHost)
         && (pathname.startsWith("/_walkr/compare/") || pathname === "/theme.css" || pathname === "/theme.js");
       if (!local && !remote) {
         res.writeHead(403, { "content-type": "text/plain" });
@@ -1104,7 +1112,8 @@ export function createServer({ ownFiles = [], doubleArchiveDir = process.env.HUM
       // Double owns its raw routes before legacy URL normalization, proxying, and token handling.
       if (await double(req, res)) return;
       if (await trainer(req, res)) return;
-      if (await compare(req, res)) return;
+      // Compare checks the Origin of a page write only for a request that the front exception alone admitted.
+      if (await compare(req, res, { viaFront: frontHost && !loopbackHost && !allowedHost })) return;
 
       if (route === "/health") return json(res, 200, { ok: true, pid: process.pid, protocol: SERVER_PROTOCOL });
 

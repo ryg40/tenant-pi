@@ -2,11 +2,11 @@ import { execFile } from "node:child_process";
 import { kitCommand } from "./okknow.ts";
 import type { ArtifactsServer, ArtifactsState } from "./types.ts";
 
-/** One reading of `artifacts --json status` serves the footer for this long. `/artifacts start` shows in the row within this time. */
+/** One reading of `artifacts --json status` serves the footer for this long. `/artifacts-server start` shows in the row within this time. */
 export const ARTIFACTS_CACHE_MS = 60_000;
 /** The whole status run, after which the footer stops it. The health request of the CLI has its own limit of 5 seconds. */
 const ARTIFACTS_RUN_MS = 15_000;
-const STATES: ReadonlySet<string> = new Set<ArtifactsState>(["running", "stopped", "remote", "unreachable", "error"]);
+const STATES: ReadonlySet<string> = new Set<ArtifactsState>(["running", "stopped", "error"]);
 
 /** The artifacts CLI: the first on PATH, else the kit link `~/.local/bin/artifacts`. */
 export const artifactsCommand = (env: NodeJS.ProcessEnv = process.env, home?: string): string | undefined => kitCommand("artifacts", env, home);
@@ -25,7 +25,7 @@ export function artifactsLink(value: unknown): string | undefined {
 }
 
 /**
- * The footer state from the JSON of `artifacts --json status`. `undefined`: the module has no configuration, so no row.
+ * The footer state from the JSON of `artifacts --json status`. `undefined`: the state `unconfigured` of an older CLI, so no row.
  * Only the `state` word and the `url` are read. An unknown word or a bad JSON is `error`.
  */
 export function artifactsStatus(stdout: string): ArtifactsServer | undefined {
@@ -38,7 +38,7 @@ export function artifactsStatus(stdout: string): ArtifactsServer | undefined {
 }
 
 /**
- * Run `artifacts --json status` in the background. The footer sends no request of its own; the CLI checks only its configured origin.
+ * Run `artifacts --json status` in the background. The footer sends no request of its own; the CLI asks only the local server on 127.0.0.1.
  * `track` receives a stop function so dispose can end a running check. No CLI: `undefined`, so no row.
  */
 export function checkArtifacts(track: (stop: () => void) => () => void = () => () => {}): Promise<ArtifactsServer | undefined> {

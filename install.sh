@@ -268,20 +268,6 @@ case ,$modules, in
       fail "missing choice: the okknow origin (set OKKNOW_ORIGIN, or run in a terminal)"
     fi ;;
 esac
-# artifacts: the origin and the token file path come from ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE, an existing
-# user config or the wizard in a terminal. The checks write nothing and send no request.
-artifacts_cli=$kit/packages/artifacts/skills/artifacts/scripts/artifacts
-case ,$modules, in
-  *,artifacts,*)
-    if [ -n "${ARTIFACTS_ORIGIN:-}" ] || [ -n "${ARTIFACTS_TOKEN_FILE:-}" ]; then
-      [ -n "${ARTIFACTS_ORIGIN:-}" ] && [ -n "${ARTIFACTS_TOKEN_FILE:-}" ] || fail "set both ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE"
-      python3 "$artifacts_cli" setup --check --origin "$ARTIFACTS_ORIGIN" --token-file "$ARTIFACTS_TOKEN_FILE" ||
-        fail "ARTIFACTS_ORIGIN or ARTIFACTS_TOKEN_FILE is refused (see the line above); see docs/guides/modules.md#artifacts"
-    elif python3 "$artifacts_cli" setup --check >/dev/null 2>&1; then :
-    elif ! (true <"${INSTALL_TEST_TTY:-/dev/tty}") 2>/dev/null || [ ! -c "${INSTALL_TEST_TTY:-/dev/tty}" ]; then
-      fail "missing choice: the artifacts origin and token file (set ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE, or run in a terminal)"
-    fi ;;
-esac
 # DUMMIES needs its own yes, as the Claude Code plugin: --dummies or a yes here. --yes does not give it.
 # When the screen showed DUMMIES on in the profile, a no would change nothing, so the question is left out.
 if [ -z "$dummies" ] && [ "$asked" = yes ] && [ "$tui_dummies" = on ]; then
@@ -668,10 +654,6 @@ try:
             print('artifacts: package ' + str(artifacts_package))
             print('artifacts: CLI link ' + str(artifacts_link)
                   + (' (' + artifacts_link_state() + ')' if artifacts_link_state() else ''))
-            if os.environ.get('ARTIFACTS_ORIGIN'):
-                print('artifacts: origin ' + os.environ['ARTIFACTS_ORIGIN'] + ' (from ARTIFACTS_ORIGIN)')
-            else:
-                print('artifacts: origin from the user config, else the setup wizard asks for it')
         if os.environ.get('dummies') == 'yes':
             print('DUMMIES: on for Pi, shared by all profiles of this user; autostart block in the instruction file of the profile, else a new AGENTS.md')
         for line in aws_lines + kit_aws.plan_lines(home, profile, aws_rows, modules, os.environ.get('claude_aws') == 'yes',
@@ -922,18 +904,10 @@ case ,$modules, in
     fi
     case ,$modules, in *,mcp,* | *,mcp-codemode,*) helper okknow-mcp || okknow_failed=yes ;; esac ;;
 esac
-# artifacts: the CLI link, then the setup writes the user config (no token).
+# artifacts: the CLI link. The run writes no user config and starts no server.
 artifacts_failed=no
 case ,$modules, in
-  *,artifacts,*)
-    helper artifacts-cli || artifacts_failed=yes
-    if [ -n "${ARTIFACTS_ORIGIN:-}" ]; then
-      python3 "$artifacts_cli" setup --origin "$ARTIFACTS_ORIGIN" --token-file "$ARTIFACTS_TOKEN_FILE" --yes || artifacts_failed=yes
-    elif python3 "$artifacts_cli" setup --check >/dev/null 2>&1; then
-      echo "artifacts: keeps the user config $(python3 "$artifacts_cli" setup --check)"
-    else
-      python3 "$artifacts_cli" setup <"${INSTALL_TEST_TTY:-/dev/tty}" || artifacts_failed=yes
-    fi ;;
+  *,artifacts,*) helper artifacts-cli || artifacts_failed=yes ;;
 esac
 # The Walkr setup makes ~/.claude when it is absent. The Claude skill links of the kit follow the state before it.
 claude_dir=no; [ -d "$HOME/.claude" ] && claude_dir=yes
@@ -1041,7 +1015,7 @@ if [ "$okknow_failed" = yes ]; then
   exit 1
 fi
 if [ "$artifacts_failed" = yes ]; then
-  echo 'install: an artifacts step failed; the profile and the alias are in place. Run artifacts setup' >&2
+  echo 'install: the artifacts CLI link failed; the profile and the alias are in place. See docs/guides/modules.md#artifacts' >&2
   exit 1
 fi
 if [ "$walkr_failed" = yes ]; then

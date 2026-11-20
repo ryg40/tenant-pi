@@ -304,8 +304,10 @@ class ContractTests(unittest.TestCase):
             self.assertTrue(component["gaps"], cid)
             self.assertEqual(items, component["resources"][kind])
             # Only a skill component of several skills names more than one resource. Walkr installs its
-            # six skills and its six prompts as one set, through its own setup.
-            self.assertTrue(len(items) == 1 or (kind == "skills" and cid in ("coordinator-skills", "knowledge-skills", "walkr"))
+            # six skills and its six prompts as one set, through its own setup. The artifacts module installs
+            # its skill and the /artifacts-server command skill of Claude Code as one set.
+            self.assertTrue(len(items) == 1 or (kind == "skills" and cid in ("coordinator-skills", "knowledge-skills", "walkr",
+                                                                             "artifacts"))
                             or (kind == "prompts" and cid == "walkr-prompts"), cid)
         self.assertEqual(["TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY"], data["components"]["codex-accounts"]["env"])
 

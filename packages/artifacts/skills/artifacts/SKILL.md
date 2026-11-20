@@ -1,46 +1,44 @@
 ---
 name: artifacts
-description: Store an HTML or Markdown file on the artifact server of the user with the `artifacts` CLI and give the user the view link. Use when the user asks for a link to a report, a mockup, a handoff or another page, asks to list or open the stored artifacts, or types `/artifacts start`, `/artifacts off` or `/artifacts status`.
+description: Store an HTML or Markdown file in the local artifact store with the `artifacts` CLI and give the user the view link. Use when the user asks for a link to a report, a mockup, a handoff or another page, or asks to list, open or delete the stored artifacts.
 ---
 
 # artifacts
 
-The `artifacts` CLI talks to the one artifact server that the user chose with `artifacts setup`. The token stays in the token file of the user; the CLI reads it by itself.
+The `artifacts` CLI stores a page in the artifact store of this computer and prints its view link. The local artifacts server shows the stored pages: the user starts and stops it with `/artifacts-server start`, `/artifacts-server off` and `/artifacts-server status`. When the user asks for this in words, run `artifacts start`, `artifacts off` or `artifacts status` yourself.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `artifacts upload FILE [--title TEXT]` | Scans the file for secrets, uploads it and prints `slug:`, `view:` and `expires:`. Only `.html`, `.htm`, `.md` and `.markdown`, up to 10 MiB. |
-| `artifacts list` | One line for each stored artifact: slug, title, expiry. |
-| `artifacts open [SLUG]` | Prints the URL of the browse page or of one artifact. In a Herdr pane with Sheprd, Sheprd shows the page. |
-| `artifacts doctor` | The origin, the server health and the state of the token file. The last line is `doctor: PASS` or `doctor: FAIL`. |
-| `artifacts start` | Starts the local server of the configured clone on `127.0.0.1`, or finds the one that runs. The last line is the URL of the browse page. |
-| `artifacts off` | Stops each local server of this user that runs the configured clone. `stop` is the same command. The last line gives the count. |
-| `artifacts status` | `state:` (`running`, `stopped`, `remote`, `unreachable` or `unconfigured`), `health:` and `url:`. |
-
-## The /artifacts command
-
-`/artifacts start`, `/artifacts off` and `/artifacts status` run the CLI command of the same word: in Pi through the prompt `artifacts`, in Claude Code through this skill.
-
-1. Run `artifacts <word>` with the word of the user: `start`, `off`, `stop` or `status`. With no word, run `artifacts status`.
-2. Show the output lines to the user. After `start`, give the URL of the last line in your reply.
-
-A local server needs `artifacts setup --clone PATH [--port N]` once. A refusal of `start` names its reason, for example "run npm ci in the clone": give that reason to the user and run no fix of your own.
+| `artifacts upload FILE [--title TEXT] [--repo NAME]` | Scans the file for secrets, stores it and prints `slug:`, `view:` and `expires:`. Only `.html`, `.htm`, `.md` and `.markdown`, UTF-8, up to 10 MiB. Without `--repo`, the repo is the repository of the working directory. |
+| `artifacts upload FILE --replace SLUG` | Stores a new version under the slug of an earlier upload, so the link stays. The title and the repo stay unless `--title` or `--repo` gives a new one. |
+| `artifacts list` | One line for each stored artifact, newest first: slug, title, expiry. |
+| `artifacts open [SLUG]` | Prints the URL of the index page or of the viewer page of one artifact. In a Herdr pane with Sheprd, Sheprd shows the page. |
+| `artifacts delete SLUG [SLUG ...]` | Deletes the named artifacts. Run it only on the word of the user. |
+| `artifacts retention [DAYS \| none]` | Prints the retention, or sets it. With no setting, the server deletes nothing. |
+| `artifacts doctor` | The store, the port, the server state, the retention and the scanner. The last line is `doctor: PASS` or `doctor: FAIL`. |
 
 ## Upload a file
 
-1. Write the page to a file with one of the four extensions. The file holds only content that the user may see on that server.
-2. Run `artifacts upload FILE --title "<short title>"`. Exit 0 means the upload is done.
-3. Give the `view:` link and the expiry date to the user, in your reply only.
+1. Write the page to a file with one of the four extensions. Run the upload from the directory of the repository that the page is about, or give `--repo NAME`.
+2. Run `artifacts upload FILE --title "<short title>"`. Exit 0 means the page is stored.
+3. Give the `view:` link and the `expires:` value to the user, in your reply only.
 
-The view link is confidential: each holder of the link can read the page. Put it only in your reply to the user, never in a commit, an issue, a log or a shared file.
+In a Markdown file, a fenced code block with a language name (for example `python`, `sh` or `json`) gets syntax colors in the view; a block with a language that the view does not know stays plain text. For a report with code or commands, write Markdown with these blocks.
+
+When you change a page that you uploaded in this session, upload it again with `--replace SLUG`. The user keeps the same link, and an open viewer page offers a reload.
+
+The view link is a loopback link to the viewer page (`http://127.0.0.1:<port>/v/<slug>`). It works only on the computer of the server, or through a port forward to it. Each holder of the link on that computer can read the page, so put it only in your reply to the user, never in a commit, an issue, a log or a shared file.
+
+With a remote store (`artifacts setup --remote HOST`), `upload`, `list`, `open` and `delete` work on the store of HOST over SSH, and `upload` prints one more line `on: HOST`. The view link is then valid on HOST, not on this computer: give the link and name HOST in the same reply. `artifacts --here <command>` uses the store of this computer for one call.
+
+A line on standard error says when no server runs. The page is stored all the same; the user views it after `/artifacts-server start`.
 
 To show a page, run `artifacts open SLUG` and give the user the printed URL. The CLI is the only way to show a page: start no local browser.
 
 ## Exit codes
 
-- 4: no configuration. Ask the user to run `artifacts setup`.
-- 5: the secret scanner found a secret or a policy finding. Remove it from the file, then upload again. Never upload around the scan.
-- 3: the server did not answer, refused, or sent a redirect. Run `artifacts doctor` and report its lines.
-- 2: a refused input, for example a wrong extension or an unreadable token file.
+- 5: the secret scanner found a secret or a policy finding, or it could not run. Remove the finding from the file, then upload again. Never upload around the scan.
+- 3: the server did not start or did not answer, or the remote computer did not answer. The file is then not stored, unless the connection ended after the remote computer finished: `artifacts list` shows it. Run `artifacts doctor` and report its lines.
+- 2: a refused input, for example a wrong extension, a file over 10 MiB, a bad or unknown slug, or a port that another program uses. Give the message to the user.

@@ -253,13 +253,12 @@ export function memoryGroups(data: DashboardSnapshot, now: number): MemoryGroup[
   const artifacts = data.memory?.artifacts;
   if (artifacts) {
     const words = {
-      running: ["✓", "local running", "running"], stopped: ["○", "local stopped · /artifacts start", "stopped"], remote: ["✓", "remote", "remote"],
-      unreachable: ["⚠", "unreachable", "unreachable"], error: ["✗", "error", "error"],
+      running: ["✓", "local running", "running"], stopped: ["○", "local stopped · /artifacts-server start", "stopped"], error: ["✗", "error", "error"],
     }[artifacts.state];
     const [glyph, full, short] = words;
-    const alert = artifacts.state === "unreachable" || artifacts.state === "error";
+    const alert = artifacts.state === "error";
     rows.push({ key: `memory:artifacts:${artifacts.state}`, text: `Artifacts ${glyph} ${full}`, compact: `Artifacts ${glyph} ${short}`, minimal: `Art ${glyph} ${short}`,
-      glyph, alert, kind: artifacts.state === "error" ? "error" : alert ? "warning" : "accent", ...(artifacts.url ? { url: artifacts.url } : {}) });
+      glyph, alert, kind: alert ? "error" : "accent", ...(artifacts.url ? { url: artifacts.url } : {}) });
   }
   return rows;
 }

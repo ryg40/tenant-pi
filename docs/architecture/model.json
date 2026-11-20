@@ -1771,9 +1771,9 @@
      "group": "g-c-skills",
      "label": "artifacts",
      "kind": "comp-skills",
-     "summary": "Optional: the artifacts skill and CLI. An agent stores an HTML or Markdown file on the artifact server of the user after a secret scan and gives the view link. install.sh --with artifacts links the CLI and runs its setup.",
-     "inputs": "an artifact server; a token file; ARTIFACTS_ORIGIN and ARTIFACTS_TOKEN_FILE or artifacts setup",
-     "consent": "your agreement to uploads to that server",
+     "summary": "Optional: the artifacts skill and CLI. An agent stores an HTML or Markdown file in the local store after a secret scan and gives the view link. install.sh --with artifacts links the CLI and, when ~/.claude exists, the two skills; it asks nothing and writes no configuration.",
+     "inputs": "Python 3; no token and no configuration",
+     "consent": "your agreement to pages that each local user can read while the server runs",
      "doc": "docs/guides/modules.md#artifacts",
      "tags": [
       "not a detected installation"
@@ -1785,8 +1785,8 @@
      "group": "g-c-skills",
      "label": "artifacts prompt",
      "kind": "comp-skills",
-     "summary": "Optional: the Pi prompt /artifacts with the words start, off and status. It runs the artifacts CLI: one local artifact server on 127.0.0.1 from a clone of the server project, and the browse URL.",
-     "inputs": "the artifacts component; a clone of the artifact server with its localhost mode and node_modules",
+     "summary": "Optional: the Pi prompt /artifacts-server with the words start, off and status. It runs the artifacts CLI: the read-only artifacts server of the package on 127.0.0.1, and the URL of its index page.",
+     "inputs": "the artifacts component",
      "consent": "your agreement to a local web server of your account; each local user can read its pages",
      "doc": "docs/guides/modules.md#local-server",
      "tags": [

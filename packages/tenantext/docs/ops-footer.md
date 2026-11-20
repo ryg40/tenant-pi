@@ -15,7 +15,7 @@ All rows are the Pi footer below the editor. Layout v4 sets no widget. In layout
 | 3 Location and repository | Directory name, branch, original `pwd`, changed `cwd`, and Git facts on the left. Right: agent state, `queued`, duration, session name, `@host`, and the `/ops-footer report` hint | From 40 columns |
 | 4 Context bar | Proportional `sys`, `prompt`, `assistant`, `think`, `tools`, and `free` blocks; threshold markers; totals inside the bar | Always |
 | 5 and later: Quota | One row per configured account: `Codex1`, `Codex2`, `Codex3`, then `Claude`, then `Copilot`. A Copilot-only machine has one Copilot row | When quotas exist and the row budget permits |
-| Right of the quota rows: Memory | OpenViking connectivity and activity; LLM Wiki status, assigned model, and manual capture advice below it; OpenKnowledge (okknow) state and activity below that; the artifact server state below OpenKnowledge. In layout v3 this place is directly below the costs | When an integration is present or the `artifacts` CLI reports a configured server |
+| Right of the quota rows: Memory | OpenViking connectivity and activity; LLM Wiki status, assigned model, and manual capture advice below it; OpenKnowledge (okknow) state and activity below that; the artifact server state below OpenKnowledge. In layout v3 this place is directly below the costs | When an integration is present or the `artifacts` CLI reports a state |
 | Last: Services and alerts | Failed or stale services, MCP problems, pending prompts, blocked work, reviews, deployments, flagged output, footer conflict | When it has content |
 
 A healthy session with two Codex accounts shows five rows below the editor at 138 columns: model, directory, bar, `Codex1`, `Codex2`. Below 40 columns the footer shows one compact row and then the bar. Below 20 columns it shows the bar only.
@@ -142,16 +142,14 @@ The row shows the state of the artifact server of the optional module `artifacts
 | Row | State word | Meaning |
 | --- | --- | --- |
 | `Artifacts ✓ local running` | `running` | The local server runs and answers |
-| `Artifacts ○ local stopped · /artifacts start` | `stopped` | The configuration names a local server, and no local server runs |
-| `Artifacts ✓ remote` | `remote` | The configured remote server answers |
-| `Artifacts ⚠ unreachable` | `unreachable` | The server does not answer |
+| `Artifacts ○ local stopped · /artifacts-server start` | `stopped` | No local server answers on the configured port |
 | `Artifacts ✗ error` | an unknown word, a bad JSON, a failed or stopped run | The footer cannot read the state |
 
-Source: the `artifacts` CLI, on `PATH`, else `~/.local/bin/artifacts`. The footer runs `artifacts --json status` in the background at the external poll, one run at a time, at most once a minute, and stops a run after 15 seconds. It reads only the `state` word and the `url`. The CLI sends the health request only to its configured origin; the footer sends no request of its own. With no CLI, or the state `unconfigured`, no row appears.
+Source: the `artifacts` CLI, on `PATH`, else `~/.local/bin/artifacts`. The footer runs `artifacts --json status` in the background at the external poll, one run at a time, at most once a minute, and stops a run after 15 seconds. It reads only the `state` word and the `url`. The CLI sends the health request only to the local server on `127.0.0.1`; the footer sends no request of its own. With no CLI, no row appears.
 
-The row text is an OSC 8 terminal hyperlink to the `url` of the CLI, the browse page. The visible text shows no URL, no slug and no token. The footer accepts only an `http` or `https` URL without a user name or a password, and it gives no link when the URL holds a control character. The width count of the footer uses Pi's `visibleWidth`, which does not count the link sequences, so the other rows keep their layout. Without color (`NO_COLOR` or `TERM=dumb`) the row is plain text with no link.
+The row text is an OSC 8 terminal hyperlink to the `url` of the CLI, the index page of the server. The visible text shows no URL, no slug and no token. The footer accepts only an `http` or `https` URL without a user name or a password, and it gives no link when the URL holds a control character. The width count of the footer uses Pi's `visibleWidth`, which does not count the link sequences, so the other rows keep their layout. Without color (`NO_COLOR` or `TERM=dumb`) the row is plain text with no link.
 
-A shift-click on the row opens the artifacts page in a terminal that opens OSC 8 links; Sheprd is the terminal of this design. Herdr keeps the link of each cell, and it sends the links to its client only while its mouse capture is off. With the mouse capture on, Herdr removes the links of the frame and uses ctrl-click for its own link handling, so a shift-click gets no link from Herdr. The click only opens the page; it starts no server. With a stopped server, type `/artifacts start`. The setting `showArtifactServer` turns the row off, and the footer then runs no `artifacts` command.
+A shift-click on the row opens the artifacts page in a terminal that opens OSC 8 links; Sheprd is the terminal of this design. Herdr keeps the link of each cell, and it sends the links to its client only while its mouse capture is off. With the mouse capture on, Herdr removes the links of the frame and uses ctrl-click for its own link handling, so a shift-click gets no link from Herdr. The click only opens the page; it starts no server. With a stopped server, type `/artifacts-server start`. The setting `showArtifactServer` turns the row off, and the footer then runs no `artifacts` command.
 
 Not verified: the shift-click in Sheprd, the click in other terminals, the click in a Herdr pane, and the row in Pi-Bolt.
 

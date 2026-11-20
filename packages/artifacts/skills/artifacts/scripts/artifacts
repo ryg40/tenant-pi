@@ -1,45 +1,63 @@
 #!/usr/bin/env python3
-"""artifacts: store an HTML or Markdown file on the artifact server of the user and print its view link.
+"""artifacts: store an HTML or Markdown file in the local artifact store and print its view link.
 
-Commands: setup, upload, list, open, doctor, and start, off (alias stop) and status for one local server. The
-configuration file holds the origin and the path of the token file, and for a local server the clone and the port;
-the token stays in the token file. The CLI talks only to the configured origin, follows no redirect and ignores
-proxy variables. With no configuration, each command except setup, off and status exits 4 before any request.
+Commands: setup, upload, list, open, delete, doctor, retention, and start, off (alias stop) and status for the one
+local server of this user. An upload writes into the store directly and needs no running server. The server is the
+read-only program `server/artifacts_server.py` of this package; it listens on 127.0.0.1 only. With the key `remote`
+(artifacts setup --remote HOST), upload, list, delete and open work on the store of HOST over SSH; --here ignores
+the key for one call.
 
-Exit codes: 0 done, 2 refused input, 3 request or server failure, 4 no configuration, 5 the scan stopped the upload.
+Exit codes: 0 done, 2 refused input, 3 the server or the remote store did not start or answer, 5 the scan stopped the
+upload.
 """
 import argparse
 import fcntl
 import hashlib
-import ipaddress
+import http.client
 import json
 import os
 from pathlib import Path
-import shlex
 import re
-import secrets
+import shlex
 import shutil
 import signal
 import socket
-import stat
 import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
+
+# The package root from the real path of this file, so the ~/.local/bin and ~/.claude/skills links work.
+PACKAGE = Path(os.path.realpath(__file__)).parents[3]
+SERVER = PACKAGE / 'server' / 'artifacts_server.py'
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(SERVER.parent))
+import artifacts_store as store_lib  # noqa: E402
 
 TYPES = {'.html': 'text/html', '.htm': 'text/html', '.md': 'text/markdown', '.markdown': 'text/markdown'}
-MAX_BYTES = 10 * 1024 * 1024
-TIMEOUT = 30
 SCAN_TIMEOUT = 300
-DEFAULT_PORT = 6790
+GIT_TIMEOUT = 10
 HEALTH_WAIT = 30
 STOP_WAIT = 10
-STATUS_TIMEOUT = 5
+HEALTH_TIMEOUT = 2
 # A test seam, not a setting: a command line (shlex form) that scans the files of its working directory.
 SCAN_ENV = 'ARTIFACTS_SCAN_COMMAND'
+# A test seam, not a setting: a command line (shlex form) that replaces the program ssh of the remote store.
+SSH_ENV = 'ARTIFACTS_SSH_COMMAND'
+SSH_OPTIONS = ('-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-T', '-a', '-x')
+# An upload waits for the scan of the remote computer too.
+REMOTE_UPLOAD_TIMEOUT = SCAN_TIMEOUT + 60
+REMOTE_TIMEOUT = 30
+REMOTE_DOCTOR_TIMEOUT = 15
+REMOTE_MISSING = 127
+# The remote shell gives the words of a call to this script as "$@": the artifacts program of the remote PATH, else
+# ~/.local/bin/artifacts, else exit 127. Without HERDR_ENV, a remote open starts no Sheprd.
+REMOTE_SCRIPT = ('unset HERDR_ENV; '
+                 'if command -v artifacts >/dev/null 2>&1; then exec artifacts "$@"; fi; '
+                 'if [ -x "$HOME/.local/bin/artifacts" ]; then exec "$HOME/.local/bin/artifacts" "$@"; fi; '
+                 'exit 127')
+# The commands that go to the remote store when the key `remote` is set and --here is not given.
+REMOTE_COMMANDS = ('upload', 'list', 'delete', 'open')
 
 
 class Stop(Exception):
@@ -48,132 +66,46 @@ class Stop(Exception):
         self.code = code
 
 
-def absolute_env(name):
-    """An absolute path from the environment, or None: a relative value is ignored, as the XDG rule says."""
-    value = os.environ.get(name) or ''
-    return Path(value) if os.path.isabs(value) else None
-
-
-def config_path():
-    return (absolute_env('XDG_CONFIG_HOME') or Path.home() / '.config') / 'tenant-artifacts' / 'config.json'
-
-
-def state_dir():
-    return (absolute_env('XDG_STATE_HOME') or Path.home() / '.local/state') / 'tenant-artifacts'
-
-
-def data_dir():
-    return (absolute_env('XDG_DATA_HOME') or Path.home() / '.local/share') / 'tenant-artifacts' / 'data'
-
-
-def load_config():
-    path = config_path()
+def config():
     try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-    except FileNotFoundError:
-        return {}
-    except (OSError, ValueError) as error:
-        raise Stop(2, f'cannot read {path}: {type(error).__name__}') from None
-    if not isinstance(data, dict):
-        raise Stop(2, f'{path} does not hold a JSON object')
-    return data
+        return store_lib.load_config()
+    except store_lib.ConfigError as error:
+        raise Stop(2, str(error)) from None
 
 
-def write_config(data):
-    path = config_path()
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd, scratch = tempfile.mkstemp(dir=path.parent, prefix='.config-')
-    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
-        os.fchmod(handle.fileno(), 0o600)
-        handle.write(json.dumps(data, indent=2) + '\n')
-    os.replace(scratch, path)
-
-
-def check_origin(value):
-    """The origin in normal form, or a Stop. https, or http only for a loopback host; no path, query or user."""
-    parts = urllib.parse.urlsplit(value.strip())
-    host = parts.hostname or ''
-    if parts.scheme not in ('https', 'http') or not host or parts.username or parts.password \
-            or parts.path not in ('', '/') or parts.query or parts.fragment:
-        raise Stop(2, 'an origin is https://<host>[:port], or http://127.0.0.1:<port> on the same computer')
+def port_of(data):
     try:
-        parts.port
-    except ValueError:
-        raise Stop(2, 'the port of the origin is not valid') from None
-    if parts.scheme == 'http':
-        try:
-            loopback = ipaddress.ip_address(host).is_loopback
-        except ValueError:
-            loopback = host == 'localhost'
-        if not loopback:
-            raise Stop(2, 'http is only for a loopback origin; use https')
-    return parts.scheme + '://' + parts.netloc.lower()
+        return store_lib.port_of(data)
+    except store_lib.ConfigError as error:
+        raise Stop(2, str(error)) from None
 
 
-def configured():
-    data = load_config()
-    if not data.get('origin') or not data.get('tokenFile'):
-        raise Stop(4, 'no configuration; run: artifacts setup')
-    return check_origin(data['origin']), str(data['tokenFile'])
-
-
-def token_state(path):
-    """(token or None, a state text without the token)."""
+def retention_of(data):
     try:
-        info = os.stat(path)
-    except OSError:
-        return None, 'absent'
-    mode = '%o' % stat.S_IMODE(info.st_mode)
+        return store_lib.retention_of(data)
+    except store_lib.ConfigError as error:
+        raise Stop(2, str(error)) from None
+
+
+def remote_of(data):
     try:
-        with open(path, encoding='utf-8') as handle:
-            words = handle.read().split()
-    except (OSError, UnicodeDecodeError):
-        return None, f'exists, mode {mode}, not readable'
-    if len(words) != 1:
-        return None, f'exists, mode {mode}, does not hold one token'
-    loose = ', readable by others' if info.st_mode & 0o077 else ''
-    return words[0], f'exists, mode {mode}, one token{loose}'
+        return store_lib.remote_of(data)
+    except store_lib.ConfigError as error:
+        raise Stop(2, str(error)) from None
 
 
-def read_token(path):
-    token, state = token_state(path)
-    if token is None:
-        raise Stop(2, f'the token file {path}: {state}')
-    return token
+def index_url(port):
+    return f'http://127.0.0.1:{port}/'
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Follow no redirect: urllib would send the Authorization header to the new location."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
+def view_url(port, slug):
+    """The viewer page of one artifact: a bar with the facts and the links, and the artifact in a frame."""
+    return f'http://127.0.0.1:{port}/v/{slug}'
 
 
-OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect)
-
-
-def request(origin, path, token=None, body=None, key=None, timeout=TIMEOUT):
-    """The parsed JSON reply of one request to the origin. A 3xx, 4xx or 5xx reply is a Stop with code 3."""
-    headers = {}
-    if token is not None:
-        headers['Authorization'] = 'Bearer ' + token
-    if body is not None:
-        headers['Content-Type'] = 'application/json'
-        headers['Idempotency-Key'] = key
-    req = urllib.request.Request(origin + path, data=body, headers=headers, method='POST' if body else 'GET')
-    try:
-        with OPENER.open(req, timeout=timeout) as reply:
-            text = reply.read().decode('utf-8')
-    except urllib.error.HTTPError as error:
-        if 300 <= error.code < 400:
-            raise Stop(3, f'the server answered HTTP {error.code}, a redirect; the CLI follows none') from None
-        raise Stop(3, f'the server answered HTTP {error.code}') from None
-    except (urllib.error.URLError, OSError) as error:
-        raise Stop(3, f'no answer from {origin}: {type(error).__name__}') from None
-    try:
-        return json.loads(text) if text else {}
-    except ValueError:
-        raise Stop(3, 'the server answer is not JSON') from None
+def plain(value, limit=200):
+    """One line of text: control characters become spaces, so the tab-separated list stays one line each."""
+    return re.sub(r'[\x00-\x1f\x7f]+', ' ', str(value)).strip()[:limit]
 
 
 # ---------------------------------------------------------------------------
@@ -181,31 +113,36 @@ def request(origin, path, token=None, body=None, key=None, timeout=TIMEOUT):
 # ---------------------------------------------------------------------------
 def kit_scanner():
     """`<kit>/scripts/scan.sh --level warn tree` when the CLI runs from a kit tree, else None."""
-    kit = Path(os.path.realpath(__file__)).parents[5]
+    kit = PACKAGE.parents[1]
     scan = kit / 'scripts' / 'scan.sh'
     if scan.is_file() and (kit / 'config' / 'manifest.json').is_file():
         return ['sh', str(scan), '--level', 'warn', 'tree']
     return None
 
 
-def find_scanner():
+def find_scanner(quiet=False):
     line = os.environ.get(SCAN_ENV)
     if line:
-        print(f'warning: {SCAN_ENV} is set (a test seam); the kit scanner does not run', file=sys.stderr)
+        if not quiet:
+            print(f'warning: {SCAN_ENV} is set (a test seam); the kit scanner does not run', file=sys.stderr)
         return shlex.split(line)
     return kit_scanner()
 
 
-def scan(command, path):
-    """Run the scanner on a copy of the file in a new scratch Git repository. A finding or an error is a Stop."""
+def scan(command, name, raw):
+    """Run the scanner on the bytes `raw` as the file `name` in a new scratch Git repository.
+
+    The scanner gets the same bytes as the store, not a new read of the file. A finding or an error is a Stop."""
     env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
     env['GIT_CONFIG_NOSYSTEM'] = '1'
     work = tempfile.mkdtemp(prefix='artifacts-scan-')
     try:
-        shutil.copyfile(path, os.path.join(work, path.name))
+        fd = os.open(os.path.join(work, name), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(raw)
         try:
             subprocess.run(['git', 'init', '-q', work], env=env, check=True, capture_output=True, timeout=60)
-            subprocess.run(['git', '-C', work, 'add', '--', path.name], env=env, check=True, capture_output=True,
+            subprocess.run(['git', '-C', work, 'add', '--', name], env=env, check=True, capture_output=True,
                            timeout=60)
             done = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, timeout=SCAN_TIMEOUT)
         except (OSError, subprocess.SubprocessError) as error:
@@ -222,136 +159,365 @@ def scan(command, path):
         shutil.rmtree(work, ignore_errors=True)
 
 
-# ---------------------------------------------------------------------------
-# The commands
-# ---------------------------------------------------------------------------
-def ask(prompt, default=None):
-    shown = f'{prompt} [{default}]: ' if default else f'{prompt}: '
-    try:
-        answer = input(shown).strip()
-    except EOFError:
-        raise Stop(2, 'cancelled: no answer (give the value as an option)') from None
-    return answer or default or ''
-
-
-def cmd_setup(args):
-    data = load_config()
-    saved = data.get('origin')
-    if args.check and args.origin is None and args.token_file is None and args.clone is None:
-        # Is a configuration saved? No question, no write, no request.
-        if not saved or not data.get('tokenFile'):
-            raise Stop(4, 'no configuration')
-        print('origin: ' + check_origin(saved))
-        return 0
-    if args.check:
-        args.yes = True
-    if args.port is not None and args.clone is None:
-        raise Stop(2, '--port needs --clone')
-    if args.clone is not None:
-        if args.origin is not None:
-            raise Stop(2, 'give --clone or --origin, not both: the origin of a local server is http://127.0.0.1:<port>')
-        clone = os.path.realpath(os.path.expanduser(args.clone))
-        if not os.path.isfile(os.path.join(clone, 'server.mjs')):
-            raise Stop(2, f'{clone} has no server.mjs: give the path of a clone of the artifact server')
-        port = args.port if args.port is not None else data.get('port') or DEFAULT_PORT
-        if not isinstance(port, int) or not 1 <= port <= 65535:
-            raise Stop(2, 'the port is a number from 1 to 65535')
-        origin = f'http://127.0.0.1:{port}'
-        if args.token_file is None:
-            args.token_file = data.get('tokenFile') if data.get('clone') else None
-            args.token_file = args.token_file or str(config_path().parent / 'local-token')
-    else:
-        origin = args.origin
-    if origin is None:
-        if args.yes:
-            raise Stop(2, 'setup --yes needs --origin or --clone')
-        origin = ask('Origin of the artifact server (https://<host>[:port])', saved)
-    origin = check_origin(origin)
-    token_file = args.token_file
-    if token_file is None:
-        if args.yes:
-            raise Stop(2, 'setup --yes needs --token-file')
-        token_file = ask('Path of the token file', data.get('tokenFile'))
-    if not token_file:
-        raise Stop(2, 'the path of the token file is empty')
-    token_file = os.path.abspath(os.path.expanduser(token_file))
-    if saved and saved != origin and not args.replace_origin:
-        if args.yes:
-            raise Stop(2, f'the configuration has the origin {saved}; add --replace-origin to replace it')
-        if ask(f'Replace the saved origin {saved}? [y/N]').lower() not in ('y', 'yes'):
-            raise Stop(2, 'cancelled: the origin stays')
-    if args.check:
-        return 0
-    data['origin'] = origin
-    data['tokenFile'] = token_file
-    if args.clone is not None:
-        data['clone'] = clone
-        data['port'] = port
-    elif local_target(data) is None:
-        # An origin that is not the local origin of the clone: no stale local server keys.
-        data.pop('clone', None)
-        data.pop('port', None)
-    write_config(data)
-    print('config: ' + str(config_path()))
-    print('origin: ' + origin)
-    if args.clone is not None:
-        print('clone: ' + clone)
-    print('token file: ' + token_file + ' (' + token_state(token_file)[1] + ')')
-    return 0
-
-
-def cmd_upload(args):
-    origin, token_file = configured()
-    path = Path(args.file)
-    kind = TYPES.get(path.suffix.lower())
-    if kind is None:
-        raise Stop(2, 'the file must end in .html, .htm, .md or .markdown')
-    try:
-        raw = path.read_bytes()
-    except OSError as error:
-        raise Stop(2, f'cannot read {path}: {error.strerror}') from None
-    if len(raw) > MAX_BYTES:
-        raise Stop(2, 'the file is larger than 10 MiB')
-    try:
-        content = raw.decode('utf-8')
-    except UnicodeDecodeError:
-        raise Stop(2, 'the file is not UTF-8 text') from None
+def scan_upload(name, raw):
+    """The scan of an upload on this computer: a finding or a scanner that does not run is a Stop."""
     command = find_scanner()
     if command is None:
         print('warning: no secret scanner (the CLI runs outside a kit tree); the file is not scanned', file=sys.stderr)
     else:
-        scan(command, path)
-    token = read_token(token_file)
-    title = args.title or path.stem
-    body = json.dumps({'content': content, 'contentType': kind, 'fileName': path.name, 'title': title}).encode()
-    key = hashlib.sha256(path.name.encode() + b'\0' + raw).hexdigest()
-    answer = request(origin, '/v1/artifacts', token=token, body=body, key=key)
-    artifact = answer.get('artifact') if isinstance(answer, dict) else None
-    if not isinstance(artifact, dict) or not artifact.get('slug'):
-        raise Stop(3, 'the server answer has no artifact')
-    # The edit token of the answer is neither printed nor kept.
-    print('slug: ' + str(artifact['slug']))
-    print('view: ' + str(answer.get('shareUrl') or origin + '/a/' + urllib.parse.quote(str(artifact['slug']))))
-    print('expires: ' + str(artifact.get('expiresAt')))
+        scan(command, name, raw)
+
+
+# ---------------------------------------------------------------------------
+# The remote store
+# ---------------------------------------------------------------------------
+def ssh_program():
+    line = os.environ.get(SSH_ENV)
+    if line:
+        print(f'warning: {SSH_ENV} is set (a test seam); the program ssh does not run', file=sys.stderr)
+        return shlex.split(line)
+    return ['ssh']
+
+
+def remote_command(words):
+    """The command line for the remote shell. Each word is quoted with shlex.quote and joined here, so the remote
+    shell gives each word to sh as it is: a title such as $(id) stays text."""
+    return ' '.join(shlex.quote(word) for word in ('sh', '-c', REMOTE_SCRIPT, 'artifacts', '--here', *words))
+
+
+def remote_call(host, words, data=b'', timeout=REMOTE_TIMEOUT, lost='nothing is changed'):
+    """Run `artifacts --here WORDS` on the computer `host` with one ssh call, `data` on its standard input, and
+    return the CompletedProcess (bytes). No connection, no remote artifacts program, a timeout or an ssh program
+    that a signal ended is a Stop with exit 3; `lost` says what did not happen. A connection can end after the
+    remote command finished: the message says so where that is possible."""
+    command = [*ssh_program(), *SSH_OPTIONS, '--', host, remote_command(words)]
+    late = (f', unless the connection ended after {host} finished the command (artifacts list shows the store of '
+            f'{host})')
+    try:
+        done = subprocess.run(command, input=data, capture_output=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        why = f'no answer from {host} in {timeout} s; the call is stopped; {lost}{late}'
+    except OSError as error:
+        why = f'the ssh program did not run ({type(error).__name__}); {lost}'
+    else:
+        if done.returncode == 255:
+            why = f'ssh lost or did not get the connection to {host} (exit 255); {lost}{late}'
+        elif done.returncode < 0:
+            why = f'a signal ended the ssh program (signal {-done.returncode}); {lost}{late}'
+        elif done.returncode == REMOTE_MISSING:
+            why = f'{host} has no artifacts program on its PATH or in ~/.local/bin; {lost}'
+        else:
+            return done
+        sys.stderr.buffer.write(done.stderr)
+        sys.stderr.buffer.flush()
+    raise Stop(3, f'{why}. To use the store of this computer, run artifacts setup --local, or artifacts --here '
+                  '<command> for one call')
+
+
+def relay(done):
+    """Write the remote standard output and standard error here, and return the remote exit code."""
+    for mine, theirs in ((sys.stdout, done.stdout), (sys.stderr, done.stderr)):
+        mine.flush()
+        mine.buffer.write(theirs)
+        mine.buffer.flush()
+    return done.returncode
+
+
+# ---------------------------------------------------------------------------
+# The repo of an upload
+# ---------------------------------------------------------------------------
+class GitTimeout(Exception):
+    pass
+
+
+def git(*args):
+    """The output of one git command in the working directory, or None on each failure but a timeout."""
+    try:
+        done = subprocess.run(['git', *args], capture_output=True, text=True, timeout=GIT_TIMEOUT,
+                              stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        raise GitTimeout() from None
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 and done.stdout.strip() else None
+
+
+def remote_name(url):
+    """The last path part of a remote URL without `.git`, or None. The user and host part is never used."""
+    if '://' in url:
+        path = url.split('://', 1)[1].partition('/')[2]
+    elif re.match(r'[^/]*:', url):
+        path = url.split(':', 1)[1]  # scp form user@host:path
+    else:
+        path = url
+    name = path.rstrip('/').rsplit('/', 1)[-1]
+    name = name[:-4] if name.endswith('.git') else name
+    return name if re.fullmatch(r'[A-Za-z0-9._ -]{1,100}', name) and name not in ('.', '..') else None
+
+
+def detect_repo():
+    """The repo name: the name of the `origin` remote, else the directory of the main checkout, else None.
+
+    A git that does not answer in time gives None at once, with no further git command."""
+    try:
+        return repo_name()
+    except GitTimeout:
+        return None
+
+
+def repo_name():
+    url = git('remote', 'get-url', 'origin')
+    name = remote_name(url) if url else None
+    if name:
+        return name
+    common = git('rev-parse', '--path-format=absolute', '--git-common-dir') or git('rev-parse', '--git-common-dir')
+    if not common:
+        return None
+    name = Path(os.path.abspath(common)).resolve().parent.name
+    return plain(name, 100) or None
+
+
+# ---------------------------------------------------------------------------
+# The server: health, state, lock
+# ---------------------------------------------------------------------------
+def healthz(port, timeout=HEALTH_TIMEOUT):
+    """The JSON value of a 200 answer to GET /healthz on 127.0.0.1:port, or None."""
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=timeout)
+    try:
+        connection.request('GET', '/healthz')
+        reply = connection.getresponse()
+        return json.loads(reply.read(4096).decode('utf-8')) if reply.status == 200 else None
+    except (OSError, http.client.HTTPException, ValueError, UnicodeDecodeError):
+        return None
+    finally:
+        connection.close()
+
+
+def earlier_server(port):
+    """Advice when the program on the port answers /healthz as the server of an earlier kit version did, else ''.
+
+    That server (`node server.mjs`) sent {"status": "ok"} with no `service` key. The CLI sends it no signal."""
+    data = healthz(port)
+    if not (isinstance(data, dict) and data.get('status') == 'ok' and 'service' not in data):
+        return ''
+    return ('the program on the port is probably the artifact server of an earlier kit version. To stop it, find '
+            f"the process that listens on the port with ss -ltnp 'sport = :{port}' (Linux) or "
+            f'lsof -nP -iTCP:{port} -sTCP:LISTEN (macOS), then end it with kill <PID>')
+
+
+def health(port, timeout=HEALTH_TIMEOUT):
+    """The /healthz answer of the tenant-artifacts server of this user on 127.0.0.1:port as a dict, or None.
+
+    A server of another user ID, or one that sends no user ID, is another program on the port."""
+    data = healthz(port, timeout)
+    if (isinstance(data, dict) and data.get('service') == store_lib.SERVICE and valid_pid(data.get('pid'))
+            and type(data.get('uid')) is int and data['uid'] == os.getuid()):
+        return data
+    return None
+
+
+def valid_pid(value):
+    """A PID that a signal can name alone: 0 and -1 would reach a process group or each process."""
+    return type(value) is int and value > 1
+
+
+def state_file():
+    return store_lib.state_dir() / 'server.json'
+
+
+def read_state():
+    try:
+        data = json.loads(state_file().read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) and valid_pid(data.get('pid')) else {}
+
+
+def write_state(data):
+    fd, scratch = tempfile.mkstemp(dir=store_lib.state_dir(), prefix='.server-')
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+        handle.write(json.dumps(data) + '\n')
+    os.replace(scratch, state_file())
+
+
+def lock():
+    """An exclusive lock of the state directory for one start or off; it ends with the process."""
+    store_lib.state_dir().mkdir(mode=0o700, parents=True, exist_ok=True)
+    handle = open(store_lib.state_dir() / 'lock', 'a')
+    fcntl.flock(handle, fcntl.LOCK_EX)
+    return handle
+
+
+def port_free(port):
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.settimeout(1)
+        if probe.connect_ex(('127.0.0.1', port)) == 0:
+            return False
+    finally:
+        probe.close()
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # as the server does; a TIME_WAIT port is free
+        probe.bind(('127.0.0.1', port))
+        return True
+    except OSError:
+        return False
+    finally:
+        probe.close()
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
+
+
+def log_tail(log, count=20):
+    try:
+        return '\n'.join(log.read_text(encoding='utf-8', errors='replace').splitlines()[-count:])
+    except OSError:
+        return ''
+
+
+# ---------------------------------------------------------------------------
+# The commands
+# ---------------------------------------------------------------------------
+def cmd_setup(args):
+    data = config()
+    if args.remote is not None and not store_lib.valid_remote(args.remote):
+        raise Stop(2, store_lib.REMOTE_RULE + '; nothing written')
+    try:
+        old = store_lib.port_of(data)
+    except store_lib.ConfigError:
+        old = None  # setup --port N repairs a port that is not valid
+    port = args.port if args.port is not None else old or store_lib.DEFAULT_PORT
+    if not 1 <= port <= 65535:
+        raise Stop(2, 'the port is a number from 1 to 65535')
+    # A server of this home on the old port would stay out of reach of off, which asks the configured port. The
+    # state file tells it from a server that the same user started from another home.
+    answer = health(old) if old and port != old else None
+    if answer and answer['pid'] == read_state().get('pid'):
+        raise Stop(2, f'the server runs on port {old}: run artifacts off first, then setup, then start')
+    data['port'] = port
+    if args.remote is not None:
+        data['remote'] = args.remote
+    elif args.local:
+        data.pop('remote', None)
+    store_lib.write_config(data)
+    print('config: ' + str(store_lib.config_path()))
+    print(f'port: {port}')
+    if args.remote is not None or args.local:
+        print('remote: ' + data.get('remote', 'none (the store of this computer)'))
+    return 0
+
+
+def read_upload(args):
+    """The path, the content type and the bytes of an upload: the file, or with `-` standard input as the last path
+    part of --name."""
+    if args.file == '-':
+        if args.name is None:
+            raise Stop(2, 'upload - reads the file from standard input and needs --name FILENAME')
+        path = Path(Path(args.name).name)
+    elif args.name is not None or args.size is not None or args.sha256 is not None:
+        raise Stop(2, '--name, --size and --sha256 go only with upload -, the file from standard input')
+    else:
+        path = Path(args.file)
+    kind = TYPES.get(path.suffix.lower())
+    if kind is None:
+        raise Stop(2, 'the file must end in .html, .htm, .md or .markdown')
+    try:
+        raw = sys.stdin.buffer.read(store_lib.MAX_BYTES + 1) if args.file == '-' else path.read_bytes()
+    except OSError as error:
+        raise Stop(2, f'cannot read {"standard input" if args.file == "-" else path}: {error.strerror}') from None
+    # A sender announces the size and the hash: a stream that a lost connection cut is not the file.
+    if ((args.size is not None and len(raw) != args.size)
+            or (args.sha256 is not None and hashlib.sha256(raw).hexdigest() != args.sha256.lower())):
+        raise Stop(2, 'standard input is not the announced file (--size, --sha256): the stream was cut or changed; '
+                      'nothing stored')
+    if len(raw) > store_lib.MAX_BYTES:
+        raise Stop(2, 'the file is larger than 10 MiB')
+    try:
+        raw.decode('utf-8')
+    except UnicodeDecodeError:
+        raise Stop(2, 'the file is not UTF-8 text') from None
+    return path, kind, raw
+
+
+def upload_remote(args, path, raw):
+    """Scan here, then send the bytes on the standard input of one ssh call to `artifacts --here upload -` of the
+    remote store. Nothing is stored on this computer."""
+    if args.replace is not None and not store_lib.SLUG.fullmatch(args.replace):
+        raise Stop(2, f'no artifact {plain(args.replace, 40)} in the store; nothing replaced')
+    scan_upload(path.name, raw)
+    # The `--x=VALUE` form, so a value that starts with `-` stays a value.
+    words = ['upload', '-', '--name=' + path.name, '--size=' + str(len(raw)),
+             '--sha256=' + hashlib.sha256(raw).hexdigest()]
+    if args.title is not None:
+        words.append('--title=' + args.title)
+    if args.replace is not None:
+        words.append('--replace=' + args.replace)
+        if args.repo is not None:
+            words.append('--repo=' + args.repo)
+    else:
+        # The working directory is here: an empty value is no repo, so the remote side detects none of its own.
+        words.append('--repo=' + (args.repo if args.repo is not None else detect_repo() or ''))
+    code = relay(remote_call(args.host, words, raw, REMOTE_UPLOAD_TIMEOUT, 'the file is not stored'))
+    if code == 0:
+        print('on: ' + args.host)
+    return code
+
+
+def cmd_upload(args):
+    data = config()
+    if args.host:
+        path, _, raw = read_upload(args)
+        return upload_remote(args, path, raw)
+    port, days = port_of(data), retention_of(data)
+    path, kind, raw = read_upload(args)
+    store = store_lib.store_dir()
+    unknown = Stop(2, f'no artifact {plain(args.replace or "", 40)} in the store; nothing replaced')
+    # An unknown slug is refused before the scan; the store changes only after a clean scan.
+    if args.replace is not None and store_lib.artifact_meta(store, args.replace) is None:
+        raise unknown
+    scan_upload(path.name, raw)
+    repo = (plain(args.repo, 100) or None) if args.repo is not None else None
+    if args.replace is not None:
+        # The title and the repo stay unless the options give new ones.
+        title = (plain(args.title) or path.name) if args.title else None
+        try:
+            meta = store_lib.replace_artifact(store, args.replace, raw, plain(path.name), kind, title, repo,
+                                              keep_repo=args.repo is None)
+        except store_lib.NotAnArtifact:
+            raise unknown from None
+        except OSError as error:
+            raise Stop(2, f'cannot replace {args.replace}: {error.strerror or type(error).__name__}') from None
+    else:
+        title = plain(args.title or path.stem) or path.name
+        if args.repo is None:
+            repo = detect_repo()
+        meta = store_lib.add_artifact(store, raw, plain(path.name), kind, title, repo)
+    print('slug: ' + meta['slug'])
+    print('view: ' + view_url(port, meta['slug']))
+    print('expires: ' + store_lib.expiry(meta, days))
+    if not health(port):
+        # A sender relays this note: for a file from standard input it names the computer that holds the store.
+        where = ' of the receiving computer; run artifacts start there' if args.file == '-' else '; run artifacts start'
+        print('note: no artifacts server runs on port ' + str(port) + where + ' to view it', file=sys.stderr)
     return 0
 
 
 def cmd_list(args):
-    origin, token_file = configured()
-    token = read_token(token_file)
-    cursor = None
-    while True:
-        path = '/v1/artifacts' + ('?cursor=' + urllib.parse.quote(cursor, safe='') if cursor else '')
-        answer = request(origin, path, token=token)
-        items = answer.get('artifacts') if isinstance(answer, dict) else None
-        if not isinstance(items, list):
-            raise Stop(3, 'the server answer has no artifact list')
-        for item in items:
-            artifact = item.get('artifact', item) if isinstance(item, dict) else {}
-            print('\t'.join(str(artifact.get(key) or '') for key in ('slug', 'title', 'expiresAt')))
-        cursor = answer.get('nextCursor')
-        if not cursor:
-            return 0
+    if args.host:
+        return relay(remote_call(args.host, ['list']))
+    days = retention_of(config())
+    for meta in store_lib.artifacts(store_lib.store_dir()):
+        print('\t'.join((meta['slug'], plain(meta.get('title') or ''), store_lib.expiry(meta, days))))
+    return 0
 
 
 def sheprd_command():
@@ -365,9 +531,46 @@ def sheprd_command():
     return None
 
 
+def cmd_delete(args):
+    """Delete the named artifacts. Each slug is checked first; one that names no artifact deletes nothing. A scratch
+    directory that could not be removed stays: the command names it and exits 2. With a remote store, each slug is
+    checked here against the slug pattern first."""
+    if args.host:
+        for slug in args.slugs:
+            if not store_lib.SLUG.fullmatch(slug):
+                raise Stop(2, f'{plain(slug, 40)} is not a slug (32 characters of A-Z, a-z, 0-9, _ and -); '
+                              'nothing deleted')
+        return relay(remote_call(args.host, ['delete', '--', *args.slugs], lost='nothing is deleted'))
+    left = []
+
+    def deleted(slug, scratch):
+        print('deleted: ' + slug)
+        if scratch:
+            left.append(scratch)
+            print(f'artifacts: the artifact is out of the store, but its scratch directory {scratch} could not be '
+                  'removed; remove it by hand', file=sys.stderr)
+    try:
+        store_lib.delete_artifacts(store_lib.store_dir(), args.slugs, deleted)
+    except store_lib.NotAnArtifact as error:
+        raise Stop(2, f'no artifact {plain(error.args[0], 40)} in the store; nothing deleted') from None
+    except OSError as error:
+        raise Stop(2, f'a delete failed ({error.strerror or type(error).__name__}); '
+                      'artifacts list shows what is left') from None
+    return 2 if left else 0
+
+
 def cmd_open(args):
-    origin, _ = configured()
-    url = origin + ('/a/' + urllib.parse.quote(args.slug, safe='') if args.slug else '/browse')
+    if args.slug is not None and not store_lib.SLUG.fullmatch(args.slug):
+        raise Stop(2, 'a slug is 32 characters of A-Z, a-z, 0-9, _ and -')
+    if args.host:
+        # The remote open prints the URL and starts no browser. The Sheprd command of this computer is not run: on
+        # an SSH host it forwards the port of this computer, which is the wrong server.
+        code = relay(remote_call(args.host, ['open', *(['--', args.slug] if args.slug else [])]))
+        if code == 0:
+            print(f'note: the address is valid on {args.host}, not on this computer', file=sys.stderr)
+        return code
+    port = port_of(config())
+    url = view_url(port, args.slug) if args.slug else index_url(port)
     print(url)
     sheprd = sheprd_command() if os.environ.get('HERDR_ENV') == '1' else None
     if sheprd:
@@ -381,368 +584,255 @@ def cmd_open(args):
     return 0
 
 
-def cmd_doctor(args):
-    origin, token_file = configured()
-    print('origin: ' + origin)
+def cmd_retention(args):
+    data = config()
+    if args.value is None:
+        days = retention_of(data)
+        print('retention: ' + ('none' if days is None else f'{days} days'))
+        return 0
+    if args.value == 'none':
+        data.pop('retentionDays', None)
+        store_lib.write_config(data)
+        print('retention: none (the server deletes no artifact)')
+        return 0
+    if not re.fullmatch(r'[0-9]{1,4}', args.value) or not 1 <= int(args.value) <= store_lib.RETENTION_MAX:
+        raise Stop(2, f'retention is a number of days from 1 to {store_lib.RETENTION_MAX}, or none')
+    days = int(args.value)
+    data['retentionDays'] = days
+    store_lib.write_config(data)
+    older = len(store_lib.expired(store_lib.store_dir(), days, store_lib.now_utc()))
+    print(f'retention: {days} days')
+    print(f'older than {days} days now: {older} artifact' + ('' if older == 1 else 's')
+          + ' (a running server deletes them at its next sweep, within one hour)')
+    return 0
+
+
+def scanner_text():
+    if os.environ.get(SCAN_ENV):
+        return f'the command of {SCAN_ENV} (a test seam)'
+    command = kit_scanner()
+    if command is None:
+        return 'none: the CLI runs outside a kit tree, so an upload is not scanned'
+    return ' '.join(command[1:])
+
+
+def remote_reply(host):
+    """One short ssh call: `answers ...` when `artifacts --here --json status` of the remote store answers, else
+    the reason."""
     try:
-        request(origin, '/healthz')
-        health = 'ok'
+        done = remote_call(host, ['--json', 'status'], timeout=REMOTE_DOCTOR_TIMEOUT)
     except Stop as error:
-        health = str(error)
-    print('health: ' + health)
-    token, state = token_state(token_file)
-    print('token file: ' + token_file + ' (' + state + ')')
-    good = health == 'ok' and token is not None
+        return 'no answer: ' + str(error)
+    try:
+        answer = json.loads(done.stdout.decode('utf-8'))
+        state, url = answer['state'], answer['url']
+    except (UnicodeDecodeError, ValueError, TypeError, KeyError):
+        answer = None
+    if done.returncode or not isinstance(answer, dict):
+        return f'no answer: artifacts --json status on {host} gave exit {done.returncode} and no status'
+    return f'answers (server {plain(state, 20)}, {plain(url, 100)})'
+
+
+def cmd_doctor(args):
+    good = True
+    try:
+        data = store_lib.load_config()
+        port = store_lib.port_of(data)
+        days = store_lib.retention_of(data)
+        remote = None if args.here else store_lib.remote_of(data)
+    except store_lib.ConfigError as error:
+        print('config: ' + str(error))
+        print('doctor: FAIL')
+        return 3
+    print('config: ' + str(store_lib.config_path()) + ('' if store_lib.config_path().is_file() else ' (absent: defaults)'))
+    store = store_lib.store_dir()
+    if store.exists() and not (store.is_dir() and os.access(store, os.R_OK | os.W_OK | os.X_OK)):
+        print(f'store: {store} (not a readable and writable directory)')
+        good = False
+    else:
+        print(f'store: {store} ({len(store_lib.artifacts(store))} artifacts)')
+    answer, hint = health(port), ''
+    if answer:
+        server = f'running (pid {answer["pid"]})'
+    elif port_free(port):
+        server = 'stopped'
+    else:
+        server = 'stopped; the port is in use by another program (artifacts setup --port N)'
+        good = False
+        hint = earlier_server(port)
+    print(f'port: {port}')
+    print('server: ' + server)
+    if hint:
+        print('note: ' + hint)
+    print('retention: ' + ('none' if days is None else f'{days} days'))
+    print('scanner: ' + scanner_text())
+    if remote:
+        print('remote: ' + remote)
+        reply = remote_reply(remote)
+        good = good and reply.startswith('answers')
+        print('remote store: ' + reply)
+    unused = [key for key in store_lib.OLD_KEYS if key in data]
+    if unused:
+        print('unused config keys (kept, ignored): ' + ', '.join(unused))
     print('doctor: ' + ('PASS' if good else 'FAIL'))
     return 0 if good else 3
 
 
-# ---------------------------------------------------------------------------
-# The local server: start, off, status
-# ---------------------------------------------------------------------------
-def local_target(data):
-    """(clone, port) when the configuration names a local server, else None."""
-    clone, port = data.get('clone'), data.get('port')
-    if clone and isinstance(port, int) and data.get('origin') == f'http://127.0.0.1:{port}':
-        return str(clone), port
-    return None
+def server_env():
+    """A small environment for the server: PATH, HOME and the XDG variables that are set."""
+    return {name: value for name, value in os.environ.items()
+            if name in ('PATH', 'HOME') or name.startswith('XDG_')}
 
 
-def server_script(clone):
-    return os.path.realpath(os.path.join(clone, 'server.mjs'))
-
-
-def script_argument(argv):
-    """The script that a `node` command line runs: the first argument after argv[0] without a leading `-`.
-
-    None when the base name of argv[0] is not exactly `node` or no such argument exists. When in doubt, no match:
-    a missed server is safer than a signal to another program."""
-    if not argv or os.path.basename(argv[0]) != 'node':
-        return None
-    return next((arg for arg in argv[1:] if not arg.startswith('-')), None)
-
-
-def linux_processes(scripts):
-    """{pid: argv} of the processes of this user in the PID namespace of the CLI that run one of `scripts`.
-
-    The script argument is resolved against the working directory of the process, then compared by real path."""
-    own_ns = os.readlink('/proc/self/ns/pid')
-    found = {}
-    for entry in os.listdir('/proc'):
-        if not entry.isdigit() or int(entry) == os.getpid():
-            continue
+def stop_child(process):
+    """Stop a server that this start began. Signal only through the Popen object, and only while the child is not
+    reaped: after poll() reaps it, its PID can belong to another program."""
+    if process.poll() is None:
+        process.terminate()
         try:
-            if os.stat(f'/proc/{entry}').st_uid != os.getuid() or os.readlink(f'/proc/{entry}/ns/pid') != own_ns:
-                continue
-            with open(f'/proc/{entry}/cmdline', 'rb') as handle:
-                argv = [part.decode('utf-8', 'replace') for part in handle.read().split(b'\0') if part]
-            arg = script_argument(argv)
-            if arg is None:
-                continue
-            path = os.path.realpath(os.path.join(os.readlink(f'/proc/{entry}/cwd'), arg))
-        except OSError:
-            continue
-        if path in scripts:
-            found[int(entry)] = argv
-    return found
-
-
-def ps_script(command):
-    """The real path of the script of a `node` command line in `ps` form, or None.
-
-    `ps` loses the argument borders, so the script argument must be an absolute path, and exactly one existing file
-    must start at it and end at a space or at the end of the line. A relative script argument does not match."""
-    words = command.split(' ')
-    index = next((i for i, word in enumerate(words) if i and word and not word.startswith('-')), None)
-    if os.path.basename(words[0]) != 'node' or index is None or not words[index].startswith('/'):
-        return None
-    files = {os.path.realpath(path) for path in (' '.join(words[index:end]) for end in range(index + 1, len(words) + 1))
-             if os.path.isfile(path)}
-    return files.pop() if len(files) == 1 else None
-
-
-def ps_processes(scripts):
-    """The same as linux_processes, from `ps` (macOS has no PID namespace and no /proc/<pid>/cwd)."""
-    done = subprocess.run(['ps', '-ww', '-x', '-U', str(os.getuid()), '-o', 'pid=', '-o', 'command='],
-                          capture_output=True, text=True, timeout=30)
-    found = {}
-    for line in done.stdout.splitlines():
-        pid, _, command = line.strip().partition(' ')
-        command = command.strip()
-        if pid.isdigit() and int(pid) != os.getpid() and command and ps_script(command) in scripts:
-            found[int(pid)] = command.split()
-    return found
-
-
-def servers(scripts):
-    scripts = sorted({script for script in scripts if script})
-    if not scripts:
-        return {}
-    return linux_processes(scripts) if os.path.isdir('/proc/self/ns') else ps_processes(scripts)
-
-
-def process_origin(pid):
-    """ARTIFACT_ORIGIN of a server process on Linux, or None."""
-    try:
-        with open(f'/proc/{pid}/environ', 'rb') as handle:
-            for item in handle.read().split(b'\0'):
-                if item.startswith(b'ARTIFACT_ORIGIN='):
-                    return check_origin(item.split(b'=', 1)[1].decode())
-    except (OSError, UnicodeDecodeError, Stop):
-        pass
-    return None
-
-
-def read_state():
-    try:
-        data = json.loads((state_dir() / 'server.json').read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) and isinstance(data.get('pid'), int) else {}
-
-
-def lock():
-    """An exclusive lock of the state directory for one start or off; it ends with the process."""
-    state_dir().mkdir(mode=0o700, parents=True, exist_ok=True)
-    handle = open(state_dir() / 'lock', 'a')
-    fcntl.flock(handle, fcntl.LOCK_EX)
-    return handle
-
-
-def running(data):
-    """(pid, origin) of a local server of this user that runs (the state file, then the clone), or None."""
-    state = read_state()
-    found = servers([server_script(state['clone']) if state.get('clone') else None,
-                     server_script(data['clone']) if data.get('clone') else None])
-    if state.get('pid') in found:
-        return state['pid'], state.get('origin') or process_origin(state['pid'])
-    if found:
-        pid = min(found)
-        return pid, process_origin(pid)
-    return None
-
-
-def browse(origin):
-    return origin + '/browse'
-
-
-def node_minimum(clone):
-    """The minimum Node version (a tuple) of the engines.node field of the clone, or ()."""
-    try:
-        engines = json.loads(Path(clone, 'package.json').read_text(encoding='utf-8')).get('engines') or {}
-    except (OSError, ValueError, AttributeError):
-        raise Stop(2, f'cannot read {clone}/package.json') from None
-    match = re.search(r'(?:>=|\^|~|^)\s*v?(\d+(?:\.\d+){0,2})', str(engines.get('node') or ''))
-    return tuple(int(part) for part in match.group(1).split('.')) if match else ()
-
-
-def port_free(port):
-    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        probe.settimeout(1)
-        if probe.connect_ex(('127.0.0.1', port)) == 0:
-            return False
-    finally:
-        probe.close()
-    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # as Node does; a TIME_WAIT port is free
-        probe.bind(('127.0.0.1', port))
-        return True
-    except OSError:
-        return False
-    finally:
-        probe.close()
-
-
-def make_token(path):
-    Path(path).parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
-        handle.write(secrets.token_urlsafe(32) + '\n')
-    print('token file: ' + str(path) + ' (made, mode 600)')
-
-
-def log_tail(log, token_file, count=20):
-    try:
-        lines = log.read_text(encoding='utf-8', errors='replace').splitlines()[-count:]
-    except OSError:
-        return ''
-    token = token_state(token_file)[0]
-    text = '\n'.join(lines)
-    return text.replace(token, '<token>') if token else text
-
-
-def stop_pid(pid):
-    try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
+            process.wait(timeout=STOP_WAIT)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
 
 def cmd_start(args):
-    data = load_config()
-    if not data.get('origin'):
-        raise Stop(4, 'no configuration; run: artifacts setup --clone PATH [--port N]')
-    origin = check_origin(data['origin'])
-    target = local_target(data)
+    port = port_of(config())
+    url = index_url(port)
     with lock():
-        found = running(data)
-        if found:
-            pid, url = found
-            print(f'a local server runs already (pid {pid}); start starts no second one')
-            print(browse(url or origin))
+        answer = health(port)
+        if answer:
+            print(f'a server runs already (pid {answer["pid"]}); start starts no second one')
+            print(url)
             return 0
-        if target is None:
-            print('the origin is a remote server; start starts nothing')
-            print(browse(origin))
-            return 0
-        clone, port = target
-        clone = os.path.realpath(clone)
-        if not os.path.isfile(os.path.join(clone, 'loopback-auth.mjs')):
-            raise Stop(2, f'{clone} has no localhost mode (no loopback-auth.mjs): update the clone of the server')
-        node = shutil.which('node')
-        if node is None:
-            raise Stop(2, 'no node command on the PATH')
-        need = node_minimum(clone)
-        try:
-            have = tuple(int(x) for x in re.findall(r'\d+', subprocess.run(
-                [node, '--version'], capture_output=True, text=True, timeout=30).stdout)[:3])
-        except (OSError, subprocess.SubprocessError):
-            raise Stop(2, 'node --version did not run') from None
-        if have < need:
-            raise Stop(2, 'Node ' + '.'.join(map(str, have)) + ' is below ' + '.'.join(map(str, need))
-                       + ', the minimum of the server')
-        if not os.path.isdir(os.path.join(clone, 'node_modules')):
-            raise Stop(2, f'{clone} has no node_modules: run npm ci in the clone')
         if not port_free(port):
-            raise Stop(2, f'port {port} is in use by another program; choose another with artifacts setup --port')
-        token_file = str(data.get('tokenFile') or config_path().parent / 'local-token')
-        if not os.path.exists(token_file):
-            make_token(token_file)
-        data_dir().mkdir(mode=0o700, parents=True, exist_ok=True)
-        data_dir().chmod(0o700)
-        log = state_dir() / 'server.log'
-        env = {name: os.environ[name] for name in ('PATH', 'HOME') if name in os.environ}
-        env.update({'ARTIFACT_BROWSER_AUTH': 'loopback', 'ARTIFACT_BIND': '127.0.0.1', 'ARTIFACT_PORT': str(port),
-                    'ARTIFACT_ORIGIN': origin, 'ARTIFACT_TOKEN_FILE': token_file,
-                    'ARTIFACT_DATA_DIR': str(data_dir()), 'ARTIFACT_CONNECTORS_FILE': ''})
+            hint = earlier_server(port)
+            raise Stop(2, f'port {port} is in use by another program; choose another with artifacts setup --port N'
+                       + ('\nartifacts: ' + hint if hint else ''))
+        if not SERVER.is_file():
+            raise Stop(3, f'the server program {SERVER} is missing')
+        log = store_lib.state_dir() / 'server.log'
         fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w') as out:
-            process = subprocess.Popen(['node', os.path.join(clone, 'server.mjs')], executable=node, cwd=clone,
-                                       env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
-                                       start_new_session=True)
-        deadline = time.monotonic() + HEALTH_WAIT
-        while True:
-            try:
-                request(origin, '/healthz', timeout=2)
-                break
-            except Stop:
+            process = subprocess.Popen([sys.executable, '-B', str(SERVER), '--port', str(port)],
+                                       cwd=str(store_lib.state_dir()), env=server_env(), stdin=subprocess.DEVNULL,
+                                       stdout=out, stderr=out, start_new_session=True)
+        try:
+            # The state file comes before the health wait: when this command ends early, off can still stop the
+            # server.
+            write_state({'pid': process.pid, 'port': port, 'startedAt': store_lib.iso(store_lib.now_utc())})
+            deadline = time.monotonic() + HEALTH_WAIT
+            while True:
+                answer = health(port)
+                if answer and answer['pid'] == process.pid:
+                    break
                 ended = process.poll() is not None
                 if ended or time.monotonic() > deadline:
-                    # Signal only through the Popen object, and only while the child is not reaped: after poll()
-                    # reaps it, its PID can belong to another program.
-                    if process.poll() is None:
-                        process.terminate()
-                        try:
-                            process.wait(timeout=STOP_WAIT)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-                            process.wait()
-                    tail = log_tail(log, token_file)
+                    stop_child(process)
+                    tail = log_tail(log)
                     if tail:
                         print(tail, file=sys.stderr)
                     why = 'the server ended before a /healthz answer' if ended else \
                         f'the server gave no /healthz answer in {HEALTH_WAIT} s; it is stopped'
                     raise Stop(3, f'{why}. Log: {log}')
-                time.sleep(0.25)
-        (state_dir() / 'server.json').write_text(json.dumps(
-            {'pid': process.pid, 'clone': clone, 'port': port, 'origin': origin}) + '\n', encoding='utf-8')
+                time.sleep(0.1)
+        except BaseException:
+            # Each failure path of start stops the new server and removes its state file.
+            stop_child(process)
+            state_file().unlink(missing_ok=True)
+            raise
         print(f'started: pid {process.pid}, log {log}')
-        print(browse(origin))
+        print(url)
         return 0
 
 
 def cmd_off(args):
-    data = load_config()
+    port = port_of(config())
     with lock():
         state = read_state()
-        scripts = [server_script(state['clone']) if state.get('clone') else None,
-                   server_script(data['clone']) if data.get('clone') else None]
-        found = servers(scripts)
-        for pid in found:
-            stop_pid(pid)
-        deadline = time.monotonic() + STOP_WAIT
-        left = found
-        while left and time.monotonic() < deadline:
-            time.sleep(0.2)
-            left = {pid: argv for pid, argv in servers(scripts).items() if pid in found}
-        for pid in left:
-            print(f'pid {pid} did not stop in {STOP_WAIT} s', file=sys.stderr)
-        if state and state['pid'] not in servers(scripts):
-            (state_dir() / 'server.json').unlink(missing_ok=True)
-        stopped = len(found) - len(left)
+        answer = health(port)
+        stopped = left = 0
+        # Signal only the PID that both the state file and the /healthz answer name. No process list scan.
+        if state and answer and answer['pid'] == state['pid']:
+            pid = state['pid']
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            deadline = time.monotonic() + STOP_WAIT
+            while time.monotonic() < deadline and (health(port, timeout=1) or {}).get('pid') == pid:
+                time.sleep(0.1)
+            if (health(port, timeout=1) or {}).get('pid') == pid:
+                print(f'pid {pid} did not stop in {STOP_WAIT} s', file=sys.stderr)
+                left = 1
+            else:
+                stopped = 1
+        elif answer:
+            print(f'the server on port {port} (pid {answer["pid"]}) is not the one of the state file; '
+                  'no signal sent', file=sys.stderr)
+        # The state file goes when its server stopped or its PID is gone; else a later off can still use it.
+        if state and not left and (stopped or not alive(state['pid'])):
+            state_file().unlink(missing_ok=True)
         print(f'off: stopped {stopped} local server' + ('' if stopped == 1 else 's'))
         return 3 if left else 0
 
 
 def cmd_status(args):
-    data = load_config()
-    if not data.get('origin'):
-        state, url, health = 'unconfigured', None, 'no configuration'
-    else:
-        origin = check_origin(data['origin'])
-        target = local_target(data)
-        found = running(data)
-        if found:
-            origin = found[1] or origin
-        if target is not None and not found:
-            state, health = 'stopped', 'no local server runs'
-        else:
-            try:
-                request(origin, '/healthz', timeout=STATUS_TIMEOUT)
-                health = 'ok'
-                state = 'running' if found else 'remote'
-            except Stop as error:
-                state, health = 'unreachable', str(error)
-        url = browse(origin)
+    port = port_of(config())
+    answer = health(port)
+    state = 'running' if answer else 'stopped'
+    url = index_url(port)
     if args.json:
         print(json.dumps({'state': state, 'url': url}))
         return 0
     print('state: ' + state)
-    print('health: ' + health)
-    if url:
-        print('url: ' + url)
+    print('health: ' + (f'ok (pid {answer["pid"]})' if answer else f'no answer on 127.0.0.1:{port}'))
+    print('url: ' + url)
     return 0
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='artifacts', description=__doc__.split('\n')[0])
     parser.add_argument('--json', action='store_true', help='status: print one JSON object {"state", "url"}')
+    parser.add_argument('--here', action='store_true',
+                        help='use the store of this computer; ignore the key remote for this call')
     sub = parser.add_subparsers(dest='command', required=True)
-    setup = sub.add_parser('setup', help='write the configuration file (origin, token file path)')
-    setup.add_argument('--origin')
-    setup.add_argument('--token-file')
-    setup.add_argument('--clone', help='the clone of the artifact server for a local server on 127.0.0.1')
-    setup.add_argument('--port', type=int, help=f'with --clone, the loopback port (default {DEFAULT_PORT})')
-    setup.add_argument('--yes', action='store_true', help='ask nothing')
-    setup.add_argument('--replace-origin', action='store_true', help='with --yes, replace a different saved origin')
-    setup.add_argument('--check', action='store_true',
-                       help='write nothing: check the given values as --yes does, or that a configuration is saved')
-    upload = sub.add_parser('upload', help='scan and upload one .html or .md file; print the view link')
-    upload.add_argument('file')
+    setup = sub.add_parser('setup', help='write the port into the configuration file; keep each other key')
+    setup.add_argument('--port', type=int, help=f'the loopback port of the server (default {store_lib.DEFAULT_PORT})')
+    where = setup.add_mutually_exclusive_group()
+    where.add_argument('--remote', metavar='HOST',
+                       help='an SSH destination: upload, list, delete and open use the store of HOST')
+    where.add_argument('--local', action='store_true', help='remove the key remote: use the store of this computer')
+    upload = sub.add_parser('upload', help='scan one .html or .md file and store it; print the view link')
+    upload.add_argument('file', help='the file, or - for standard input with --name')
+    upload.add_argument('--name', help='with -: the file name of standard input (only its last path part)')
+    upload.add_argument('--size', type=int, metavar='BYTES',
+                        help='with -: the byte count of the file; standard input of another size is refused')
+    upload.add_argument('--sha256', metavar='HEX',
+                        help='with -: the SHA-256 of the file; standard input with another hash is refused')
     upload.add_argument('--title')
-    sub.add_parser('list', help='one line for each stored artifact: slug, title, expiry')
-    opener = sub.add_parser('open', help='print the browse page URL or the artifact URL; show it in Sheprd in Herdr')
+    upload.add_argument('--repo', help='the repo name (default: the origin remote or the checkout of the directory)')
+    upload.add_argument('--replace', metavar='SLUG',
+                        help='store the file under this existing slug; the link, the created time, the title and '
+                             'the repo stay')
+    sub.add_parser('list', help='one line for each stored artifact, newest first: slug, title, expiry')
+    opener = sub.add_parser('open', help='print the index URL or the viewer URL; show it in Sheprd in Herdr')
     opener.add_argument('slug', nargs='?')
-    sub.add_parser('doctor', help='the origin, the server health and the token file state')
-    sub.add_parser('start', help='start the local server of the configured clone; the last line is the browse URL')
-    sub.add_parser('off', aliases=['stop'], help='stop each local server of this user that runs the configured clone')
-    sub.add_parser('status', help='running, stopped, remote, unreachable or unconfigured; the URL and the health')
+    delete = sub.add_parser('delete', help='delete the named artifacts from the store')
+    delete.add_argument('slugs', nargs='+', metavar='SLUG')
+    sub.add_parser('doctor', help='the store, the port, the server, the retention and the scanner')
+    retention = sub.add_parser('retention', help='print the retention, or set it: a number of days or none')
+    retention.add_argument('value', nargs='?')
+    sub.add_parser('start', help='start the local server when none runs; the last line is the index URL')
+    sub.add_parser('off', aliases=['stop'], help='stop the local server of this user')
+    sub.add_parser('status', help='running or stopped, the health and the index URL')
     args = parser.parse_args(argv)
-    commands = {'setup': cmd_setup, 'upload': cmd_upload, 'list': cmd_list, 'open': cmd_open, 'doctor': cmd_doctor,
-                'start': cmd_start, 'off': cmd_off, 'stop': cmd_off, 'status': cmd_status}
+    commands = {'setup': cmd_setup, 'upload': cmd_upload, 'list': cmd_list, 'open': cmd_open, 'delete': cmd_delete,
+                'doctor': cmd_doctor,
+                'retention': cmd_retention, 'start': cmd_start, 'off': cmd_off, 'stop': cmd_off,
+                'status': cmd_status}
     try:
+        args.host = remote_of(config()) if args.command in REMOTE_COMMANDS and not args.here else None
         return commands[args.command](args)
     except Stop as error:
         print('artifacts: ' + str(error), file=sys.stderr)

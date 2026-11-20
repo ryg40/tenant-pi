@@ -1,0 +1,342 @@
+/* The index page and the viewer page of the local artifacts server. System fonts, light and dark, no external
+   request. */
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfa;
+  --fg: #1d1f21;
+  --muted: #5f6368;
+  --line: #e2e3e1;
+  --head: #f1f2f0;
+  --row-hover: #f4f6f8;
+  --accent: #1f5fbf;
+  --thumb-bg: #ffffff;
+  --thumb-w: 168px;
+  --thumb-h: 105px;
+  --thumb-scale: 0.14;
+  --card-scale: 0.25;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17191c;
+    --fg: #e4e6e8;
+    --muted: #9aa0a6;
+    --line: #2d3136;
+    --head: #1f2226;
+    --row-hover: #1d2127;
+    --accent: #8ab4f8;
+    --thumb-bg: #0f1113;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1.25rem;
+  padding: 1.25rem 1.5rem 0.5rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 650;
+}
+
+.facts {
+  display: flex;
+  gap: 1rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+main { padding: 0 1.5rem 2rem; }
+
+/* The tools row: the filter, the view switch and, in the gallery, the sort list. */
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin: 0.5rem 0 1rem;
+}
+
+.filter, .sorter select {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.filter { width: min(28rem, 100%); }
+
+.filter:focus-visible, .sorter select:focus-visible, .views button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.views {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.views button {
+  padding: 0.4rem 0.8rem;
+  border: 0;
+  background: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.views button + button { border-left: 1px solid var(--line); }
+.views button[aria-pressed="true"] { background: var(--head); color: var(--fg); font-weight: 600; }
+
+.sorter { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--muted); }
+main:not([data-view="gallery"]) .sorter { display: none; }
+
+.empty { color: var(--muted); }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.92em;
+}
+
+[hidden] { display: none !important; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--head);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+thead button {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+thead button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+th[aria-sort="ascending"] .dir::after { content: "\25B2"; font-size: 0.7em; }
+th[aria-sort="descending"] .dir::after { content: "\25BC"; font-size: 0.7em; }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--fg); }
+
+tbody tr:hover { background: var(--row-hover); }
+
+.hidden-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+td.thumb, th.thumb { width: calc(var(--thumb-w) + 1.5rem); }
+
+td.thumb a {
+  display: block;
+  position: relative;
+  width: var(--thumb-w);
+  height: var(--thumb-h);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--thumb-bg);
+}
+
+/* A live view of the artifact, scaled down. The link around it takes the click. */
+td.thumb iframe {
+  width: calc(var(--thumb-w) / var(--thumb-scale));
+  height: calc(var(--thumb-h) / var(--thumb-scale));
+  border: 0;
+  transform: scale(var(--thumb-scale));
+  transform-origin: 0 0;
+  pointer-events: none;
+  background: var(--thumb-bg);
+}
+
+a.title {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+a.title:hover { text-decoration: underline; }
+
+.file {
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.none { color: var(--muted); }
+
+/* A repo name: a click filters by it. */
+button.repo {
+  all: unset;
+  cursor: pointer;
+  color: var(--fg);
+  border-bottom: 1px dotted var(--muted);
+}
+
+button.repo:hover { color: var(--accent); border-bottom-color: var(--accent); }
+button.repo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+.updated {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+td.size { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+/* The gallery view: the same table, each row a card in a grid, with a larger live thumbnail. A narrow window
+   gives one column. The sort list takes the place of the column heads. */
+[data-view="gallery"] table, [data-view="gallery"] td { display: block; }
+[data-view="gallery"] thead, [data-view="gallery"] .file, [data-view="gallery"] td.size { display: none; }
+
+[data-view="gallery"] tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+[data-view="gallery"] tr {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: baseline;
+  gap: 0.2rem 0.8rem;
+  padding: 0.6rem 0.7rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+[data-view="gallery"] td { padding: 0; border: 0; }
+[data-view="gallery"] td.thumb, [data-view="gallery"] td.name { flex-basis: 100%; width: auto; }
+[data-view="gallery"] td.thumb { margin-bottom: 0.4rem; }
+[data-view="gallery"] td.name ~ td { color: var(--muted); font-size: 0.85rem; }
+
+/* A 16:10 box from the top padding (62.5% of the width), because the web view of Sheprd ignores aspect-ratio. */
+[data-view="gallery"] td.thumb a {
+  box-sizing: content-box;
+  width: auto;
+  height: 0;
+  padding-top: 62.5%;
+}
+
+[data-view="gallery"] td.thumb iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc(100% / var(--card-scale));
+  height: calc(100% / var(--card-scale));
+  transform: scale(var(--card-scale));
+}
+
+/* A click on a card opens the viewer: the title link covers the card. The repo button stays above it. */
+[data-view="gallery"] a.title::after { content: ""; position: absolute; inset: 0; }
+[data-view="gallery"] button.repo { position: relative; z-index: 1; }
+
+/* The viewer page: a slim bar, and the artifact in a frame that fills the rest of the window. */
+body.viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 1rem;
+  padding: 0.45rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--head);
+  font-size: 0.85rem;
+}
+
+.bar a { color: var(--accent); text-decoration: none; }
+.bar a:hover { text-decoration: underline; }
+.bar .home { font-weight: 650; }
+
+.bar .name {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.bar .facts { flex-wrap: wrap; gap: 0.2rem 0.9rem; }
+.bar .nav { display: flex; gap: 0.9rem; margin-left: auto; }
+
+.note {
+  flex-basis: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.note button {
+  font: inherit;
+  padding: 0.1rem 0.6rem;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--thumb-bg);
+}
+
+@media (max-width: 700px) {
+  .top, main { padding-left: 0.75rem; padding-right: 0.75rem; }
+  th, td { padding: 0.4rem 0.5rem; }
+  :root { --thumb-w: 112px; --thumb-h: 70px; --thumb-scale: 0.0933; }
+}

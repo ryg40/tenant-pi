@@ -88,7 +88,7 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 - **Computer use** (`computer-use`): control of the desktop on Linux. Ask about desktop control before you install it. Read [computer use](#computer-use) first.
 - **Computer use on macOS** (`computer-use-macos`): control of the desktop on a Mac. Ask about desktop control before you install it. Read [computer use on macOS](#computer-use-on-macos) first.
 - **OpenKnowledge** (`okknow`): the skill and the CLI for one OpenKnowledge server of the user. Read [okknow](#okknow) first.
-- **Artifacts** (`artifacts`): the skill and the CLI that store an HTML or Markdown file on the artifact server of the user and give the view link. Read [artifacts](#artifacts) first.
+- **Artifacts** (`artifacts`): the skill, the CLI and a local read-only server that store an HTML or Markdown file on this computer, or over SSH on another one, and give the view link. Read [artifacts](#artifacts) first.
 - **Walkr** (`walkr`): the review tool for pages, text and options of a change, with a browser page for the user. Read [walkr](#walkr) first.
 - **Agent Toolkit for AWS** (`aws-core`, `aws-agents`, `aws-data-analytics`, `aws-agents-for-devsecops`, `aws-startup-advisor`, `aws-emulator`): the AWS skills of the five plugins and the `aws-emulator` skill from one clone at the pinned commit, the server `aws-mcp` with `aws-core` and `mcp` or `mcp-codemode`, and the Claude Code plugins after their own yes. They need `git`, network access and `uv`. Read [Agent Toolkit for AWS](aws-agent-toolkit.md) first.
 
@@ -311,58 +311,39 @@ To remove the module: delete the `packages/okknow` entry from the profile settin
 
 ## artifacts
 
-The `artifacts` module is the in-tree package `packages/artifacts`: the skill `artifacts` and its CLI `scripts/artifacts`, for one artifact server of the user. An agent stores an HTML or Markdown file there with `artifacts upload <file>` and gives the user the view link. Its manifest status is `unverified`; the manifest gaps name the open facts. The kit ships and installs no artifact server: the module is for a user who runs a server with the `/v1/artifacts` API.
+The `artifacts` module is the in-tree package `packages/artifacts`: the skill `artifacts` with its CLI `scripts/artifacts`, the command `/artifacts-server`, and a small read-only web server that shows the stored pages on `127.0.0.1`. It uses Python 3 and its standard library only. An agent stores an HTML or Markdown file with `artifacts upload <file>` and gives the user the view link. Its manifest status is `unverified`; the manifest gaps name the open facts. See [the package README](../../packages/artifacts/README.md) for the store, the routes and the exit codes.
 
-`install.sh --with artifacts` does these steps:
+`install.sh --with artifacts` asks nothing and does these steps:
 
-1. It adds `<clone>/packages/artifacts` to the `packages` list of the profile settings. Pi then loads the skill.
+1. It adds `<clone>/packages/artifacts` to the `packages` list of the profile settings. Pi then loads the skills and the prompt `/artifacts-server`.
 2. It links `~/.local/bin/artifacts` to the CLI of the clone. It keeps another file or link of that name. The profile launcher adds `~/.local/bin` at the end of `PATH`.
-3. When `~/.claude` exists, it links the skill to `~/.claude/skills/artifacts`, as for the other kit skills.
-4. It runs the setup. With `ARTIFACTS_ORIGIN` and `ARTIFACTS_TOKEN_FILE` set, it runs `artifacts setup --origin "$ARTIFACTS_ORIGIN" --token-file "$ARTIFACTS_TOKEN_FILE" --yes`. When a user configuration exists and the two variables are not set, it keeps that configuration. Else it runs the wizard in the terminal. Without a terminal, the two variables or a configuration, it stops before its first write. When the configuration has a different origin, the installer stops before its first write; run `artifacts setup --origin <url> --token-file <path> --yes --replace-origin` to replace it.
+3. When `~/.claude` exists, it links the skills `artifacts` and `artifacts-server` into `~/.claude/skills`, as for the other kit skills.
 
-The configuration file is `~/.config/tenant-artifacts/config.json`, or `$XDG_CONFIG_HOME/tenant-artifacts/config.json` when `XDG_CONFIG_HOME` is set. It has mode 0600 and holds the keys `origin` and `tokenFile`, and for a local server `clone` and `port`. `artifacts setup` sets these keys and keeps each other key. An origin is `https://<host>[:port]`, for example `https://artifacts.example.com`, or `http://` for a loopback address only.
+The run writes no configuration and starts no server.
 
-The token file holds one bearer token of the artifact server and nothing else. Give it mode 0600; `artifacts doctor` names a file that others can read. The kit writes no token, and the CLI reads the token inside its process: the token is never in the argument list, a log or the output.
+`artifacts upload` runs the secret scanner of the kit (`scripts/scan.sh --level warn tree`) on the file first. A finding stops the upload. Then the CLI writes the file into the store `~/.local/share/tenant-artifacts/store/`. An upload needs no running server. The view link is confidential: each holder of the link on this computer can read the page.
 
-Before each upload, the CLI runs the secret scanner of the kit (`scripts/scan.sh --level warn tree`) on the file. A finding stops the upload. Outside a kit tree, the CLI prints one warning line and uploads. The CLI talks only to the configured origin, follows no redirect and ignores the proxy variables. With no configuration, each command except `setup` exits 4 before any request. See [the package README](../../packages/artifacts/README.md).
+The view link is the viewer page `/v/<slug>`. Its bar shows the facts of the artifact and links to the index and to the newer and older artifacts. Below the bar, a sandboxed frame shows the artifact. In a Markdown page, a fenced code block with a language name gets syntax colors. `artifacts upload <file> --replace <slug>` stores a new version under the same slug, so the link stays. `artifacts delete <slug> [<slug> ...]` deletes the named artifacts.
 
-`artifacts open [slug]` prints the URL of the browse page or of one artifact. In a Herdr pane (`HERDR_ENV=1`) with the Sheprd command, it also runs `sheprd browser open <url>` to show the page. The CLI looks for `sheprd` on `PATH`, then `~/.local/bin/sheprd`, then the old path `~/.local/state/herdr/gpui/bin/herdr-gpui`. It starts no other browser.
+`artifacts open [slug]` prints the URL of the index page or of the viewer page of one artifact. In a Herdr pane (`HERDR_ENV=1`) with the Sheprd command, it also runs `sheprd browser open <url>`. It starts no other browser.
 
-The view link is confidential: each holder of the link can read the page.
+With `artifacts setup --remote HOST`, `upload`, `list`, `delete` and `open` work on the store of another computer over SSH, for example the computer where you run Sheprd. An upload scans the file on this computer first; then the file goes to HOST, and this computer stores nothing. The view link is then valid on HOST. `artifacts setup --local` removes the setting, and `artifacts --here <command>` ignores it for one call. See [a remote store over SSH](../../packages/artifacts/README.md#a-remote-store-over-ssh).
 
 ### Local server
 
-`artifacts start` runs one artifact server on the loopback address of this computer, from a clone of the artifact server project that has its localhost mode (the file `loopback-auth.mjs`). The kit fetches no server and runs no npm step.
+`/artifacts-server start` in Pi or Claude Code, or `artifacts start` in a shell, starts the server on `127.0.0.1:6790`. The last line is the URL of the index page `/`: a table of the stored pages with a thumbnail, the repo, and the date and time of the upload. The index can also show the pages as a gallery of cards. The index and the viewer page ask the JSON route `/api/state` of the server every few seconds and show a new or changed artifact without a reload. `artifacts setup --port N` sets another port. `off` (or `stop`) stops the server, and `status` prints `running` or `stopped`. The server answers only `GET` and `HEAD` requests from a loopback address. It writes its state file `server.json` and its log `server.log` in `~/.local/state/tenant-artifacts`.
 
-1. Run `npm ci` in the clone. The clone needs its `node_modules` and the Node version of its `package.json`.
-2. Run `artifacts setup --clone <clone> --port 6790 --yes`. The origin becomes `http://127.0.0.1:6790`. Without `--token-file`, the token file is `local-token` beside the configuration file.
-3. Run `artifacts start`. The last line is the URL of the browse page. `artifacts upload` and `artifacts open` then use that server.
+`artifacts retention <days>` makes the server delete each artifact whose last upload or replace is older than that number of days; `artifacts retention none` keeps all. With no setting, the server deletes nothing.
 
-`start` refuses a clone without the localhost mode, a Node version below the minimum of the clone, a clone without `node_modules` and a port that another program uses. When the token file is absent, it makes one with a random token and mode 0600, and prints only its path. The server always listens on `127.0.0.1`, in the localhost mode, with only `PATH`, `HOME` and its own `ARTIFACT_` settings in its environment. Its data directory is `~/.local/share/tenant-artifacts/data` (`$XDG_DATA_HOME/tenant-artifacts/data`). The state file `server.json` and the log `server.log` are in `~/.local/state/tenant-artifacts` (`$XDG_STATE_HOME/tenant-artifacts`).
+The operations footer of Pi shows the state of the server in one row below the OpenKnowledge row. See [the artifact server row](../../packages/tenantext/docs/ops-footer.md#artifact-server-row).
 
-Only one local server runs at a time. When one runs already, on any port, `start` starts no second one and prints its URL. When the origin is a remote server, `start` starts nothing, says so and prints the URL.
+Warning: the pages need no login. Each local user of the computer can read them through the loopback address.
 
-`artifacts off` (or `artifacts stop`) stops each local server of this user: the server of the state file and each other process of this user that runs `server.mjs` of the configured clone: the base name of `argv[0]` is exactly `node`, and the first argument without a leading `-` has the real path of that `server.mjs`. On Linux a relative argument is resolved against the working directory of the process; on macOS the argument must be an absolute path. On Linux the process must also be in the PID namespace of the CLI, so a container process never matches. The last line gives the count; the exit is 0 also when no server ran.
+From another computer, use a port forward that you authorized, for example `ssh -L 6790:127.0.0.1:6790 <user>@<server-computer>`, then open `http://127.0.0.1:6790/`. The kit sets up no proxy and opens no port.
 
-`artifacts status` prints `state:`, `health:` and `url:`. `artifacts --json status` prints one JSON object `{"state": ..., "url": ...}`. The state is `running`, `stopped`, `remote` (a remote server that answers), `unreachable` or `unconfigured`; `url` is `null` only for `unconfigured`.
+To remove the module: run `artifacts off`. Then delete the `packages/artifacts` entry from the profile settings, the link `~/.local/bin/artifacts` and the links `~/.claude/skills/artifacts` and `~/.claude/skills/artifacts-server`. The folders `tenant-artifacts` of the configuration, data and state homes stay; they hold the stored pages and the settings.
 
-In Pi, the prompt `artifacts` of the package gives `/artifacts start`, `/artifacts off` and `/artifacts status`. In Claude Code, the skill `artifacts` takes the same words.
-
-The operations footer of Pi shows the state of the artifact server in one row below the OpenKnowledge row, from `artifacts --json status`. A shift-click on the row opens the browse page in a terminal that opens OSC 8 links; the click is not verified. See [the artifact server row](../../packages/tenantext/docs/ops-footer.md#artifact-server-row).
-
-Warning: the pages of a local server need no login. Each local user of the computer can read them through the loopback address.
-
-### Reach the pages from another computer
-
-The kit sets up no proxy and opens no port. Use a connection that you authorized:
-
-- An SSH port forward with the same local port as the server: `ssh -L 6790:127.0.0.1:6790 <user>@<server-computer>`, then open `http://127.0.0.1:6790/browse` on your computer. The localhost mode accepts only the `Host` values `127.0.0.1:<port>`, `[::1]:<port>` and `localhost:<port>` with the port of its origin, so a different local port gets 403.
-- A Sheprd port forward of the same port: forward port 6790 of the server computer to local port 6790 in Sheprd, then open the same URL.
-- The proxy mode of the artifact server: a deployment behind a reverse proxy with a login and an HTTPS origin, for example `https://artifacts.example.com`. Then run `artifacts setup --origin https://artifacts.example.com --token-file <path> --yes --replace-origin`. A deployed server behind a proxy is not a local server: `artifacts off` does not stop it.
-
-To remove the module: run `artifacts off`. Then delete the `packages/artifacts` entry from the profile settings, the link `~/.local/bin/artifacts`, the link `~/.claude/skills/artifacts` and the folder `~/.config/tenant-artifacts`. The token file, the stored artifacts on the server and the folders `tenant-artifacts` of the data and state homes stay.
-
-Not verified: an upload from a Pi or Claude Code session to a real server, the Sheprd page request, a Sheprd port forward, `/artifacts` in a live Pi or Claude Code session, and the module on macOS (with the `ps` process match of `start` and `off`).
+Verified by hand in the web view of Sheprd on Linux. With Servo 0.8.0, through an SSH port forward: the index, the viewer, the code colors and the gallery. A click on a link failed there while the web view held a Ctrl key state from an earlier key combination: the web view then asked for a new window, and Sheprd refused it. With a later Servo build and the server on the same computer: the Artifacts button of Sheprd starts the server and opens the index, and a click on a title opens the viewer. Not verified: a click on a link after a Ctrl key combination in the later build, `/artifacts-server` in a live Pi or Claude Code session, `artifacts open` in a Herdr pane with Sheprd on the same computer, a click on a thumbnail of the table, Sheprd on macOS, and the module on macOS.
 
 ## walkr
 
@@ -411,7 +392,7 @@ The Pi profile is the reference. The Claude Code form of the kit carries each co
 | `herdr-relay`, `coordinator-skills`, `knowledge-skills`, `tracker-site` | The skills | The links of `install.sh`, or the plugin |
 | `herdr-idle-cleanup`, `herdr-idle-cleanup-prompt`, `handoffs` | The skill, `/herdr-idle-cleanup`, `/handoffs`, `/herdr-idle` and the startup assessment of the `SessionStart` hook | The skill: a link of `install.sh`, or the plugin. The commands and the hook: the plugin |
 | `okknow` | The skill; the MCP server is a step of the user | The link of `install.sh --with okknow` |
-| `artifacts` | The skill | The link of `install.sh --with artifacts` |
+| `artifacts` | The skills `artifacts` and `artifacts-server` | The links of `install.sh --with artifacts` |
 | `walkr` | The skills `walkr`, `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare` | The files that the Walkr setup of `install.sh --with walkr` writes; they are not links |
 | `agentcore` | The plugin `packages/agentcore-claude` | `claude --plugin-dir`; see [in-tree packages](../packages.md) |
 | `computer-use` | The plugin of the package | [The Claude Code plugin](#claude-code-plugin) |

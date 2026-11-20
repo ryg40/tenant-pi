@@ -64,15 +64,15 @@ export interface MemoryActivity {
 /** The one word of `okknow --json doctor` that the OpenKnowledge row shows. */
 export type OkknowState = "connected" | "no-credentials" | "unreachable" | "auth-failed" | "error";
 /** The state word of `artifacts --json status` that the artifact server row shows. `unconfigured` gives no row; an unknown word is `error`. */
-export type ArtifactsState = "running" | "stopped" | "remote" | "unreachable" | "error";
-/** `url`: the browse page, only an http(s) URL with no control character. It is the link target of the row, never row text. */
+export type ArtifactsState = "running" | "stopped" | "error";
+/** `url`: the index page, only an http(s) URL with no control character. It is the link target of the row, never row text. */
 export interface ArtifactsServer { state: ArtifactsState; url?: string }
 export interface MemorySnapshot {
   ov?: MemoryActivity & { added?: number; pendingTokens?: number; threshold?: number };
   /** Present when okknow has an origin, or when the session called an okknow MCP tool. */
   ok?: MemoryActivity & { state?: OkknowState };
   wiki?: MemoryActivity & { state: StatusState; model?: string; sessionModel?: boolean; recalled?: number; suggestCapture: boolean };
-  /** Present when the module `artifacts` has a CLI and a configuration, and the setting `showArtifactServer` is on. */
+  /** Present when the module `artifacts` has a CLI, and the setting `showArtifactServer` is on. */
   artifacts?: ArtifactsServer;
 }
 export interface DashboardSnapshot {

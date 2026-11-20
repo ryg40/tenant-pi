@@ -424,9 +424,7 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                 for name in ('node', 'npm'):
                     self.command(name, 'echo "' + name + ' $*" >>"$HOME/walkr-calls"\n')
                 self.success(self.install(mode='new' if platform == 'Linux' else 'upgrade', shell='none',
-                                          modules='all', env={'OKKNOW_ORIGIN': 'http://127.0.0.1:1',
-                                                              'ARTIFACTS_ORIGIN': 'http://127.0.0.1:1',
-                                                              'ARTIFACTS_TOKEN_FILE': str(self.base / 'token')}))
+                                          modules='all', env={'OKKNOW_ORIGIN': 'http://127.0.0.1:1'}))
                 calls = [json.loads(line)['args'] for line in (self.profile / 'calls.jsonl').read_text().splitlines()]
                 requested = {args[1] for args in calls if args[0] == 'install'}
                 for name in ('wiki', 'hermes', 'mcp', desktop):
@@ -438,22 +436,22 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                     self.assertTrue((self.home / '.local/bin/okknow').is_symlink())
                 (self.profile / 'calls.jsonl').write_text('')
 
-    def test_artifacts_links_the_cli_and_writes_the_config(self):
-        token = self.base / 'token'
-        env = {'ARTIFACTS_ORIGIN': 'https://artifacts.example.com', 'ARTIFACTS_TOKEN_FILE': str(token)}
-        self.success(self.install(shell='none', modules='artifacts', env=env))
-        cli = ROOT / 'packages/artifacts/skills/artifacts/scripts/artifacts'
-        self.assertEqual(cli.resolve(), (self.home / '.local/bin/artifacts').resolve())
-        config = self.home / '.config/tenant-artifacts/config.json'
-        self.assertEqual({'origin': 'https://artifacts.example.com', 'tokenFile': str(token)},
-                         json.loads(config.read_text()))
+    def test_artifacts_links_the_cli_and_the_two_skills_and_writes_no_config(self):
+        (self.home / '.claude').mkdir()
+        self.success(self.install(shell='none', modules='artifacts'))
+        package = ROOT / 'packages/artifacts'
+        self.assertEqual((package / 'skills/artifacts/scripts/artifacts').resolve(),
+                         (self.home / '.local/bin/artifacts').resolve())
+        for skill in ('artifacts', 'artifacts-server'):
+            self.assertEqual((package / 'skills' / skill).resolve(), (self.home / '.claude/skills' / skill).resolve())
+        self.assertFalse(os.path.lexists(self.home / '.config/tenant-artifacts'))
         packages = json.loads((self.profile / 'settings.json').read_text())['packages']
         self.assertIn(str(ROOT / 'packages/artifacts'), [entry.get('source') if isinstance(entry, dict) else entry
                                                          for entry in packages])
         # A repeat run changes no file; calls.jsonl is the log of the fake Pi.
         calls = str((self.profile / 'calls.jsonl').relative_to(self.home))
         before = self.snapshot()
-        self.success(self.install(mode='upgrade', shell='none', modules='artifacts', env=env))
+        self.success(self.install(mode='upgrade', shell='none', modules='artifacts'))
         self.assertEqual({k: v for k, v in before.items() if k != calls},
                          {k: v for k, v in self.snapshot().items() if k != calls})
 

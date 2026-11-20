@@ -1,0 +1,159 @@
+/* The Markdown view of the local artifacts server. System fonts, light and dark, no external request. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --fg: #1d1f21;
+  --muted: #5f6368;
+  --line: #e2e3e1;
+  --code-bg: #f4f5f3;
+  --quote: #6a7075;
+  --accent: #1f5fbf;
+  --stripe: #f8f9f7;
+  /* The colors of a code block with a language (highlight.js classes). */
+  --hl-keyword: #a626a4;
+  --hl-string: #2f7a1f;
+  --hl-number: #9a5b00;
+  --hl-comment: #6a737d;
+  --hl-title: #3b5bdb;
+  --hl-attr: #b5431b;
+  --hl-type: #0e7490;
+  --hl-meta: #6e5494;
+  --hl-deletion: #b42318;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17191c;
+    --fg: #e4e6e8;
+    --muted: #9aa0a6;
+    --line: #2d3136;
+    --code-bg: #20242a;
+    --quote: #a4aab0;
+    --accent: #8ab4f8;
+    --stripe: #1b1e22;
+    --hl-keyword: #d38df0;
+    --hl-string: #9ccc7c;
+    --hl-number: #e5b567;
+    --hl-comment: #8b949e;
+    --hl-title: #82aaff;
+    --hl-attr: #f0a070;
+    --hl-type: #66c2cd;
+    --hl-meta: #b8a1e3;
+    --hl-deletion: #f28b82;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+.page {
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+/* The source text, shown when no script runs. */
+pre.source {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.markdown > :first-child { margin-top: 0; }
+
+.markdown h1, .markdown h2, .markdown h3, .markdown h4 {
+  margin: 1.6em 0 0.5em;
+  line-height: 1.25;
+  font-weight: 650;
+}
+
+.markdown h1 { font-size: 1.9rem; }
+.markdown h2 { font-size: 1.45rem; padding-bottom: 0.25em; border-bottom: 1px solid var(--line); }
+.markdown h3 { font-size: 1.2rem; }
+.markdown h4 { font-size: 1rem; }
+
+.markdown p, .markdown ul, .markdown ol, .markdown table, .markdown pre, .markdown blockquote {
+  margin: 0 0 1em;
+}
+
+.markdown a { color: var(--accent); }
+
+.markdown code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--code-bg);
+}
+
+.markdown pre {
+  padding: 0.85rem 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--code-bg);
+  line-height: 1.45;
+}
+
+.markdown pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.88rem;
+}
+
+/* The classes of highlight.js. A class that is not here keeps the text color. */
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in, .hljs-doctag { color: var(--hl-keyword); }
+.hljs-string, .hljs-regexp, .hljs-addition, .hljs-template-tag { color: var(--hl-string); }
+.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet { color: var(--hl-number); }
+.hljs-comment, .hljs-quote { color: var(--hl-comment); font-style: italic; }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { color: var(--hl-title); }
+.hljs-attr, .hljs-attribute, .hljs-variable, .hljs-template-variable, .hljs-property { color: var(--hl-attr); }
+.hljs-type, .hljs-title.class_ { color: var(--hl-type); }
+.hljs-meta { color: var(--hl-meta); }
+.hljs-deletion { color: var(--hl-deletion); }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+
+.markdown blockquote {
+  padding: 0 1rem;
+  border-left: 3px solid var(--line);
+  color: var(--quote);
+}
+
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+}
+
+.markdown th, .markdown td {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown th { font-weight: 600; background: var(--code-bg); }
+.markdown tbody tr:nth-child(even) { background: var(--stripe); }
+
+.markdown img { max-width: 100%; }
+
+.markdown hr {
+  height: 1px;
+  margin: 2em 0;
+  border: 0;
+  background: var(--line);
+}
+
+.markdown li + li { margin-top: 0.25em; }
+.markdown input[type="checkbox"] { margin-right: 0.4em; }
+.markdown li:has(> input[type="checkbox"]) { list-style: none; }

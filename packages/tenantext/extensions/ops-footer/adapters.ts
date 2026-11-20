@@ -253,7 +253,7 @@ export class HealthAdapter {
     if (this.disposed) return undefined;
     return this.okknowCheck(stop => { this.stops.add(stop); return () => this.stops.delete(stop); });
   }
-  /** The artifact server state from the `artifacts` CLI, in the background. `undefined`: no CLI or no configuration. */
+  /** The artifact server state from the `artifacts` CLI, in the background. `undefined`: no CLI. */
   async artifacts(): Promise<ArtifactsServer | undefined> {
     if (this.disposed) return undefined;
     return this.artifactsCheck(stop => { this.stops.add(stop); return () => this.stops.delete(stop); });

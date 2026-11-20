@@ -179,7 +179,7 @@
         },
         {
           "code": "artifacts_link_click_unverified",
-          "fact": "The artifact server row reads artifacts --json status of the optional module artifacts and is an OSC 8 link to the browse page. Not verified by a test: the link text shows with no stray characters in a Pi session in a Herdr pane on Linux; no test clicks the link. Herdr sends the links of a frame to its client only while its mouse capture is off; with the capture on it removes them and uses ctrl-click for its own links. A shift-click in Sheprd, a click in other terminals, a click in a Herdr pane and the row in Pi-Bolt are not run."
+          "fact": "The artifact server row reads artifacts --json status of the optional module artifacts and is an OSC 8 link to the index page of the local artifacts server. Not verified by a test: the link text shows with no stray characters in a Pi session in a Herdr pane on Linux; no test clicks the link. Herdr sends the links of a frame to its client only while its mouse capture is off; with the capture on it removes them and uses ctrl-click for its own links. A shift-click in Sheprd, a click in other terminals, a click in a Herdr pane and the row in Pi-Bolt are not run."
         }
       ]
     },
@@ -1111,39 +1111,37 @@
       "resources": {
         "extensions": [],
         "skills": [
-          "skills/artifacts"
+          "skills/artifacts",
+          "skills/artifacts-server"
         ],
         "prompts": [],
         "themes": []
       },
-      "env": [
-        "ARTIFACTS_ORIGIN",
-        "ARTIFACTS_TOKEN_FILE"
-      ],
+      "env": [],
       "gaps": [
         {
-          "code": "server_required",
-          "fact": "The module needs an artifact server of the user with the /v1/artifacts API and a bearer token in a token file of the user. artifacts start runs a local server only from a clone of the server project with its localhost mode and its node_modules; the kit fetches no server, runs no npm step and opens no port beyond loopback."
-        },
-        {
           "code": "live_upload_unverified",
-          "fact": "No upload from a Pi session or a Claude Code session to a real artifact server. The Linux checks of the kit run the CLI and the installer offline against a loopback test server with a scratch home."
+          "fact": "No upload from a Pi session or a Claude Code session. The Linux checks of the kit run the CLI, the local server and the installer offline with a scratch home."
         },
         {
           "code": "sheprd_open_unverified",
-          "fact": "No test runs artifacts open with the real Sheprd: a test checks only that the CLI calls a fake sheprd command with browser open <url>."
+          "fact": "Verified by hand in the web view of Sheprd on Linux. With Servo 0.8.0, through an SSH port forward: the index, the viewer, the code colors and the gallery load. A click on a link failed there while the web view held a Ctrl key state from an earlier key combination: the web view then asked for a new window, and Sheprd refused it. With a later Servo build and the server on the same computer: the Artifacts button of Sheprd starts the server and opens the index, and a click on a title opens the viewer. Not verified: a click on a link after a Ctrl key combination in the later build, the command artifacts open in a Herdr pane with Sheprd on the same computer, a click on a thumbnail of the table, and Sheprd on macOS. No test runs in a Sheprd web view."
         },
         {
           "code": "platform_unverified",
-          "fact": "No macOS run of install.sh --with artifacts or of the CLI. The ps process match of artifacts start and off on macOS is not run."
+          "fact": "No macOS run of install.sh --with artifacts, of the CLI or of the local server."
         },
         {
           "code": "pi_line_unqualified",
           "fact": "No test in this repository loads the skill with the kit pin. The profile-load step of scripts/pi_update.py qualify installs no optional module."
         },
         {
+          "code": "remote_store_unverified",
+          "fact": "The tests run the remote store of artifacts setup --remote through a fake ssh program under a second scratch home. Not verified: an upload through the real ssh program, a remote computer with macOS, and a remote login shell that is not a POSIX shell."
+        },
+        {
           "code": "local_server_live_unverified",
-          "fact": "The Linux checks of the kit run artifacts start and off against a stand-in server.mjs. Not verified in this repository: a hands-on run against a real artifact server."
+          "fact": "The Linux checks of the kit start and stop the local server, and send it requests, in a scratch home. Not verified by a test: the index page and the viewer page in a browser (the thumbnails, the sort, the filter, the URL fragment and the live refresh), the hourly retention sweep, and the peer check, which no test can reach because the server listens on 127.0.0.1 only."
         }
       ]
     },
@@ -1163,7 +1161,7 @@
         "extensions": [],
         "skills": [],
         "prompts": [
-          "prompts/artifacts.md"
+          "prompts/artifacts-server.md"
         ],
         "themes": []
       },
@@ -1171,7 +1169,7 @@
       "gaps": [
         {
           "code": "pi_line_unqualified",
-          "fact": "No test in this repository loads the prompt with the kit pin, and no Pi or Pi-Bolt session ran /artifacts from this package."
+          "fact": "No test in this repository loads the prompt with the kit pin, and no Pi or Pi-Bolt session ran /artifacts-server from this package."
         }
       ]
     },

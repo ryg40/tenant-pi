@@ -1034,17 +1034,17 @@ def kit_package_state(inv, cid, component):
         installed = part["installed"]
         return state(installed, part["active"], part["version"], pinned, sources,
                      change=installed == "partial" or (installed is not False and moved))
-    tool = {"okknow": ("okknow", "okknow/config.json"), "artifacts": ("artifacts", "tenant-artifacts/config.json")}[cid]
-    link = inv.home / ".local/bin" / tool[0]
-    link_ok = resolves_to(link, inv.kit / rel / f"skills/{tool[0]}/scripts/{tool[0]}")
+    link = inv.home / ".local/bin" / cid
+    link_ok = resolves_to(link, inv.kit / rel / f"skills/{cid}/scripts/{cid}")
     # As okknow_link_state and artifacts_link_state of install.sh: the run keeps a command of another place, for
     # example a link into another clone, so it counts as present and the run does not change it.
     kept = (link.exists() and not link_ok
             and not (link.is_symlink() and link.resolve().is_relative_to(inv.kit.resolve())))
     links = inv.claude_links([inv.kit / rel / item for item in component["resources"]["skills"]])
     sources += ([link] if link.exists() or link.is_symlink() else []) + links["linked"]
-    config = inv.config_dir() / tool[1]
-    if config.is_file():
+    # The okknow origin is in its user config. The artifacts row needs no config file: the install writes none.
+    config = inv.config_dir() / "okknow/config.json"
+    if cid == "okknow" and config.is_file():
         sources.append(config)
     if part["installed"] is True and (link_ok or kept) and not links["missing"]:
         installed = True

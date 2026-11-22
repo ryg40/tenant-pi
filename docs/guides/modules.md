@@ -94,9 +94,9 @@ With both gateway names set, the `codex-accounts` extension registers the provid
 
 ## Computer use
 
-The `computer-use` module is agent-sh `computer-use-linux` 0.7.51, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. Its manifest status is `unverified`. For macOS, see [computer use on macOS](#computer-use-on-macos). The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
+The `computer-use` module is agent-sh `computer-use-linux` 0.7.59, the npm package `@agent-sh/computer-use-linux`. It is the current official computer-use module of tenant-pi for Linux. Its manifest status is `unverified`. For macOS, see [computer use on macOS](#computer-use-on-macos). The qualification of the kit installs the pinned spec without its install script and loads the extension and the skill in a profile of `install.sh`. No test of the kit runs a tool on a desktop; the manifest gaps name the open facts.
 
-Against 0.7.49, the verified npm tarballs leave the installer, extension loader, MCP client bundle and tool schemas unchanged. Version 0.7.50 adds an optional HTTP MCP listener and updates `rustix` to 1.1.6. Version 0.7.51 fixes AT-SPI application ownership, unmatched-pid scoping and background-action readback. The Pi extension still starts stdio MCP, not HTTP.
+Against 0.7.49, the verified npm tarballs leave the installer, extension loader, MCP client bundle and tool schemas unchanged. Version 0.7.50 adds an optional HTTP MCP listener and updates `rustix` to 1.1.6. Version 0.7.51 fixes AT-SPI application ownership, unmatched-pid scoping and background-action readback. Version 0.7.59 keeps the same default tool names and installer. It adds background pointer input on KDE Plasma. The Pi extension still starts stdio MCP, not HTTP.
 
 Warning: `mcp --listen` exposes desktop tools over plain HTTP. The kit does not enable it.
 
@@ -163,7 +163,7 @@ The pin moves in three places: the manifest spec, the line of each Pi profile, a
 
 ## Computer use on macOS
 
-The `computer-use-macos` module is the npm package `@amaster.ai/pi-computer-use` 0.1.38, a Pi extension for Cua Driver 0.37.0, with the skill `computer-use`. On macOS, npm installs its optional runtime `@amaster.ai/pi-computer-use-cua-driver-darwin-universal` 0.1.4. That runtime holds `CuaDriver.app` of the upstream release, signed by upstream (bundle ID `com.trycua.driver`), as a universal binary for Apple silicon (arm64) and Intel (x86_64). The `Info.plist` of the app names macOS 13.0 as the minimum. Its manifest status is `unverified`.
+The `computer-use-macos` module is the npm package `@amaster.ai/pi-computer-use` 0.1.40, a Pi extension for Cua Driver 0.37.0, with the skill `computer-use`. On macOS, npm installs its optional runtime `@amaster.ai/pi-computer-use-cua-driver-darwin-universal` 0.1.4. That runtime holds `CuaDriver.app` of the upstream release, signed by upstream (bundle ID `com.trycua.driver`), as a universal binary for Apple silicon (arm64) and Intel (x86_64). The `Info.plist` of the app names macOS 13.0 as the minimum. Its manifest status is `unverified`.
 
 Status: not verified on a Mac. The checks of the kit are source checks only: the exact pin, the install into a profile, the default settings and the extension load. The qualification step of the update path installs and loads the module only when it runs on macOS. The live desktop qualification waits for a Mac check that the owner approves.
 
@@ -194,7 +194,7 @@ The installer writes this block into the profile settings. A value that you set 
 
 The extension reads this block from the `settings.json` of the profile (`PI_CODING_AGENT_DIR`). A key there wins over the same key in `~/.pi/agent/settings.json`. A key that only `~/.pi/agent/settings.json` sets applies too. This fact comes from the source of `@amaster.ai/pi-shared` 0.1.38; it is not verified on a Mac. That version rejects malformed or unreadable settings and null sections instead of using defaults. Fix invalid settings before reloading. The kit's settings block stays unchanged.
 
-Version 0.1.38 also returns sanitized error categories and browser recovery hints. A failed request can have an unknown execution outcome. Read the current target state before retrying an action. The skill, approval settings and bundled runtime remain unchanged.
+Version 0.1.38 also returns sanitized error categories and browser recovery hints. A failed request can have an unknown execution outcome. Read the current target state before retrying an action. Version 0.1.40 sends vision requests through Pi's model registry when available. The skill, approval settings and bundled runtime remain unchanged.
 
 - `mode` `bundled`: the extension uses the driver of the runtime package. The kit installs no second Cua app.
 - `toolProfile` `core`: the model sees only the everyday tools at the start.

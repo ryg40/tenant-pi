@@ -55,10 +55,10 @@ One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `
 
 When plain Pi moves ahead of Pi-Bolt's embedded Pi, supply `pin --range` with a reviewed range that includes both Pi versions.
 
-The current pins are Pi 1.6.0 and Pi-Bolt 1.2.1, which carries Pi 1.5.2. The reviewed range is `>=1.5.0 <1.7`. It includes the embedded Pi 1.5.2, which is below the tested pin, so `check_runtime.py` reports Pi-Bolt as `untested_in_range`. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
+Pi and Pi-Bolt 1.3.0 now both run Pi 1.6.0. The accepted range stays `>=1.5.0 <1.7`. Both pinned runtimes report `match`. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
-2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.2.1`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
+2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.3.0`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
 3. Set `runtime.piBoltVersion` in `config/manifest.json` to that release, in the same commit as the pin.
 4. Check the runtime of the profile. The report shows the Pi version and the Pi-Bolt release.
 
@@ -83,6 +83,8 @@ The [Pi-Bolt 1.2.1 release notes](https://github.com/opensec-git/Pi-Bolt/release
 - Built-in grep fixes path-relative globs and overlapping context. Markdown links show their destination and support local-file clicks.
 
 The verified npm wrapper tarballs add only the version and a more accurate compiled-extension notice. Their dependencies, signature checks and service-restart behavior are unchanged. No kit settings migration is identified. Remote control, service updates, recompilation and desktop interaction still need separate checks.
+
+[Pi-Bolt 1.3.0](https://github.com/opensec-git/Pi-Bolt/releases/tag/bolt-v1.3.0) carries Pi 1.6.0 on a new engine. Automatic updates and remote control stay off by default. Leave automatic updates off to keep the kit pin. The Linux x86-64 installer can put a start script between the `pi-bolt` link and the executable. The default model and Anthropic message-thread defaults still differ from plain Pi. No kit settings migration is needed.
 
 Pi 1.5.2 adds a fork choice when a session's folder no longer exists, including extension-driven session switches. It also fixes failed imports leaving copies and updates the Anthropic OAuth client version. No kit installer, settings, extension or skill migration is identified from these changes. Interactive session recovery and native-provider authentication remain outside the offline qualification.
 

@@ -44,7 +44,7 @@ The install line of the Pi-Bolt README installs it to `~/.pi-bolt` and links the
 curl -fsSL https://pi-bolt.opensec.in/install.sh | sh
 ```
 
-One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.5.2 (Pi-Bolt 1.2.1, linux-x64, JIT off)`. Use the Pi-Bolt release `runtime.piBoltVersion` of the manifest, the selected Pi-Bolt release. When the Pi-Bolt pin lags behind the Pi pin, it carries an older Pi than `runtime.piVersion`, and then `untested_in_range` is the expected result. Check it:
+One Pi-Bolt release carries one Pi version. `pi-bolt --version` prints the Pi version first, for example `1.6.0 (Pi-Bolt 1.3.0, linux-x64, JIT off)`. Use the Pi-Bolt release `runtime.piBoltVersion` of the manifest, the selected Pi-Bolt release. When the Pi-Bolt pin lags behind the Pi pin, it carries an older Pi than `runtime.piVersion`, and then `untested_in_range` is the expected result. Check it:
 
 ```sh
 python3 scripts/check_runtime.py --pi "$(command -v pi-bolt)"
@@ -108,7 +108,7 @@ Missing choices or cancellation exit before writes. `--yes` approves the display
 
 The installer writes absent templates and keeps the selected directory. It preserves authentication, sessions, memory, models and unrelated settings. A missing or moved tenantext package entry gets an exact JSON proposal and a backup before the approved change. Existing package filters stay filtered. Optional modules use the npm specs in `config/manifest.json`; the installer never upgrades Pi itself.
 
-The alias uses `~/.local/bin/<name>`. This launcher records the runtime choice and the absolute path of the runtime, puts its directory first on `PATH`, and forwards arguments. It clears the inherited session directory and stores no credentials. Run an upgrade after moving Pi, Pi-Bolt or Node. The Pi-Bolt installer links `pi-bolt` to a release file named `pi`. For `pi-bolt`, the launcher records that file when its name is `pi`. Herdr 0.9.5 detects the agent from the process name. On Linux, the Pi-Bolt executable is named `pi`. On macOS, `pi` starts `pi-bin`, and the detection there is not verified. See [the herdr skill](packages/tenantext/skills/herdr/SPAWN.md#2a-resources-tools-and-skills-with-their-locations). Run an upgrade after a change to another Pi-Bolt build, for example the JIT build.
+The alias uses `~/.local/bin/<name>`. This launcher records the runtime choice and the absolute path of the runtime, puts its directory first on `PATH`, and forwards arguments. It clears the inherited session directory and stores no credentials. Run an upgrade after moving Pi, Pi-Bolt or Node. On Linux x86-64, Pi-Bolt 1.3.0 links `pi-bolt` to a start script that calls the release executable. When `pi-bolt` links directly to a file named `pi`, the kit launcher records that file instead. Herdr 0.9.5 detects the agent from the process name. On Linux, the Pi-Bolt executable is named `pi`. On macOS, `pi` starts `pi-bin`, and the detection there is not verified. See [the herdr skill](packages/tenantext/skills/herdr/SPAWN.md#2a-resources-tools-and-skills-with-their-locations). Run an upgrade after a change to another Pi-Bolt build, for example the JIT build.
 
 After the profile succeeds, the installer backs up the startup file and writes one named managed block. Bash uses `~/.bashrc`; Zsh uses `${ZDOTDIR:-$HOME}/.zshrc`. A repeat upgrade replaces that block and keeps unrelated content. Symlink startup files and launchers require manual setup instead. The completion report gives the command to load the alias.
 
@@ -197,8 +197,8 @@ Each optional module is one `pi install` line. Use the `PI_CODING_AGENT_DIR` of 
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-mcp-adapter@7.0.1
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:pi-hermes-memory@0.11.0
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@zosmaai/pi-llm-wiki@0.12.5
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.51
-PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@amaster.ai/pi-computer-use@0.1.38
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@agent-sh/computer-use-linux@0.7.59
+PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install npm:@amaster.ai/pi-computer-use@0.1.40
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/openviking-pi/index.ts"
 PI_CODING_AGENT_DIR="$HOME/.pi/profiles/main" pi install "$HOME/tenant-pi/packages/agentcore-pi/index.ts"
 ```

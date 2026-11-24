@@ -10,10 +10,6 @@ const clone = fs.realpathSync(path.resolve(path.dirname(fileURLToPath(import.met
 const script = path.join(clone, "install.sh");
 const LINKS = {
   walkr: "src/cli.js",
-  "walkr-core": "src/walkr-core.js",
-  "walkr-double": "src/walkr-double.js",
-  "walkr-coinflip": "src/walkr-coinflip.js",
-  "walkr-trainer": "src/walkr-trainer.js",
   "walkr-compare": "src/walkr-compare.js",
 };
 const posix = process.platform !== "win32";
@@ -24,7 +20,7 @@ function fixture(t) {
   const dirs = { home: path.join(root, "home"), bin: path.join(root, "bin"), stubs: path.join(root, "stubs"), log: path.join(root, "npm.log") };
   fs.mkdirSync(dirs.home);
   fs.mkdirSync(dirs.stubs);
-  // A stub npm keeps the test offline and leaves node_modules of the clone alone.
+  // The installer runs no npm: the package has no runtime dependency. A stub npm records a call.
   stub(dirs.stubs, "npm", `echo "$@" >> '${dirs.log}'`);
   return dirs;
 }
@@ -52,13 +48,18 @@ test("dry run writes nothing", { skip: !posix }, (t) => {
   assert.equal(fs.existsSync(dirs.log), false);
 });
 
-test("install links exactly the six commands to their targets, and uninstall removes only them", { skip: !posix }, (t) => {
+test("install links exactly the two commands to their targets, and uninstall removes only them", { skip: !posix }, (t) => {
   const dirs = fixture(t);
+  // An older install: a link of this clone for a retired command, and a file of another owner with a retired name.
+  fs.mkdirSync(dirs.bin);
+  fs.symlinkSync(path.join(clone, "src/walkr-core.js"), path.join(dirs.bin, "walkr-core"));
+  fs.writeFileSync(path.join(dirs.bin, "walkr-double"), "not a link of the installer\n");
   const result = install(dirs, ["--global", "--yes"]);
   assert.equal(result.status, 0, result.stderr);
-  const npmRuns = fs.readFileSync(dirs.log, "utf8").trim().split("\n").map((line) => line.split(" "));
-  assert.ok(npmRuns.some((words) => words[0] === "ci" && words.includes("--ignore-scripts")), "npm ci --ignore-scripts runs");
-  assert.deepEqual(fs.readdirSync(dirs.bin).sort(), Object.keys(LINKS).sort());
+  assert.equal(fs.existsSync(dirs.log), false, "no npm run");
+  assert.deepEqual(fs.readdirSync(dirs.bin).sort(), [...Object.keys(LINKS), "walkr-double"].sort());
+  assert.equal(fs.readFileSync(path.join(dirs.bin, "walkr-double"), "utf8"), "not a link of the installer\n");
+  fs.unlinkSync(path.join(dirs.bin, "walkr-double"));
   for (const [name, target] of Object.entries(LINKS)) {
     const link = path.join(dirs.bin, name);
     assert.ok(fs.lstatSync(link).isSymbolicLink(), name);

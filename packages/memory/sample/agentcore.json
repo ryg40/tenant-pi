@@ -1,0 +1,119 @@
+{
+ "description": "Synthetic AgentCore memory records. Not live memory.",
+ "facetDepth": 1,
+ "folderLabels": {
+  "/global/shared": "Global shared",
+  "/actors/alice/private": "Own private",
+  "/projects/example-project/shared": "Project shared"
+ },
+ "docs": [
+  {
+   "id": "sample-ac-1",
+   "folder": [
+    "/global/shared"
+   ],
+   "title": "The team writes ISO 8601 dates in UTC.",
+   "kind": "semantic",
+   "scope": "/global/shared",
+   "date": "2026-10-21T10:00:00Z",
+   "dateLabel": "created",
+   "body": "The team writes ISO 8601 dates in UTC in every shared record.",
+   "format": "text",
+   "meta": [
+    [
+     "Namespace",
+     "/global/shared"
+    ],
+    [
+     "Record id",
+     "sample-ac-1"
+    ],
+    [
+     "Strategy",
+     "semantic"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ac-2",
+   "folder": [
+    "/actors/alice/private"
+   ],
+   "title": "Alice reviews pull requests in the morning.",
+   "kind": "user-preference",
+   "scope": "/actors/alice/private",
+   "date": "2026-11-02T08:30:00Z",
+   "dateLabel": "created",
+   "body": "Alice reviews pull requests in the morning and prefers small diffs.",
+   "format": "text",
+   "meta": [
+    [
+     "Namespace",
+     "/actors/alice/private"
+    ],
+    [
+     "Record id",
+     "sample-ac-2"
+    ],
+    [
+     "Strategy",
+     "user-preference"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ac-3",
+   "folder": [
+    "/projects/example-project/shared"
+   ],
+   "title": "The example project deploys from tags only.",
+   "kind": "semantic",
+   "scope": "/projects/example-project/shared",
+   "date": "2026-10-27T16:12:00Z",
+   "dateLabel": "created",
+   "body": "The example project deploys from tags only. A branch build is for tests.",
+   "format": "text",
+   "meta": [
+    [
+     "Namespace",
+     "/projects/example-project/shared"
+    ],
+    [
+     "Record id",
+     "sample-ac-3"
+    ],
+    [
+     "Strategy",
+     "semantic"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ac-4",
+   "folder": [
+    "/projects/example-project/shared"
+   ],
+   "title": "Summary of the planning session of week 44.",
+   "kind": "summary",
+   "scope": "/projects/example-project/shared",
+   "date": "2026-10-31T14:00:00Z",
+   "dateLabel": "created",
+   "body": "Summary of the planning session of week 44: the team moves the release to week 46 and adds a restore drill to the checklist.",
+   "format": "text",
+   "meta": [
+    [
+     "Namespace",
+     "/projects/example-project/shared"
+    ],
+    [
+     "Record id",
+     "sample-ac-4"
+    ],
+    [
+     "Strategy",
+     "summary"
+    ]
+   ]
+  }
+ ]
+}

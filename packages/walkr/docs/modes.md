@@ -1,65 +1,38 @@
-# Modes, commands and skills
+# Commands and skills
 
-Walkr has five modes. Each mode has one command and one agent skill.
-A sixth skill, `walkr`, sends a request to the correct mode.
+Walkr has one mode: [Compare](compare.md). It has the command `walkr-compare` and the agent skill `walkr-compare`.
+The skill `walkr` is the entry: it leads a request that names Walkr to Compare.
 
-| Mode | Command | Skill | Use | Guide |
-| --- | --- | --- | --- | --- |
-| Core | `walkr-core` (also `walkr`) | `walkr-core` | Review one HTML or Markdown file, or a `localhost` page, and send exact feedback to the agent | [Core](core.md) |
-| Double | `walkr-double` | `walkr-double` | Compare two candidates of one page side by side. Keep or delete regions over rounds. | [Double](double.md) |
-| Coinflip | `walkr-coinflip` | `walkr-coinflip` | Pick a winner between two candidates of one component, round by round | [Coinflip](coinflip.md) |
-| Trainer | `walkr-trainer` | `walkr-trainer` | Rank prepared items in groups of three to build a dataset | [Trainer](trainer.md) |
-| Compare | `walkr-compare` | `walkr-compare` | Pick one of 2 or 3 options of a code change or of a short text, and rate the session | [Compare](compare.md) |
-
-The `walkr` skill routes an original review to Core and a named mode to its skill.
+Core, Double, Coinflip, Trainer and the shared GUI are retired since 2026-11-23. The release tag `portable/20261122-548259a` is the last release with their code and their guides.
 
 ## Commands
 
 Each command shows help with no arguments and with `--help`, `-h` or `help`. Each command accepts `--version`.
 
-- `walkr-core` runs the review commands: open, `poll`, `status`, `connect`, `disconnect`, `claim-wake` and `setup`.
-- `walkr-double` runs the Double commands. `walkr double ...` is the same.
-- `walkr-coinflip` runs the agent commands of Coinflip. Coinflip runs only in the shared GUI.
-- `walkr-trainer` runs the Trainer server and the agent commands. `walkr trainer ...` is the same.
 - `walkr-compare` runs the Compare commands. `walkr compare ...` is the same.
+- `walkr setup` installs the skills. It starts no server.
 
-The client commands of Double, Coinflip and Trainer never start, replace or stop a server.
-Core and Compare are different. `walkr-core <target>`, `poll`, `connect`, `disconnect` and `claim-wake` start the Core server in the background when no compatible Core server runs.
-Each `walkr-compare` command except help does the same, and uses the same server.
-`walkr-core status` and `walkr-core setup` start no server.
-Double, Coinflip and the shared GUI need a server that you start with `walkr-double serve`.
-Trainer alone needs `walkr-trainer serve`.
+Each `walkr-compare` command except help and `close` starts the Walkr server in the background when no compatible server runs.
 No command opens a chat, loads a Pi extension or requests a model.
 
-## Mode bar
+### Retired command names
 
-The Core review page and the Double, Coinflip and Trainer pages show a bar with four modes: Core, Double, Coinflip and Trainer.
-The Compare page has no mode bar: it is the Walkr history page, one view of the sessions of every type, with a session list and two selectors.
-A type with no session shows the text of its guide page. See [Compare: The history page](compare.md#the-history-page).
-The active mode has `aria-current="page"`. Each link names its command in the title.
-The reviewed page itself gets no bar.
+An older install has links for `walkr-core`, `walkr-double`, `walkr-coinflip` and `walkr-trainer`. Each name now prints one line that names `walkr-compare` and the tag, and exits with code 2. `walkr <file>` and the other Core commands of `walkr` do the same.
+The installer of the package and `install.sh --upgrade` of the kit remove these links when they point to this clone.
 
-The bar links to fixed guide pages:
+### Retired routes and records
 
-- `/_walkr/modes/core`
-- `/_walkr/modes/double`
-- `/_walkr/modes/coinflip`
-- `/_walkr/modes/trainer`
-
-The shared GUI page shows these links in the Mode guides menu of its top bar, and opens each guide in a new tab.
-Its mode choice for the next brief is in the composer. See [Double: The page](double.md#the-page).
-
-These pages accept only GET. They show how to start the mode. They create no session and show no private URL.
-To open a review, use the command of the mode.
+The server has the Compare routes, `/theme.css`, `/theme.js` and `/health`. Each other path answers 404 and writes nothing.
+A saved record of a retired mode stays on disk untouched: the Core state file `~/.human-review/state.json`, the Double archive `~/.local/.walkr/double` and the Trainer datasets `~/.local/.walkr/trainer`. No Walkr code reads them. Remove them by hand when you do not need them.
 
 ## Skills
 
-`walkr-core setup` installs the six skills: `walkr`, `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare`.
+`walkr setup` installs the two skills: `walkr` and `walkr-compare`.
 The [install guide](../INSTALL.md) runs it for you.
 
 ```sh
-walkr-core setup            # this project
-walkr-core setup --global   # your user
+walkr setup            # this project
+walkr setup --global   # your user
 ```
 
 | Scope | Skills | Pi prompt aliases | Agent guidance |
@@ -67,16 +40,15 @@ walkr-core setup --global   # your user
 | Project | `.claude/skills`, `.agents/skills` in the current directory | `.pi/prompts` | A short block in `AGENTS.md` |
 | Global | `~/.claude/skills`, `~/.codex/skills`, `~/.agents/skills` | None | None |
 
-`walkr-core setup --help` and `walkr setup --help` print help without writing files, even with `--global`.
-Double, Coinflip, Trainer and Compare have no `setup` command.
+`walkr setup --help` prints help without writing files, even with `--global`.
 
 Setup writes the absolute path of your clone into each skill. Keep the clone in its place.
 
 ### Use the skills
 
-- Claude Code: `/walkr`, `/walkr-core`, `/walkr-double`, `/walkr-coinflip`, `/walkr-trainer`, `/walkr-compare`.
+- Claude Code: `/walkr`, `/walkr-compare`.
   `/walkr compare cfn options` and `/walkr simplify ticket` start the two [Compare workflows](compare.md#two-workflows).
-- Pi: the bare commands `/walkr` and the others are prompt aliases from a project setup. `/skill:walkr` is the native Pi skill command.
+- Pi: the bare commands `/walkr` and `/walkr-compare` are prompt aliases from a project setup. `/skill:walkr` is the native Pi skill command.
 - Other agents read the installed skills by name.
 
 Each Pi prompt alias tells the agent to read one installed skill file. It passes your text as request data.
@@ -109,7 +81,8 @@ Setup checks every target before it writes anything. A conflict in the last targ
 
 - Setup records the hash of each generated file in `.walkr-setup.json`. An update replaces only unchanged generated files.
 - A generated file that you changed, an unknown file of the same name, or a symbolic link at a target stops setup with the exact path.
-- Setup never follows or replaces a symbolic link and never deletes a skill directory.
+- Setup never follows or replaces a symbolic link.
+- The skills and the Pi prompts of the retired modes: setup removes a file that its record names and that is unchanged, and then the empty skill folder. A retired file that you changed stays, and setup prints its path. A file that no record names is not touched.
 - A known old `human-review` skill moves to `.walkr-setup-backups/human-review-<hash>` in the same agent directory.
   Known old `AGENTS.md` guidance changes to the short Walkr block. Changed guidance stays and setup prints a warning.
 
@@ -126,6 +99,6 @@ Walkr comes from Human Review. These names stay for compatibility:
 
 - The `HUMAN_REVIEW_*` environment variables.
 - The `x-human-review-token` header of the local HTTP API.
-- The default Core state directory `~/.human-review`.
+- The default state directory `~/.human-review`.
 
 The old `/human-review` skill is not installed. Setup replaces a known copy of it.

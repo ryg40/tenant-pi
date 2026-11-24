@@ -462,10 +462,11 @@ def upstream_entry(clone):
 
 
 def kit_entry(clone, native):
-    """The kit entry: the kit launcher with the arguments of the pinned entry (kit_aws_proxy.py)."""
+    """The kit entry: the kit launcher with the arguments of the pinned entry (kit_aws_proxy.py). The native entry has
+    codemode exposure, as each entry of scripts/mcp_to_native.py: scripts can call its tools, the prompt lists none."""
     entry = upstream_entry(clone)
     found = {"command": "python3", "args": [str(LAUNCHER), *entry["args"]], "description": KIT_DESCRIPTION}
-    return found if native else {**found, "lifecycle": "lazy"}
+    return {**found, "exposure": "codemode"} if native else {**found, "lifecycle": "lazy"}
 
 
 def mcp_files(profile):

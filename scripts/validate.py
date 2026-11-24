@@ -35,6 +35,9 @@ STATUSES = ("tested", "unverified")
 PACKAGES = "packages"
 MANIFEST = "config/manifest.json"
 RESOURCE_KINDS = ("extensions", "skills", "prompts", "themes")
+# An optional kind: rule files that the own installer script of a tree component links for another harness
+# (scripts/kit_agy.py for agy). No Pi or Claude Code reader takes them.
+OPTIONAL_RESOURCE_KINDS = ("rules",)
 GAP_CODE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*\Z")
 # Character bound of each name in the `hint` of a refusal.
 HINT_MAX = 200
@@ -69,7 +72,7 @@ def _tree_components():
             if not isinstance(source, dict) or source.get("kind") != "tree":
                 continue
             resources = component["resources"]
-            kind = next((key for key in RESOURCE_KINDS if resources[key]), RESOURCE_KINDS[0])
+            kind = next((key for key in RESOURCE_KINDS + OPTIONAL_RESOURCE_KINDS if resources.get(key)), RESOURCE_KINDS[0])
             items = tuple(resources[kind])
             if not all(isinstance(one, str) for one in (cid, source["path"], *items)):
                 raise TypeError("a component ID, a source path or a resource path is not text")
@@ -408,7 +411,9 @@ def manifest(data):
             fail("owner", at + ".owner")
         text(component["license"], at + ".license")
         resources = component["resources"]
-        fields(resources, RESOURCE_KINDS, (), at + ".resources")
+        # Only the own installer script of a tree component reads an optional kind.
+        optional = OPTIONAL_RESOURCE_KINDS if component["source"]["kind"] == "tree" else ()
+        fields(resources, RESOURCE_KINDS, optional, at + ".resources")
         for key, items in resources.items():
             if not isinstance(items, list):
                 fail("array", at + ".resources." + key)

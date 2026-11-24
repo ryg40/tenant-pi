@@ -24,7 +24,7 @@ TRACKER = ROOT / "docs/agents/issue-tracker.md"
 # Kit skills outside the component that a skill text can load. A kit skill text can also load
 # writing-for-agents of the component; it is optional because the component is optional.
 REQUIRED_KIT_SKILLS = ("herdr", "tracker-site")
-OPTIONAL_KIT_SKILLS = ("herdr-relay", "writing-for-agents")
+OPTIONAL_KIT_SKILLS = ("writing-for-agents",)
 # The completion marker and a collector flag are protocol identifiers, not prose. Only these
 # exact lines are exempt from the wording rule, in the kit and plugin.
 PROTOCOL_LINES = {("herdr", "roles/contract.md"): {"Marker: SUBAGENT_COMPLETE"},

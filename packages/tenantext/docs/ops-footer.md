@@ -14,7 +14,7 @@ All rows are the Pi footer below the editor. Layout v4 sets no widget. In layout
 | 2 Model | `example-provider/example-model · high` on the left: provider muted, model in text weight, thinking level bold. Usage and costs stay on the right | From 40 columns |
 | 3 Location and repository | Directory name, branch, original `pwd`, changed `cwd`, and Git facts on the left. Right: agent state, `queued`, duration, session name, `@host`, and the `/ops-footer report` hint | From 40 columns |
 | 4 Context bar | Proportional `sys`, `prompt`, `assistant`, `think`, `tools`, and `free` blocks; threshold markers; totals inside the bar | Always |
-| 5 and later: Quota | One row per configured account: `Codex1`, `Codex2`, `Codex3`, then `Claude`, then `Copilot`. A Copilot-only machine has one Copilot row | When quotas exist and the row budget permits |
+| 5 and later: Quota | One row per configured account: Codex accounts (`Codex1`, `Codex2`, ...), then Claude accounts, then `Copilot`. A Copilot-only machine has one Copilot row | When quotas exist and the row budget permits |
 | Right of the quota rows: Memory | OpenViking connectivity and activity; LLM Wiki status, assigned model, and manual capture advice below it; OpenKnowledge (okknow) state and activity below that; the artifact server state below OpenKnowledge. In layout v3 this place is directly below the costs | When an integration is present or the `artifacts` CLI reports a state |
 | Last: Services and alerts | Failed or stale services, MCP problems, pending prompts, blocked work, reviews, deployments, flagged output, footer conflict | When it has content |
 
@@ -62,7 +62,7 @@ An alert appears only for actionable or threshold-crossed state. Steady healthy 
 
 Each account has its own row. Labels pad to one width, and a relative reset before a later chip pads to one width, so the chips line up in columns across rows. An account without windows and without an error takes no row, except a configured Codex account that has no login.
 
-Accounts appear in identity order: `Codex1`, then `Codex2`, then later Codex accounts, then `Claude` (short form `CL`), then `Copilot` (short form `CP`). An account appears only when this machine has it: a Codex account needs a `tokenFile` or a stored login, Claude needs an active Anthropic login that gives a reading, and Copilot needs a credential the usage endpoint accepts. Severity, remaining quota, reset time, route, and refresh order never reorder accounts. Every window of an account sits under its name.
+Accounts appear in identity order: Codex accounts (`Codex1`, then `Codex2`, then later Codex accounts), then Claude accounts, then `Copilot` (short form `CP`), then `Antigravity` (short form `AG`). Without an account store of `claude-account`, the Claude account is `Claude` (short form `CL`). With that store, the Claude accounts are `Claude1` and `Claude2` (short forms `CL1`, `CL2`), and `*` marks the active account; see [Claude accounts](claude-accounts.md#meters). An account appears only when this machine has it: a Codex account needs a `tokenFile` or a stored login, a Claude account needs an Anthropic login that gives a reading, Copilot needs a credential the usage endpoint accepts, and Antigravity needs `agy` on the `PATH` with an account sign-in (see [Antigravity limits](#antigravity-limits)). The `Antigravity` row shows the first group of `agy` whose name starts with `Gemini` ("Gemini Models"): a `5h` chip and a `7d` chip. The other group of `agy`, "Claude and GPT models", shows only in `/ops-footer report`. Severity, remaining quota, reset time, route, and refresh order never reorder accounts. Every window of an account sits under its name.
 
 | Chip | Fill | Text |
 | --- | --- | --- |
@@ -91,7 +91,7 @@ The report keeps every date that a row drops, see [Detailed report](#detailed-re
 
 #### Row budget for quota rows
 
-`maximumRows` is the row budget. The location row, the bar and the model row always stay, so the other rows share `maximumRows` minus 3. The default is 8. It holds five quota rows: three Codex accounts, Claude and Copilot.
+`maximumRows` is the row budget. The location row, the bar and the model row always stay, so the other rows share `maximumRows` minus 3. The default is 8, so the three fixed rows leave five quota rows. This is not a limit on the accounts: a machine can have more accounts than rows, and the rules below choose the rows that stay.
 
 When the quota rows do not fit, these rules apply:
 
@@ -109,7 +109,7 @@ Reset times are never raw ISO text. Every window shows a relative reset, such as
 
 Each row picks its own form. Candidates run from full account names with resets to short names `C1 C2`, then one window. Narrow rows prefer an alert window. Usage on the location row never displaces a quota chip.
 
-`◂ routed` marks the row of the account that served the last gateway response. The mark needs an account name in the account header of that response: `llm_provider-x-codex-account` through the gateway, or `X-Codex-Account` from a direct connection to the router. Only the quota router of the gateway sends it; the default gateway routes send none, so the mark does not show (see [Codex routing](codex-routing.md#local-status)). Not verified: the mark after a live request through the gateway and the router. `route ✗` marks routing failure and `stale` marks an expired snapshot; both sit on the last Codex row that has a login. A quota reading expires at its lifetime, and not before two poll periods plus 33 seconds: the footer asks each source one time in a poll period, so one late or skipped poll shows no `stale`. The 33 seconds are 30 seconds for one fetch and a margin of 3 seconds. The Codex collection stops after 16 seconds, and a Claude or Copilot probe stops at its first request that times out (15 and 10 seconds). With the default `healthPollSeconds` of 60 the floor is 153 seconds. When the refresh stops, `stale` shows at the larger of the lifetime and the floor: 153 seconds after the last Codex reading with the default settings. Known limit: when the poll time of the Claude or Copilot source is equal to `healthPollSeconds`, a probe that takes over 33 seconds longer than the probe before it shows `stale` for some seconds. The Claude row and the Copilot row never carry the Codex route. Routing with no selected account and no failure shows nothing.
+`◂ routed` marks the row of the account that served the last gateway response. The mark needs an account name in the account header of that response: `llm_provider-x-codex-account` through the gateway, or `X-Codex-Account` from a direct connection to the router. Only the quota router of the gateway sends it; the default gateway routes send none, so the mark does not show (see [Codex routing](codex-routing.md#local-status)). Not verified: the mark after a live request through the gateway and the router. `route ✗` marks routing failure and `stale` marks an expired snapshot; both sit on the last Codex row that has a login. A quota reading expires at its lifetime, and not before two poll periods plus 33 seconds: the footer asks each source one time in a poll period, so one late or skipped poll shows no `stale`. The 33 seconds are 30 seconds for one fetch and a margin of 3 seconds. The Codex collection stops after 16 seconds, and a Claude or Copilot probe stops at its first request that times out (15 and 10 seconds). With the default `healthPollSeconds` of 60 the floor is 153 seconds. When the refresh stops, `stale` shows at the larger of the lifetime and the floor: 153 seconds after the last Codex reading with the default settings. Known limit: when the poll time of the Claude or Copilot source is equal to `healthPollSeconds`, a probe that takes over 33 seconds longer than the probe before it shows `stale` for some seconds. The Claude row, the Copilot row and the `Antigravity` row never carry the Codex route. Routing with no selected account and no failure shows nothing.
 
 Whole rows move between layouts. Agent facts stay on the right of the directory row; usage and costs stay on the right of the model row.
 In layout v3, Pi keeps widgets above the editor in the order extensions add them. A widget that another extension adds later can sit between the bar and the editor. Layout v4 has no widget, so this does not apply.
@@ -314,11 +314,18 @@ The default file is `~/.pi/agent/ops-footer/settings.json`. `PI_CODING_AGENT_DIR
   "showHealthyServices": false,
   "showUnavailableOptionalSources": false,
   "showArtifactServer": true,
+  "antigravityUsage": "auto",
   "healthUrls": {}
 }
 ```
 
 `placement` describes the footer location below the editor. Layout v4, the default, puts every row there. Layout v3 also adds the directory and bar widget above the editor; the setting does not move it.
+
+`antigravityUsage` is `"auto"` (the default), `"on"` or `"off"`:
+
+- `"auto"`: the footer runs `agy` only when the sign-in file `~/.gemini/antigravity-cli/antigravity-oauth-token` exists. A computer that keeps the `agy` sign-in in a keyring (a desktop, the Mac) can have no such file: it shows no row until you set `"on"`.
+- `"on"`: the footer runs `agy` without the file check. The back-off of [Antigravity limits](#antigravity-limits) still applies.
+- `"off"`: the footer shows no row and starts no `agy` process.
 
 `minimumRows` pads with blank rows only when the content has fewer rows. The default of 1 never pads.
 
@@ -375,7 +382,7 @@ interface StatusSnapshot {
 
 `checkedAt` uses epoch milliseconds. `staleAfter` is the lifetime in milliseconds.
 
-The footer caps a lifetime from the bus: two hours for a quota source (Codex, Claude, Copilot), which is two times the longest poll time of a source, and one hour for the other sources. For a quota source the footer also applies its own floor, `2 x healthPollSeconds + 33` seconds.
+The footer caps a lifetime from the bus: two hours for a quota source on the bus (Codex, Claude, Copilot), which is two times the longest poll time of a source, and one hour for the other sources. For a quota source the footer also applies its own floor, `2 x healthPollSeconds + 33` seconds.
 
 ### Integrations and work
 
@@ -458,6 +465,25 @@ The footer consumes `tenantext:anthropic:status` from `anthropic-usage` and requ
 ### Copilot limits
 
 The footer consumes `tenantext:copilot:status` from `copilot-usage` and requests `tenantext:copilot:refresh` with the Codex refresh. The adapter accepts only the window labels `premium`, `chat`, and `compl`, numeric percents and counts, an ISO reset time, the source id, and the plan id. An `absent` snapshot, or a plan whose every quota is unlimited, removes the Copilot group. The detailed report adds `COPILOT` freshness, the source, the plan, and used against entitlement per window.
+
+### Antigravity limits
+
+The footer runs `agy -p "/usage" --output-format json` itself: no shell, a time limit of 15 seconds and a small output limit. The command is a read-only slash command of print mode: it starts no agent turn, uses no quota and saves no conversation. The footer reads only `command.data.groups[]`: each group's `name`, and each bucket's `window` (`5h` or `weekly`), `remaining_fraction` (0 to 1) and `reset_time` (ISO 8601). The bucket `5h` gives the chip `5h`, the bucket `weekly` gives the chip `7d`, and the remaining percent is `remaining_fraction` times 100. The first group whose name starts with `Gemini` gives the row; a later `Gemini` group is left out. The other groups go only to the detailed report, as `ANTIGRAVITY` lines.
+
+A group gives a name to the footer only when the name has up to 48 letters, digits, spaces and `.,&()+-`, and its last word is `models` in any case. A group with another name is left out, so no other short text of the payload passes.
+
+- No `agy` on the `PATH`: no row, no alert and no run.
+- `antigravityUsage` `"auto"` and no sign-in file: no row, no alert and no run. The footer checks the file with `stat` only and never opens it.
+- Exit code 2: `agy` has an API-key sign-in, which has no account quota. No row and no alert.
+- A known shape with no Gemini group: no row and no alert.
+- A sign-in request: without a sign-in, `agy` writes `Authentication required` to stderr (in any case). It can then start a browser for the sign-in with `xdg-open` and wait, or exit at once with code 1. The footer stops a waiting `agy` at once, and starts a back-off of 6 hours. A run that the time limit stops also starts the back-off, whatever its output.
+- An unknown shape or another exit code: the last reading stays until its lifetime ends, then the row shows `stale`. The lifetime is 15 minutes (three poll periods), or the quota floor when that is longer, so one skipped or failed poll shows no `stale`.
+
+During the back-off no session of the computer runs `agy`, also with `"on"`: no row, no alert and no new browser tab. The back-off ends after 6 hours, or earlier when the sign-in file changes after the start of the back-off (a new sign-in). Removing the shared file also ends it.
+
+The Pi sessions of one computer share one reading in `$XDG_CACHE_HOME/claude-pi-footer/antigravity-usage.json` (default `~/.cache/claude-pi-footer/antigravity-usage.json`), with the rules of the [shared reading of the Claude meter](anthropic-usage.md#shared-reading). Before a run, the session writes its claim time to `attemptAt`. A run happens only when the last claim of any session is 5 minutes old or older; until then the session takes the last reading from the file. A session that finds a claim younger than 20 seconds and no reading asks the file again after 20 seconds; that is one file read, not a run. Each session asks one poll period and 2 seconds after the start of its last ask, with one run at a time. The file has mode `600` and holds only the times, the back-off, the group names, the percents and the reset times. It holds no account name or address. When the cache folder cannot be written, no claim is shared, and each session runs `agy` one time in 5 minutes.
+
+When the row is missing, `/ops-footer report` gives one `ANTIGRAVITY not shown` line with the reason: `agy` not on the `PATH`, no sign-in file (with the hint to set `antigravityUsage` to `"on"` on a computer with a keyring), the back-off with its end time, the API-key sign-in, or the setting `off`. The line holds no text of the payload.
 
 ### Context ownership
 

@@ -15,6 +15,7 @@ from unittest import mock
 
 from scripts import doc_check
 from scripts.doc_check import anchors, json_block, parse, resolve, slug
+from scripts.publish_check import inventory_files
 
 ROOT = Path(__file__).resolve().parents[1]
 CANARY = "CANARY-DOC-7f3a"
@@ -30,6 +31,11 @@ def _audit(event, args):
 
 
 sys.addaudithook(_audit)
+
+
+def _inventory_times():
+    """The modification time of each file of the repository inventory, so a new, changed or removed file shows."""
+    return {name: (ROOT / name).stat().st_mtime_ns for name in inventory_files(ROOT)}
 
 
 class UnitTests(unittest.TestCase):
@@ -254,7 +260,8 @@ class DocCheckRepoTests(unittest.TestCase):
     """The documentation check on the real publish set of this repository: the unit test run holds it."""
 
     def test_publish_set_has_no_finding_without_process_or_write(self):
-        before = {p: p.stat().st_mtime_ns for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts}
+        # Only the repository inventory: other programs write ignored files (`.local/`, `__pycache__`) meanwhile.
+        before = _inventory_times()
         out = io.StringIO()
         EVENTS.clear()
         RECORDING.append(True)
@@ -273,7 +280,7 @@ class DocCheckRepoTests(unittest.TestCase):
         writes = [event for event in EVENTS if event[0] == "open" and isinstance(event[1], str)
                   and not event[1].startswith(str(ROOT))]
         self.assertEqual([], [w for w in writes if not w[1].startswith(sys.prefix) and "/usr/" not in w[1]])
-        after = {p: p.stat().st_mtime_ns for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts}
+        after = _inventory_times()
         self.assertEqual(before, after)
         second = io.StringIO()
         with contextlib.redirect_stdout(second):

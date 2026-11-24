@@ -87,17 +87,11 @@ test("theme selection works when browser storage is blocked", () => {
   dom.window.close();
 });
 
-test("home, review, and Double shells expose the same labeled theme choices", () => {
-  for (const file of ["hosted-home.html", "chrome.html", "double.html", "double-session-shell.html"]) {
-    const dom = new JSDOM(fs.readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8"));
-    const picker = dom.window.document.querySelector("[data-theme-picker]");
-    assert.ok(picker.closest("label"));
-    assert.deepEqual([...picker.options].map((option) => ({ value: option.value, label: option.textContent })), THEMES);
-    assert.ok(dom.window.document.querySelector('link[href="/theme.css"]'));
-    if (file.startsWith("double")) {
-      assert.equal(dom.window.document.title, "Double · Walkr");
-      assert.equal(dom.window.document.querySelector(".double-brand").textContent, "Walkr");
-    }
-    dom.window.close();
-  }
+test("the Compare shell exposes the labeled theme choices", () => {
+  const dom = new JSDOM(fs.readFileSync(new URL("../src/compare.html", import.meta.url), "utf8"));
+  const picker = dom.window.document.querySelector("[data-theme-picker]");
+  assert.ok(picker.closest("label"));
+  assert.deepEqual([...picker.options].map((option) => ({ value: option.value, label: option.textContent })), THEMES);
+  assert.ok(dom.window.document.querySelector('link[href="/theme.css"]'));
+  dom.window.close();
 });

@@ -9,15 +9,15 @@ import { tmpRoot } from "./tmp-root.js";
 const repository = path.resolve(import.meta.dirname, "..");
 const piPackage = process.env.HUMAN_REVIEW_TEST_PI_PACKAGE;
 
-test("six portable skills replace the original source skill", () => {
-  assert.deepEqual(SKILL_NAMES, ["walkr", "walkr-core", "walkr-double", "walkr-coinflip", "walkr-trainer", "walkr-compare"]);
+test("two portable skills replace the original source skill", () => {
+  assert.deepEqual(SKILL_NAMES, ["walkr", "walkr-compare"]);
   // The install skill ships beside the mode skills but setup never installs it.
   const modeSkills = fs.readdirSync(path.join(repository, "skills")).filter((name) => name !== "walkr-install");
   assert.deepEqual(modeSkills.sort(), [...SKILL_NAMES].sort());
   assert.equal(fs.existsSync(path.join(repository, "src", "SKILL.md")), false);
 });
 
-test("router links resolve to the five sibling skills", () => {
+test("the entry skill links to the Compare skill", () => {
   const text = readSkill("walkr");
   const links = [...text.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1]);
   assert.deepEqual(links, SKILL_NAMES.slice(1).map((name) => `../${name}/SKILL.md`));
@@ -31,9 +31,9 @@ test("Pi-discovered nested and renamed collisions refuse before installation or 
   const legacy = fs.readFileSync(new URL("./fixtures/mode-skills/legacy-skill.txt", import.meta.url), "utf8");
   const cases = [
     ["active", "custom-pack/router/SKILL.md", 'name: "walkr"', "walkr"],
-    [".agents", "custom-pack/router/SKILL.md", "name: 'walkr-core'", "walkr-core"],
-    [".codex", "custom-pack/walkr-double/SKILL.md", "", "walkr-double"],
-    [".claude", "unrelated.md", "name: walkr-trainer", "walkr-trainer"],
+    [".agents", "custom-pack/router/SKILL.md", "name: 'walkr-compare'", "walkr-compare"],
+    [".codex", "custom-pack/walkr/SKILL.md", "", "walkr"],
+    [".claude", "unrelated.md", "name: walkr-compare", "walkr-compare"],
     ["active", "custom-pack/router/SKILL.md", "name: human-review", "human-review"],
     ["active", "custom-pack/router/SKILL.md", "name: >-\n  walkr", "walkr"],
     ["active", "custom-pack/router/SKILL.md", 'name: "\\u0077alkr"', "walkr"],

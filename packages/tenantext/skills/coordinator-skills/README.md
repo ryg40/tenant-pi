@@ -40,6 +40,8 @@ Start a new session, or run `/reload` in Pi, to load the skills.
 
 ## The `dummies` readout
 
+The report has two formats: `compact`, the default, and `detailed`. The command `state.py format compact|detailed` switches them for both harnesses; see [the switch](#the-dummies-switch).
+
 Claude Code and Pi use the same compact report from `dummies/REPORT.md` and `dummies/LOG.md`: plain Markdown lines with no table and no code fence.
 A `REPORT <n>` line, or an `OUTCOME` line at the end of the work, gives the result.
 Normally about four item lines follow, without a count cap. Each item has a bold number in brackets, a state word and one short subject.
@@ -53,7 +55,9 @@ Compact report syntax 2, in section 6 of `dummies/REPORT.md`, defines the patter
 Legacy uppercase syntax 1 and mixed reports give no suggestion. The reader never links actions to subjects by position.
 The OpenKnowledge log keeps its Markdown labels and tables. Its label order remains `Important`, `Open`, `Next`, `Goal`. Existing entries and the switch behavior do not change.
 
-The offline tests check that the example reports of `REPORT.md` and `LOG.md` follow compact report syntax 2.
+The detailed report of `dummies/DETAILED.md` gives a human reader more text. Its first paragraph gives the result with the proof inside the sentence. Parts with `##` headings follow, for example `Commits`, `Checks` and `Not verified`, and `## Next` is always the last part. Its action labels are capital letters from `A`: each `Agent` action comes first, then each `Owner` and `Owner decides` action. The session also asks a simple `Owner decides` action in the question tool directly after the report, and names a grilling round for a complex one. Detailed report syntax 1, in section 3 of `dummies/DETAILED.md`, defines the patterns for the next-prompt reader. A session in the compact format does not read `DETAILED.md`.
+
+The offline tests check that the example reports of `REPORT.md` and `LOG.md` follow compact report syntax 2, and that the examples of `DETAILED.md` follow detailed report syntax 1.
 Not verified: model compliance and live terminal rendering in either harness.
 
 ## The `dummies` switch
@@ -71,6 +75,7 @@ Not verified: model compliance and live terminal rendering in either harness.
 - `on --autostart` is the option that starts the report form in each new coordinator session with no word of the user. It adds a marked block of three lines to the user instruction file of the harness: `CLAUDE.md` in the configuration directory of Claude Code, or the context file in the agent directory of Pi. The block tells a coordinator session to read `dummies/REPORT.md`. The scripts change no other instruction file and no settings file.
 - `off` removes the block. The two marker lines of the block are complete lines: a line of the user that quotes a marker is text of the user. After `on --autostart` and then `off`, the instruction file has the same bytes as before, with each line end and with the end of the file as they were. `off` removes a file only when `on` created it. `off` uses a path of the `autostart` list only when it is an absolute path with the file name that the harness loads; it names each other path and does not change it.
 - `off` always sets the state to off. When it cannot change an instruction file, for example a file with one marker line only, it names the file that needs a repair by hand and ends with exit 4.
+- `format compact` and `format detailed` set the format of the report for both harnesses: `/dummies format detailed` in Claude Code, `/skill:dummies format detailed` in Pi, or `python3 dummies/scripts/state.py format detailed`. The state file keeps it as the shared value `format`; an absent value means `compact`. `status` shows `format: compact` or `format: detailed`. `on`, `off` and `log` keep the value, and `format` changes no instruction file. In Pi, the row `Dummies report format` of `/tenantext settings` runs the same script to switch the value.
 - `dummies` is a skill that only the user starts (`disable-model-invocation: true`). So neither harness puts its description into the context of a session. Not verified for Pi: this comes from the program text of Pi 1.1.0, and no Pi session showed it.
 
 Not verified: the six command forms in a live session. Claude Code adds the words of the user after the skill text. Pi 1.1.0 adds them after the skill block, as its skills document says.
@@ -88,7 +93,7 @@ A session can know the state at its start, without a load of the skill text, in 
 
 ## Token cost of `dummies`
 
-This section restores the historical session model with current document and example counts. No new measured session is included. `dummies` never measures or prints a token count when it runs. Refresh the estimate after a change of the skill text or report form. Divide characters by 4, rounding half up. This character-based estimate is not a tokenizer measurement.
+This section restores the historical session model with current document and example counts. No new measured session is included. `dummies` never measures or prints a token count when it runs. Refresh the estimate after a change of the skill text or report form. Divide characters by 4, rounding half up. This character-based estimate is not a tokenizer measurement. The detailed format writes more output tokens for each report than the compact format, and a session in that format also reads `DETAILED.md`; no number in this section measures it.
 
 | Text | Characters | Estimated tokens |
 | --- | --- | --- |

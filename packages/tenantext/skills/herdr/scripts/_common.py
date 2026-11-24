@@ -1,10 +1,12 @@
 """Shared helpers for the herdr skill scripts. Standard library only."""
 import datetime
 import glob
+import hashlib
 import json
 import os
 import pathlib
 import re
+import shutil
 import socket
 import subprocess
 import sys
@@ -32,9 +34,368 @@ def herdr(*args, timeout=None):
     return p.returncode, data, raw
 
 
+# ---------------------------------------------------------------------------
+# The backend: Herdr 1 (`herdr`) or herdr-core (`herdr-core`, with the Herdr app `herdr-app`).
+# See the `backend` entry of contract.json.
+# ---------------------------------------------------------------------------
+def _run_json(argv, timeout):
+    """Run a CLI with no shell and no stdin. Return (exit_code, parsed_json_or_None, raw_text); 127 when it is missing."""
+    try:
+        p = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=timeout)
+    except OSError:  # missing, not executable, or a broken file (for example ENOEXEC): the candidate fails
+        return 127, None, f"{os.path.basename(argv[0])} not found"
+    except subprocess.TimeoutExpired:
+        return 124, None, f"{os.path.basename(argv[0])} call exceeded the local timeout"
+    raw = (p.stdout or "").strip() or (p.stderr or "").strip()
+    data = None
+    for chunk in (p.stdout, p.stderr):
+        chunk = (chunk or "").strip()
+        if chunk.startswith(("{", "[")):
+            try:
+                data = json.loads(chunk)
+                break
+            except json.JSONDecodeError:
+                pass
+    return p.returncode, data, raw
+
+
+def hc_command():
+    """The herdr-core CLI: `herdr-core`, else its link `hc`. None when neither is in PATH."""
+    return shutil.which("herdr-core") or shutil.which("hc")
+
+
+def hc(*args, timeout=30):
+    """Run the herdr-core CLI (`herdr-core`, else `hc`) with no stdin, the only helper for it.
+
+    Return (exit_code, parsed_json_or_None, raw_text). 127: the CLI is missing or cannot run. 124: the call
+    passed `timeout` seconds. Each call has a finite timeout (default 30 s). The JSON is the first of stdout,
+    stderr that starts with "{" or "["; a caller checks exit_code before it trusts the data.
+    """
+    cmd = hc_command()
+    if not cmd:
+        return 127, None, "herdr-core not found in PATH"
+    return _run_json([cmd, *args], timeout)
+
+
+def app(*args, timeout=30):
+    """Run the Herdr app CLI `herdr-app`. Return (exit_code, parsed_json_or_None, raw_text); 127 when it is missing."""
+    cmd = shutil.which("herdr-app")
+    if not cmd:
+        return 127, None, "herdr-app not found in PATH"
+    return _run_json([cmd, *args], timeout)
+
+
+def parent_pid(pid):
+    """The parent pid of a process, or None."""
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as f:
+            # Field 2 (the command) is in parentheses and can hold spaces; field 4 is the parent pid.
+            return int(f.read().rsplit(")", 1)[1].split()[1])
+    except FileNotFoundError:
+        if os.path.isdir("/proc"):
+            return None  # the process is gone
+    except (OSError, ValueError, IndexError):
+        return None
+    # No /proc (macOS): ask ps.
+    code, _, raw = _run_json(["ps", "-o", "ppid=", "-p", str(pid)], 5)
+    try:
+        return int(raw.strip()) if code == 0 else None
+    except ValueError:
+        return None
+
+
+def descends_from(root, pid=None):
+    """True when the process `pid` (default: this process) is `root` or a descendant of it."""
+    if not isinstance(root, int) or isinstance(root, bool) or root <= 1:
+        return False
+    pid = os.getpid() if pid is None else pid
+    seen = set()
+    while isinstance(pid, int) and pid > 1 and pid not in seen:
+        if pid == root:
+            return True
+        seen.add(pid)
+        pid = parent_pid(pid)
+    return False
+
+
+def _core_candidate(terminal):
+    """(ok, why, record) for the herdr-core terminal `terminal`."""
+    if terminal.startswith("-"):
+        return False, "HC_TERMINAL_ID is not a terminal address", None
+    code, data, raw = hc("get", terminal, "--json", timeout=15)
+    if code == 127:
+        return False, "no herdr-core command", None
+    if code != 0 or not isinstance(data, dict) or data.get("error"):
+        return False, f"herdr-core get failed (exit {code})", None
+    if data.get("state") != "live":
+        return False, "the terminal is not live", None
+    if not descends_from(data.get("pid")):
+        return False, "this process does not descend from the terminal", None
+    return True, "valid", data
+
+
+def _herdr1_candidate():
+    """(ok, why, shell_pid) for the Herdr 1 pane of HERDR_PANE_ID."""
+    if os.environ.get("HERDR_ENV") != "1":
+        return False, "HERDR_ENV is not 1", None
+    pane = os.environ.get("HERDR_PANE_ID")
+    if not pane:
+        return False, "HERDR_PANE_ID is not set", None
+    if not shutil.which("herdr"):
+        return False, "no herdr command", None
+    code, data, raw = _run_json(["herdr", "pane", "process-info", "--pane", pane], 15)
+    if code != 0 or not isinstance(data, dict) or error_code(data):
+        return False, f"pane {pane} is not live ({error_code(data) or f'exit {code}'})", None
+    info = (data.get("result") or {}).get("process_info") or {}
+    shell_pid = info.get("shell_pid")
+    if not descends_from(shell_pid):
+        return False, f"this process does not descend from the shell of pane {pane}", None
+    return True, "valid", shell_pid
+
+
+def detect_backend():
+    """Select the backend before any terminal action.
+
+    Return a dict: "backend" is "herdr1", "core" or None (refuse), "line" names each candidate and its result.
+    A "core" result also has "terminal" (the address), "space" and "tab" (the labels herdr.space and herdr.tab),
+    and "record" (the `herdr-core get` record of the terminal).
+    With no HC_TERMINAL_ID the result is "herdr1" with no check: the Herdr 1 path stays as it was.
+    """
+    terminal = os.environ.get("HC_TERMINAL_ID")
+    if not terminal:
+        return {"backend": "herdr1", "line": "herdr1: no HC_TERMINAL_ID"}
+    core_ok, core_why, record = _core_candidate(terminal)
+    h1_ok, h1_why, shell_pid = _herdr1_candidate()
+    line = f"core (terminal {terminal}): {core_why}; herdr1: {h1_why}"
+    if core_ok and h1_ok:
+        # Both roots are ancestors of this process, so one contains the other: the nearer (inner) root wins.
+        # Equal roots stay unclear.
+        core_pid = record.get("pid")
+        if shell_pid != core_pid and descends_from(core_pid, pid=shell_pid):
+            core_ok = False  # the Herdr 1 pane runs inside the core terminal
+        elif shell_pid != core_pid and descends_from(shell_pid, pid=core_pid):
+            h1_ok = False  # the core terminal runs inside the Herdr 1 pane
+    if core_ok == h1_ok:
+        return {"backend": None, "line": line}
+    if h1_ok:
+        return {"backend": "herdr1", "line": line}
+    labels = record.get("labels") or {}
+    return {"backend": "core", "line": line, "terminal": record.get("address") or terminal,
+            "space": labels.get("herdr.space"), "tab": labels.get("herdr.tab"), "record": record}
+
+
+def require_backend(script, core=False):
+    """Continue on the Herdr 1 backend, and on herdr-core when `core` is True (a ported script).
+
+    Return the result of detect_backend(). Otherwise print one line and exit with the code of contract.json.
+    `script` is the key of the script in contract.json backend.refusal_exit, for example "ask".
+    """
+    found = detect_backend()
+    if found["backend"] == "herdr1" or (core and found["backend"] == "core"):
+        return found
+    code = CONTRACT["backend"]["refusal_exit"][script]
+    if found["backend"] == "core":
+        print(f"error: the herdr-core backend is detected ({found['line']}); this script is not ported to it yet. "
+              "Nothing was done.", file=sys.stderr)
+    else:
+        print(f"error: cannot select the backend, so nothing was done. {found['line']}", file=sys.stderr)
+    sys.exit(code)
+
+
 def require_herdr_env():
     if os.environ.get("HERDR_ENV") != "1":
         sys.exit("error: not inside a Herdr pane (HERDR_ENV is not 1). Stop; do not control Herdr from outside.")
+
+
+def herdr_app_pane(found=None):
+    """The herdr-core record of the caller's terminal when it is a pane of the Herdr app, else None.
+
+    `found` is the result of detect_backend() (it runs when `found` is None). The record comes only from a
+    "core" result: a live terminal that is an ancestor of the caller. A pane of the Herdr app has the labels
+    `herdr.space` and `herdr.tab`; a core terminal without them is no pane of the app. A terminal of another
+    machine (an address with `/`) is never the caller's pane: the scripts act on nothing then.
+    """
+    found = detect_backend() if found is None else found
+    if found.get("backend") != "core" or not found.get("space") or not found.get("tab"):
+        return None
+    if not core_local(found.get("terminal")) or not core_local((found.get("record") or {}).get("address") or found["terminal"]):
+        return None
+    return found["record"]
+
+
+# ---------------------------------------------------------------------------
+# Spaces, tabs and records on herdr-core. See LAYOUT.md, section "On herdr-core".
+# ---------------------------------------------------------------------------
+def core_local(address):
+    """True for an address of this machine: `hc ls` also lists the terminals of other machines as `machine/t1`."""
+    return isinstance(address, str) and bool(address) and "/" not in address
+
+
+def core_role_tab(labels, role):
+    """The herdr.tab ID for an agent of `role` in the space of the terminal with `labels`.
+
+    A coordinator goes into the tab of the caller. Each other role has one tab for each space: its ID comes
+    from the space and the role, so each agent of a role gets the same tab. The Herdr app makes a new tab
+    for an ID that it does not know.
+    """
+    if role == "coordinator":
+        return labels["herdr.tab"]
+    return "tb" + hashlib.md5(f"{labels['herdr.space']}:{role}".encode()).hexdigest()
+
+
+def core_project(terminal):
+    """The project name of a terminal: the place that the Herdr app shows for it, else its folder."""
+    where = ((terminal.get("labels") or {}).get("where") or "").split(" / ")[0].strip()
+    return where or os.path.basename(terminal.get("cwd") or "") or "ws"
+
+
+def core_record(terminal):
+    """The record of the skill for a herdr-core terminal, or None when there is no valid one.
+
+    The core can give an address to a new terminal later, so a record counts only when spawn.py or init.py
+    wrote it on herdr-core for this terminal: `backend` is herdr-core and `created_at_epoch` is not earlier
+    than the start of the terminal (`created_ms`, CLOCK_SLACK seconds of slack). Another record is ignored.
+    """
+    address = terminal.get("address")
+    if not core_local(address):
+        return None
+    record = read_record(address)
+    if not isinstance(record, dict) or record.get("backend") != "herdr-core":
+        return None
+    created, started = record.get("created_at_epoch"), terminal.get("created_ms")
+    if not isinstance(created, (int, float)) or not isinstance(started, (int, float)):
+        return None
+    return record if created >= started / 1000 - CLOCK_SLACK else None
+
+
+def core_role(terminal):
+    """The role of a herdr-core terminal: its valid record, else its label skill.role, else None."""
+    role = (core_record(terminal) or {}).get("role") or (terminal.get("labels") or {}).get("skill.role")
+    return role if role in ROLES else None
+
+
+# The agent name that herdr-core reports in status.app, for each harness name of the skill that differs.
+CORE_APP_HARNESS = {"claude-code": "claude", "antigravity": "agy"}
+
+
+def core_harness(terminal):
+    """The harness of a herdr-core terminal: its status.app (CORE_APP_HARNESS), else its valid record, else None."""
+    app = (terminal.get("status") or {}).get("app")
+    if app:
+        return CORE_APP_HARNESS.get(app, app)
+    return (core_record(terminal) or {}).get("harness")
+
+
+def core_coordinator_record(terminal, space, harness=None):
+    """The record that makes the herdr-core terminal `terminal` the coordinator of `space`.
+
+    init.py writes it when a terminal claims a space, role_set.py --coordinator when the owner sets a tab.
+    `harness` is the harness that the caller found; without it the record takes core_harness(terminal).
+    """
+    return {"pane_id": terminal.get("address"), "role": "coordinator",
+            "harness": harness or core_harness(terminal),
+            "workspace_id": space, "session": "primary", "self": True,
+            "backend": "herdr-core", "created_at_epoch": time.time()}
+
+
+def core_terminals(space=None):
+    """The `hc get` records of the live local terminals with a herdr.space label (of `space` when given).
+
+    Each record carries the address of `hc ls`. A terminal that ends between the list and its read (`hc get`
+    answers not_found) and a terminal that is not live are left out. Return None when `hc ls` fails or when
+    `hc get` fails in another way (a timeout, another exit code, no JSON): a list with a hole is wrong.
+    """
+    args = ["ls", "--json"] + (["--label", f"herdr.space={space}"] if space else [])
+    code, data, raw = hc(*args, timeout=20)
+    if code != 0 or not isinstance(data, dict):
+        return None
+    out = []
+    for t in data.get("terminals") or []:
+        address = t.get("address") if isinstance(t, dict) else None
+        if not core_local(address):
+            continue
+        code, rec, raw = hc("get", address, "--json", timeout=20)
+        if code == 3 and isinstance(rec, dict) and isinstance(rec.get("error"), dict) \
+                and rec["error"].get("kind") == "not_found":
+            continue
+        if code != 0 or not isinstance(rec, dict):
+            return None
+        if rec.get("state") != "live":
+            continue
+        got = (rec.get("labels") or {}).get("herdr.space")
+        if got and (space is None or got == space):
+            out.append(dict(rec, address=address))
+    return out
+
+
+def core_error_kind(data):
+    """The `error.kind` of an `hc` answer, or None."""
+    if isinstance(data, dict) and isinstance(data.get("error"), dict):
+        return data["error"].get("kind") or "error"
+    return None
+
+
+def core_get(target):
+    """(state, terminal) for a name or an address of herdr-core, read with `hc get`.
+
+    state "ok": `terminal` is the record, with its address. "not_found": the core knows no such terminal.
+    "remote": the target or its address is a terminal of another machine. "error": another failure;
+    `terminal` is then the raw text.
+    """
+    if not isinstance(target, str) or not target or target.startswith("-") or not core_local(target):
+        return "remote" if isinstance(target, str) and "/" in target else "error", target
+    code, data, raw = hc("get", target, "--json", timeout=20)
+    if code == 3 and core_error_kind(data) == "not_found":
+        return "not_found", None
+    if code != 0 or not isinstance(data, dict) or core_error_kind(data):
+        return "error", raw
+    data = dict(data, address=data.get("address") or target)
+    if not core_local(data["address"]):
+        return "remote", data
+    return "ok", data
+
+
+def core_info(terminal):
+    """The agent info of a herdr-core terminal in the shape of `herdr agent get`, so the shared code can use it.
+
+    pane_id is the address and agent is the harness (core_harness). A Claude Code terminal also gets
+    `agent_session` from the sessions file of its process (claude_core_session), so session_file() finds its
+    transcript.
+    """
+    status = terminal.get("status") or {}
+    foreground = terminal.get("foreground") or {}
+    info = {"pane_id": terminal.get("address"), "name": terminal.get("name"), "agent": core_harness(terminal),
+            "agent_status": status.get("state"), "cwd": terminal.get("cwd"), "foreground_cwd": foreground.get("cwd"),
+            "pid": foreground.get("pid") or terminal.get("pid"), "turn": terminal.get("turn")}
+    if info["agent"] == "claude":
+        sid = claude_core_session(info["pid"])
+        if sid:
+            info["agent_session"] = {"kind": "id", "value": sid}
+    return info
+
+
+def claude_core_session(pid):
+    """The sessionId that Claude Code wrote in ~/.claude/sessions/<pid>.json for its process, or None.
+
+    After /clear or a resume, the file names the new session of the same process.
+    """
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return None
+    try:
+        with open(os.path.expanduser(f"~/.claude/sessions/{pid}.json"), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return None
+    sid = data.get("sessionId") if isinstance(data, dict) else None
+    if not isinstance(sid, str) or not re.fullmatch(r"[A-Za-z0-9-]+", sid):
+        return None
+    return sid
+
+
+def core_screen(address, lines=60):
+    """The screen and the last `lines` lines of history of a herdr-core terminal, as text (`hc read`)."""
+    code, data, raw = hc("read", address, "--lines", str(lines), timeout=20)
+    return raw if code == 0 else f"(hc read {address} failed: {raw[:300]})"
 
 
 def error_code(data):
@@ -121,6 +482,22 @@ def _squash(text):
     return " ".join(text.split())
 
 
+# herdr-core wraps the text that `hc send` types: the user entry is `<hc from="t11">prompt</hc>`.
+HC_WRAPPER = re.compile(r'<hc from="[^"]*">(.*)</hc>$', re.DOTALL)
+
+
+def _prompt_matches(text, needle):
+    """True when the squashed user text ends with the needle (a short prompt) or holds it (a long prompt).
+
+    The text inside a trailing herdr-core wrapper counts the same way, so a sent prompt matches its entry.
+    """
+    texts = [_squash(text)]
+    wrapped = HC_WRAPPER.search(texts[0])
+    if wrapped:
+        texts.append(wrapped.group(1).strip())
+    return any(needle in t if len(needle) > PROMPT_MATCH_CHARS else t.endswith(needle) for t in texts)
+
+
 def _session_match(path, cwds, since, needle):
     """Return the line after the matching user entry, or None.
 
@@ -142,8 +519,7 @@ def _session_match(path, cwds, since, needle):
                         return None
                     continue
                 text = _user_text(d)
-                if text is not None and (needle in _squash(text) if len(needle) > PROMPT_MATCH_CHARS
-                                         else _squash(text).endswith(needle)):
+                if text is not None and _prompt_matches(text, needle):
                     when = _entry_epoch(d)
                     if when is not None and when >= since - CLOCK_SLACK:
                         found = n + 1
@@ -186,6 +562,119 @@ def find_pi_session(cwds, since, prompt, agent_dirs=None):
 
 
 DISK_NOTE = "note: Herdr gave no transcript path; the reply below is from the Pi session file on disk: "
+
+
+# ---------------------------------------------------------------------------
+# The transcript of an agy (Antigravity CLI) pane. The core gives no path and agy writes no cwd, so ask.py
+# takes a file only when exactly one transcript holds the sent prompt after the send. The only file of
+# ~/.gemini/ that the skill opens is this transcript: never a login, a token or a settings file.
+# The schema is not documented; these fields come from real files of agy 1.5.15.
+# ---------------------------------------------------------------------------
+AGY_TRANSCRIPT = os.path.join(".system_generated", "logs", "transcript.jsonl")
+# agy wraps the typed text: <USER_REQUEST>text</USER_REQUEST>, then metadata blocks.
+AGY_REQUEST = re.compile(r"<USER_REQUEST>(.*?)</USER_REQUEST>", re.DOTALL)
+AGY_NOTE = "note: the core gave no transcript path; the reply below is from the agy transcript on disk: "
+AGY_CUT = "\n[... the agy transcript cut this reply; read the rest on the screen of the pane ...]"
+
+
+def agy_brain_dir():
+    return os.path.join(os.path.expanduser("~"), ".gemini", "antigravity-cli", "brain")
+
+
+def _agy_rows(path, start_line=0):
+    """The JSON objects of an agy transcript after start_line, with their 0-based line numbers."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for n, line in enumerate(f):
+                if n < start_line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(d, dict):
+                    yield n, d
+    except OSError:
+        return
+
+
+def _agy_epoch(d):
+    try:
+        return datetime.datetime.fromisoformat(str(d["created_at"]).replace("Z", "+00:00")).timestamp()
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def find_agy_transcript(since, prompt, brain=None):
+    """Return (path, start line) of the one agy transcript that holds the prompt, or None when it is not certain.
+
+    A candidate is <brain>/<conversation id>/.system_generated/logs/transcript.jsonl, modified at or after
+    `since`, with a USER_INPUT entry created at or after `since` whose request text matches the prompt by the
+    rule of the Pi search (_prompt_matches). The start line is the line after that entry. A prompt shorter
+    than PROMPT_MIN_CHARS, no file or more than one file gives None.
+    """
+    try:
+        return _find_agy_transcript(since, prompt, brain)
+    except Exception:  # noqa: BLE001 - an unknown transcript shape gives no path, never a traceback after the send
+        return None
+
+
+def _find_agy_transcript(since, prompt, brain):
+    needle = _squash(prompt or "")
+    if len(needle) < PROMPT_MIN_CHARS:
+        return None
+    hits = []
+    for path in glob.glob(os.path.join(brain or agy_brain_dir(), "*", AGY_TRANSCRIPT)):
+        try:
+            if os.stat(path).st_mtime < since - CLOCK_SLACK:
+                continue
+        except OSError:
+            continue
+        found = None
+        for n, d in _agy_rows(path):
+            content = d.get("content")
+            if d.get("type") != "USER_INPUT" or not isinstance(content, str):
+                continue
+            request = AGY_REQUEST.search(content)
+            when = _agy_epoch(d)
+            if (_prompt_matches(request.group(1) if request else content, needle)
+                    and when is not None and when >= since - CLOCK_SLACK):
+                found = n + 1
+        if found is not None:
+            hits.append((path, found))
+    return hits[0] if len(hits) == 1 else None
+
+
+def _agy_final(d):
+    """True for a PLANNER_RESPONSE that ends a turn: done, with text, and no tool call."""
+    content = d.get("content")
+    return (d.get("type") == "PLANNER_RESPONSE" and d.get("status") == "DONE" and not d.get("tool_calls")
+            and isinstance(content, str) and bool(content.strip()))
+
+
+def agy_texts(path, start_line=0):
+    """The final replies of an agy transcript after start_line; [] while the last PLANNER_RESPONSE is no final one.
+
+    start_line is the line after the USER_INPUT of the prompt: the reading stops at the next USER_INPUT, so a
+    later turn in the same conversation gives no reply. A reply that agy cut in the file (its field
+    truncated_fields is a list that names content) ends with the AGY_CUT line. A row of another shape counts
+    as no row. The reader never raises: a failure gives None, and the caller then shows the screen.
+    """
+    out, last = [], None
+    try:
+        for _, d in _agy_rows(path, start_line):
+            if d.get("type") == "USER_INPUT":
+                break
+            if d.get("type") != "PLANNER_RESPONSE":
+                continue
+            last = d
+            if _agy_final(d):
+                fields = d.get("truncated_fields")
+                cut = isinstance(fields, list) and "content" in fields
+                out.append(d["content"].strip() + (AGY_CUT if cut else ""))
+    except Exception:  # noqa: BLE001 - an unknown transcript shape must never lose the reply after the send
+        return None
+    return out if last is not None and _agy_final(last) else []
 
 
 def _pane_cwds(info):

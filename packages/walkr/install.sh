@@ -14,13 +14,13 @@ Options:
   --project <dir>    Install the skills into the project <dir>.
   --global           Install the skills for your user (~/.claude, ~/.codex, ~/.agents).
   --skip-setup       Link the commands only. Do not install skills.
-  --pi-extension     Print how to load the optional Pi extensions.
   --dry-run          Print each action. Change nothing.
   --uninstall        Remove the command links that this script made.
   --yes              Do not ask. Without --project or --global, use the current directory.
   --help             Show this text.
 
-Commands: walkr, walkr-core, walkr-double, walkr-coinflip, walkr-trainer, walkr-compare.
+Commands: walkr, walkr-compare.
+A link of this clone for a retired command (walkr-core, walkr-double, walkr-coinflip, walkr-trainer) is removed.
 EOF
 }
 
@@ -69,7 +69,7 @@ physdir() {
   printf '%s\n' "$p"
 }
 
-bin_dir='' project='' scope='' dry=no uninstall=no yes=no pi_ext=no
+bin_dir='' project='' scope='' dry=no uninstall=no yes=no
 while [ "$#" -gt 0 ]; do
   case $1 in
     --bin-dir) [ "$#" -ge 2 ] || fail "--bin-dir needs a directory"; bin_dir=$2; shift 2 ;;
@@ -79,7 +79,6 @@ while [ "$#" -gt 0 ]; do
     --global|--skip-setup)
       [ -z "$scope" ] || fail "choose only one of --project, --global and --skip-setup"
       scope=${1#--}; shift ;;
-    --pi-extension) pi_ext=yes; shift ;;
     --dry-run) dry=yes; shift ;;
     --uninstall) uninstall=yes; shift ;;
     --yes) yes=yes; shift ;;
@@ -134,11 +133,13 @@ bin_dir=$(absdir "${bin_dir:-$home/.local/bin}")
 
 # name:target pairs. Targets come from the bin field of package.json.
 # human-review is not linked: that npm name belongs to the upstream project.
-links="walkr:src/cli.js walkr-core:src/walkr-core.js walkr-double:src/walkr-double.js walkr-coinflip:src/walkr-coinflip.js walkr-trainer:src/walkr-trainer.js walkr-compare:src/walkr-compare.js"
+links="walkr:src/cli.js walkr-compare:src/walkr-compare.js"
+# The commands of the retired modes. An older install linked them; this script removes only a link to this clone.
+retired="walkr-core:src/walkr-core.js walkr-double:src/walkr-double.js walkr-coinflip:src/walkr-coinflip.js walkr-trainer:src/walkr-trainer.js"
 
 if [ "$uninstall" = yes ]; then
   removed=0
-  for pair in $links; do
+  for pair in $links $retired; do
     link=$bin_dir/${pair%%:*}
     target=$clone/${pair#*:}
     if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
@@ -183,15 +184,14 @@ fi
 if ! version_ok "$have_core" "$need"; then
   fail "Node.js $need or newer is required; found ${have:-an unknown version}. Install a newer Node and run again."
 fi
-command -v npm >/dev/null 2>&1 || fail "npm is required, and npm is not on PATH"
-say "Node $have, npm found"
+say "Node $have"
 
 # Choose where the skills go.
 if [ -z "$scope" ]; then
   if [ "$yes" = yes ]; then
     scope=project; project=.
   else
-    say "Walkr installs six agent skills for Claude Code, Codex and Pi."
+    say "Walkr installs two agent skills for Claude Code, Codex and Pi."
     ask "Install skills for [p]roject $cwd, [g]lobal (your user), or [s]kip? [p/g/s]:"
     case $answer in
       p|project|'') scope=project; project=. ;;
@@ -229,15 +229,7 @@ if [ "$yes" = no ] && [ "$dry" = no ]; then
   case $answer in y|Y|yes) ;; *) fail "cancelled; nothing changed" ;; esac
 fi
 
-# 1. Dependencies, without package install scripts.
-if [ "$dry" = yes ]; then
-  printf 'would run: (cd %s && npm ci --ignore-scripts)\n' "$clone"
-else
-  printf 'run: (cd %s && npm ci --ignore-scripts)\n' "$clone"
-  (cd "$clone" && npm ci --ignore-scripts)
-fi
-
-# 2. Command links.
+# 1. Command links. The package has no runtime dependency, so no npm step runs.
 [ -d "$bin_dir" ] || run mkdir -p "$bin_dir"
 for pair in $links; do
   link=$bin_dir/${pair%%:*}
@@ -248,6 +240,14 @@ for pair in $links; do
     run ln -s "$target" "$link"
   fi
 done
+# A link of this clone for a retired command goes. A file or a link of another owner stays.
+for pair in $retired; do
+  link=$bin_dir/${pair%%:*}
+  target=$clone/${pair#*:}
+  if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
+    run rm -f "$link"; say "removed $link: the command is retired"
+  fi
+done
 case :${PATH:-}: in
   *:"$bin_dir":*) ;;
   *) say "warning: $bin_dir is not on PATH. Add it to PATH in your shell startup file, for example:"
@@ -256,33 +256,23 @@ case :${PATH:-}: in
      printf '  export PATH="%s:$PATH"\n' "$bin_dir" ;;
 esac
 
-# 3. Skills, through the setup command of walkr-core.
+# 2. Skills, through the setup command of walkr.
 case $scope in
   global)
     if [ "$dry" = yes ]; then
-      printf 'would run: (cd %s && node %s/src/walkr-core.js setup --global)\n' "$home" "$clone"
+      printf 'would run: (cd %s && node %s/src/cli.js setup --global)\n' "$home" "$clone"
     else
-      printf 'run: (cd %s && node %s/src/walkr-core.js setup --global)\n' "$home" "$clone"
-      (cd "$home" && node "$clone/src/walkr-core.js" setup --global)
+      printf 'run: (cd %s && node %s/src/cli.js setup --global)\n' "$home" "$clone"
+      (cd "$home" && node "$clone/src/cli.js" setup --global)
     fi ;;
   project)
     if [ "$dry" = yes ]; then
-      printf 'would run: (cd %s && node %s/src/walkr-core.js setup)\n' "$project" "$clone"
+      printf 'would run: (cd %s && node %s/src/cli.js setup)\n' "$project" "$clone"
     else
-      printf 'run: (cd %s && node %s/src/walkr-core.js setup)\n' "$project" "$clone"
-      (cd "$project" && node "$clone/src/walkr-core.js" setup)
+      printf 'run: (cd %s && node %s/src/cli.js setup)\n' "$project" "$clone"
+      (cd "$project" && node "$clone/src/cli.js" setup)
     fi ;;
 esac
-
-# 4. Optional Pi extensions. Pi loads each one with --extension; nothing is copied.
-if [ "$pi_ext" = yes ]; then
-  say "Pi extensions are optional. Load one in a Pi session with --extension:"
-  for file in "$clone"/integrations/pi/*.ts; do
-    [ -f "$file" ] || continue
-    printf '  pi --extension %s\n' "$(quote "$file")"
-  done
-  say "see the Pi integrations section of INSTALL.md before you load one"
-fi
 
 if [ "$dry" = yes ]; then
   say "dry run: nothing changed"

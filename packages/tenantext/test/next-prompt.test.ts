@@ -123,14 +123,75 @@ test("report-wide restrictions refuse unlinked work without guessing by position
 });
 
 test("the shipped report and outcome examples parse as valid next actions or no next action", () => {
-  for (const name of ["REPORT.md", "LOG.md"]) {
+  for (const name of ["REPORT.md", "LOG.md", "DETAILED.md"]) {
     const doc = readFileSync(new URL(`../skills/coordinator-skills/dummies/${name}`, import.meta.url), "utf8");
-    const examples = [...doc.matchAll(/```markdown\n([\s\S]*?)\n```/g)];
+    // An example is a markdown fence of three or more backticks; it closes at a line of the same fence.
+    const examples = [...doc.matchAll(/^(`{3,})markdown\n([\s\S]*?)\n\1$/gm)];
     assert.ok(examples.length > 0, name);
-    for (const [, example] of examples) {
+    for (const [, , example] of examples) {
       const parsed = parseReport(example);
       assert.ok(parsed.status === "next" || parsed.status === "none", `${name}: ${parsed.status}`);
     }
+  }
+});
+
+test("detailed report syntax 1 gives the first Agent action only when no restriction applies", () => {
+  const DETAILED = [
+    "added: projects/demo/DUMMIES | Jan 5, 2026, 3:07 PM EST | Agent: Pi | Model: example",
+    "",
+    "The footer fix is committed locally, and the local check passes (12 pass, 0 fail).",
+    "",
+    "## Checks",
+    "",
+    "1. `npm test` on the local branch (exit 0)",
+    "```text",
+    "## Next",
+    "pass 12",
+    "```",
+    "",
+    "## Next",
+    "",
+    "- **[A]** Agent: Read the log of the failed check.",
+    "",
+    "A new run uses the same local branch.",
+  ].join("\n");
+  const detailed = (from: string, to: string) => DETAILED.replace(from, to);
+  const action = "- **[A]** Agent: Read the log of the failed check.";
+  const cases: [string, string, string][] = [
+    ["valid detailed report", DETAILED, "Continue action A: Read the log of the failed check."],
+    ["owner decision after the agent action", detailed(action, `${action}\n- **[B]** Owner decides: Close the issue, or keep it open.`), "owner"],
+    ["agent action with a condition", detailed("[A]** Agent:", "[A]** Agent, after your answer to B:"), "conditional"],
+    ["warning line after the result", detailed("0 fail).\n", "0 fail).\n\n**Warning:** The tag is public.\n"), "unlinked"],
+    ["no action", detailed(action, "None. The owner must choose the release."), "no-next"],
+    ["agent action after an owner action", detailed(action, `- **[A]** Owner: Run the privileged check.\n- **[B]** Agent: Read the log.`), "ambiguous"],
+    ["labels must start at A", detailed("[A]** Agent", "[B]** Agent"), "ambiguous"],
+    ["lowercase label", detailed("[A]** Agent", "[a]** Agent"), "ambiguous"],
+    ["unknown line in the block", detailed(action, `${action}\nThen stop.`), "ambiguous"],
+    ["compact head line and a Next heading", `**REPORT 3** The check passed\n\n${DETAILED}`, "ambiguous"],
+    ["Next is not the last heading", `${DETAILED}\n\n## Notes\n\nMore text.`, "missing"],
+  ];
+  for (const [name, text, expected] of cases) {
+    const result = suggestFromBranch([user("go"), assistant(text)]);
+    assert.equal(result.kind === "suggestion" ? result.text : result.reason, expected, name);
+  }
+});
+
+interface ReaderCase { name: string; text: string; class: "report" | "ambiguous" | "missing"; draft?: string | null; dialog?: string }
+
+test("the report reader gives the class of the case table, and the draft of a report follows its actions", () => {
+  const { cases } = JSON.parse(readFileSync(new URL("./report-reader-cases.json", import.meta.url), "utf8")) as { cases: ReaderCase[] };
+  assert.ok(cases.length > 0);
+  for (const entry of cases) {
+    const status = parseReport(entry.text).status;
+    assert.equal(status === "next" || status === "none" ? "report" : status, entry.class, entry.name);
+    // A dialog entry: the report that opened the question tool, the answer, then the final message.
+    const branch = entry.dialog === undefined ? [user("go"), assistant(entry.text)] : [user("go"),
+      { type: "message", message: { role: "assistant", stopReason: "toolUse",
+        content: [{ type: "text", text: entry.dialog }, { type: "toolCall", name: "ask_user_question" }] } },
+      { type: "message", message: { role: "toolResult", content: [{ type: "text", text: "Keep it open" }] } },
+      assistant(entry.text)];
+    const result = suggestFromBranch(branch);
+    assert.equal(result.kind === "suggestion" ? result.action : null, entry.draft ?? null, entry.name);
   }
 });
 

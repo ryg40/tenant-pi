@@ -24,7 +24,7 @@ Use your question tool, or plain text during bootstrap. Offer two to four concre
 - "Turn DUMMIES on for Pi?" All Pi profiles of the user share the switch; the autostart block goes into this profile. A yes is `--dummies`; `--yes` does not give it. Follow [DUMMIES](../../docs/guides/modules.md#dummies).
 - "Native provider, the Tenantext gateway, or a direct provider?" "How will the key reach the Pi process?" Follow [the first start](../../INSTALL.md#first-start).
 
-Use `--upgrade` or `--new`, `--shell`, `--with`, `--runtime`, `--yes`, `--claude-plugin` and `--dummies` for non-interactive runs. `--with all` means every optional module of the platform, without `mcp-codemode`. `--with computer-use`, `--with computer-use-macos` and `--with all` count as the yes to desktop control. Review proposed settings changes; preserve legacy package filters. An upgrade keeps the directory and adds missing files. Shell setup follows profile success and backs up the startup file before replacing its managed block.
+Use `--upgrade` or `--new`, `--shell`, `--with`, `--runtime`, `--yes`, `--claude-plugin` and `--dummies` for non-interactive runs. `--with all` means every optional module of the platform, without `mcp-codemode`, without `agy` and without the AWS rows. `--with computer-use`, `--with computer-use-macos` and `--with all` count as the yes to desktop control. Review proposed settings changes; preserve legacy package filters. An upgrade keeps the directory and adds missing files. Shell setup follows profile success and backs up the startup file before replacing its managed block.
 
 Record each check that did not run as "not run". End with the profile name, path, alias, startup file and command to load the alias.
 

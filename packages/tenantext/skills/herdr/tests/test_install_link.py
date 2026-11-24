@@ -13,8 +13,7 @@ SKILL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def install(home):
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home,
-           "HERDR_SKILL_HOME": os.path.join(home, ".agents/skills/herdr"),
-           "HERDR_RELAY_SKILL_HOME": os.path.join(home, ".agents/skills/herdr-relay")}
+           "HERDR_SKILL_HOME": os.path.join(home, ".agents/skills/herdr")}
     return subprocess.run(["bash", os.path.join(SKILL, "install.sh")], env=env, capture_output=True, text=True, check=True).stdout
 
 

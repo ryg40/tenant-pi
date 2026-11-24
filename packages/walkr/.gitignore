@@ -7,7 +7,6 @@ node_modules/
 .human-review/
 
 # Claude Design runtime, not part of the product
-design-ref/support.js
 videos/
 
 # Local launch and review artifacts

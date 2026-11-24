@@ -40,7 +40,6 @@ PUBLISH_DIRS = (
     ".github/workflows/",
     "assets/",
     "docs/",
-    "integrations/pi/",
     "prompts/",
     "skills/",
     "src/",

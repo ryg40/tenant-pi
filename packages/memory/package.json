@@ -1,0 +1,20 @@
+{
+  "name": "tenant-memory",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only web app for the memories of several agent memory systems. In the tenant-pi kit it runs as the section /memory of the local server of packages/artifacts.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "sample": "node server.mjs --sample",
+    "test": "node --test 'tests/*.test.mjs'",
+    "check:readonly": "node check-readonly.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "3.1166.0",
+    "@aws-sdk/credential-provider-ini": "3.973.29"
+  }
+}

@@ -1,55 +1,35 @@
-/* The Markdown view of the local artifacts server. System fonts, light and dark, no external request. */
+/* The Markdown view of the local artifacts server, in the Torch design: the colors and the fonts are the tokens of
+   theme.css, which the page loads first. Only the colors of a code block with a language are named here: Torch has
+   no token for them. Each has a contrast of 4.5 to 1 or more on the code background of its theme. No external
+   request. */
 :root {
-  color-scheme: light dark;
-  --bg: #ffffff;
-  --fg: #1d1f21;
-  --muted: #5f6368;
-  --line: #e2e3e1;
-  --code-bg: #f4f5f3;
-  --quote: #6a7075;
-  --accent: #1f5fbf;
-  --stripe: #f8f9f7;
-  /* The colors of a code block with a language (highlight.js classes). */
-  --hl-keyword: #a626a4;
-  --hl-string: #2f7a1f;
-  --hl-number: #9a5b00;
-  --hl-comment: #6a737d;
-  --hl-title: #3b5bdb;
-  --hl-attr: #b5431b;
-  --hl-type: #0e7490;
-  --hl-meta: #6e5494;
-  --hl-deletion: #b42318;
+  /* The colors of a code block with a language (highlight.js classes), on --soft. */
+  --hl-keyword: #6b21a8;
+  --hl-string: #2b6a1c;
+  --hl-number: var(--amber);
+  --hl-comment: var(--faint);
+  --hl-title: #0b4a9e;
+  --hl-attr: #933310;
+  --hl-type: var(--green);
+  --hl-meta: var(--mute);
+  --hl-deletion: var(--danger);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17191c;
-    --fg: #e4e6e8;
-    --muted: #9aa0a6;
-    --line: #2d3136;
-    --code-bg: #20242a;
-    --quote: #a4aab0;
-    --accent: #8ab4f8;
-    --stripe: #1b1e22;
-    --hl-keyword: #d38df0;
-    --hl-string: #9ccc7c;
-    --hl-number: #e5b567;
-    --hl-comment: #8b949e;
-    --hl-title: #82aaff;
-    --hl-attr: #f0a070;
-    --hl-type: #66c2cd;
-    --hl-meta: #b8a1e3;
-    --hl-deletion: #f28b82;
-  }
+:root[data-theme="torch-dark"] {
+  --hl-keyword: #d9b3ff;
+  --hl-string: #a8e6a1;
+  --hl-title: #9ccbff;
+  --hl-attr: #ffb891;
+  --hl-type: var(--accent);
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--canvas);
+  color: var(--txt);
+  font: 16px/1.6 var(--sans);
 }
 
 .page {
@@ -59,7 +39,7 @@ body {
 }
 
 pre, code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-family: var(--mono);
   font-size: 0.9em;
 }
 
@@ -69,16 +49,19 @@ pre.source {
   overflow-wrap: anywhere;
 }
 
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
 .markdown > :first-child { margin-top: 0; }
 
 .markdown h1, .markdown h2, .markdown h3, .markdown h4 {
   margin: 1.6em 0 0.5em;
+  color: var(--strong-txt);
   line-height: 1.25;
-  font-weight: 650;
+  font-weight: 700;
 }
 
 .markdown h1 { font-size: 1.9rem; }
-.markdown h2 { font-size: 1.45rem; padding-bottom: 0.25em; border-bottom: 1px solid var(--line); }
+.markdown h2 { font-size: 1.45rem; padding-bottom: 0.25em; border-bottom: 1px solid var(--hair); }
 .markdown h3 { font-size: 1.2rem; }
 .markdown h4 { font-size: 1rem; }
 
@@ -91,15 +74,15 @@ pre.source {
 .markdown code {
   padding: 0.1em 0.35em;
   border-radius: 4px;
-  background: var(--code-bg);
+  background: var(--soft);
 }
 
 .markdown pre {
   padding: 0.85rem 1rem;
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--code-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  background: var(--soft);
   line-height: 1.45;
 }
 
@@ -123,9 +106,9 @@ pre.source {
 .hljs-strong { font-weight: 600; }
 
 .markdown blockquote {
-  padding: 0 1rem;
-  border-left: 3px solid var(--line);
-  color: var(--quote);
+  padding: 0.1rem 1rem;
+  border-left: 3px solid var(--brand);
+  color: var(--mute);
 }
 
 .markdown table {
@@ -137,13 +120,13 @@ pre.source {
 
 .markdown th, .markdown td {
   padding: 0.4rem 0.75rem;
-  border: 1px solid var(--line);
+  border: 1px solid var(--card-border);
   text-align: left;
   vertical-align: top;
 }
 
-.markdown th { font-weight: 600; background: var(--code-bg); }
-.markdown tbody tr:nth-child(even) { background: var(--stripe); }
+.markdown th { font-weight: 700; background: var(--rail); color: var(--strong-txt); }
+.markdown tbody tr:nth-child(even) { background: var(--hair-2); }
 
 .markdown img { max-width: 100%; }
 
@@ -151,9 +134,9 @@ pre.source {
   height: 1px;
   margin: 2em 0;
   border: 0;
-  background: var(--line);
+  background: var(--hair);
 }
 
 .markdown li + li { margin-top: 0.25em; }
-.markdown input[type="checkbox"] { margin-right: 0.4em; }
+.markdown input[type="checkbox"] { margin-right: 0.4em; accent-color: var(--btn-bg); }
 .markdown li:has(> input[type="checkbox"]) { list-style: none; }

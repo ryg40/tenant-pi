@@ -19,6 +19,8 @@ sys.path.insert(0, os.path.join(SKILL, "scripts"))
 os.environ["HERDR_SKILL_STATE_DIR"] = tempfile.mkdtemp(prefix="herdr-skill-test-")
 # The tests read the shipped catalog only, not the machine file of the machine that runs them.
 os.environ["HERDR_SKILL_RESOURCES"] = os.path.join(os.environ["HERDR_SKILL_STATE_DIR"], "no-machine-file.json")
+# The in-process runs of main() take the Herdr 1 path, also when the tests run in a herdr-core terminal.
+os.environ.pop("HC_TERMINAL_ID", None)
 
 import _common  # noqa: E402
 
@@ -204,7 +206,7 @@ class ModelDefaults(IsolatedConfig):
         self.assertEqual(results["scout"]["model_source"], "models.json")
         self.assertEqual(err.getvalue().strip(), "model: example-alias (from models.json)")
         self.assertEqual((results["scout"]["session_env"], results["coordinator"]["session_env"]),
-                         ({"HERDR_SKILL_SESSION": "task", "OPENVIKING_RECALL_COMPRESS": "off"}, {}))
+                         ({"OPENVIKING_RECALL_COMPRESS": "off"}, {}))
 
 
 class Launch(IsolatedConfig):

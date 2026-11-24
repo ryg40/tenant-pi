@@ -473,7 +473,7 @@ test("a failed start gives an error result with the exit code and the output tai
 	const lines = blocked.content[0].text.split("\n");
 	assert.equal(blocked.isError, true);
 	assert.equal(lines[0], "spawn.py failed: exit 4 (the agent stopped at a startup question, the pane stays open). No watch was started.");
-	assert.match(lines[1], /^Read the question with `herdr agent read w7:p3 --source visible`, show it to the user/);
+	assert.match(lines[1], /^Read the question with `last-reply.py w7:p3` of the herdr skill \(it prints the screen when the pane has no transcript\), show it to the user/);
 	assert.equal(lines[2], "pane: w7:p3 (proj-worker-1)");
 	assert.match(lines[3], /^stderr \(last \d+ characters\):$/);
 	assert.doesNotMatch(blocked.content[0].text, /close:/);

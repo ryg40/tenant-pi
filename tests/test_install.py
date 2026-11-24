@@ -98,8 +98,8 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
             self.assertIn(text, result.stdout)
         current = json.loads((self.profile / 'settings.json').read_text())
         settings['packages'][0]['source'] = str(ROOT / 'packages/tenantext')
-        # The kit step adds its extension once to the plain extension list; the empty skill list stays.
-        settings['packages'][0]['extensions'].append('extensions/handoffs/index.ts')
+        # An upgrade adds the kit theme when the profile has no theme key.
+        settings['theme'] = 'dark'
         self.assertEqual(settings, current)
         for path, data in before.items():
             if data is not None and not path.endswith('settings.json'):
@@ -115,36 +115,18 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.success(self.install(mode='upgrade'))
         self.assertIn(original, [p.read_text() for p in self.profile.glob('settings.json.backup-*')])
 
-    def test_upgrade_adds_a_new_kit_skill_to_a_filtered_list_once(self):
+    def test_new_profile_gets_the_kit_theme(self):
+        self.success(self.install(shell='none'))
+        self.assertEqual('dark', json.loads((self.profile / 'settings.json').read_text())['theme'])
+
+    def test_upgrade_keeps_a_theme_that_the_profile_has(self):
         self.profile.mkdir(parents=True)
-        entry = {'source': str(ROOT / 'packages/tenantext'), 'skills': ['skills/herdr'],
-                 'extensions': ['extensions/tenantext/index.ts'], 'prompts': []}
-        (self.profile / 'settings.json').write_text(json.dumps({'packages': [entry]}))
-        self.success(self.install(mode='upgrade', shell='none'))
-        current = json.loads((self.profile / 'settings.json').read_text())['packages'][0]
-        self.assertEqual(['skills/herdr', 'skills/herdr-idle-cleanup'], current['skills'])
-        self.assertEqual(['extensions/tenantext/index.ts', 'extensions/handoffs/index.ts'], current['extensions'])
-        self.assertEqual([], current['prompts'])
-        # The user removes the skill and the extension; the next upgrade keeps the removal.
-        (self.profile / 'settings.json').write_text(json.dumps({'packages': [entry]}))
-        self.success(self.install(mode='upgrade', shell='none'))
-        self.assertEqual(entry, json.loads((self.profile / 'settings.json').read_text())['packages'][0])
-        # Each key on its own: a list of only `!` entries stays (it loads all other files), and a missing or
-        # empty skill list does not stop the extension.
-        source = str(ROOT / 'packages/tenantext')
-        for given, expected in (
-                ({'skills': ['!skills/herdr-relay'], 'extensions': ['!extensions/ops-footer/index.ts']},
-                 {'skills': ['!skills/herdr-relay'], 'extensions': ['!extensions/ops-footer/index.ts']}),
-                ({'extensions': ['extensions/tenantext/index.ts']},
-                 {'extensions': ['extensions/tenantext/index.ts', 'extensions/handoffs/index.ts']}),
-                ({'skills': [], 'extensions': ['extensions/tenantext/index.ts']},
-                 {'skills': [], 'extensions': ['extensions/tenantext/index.ts', 'extensions/handoffs/index.ts']})):
-            with self.subTest(given=given):
-                (self.profile / 'kit-steps.json').unlink()
-                (self.profile / 'settings.json').write_text(json.dumps({'packages': [dict(given, source=source)]}))
-                self.success(self.install(mode='upgrade', shell='none'))
-                self.assertEqual(dict(expected, source=source),
-                                 json.loads((self.profile / 'settings.json').read_text())['packages'][0])
+        (self.profile / 'settings.json').write_text(json.dumps({'theme': 'light', 'packages': []}))
+        result = self.install(mode='upgrade', shell='none')
+        self.success(result)
+        self.assertEqual('light', json.loads((self.profile / 'settings.json').read_text())['theme'])
+        # The plan says in one line that the value of the profile stays.
+        self.assertEqual(1, sum(line.startswith('theme: "light" stays') for line in result.stdout.splitlines()))
 
     def test_new_and_collision(self):
         result = self.install(shell='none')
@@ -174,20 +156,83 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertNotEqual(0, self.install(modules='mcp,mcp-codemode').returncode)
         self.assertEqual(before, self.snapshot())
 
-    def test_mcp_codemode_upgrade_removes_the_adapter_settings_and_keeps_the_server_files(self):
+    def adapter_profile(self):
+        """A profile of the adapter: its package, -builtin:mcp, servers with tool overrides, a disabled server and one
+        with a sign-in field that Pi does not have."""
         spec = 'npm:' + MANIFEST['components']['mcp']['source']['spec']
         self.profile.mkdir(parents=True)
-        (self.profile / 'settings.json').write_text(json.dumps(
-            {'packages': [spec], 'extensions': ['-builtin:mcp', '-builtin:codemode', '-builtin:tool-search']}))
-        files = {self.profile / name: (name + ' {"mcpServers":{}}\n').encode() for name in ('mcp-adapter.json', 'mcp.json')}
-        for path, content in files.items():
-            path.write_bytes(content)
+        files = {
+            'settings.json': json.dumps({'packages': [spec], 'extensions': ['-builtin:mcp', '-builtin:codemode',
+                                                                            '-builtin:tool-search'],
+                                         'own': {'kept': True}}, indent=4).encode(),
+            'mcp-adapter.json': json.dumps({'mcpServers': {
+                'direct': {'command': 'direct-server', 'directTools': True, 'lifecycle': 'lazy'},
+                'some': {'command': 'some-server', 'directTools': ['one']},
+                'off': {'command': 'off-server', 'disabled': True},
+                'signin': {'url': 'http://127.0.0.1:9/mcp', 'bearerTokenEnv': 'marker-kept-private'},
+            }}).encode(),
+            'mcp-onboarding.json': b'{"piBuiltinMcpHandledVersion": "7.0.0"}\n',
+        }
+        for name, data in files.items():
+            (self.profile / name).write_bytes(data)
+        return spec, files
+
+    def test_mcp_codemode_fresh_install_and_upgrade_give_codemode_entries(self):
+        # A closed loopback port: the okknow wizard probe fails at once, and the kit entry is still written.
+        origin = {'OKKNOW_ORIGIN': 'http://127.0.0.1:1'}
+        self.success(self.install(shell='none', modules='okknow,mcp-codemode', env=origin))
+        servers = json.loads((self.profile / 'mcp.json').read_text())['mcpServers']
+        self.assertEqual({'okknow'}, set(servers))
+        self.assertEqual('codemode', servers['okknow'].get('exposure'))
+        # An upgrade of an adapter profile converts its servers and leaves the adapter settings.
+        shutil.move(str(self.profile), str(self.base / 'fresh-profile'))
+        spec, _ = self.adapter_profile()
         self.success(self.install(mode='upgrade', shell='none', modules='mcp-codemode'))
+        self.assertEqual({'direct', 'some', 'off', 'signin'},
+                         set(json.loads((self.profile / 'mcp.json').read_text())['mcpServers']))
         settings = json.loads((self.profile / 'settings.json').read_text())
         self.assertNotIn(spec, settings['packages'])
         self.assertEqual(['-builtin:tool-search'], settings['extensions'])
-        for path, content in files.items():
-            self.assertEqual(content, path.read_bytes())
+        self.assertEqual({'kept': True}, settings['own'])
+        # A switched profile is not switched again: no second backup, and mcp.json keeps its bytes.
+        folders = set((self.profile / 'backups').iterdir())
+        native = (self.profile / 'mcp.json').read_bytes()
+        self.success(self.install(mode='upgrade', shell='none', modules='mcp-codemode'))
+        self.assertEqual(folders, set((self.profile / 'backups').iterdir()))
+        self.assertEqual(native, (self.profile / 'mcp.json').read_bytes())
+
+    def test_mcp_codemode_backs_up_first_and_a_conflict_leaves_the_profile(self):
+        _, files = self.adapter_profile()
+        (self.profile / 'mcp.json').write_bytes(b'{"mcpServers": {}}\n')
+        before = self.snapshot()
+        self.assertNotEqual(0, self.install(mode='upgrade', shell='none', modules='mcp-codemode').returncode)
+        self.assertEqual(before, self.snapshot())
+        shutil.move(str(self.profile / 'mcp.json'), str(self.base / 'own-mcp.json'))
+        self.success(self.install(mode='upgrade', shell='none', modules='mcp-codemode'))
+        folder = next((self.profile / 'backups').iterdir())
+        self.assertEqual(0o700, stat.S_IMODE(folder.stat().st_mode))
+        for name, data in files.items():
+            self.assertEqual(data, (folder / name).read_bytes())
+            self.assertEqual(0o600, stat.S_IMODE((folder / name).stat().st_mode))
+
+    def test_mcp_codemode_restore_gives_back_the_adapter_profile(self):
+        spec, files = self.adapter_profile()
+        self.success(self.install(mode='upgrade', shell='none', modules='mcp-codemode'))
+        folder = next((self.profile / 'backups').iterdir())
+        done = subprocess.run(['python3', str(ROOT / 'scripts/mcp_to_native.py'), '--restore', str(folder)],
+                              env=self.env, text=True, capture_output=True, timeout=20)
+        self.assertEqual(0, done.returncode, done.stderr)
+        for name, data in files.items():
+            self.assertEqual(data, (self.profile / name).read_bytes())
+        # The new native file is in the backup folder, so the adapter does not import it.
+        self.assertFalse(os.path.lexists(self.profile / 'mcp.json'))
+        # The adapter selection works again: an upgrade with mcp keeps the adapter and its -builtin:mcp entry.
+        self.success(self.install(mode='upgrade', shell='none', modules='mcp'))
+        settings = json.loads((self.profile / 'settings.json').read_text())
+        self.assertIn(spec, settings['packages'])
+        self.assertIn('-builtin:mcp', settings['extensions'])
+        self.assertNotIn('defaultTools', settings)
+        self.assertFalse(os.path.lexists(self.profile / 'mcp.json'))
 
     def test_bash_alias_launcher_forwarding_and_repeat(self):
         rc = self.home / '.bashrc'
@@ -420,7 +465,9 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                                          ('Darwin', 'computer-use-macos', 'computer-use')):
             with self.subTest(platform=platform):
                 self.command('uname', 'echo ' + platform + '\n')
-                # all selects walkr too: fake node and npm commands record the step without a network.
+                # agy ran for this user, but all leaves agy out: its folder stays empty.
+                (self.home / '.gemini/config').mkdir(parents=True, exist_ok=True)
+                # all selects walkr too: fake node and npm commands record the step.
                 for name in ('node', 'npm'):
                     self.command(name, 'echo "' + name + ' $*" >>"$HOME/walkr-calls"\n')
                 self.success(self.install(mode='new' if platform == 'Linux' else 'upgrade', shell='none',
@@ -431,6 +478,7 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                     self.assertIn('npm:' + MANIFEST['components'][name]['source']['spec'], requested)
                 self.assertNotIn('npm:' + MANIFEST['components'][other]['source']['spec'], requested)
                 self.assertIn('packages/walkr/src/setup.js', (self.home / 'walkr-calls').read_text())
+                self.assertEqual([], os.listdir(self.home / '.gemini/config'))
                 if platform == 'Linux':
                     # The Darwin subtest shares this home, so only the first run proves the link.
                     self.assertTrue((self.home / '.local/bin/okknow').is_symlink())
@@ -455,19 +503,25 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertEqual({k: v for k, v in before.items() if k != calls},
                          {k: v for k, v in self.snapshot().items() if k != calls})
 
-    def test_walkr_proxy_prints_the_guide_and_writes_no_file(self):
-        self.success(self.install(shell='none'))
-        self.success(self.install(mode='upgrade', shell='none'))
-
-        def files():
-            # The fake pi appends each of its calls to calls.jsonl.
-            return {name: data for name, data in self.snapshot().items() if not name.endswith('calls.jsonl')}
-
-        before = files()
-        result = self.install(mode='upgrade', shell='none', modules='walkr-proxy')
+    def test_agy_without_agy_config_writes_nothing_for_agy_and_installs_the_rest(self):
+        # agy never ran for this user: no ~/.gemini/config. The run skips agy with one line and finishes artifacts.
+        result = self.install(shell='none', modules='artifacts,agy')
         self.success(result)
-        self.assertEqual(before, files())
-        self.assertIn(str(ROOT / 'packages/walkr/docs/core.md'), result.stdout)
+        self.assertFalse(os.path.lexists(self.home / '.gemini'))
+        self.assertTrue((self.home / '.local/bin/artifacts').is_symlink())
+        self.assertTrue((self.profile / 'settings.json').is_file())
+
+    def test_memory_needs_artifacts_and_node_24(self):
+        # The memory viewer is a section of the local artifacts server: alone it is refused before the first write.
+        alone = self.install(shell='none', modules='memory')
+        self.assertEqual(2, alone.returncode)
+        self.assertFalse(self.profile.exists())
+        # A node that cannot load the dependencies (an old version, or none installed) and an npm that repairs
+        # nothing: the memory step fails with its reason, after the profile step.
+        self.command('node', 'exit 3\n')
+        self.command('npm', 'exit 0\n')
+        result = self.install(shell='none', modules='artifacts,memory')
+        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
 
     @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
     def test_walkr_runs_the_setup_of_the_package_for_claude_and_for_the_profile(self):
@@ -477,7 +531,15 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         # The Walkr setup made ~/.claude; this run adds no skill link of the kit to an account that had none.
         self.assertEqual(sorted(MANIFEST['components']['walkr']['resources']['skills']),
                          sorted('skills/' + p.name for p in (self.home / '.claude/skills').iterdir()))
+        # The state of an install from before the retirement of the other Walkr modes: a link of the kit for a retired
+        # command, and a file of another owner with a retired name. The upgrade removes only its own link.
+        own = self.home / '.local/bin/walkr-core'
+        own.symlink_to(walkr / 'src/walkr-core.js')
+        foreign = self.home / '.local/bin/walkr-double'
+        foreign.write_text('#!/bin/sh\n')
         self.success(self.install(mode='upgrade', shell='none', modules='walkr', env=env))
+        self.assertFalse(own.is_symlink() or own.exists())
+        self.assertEqual('#!/bin/sh\n', foreign.read_text())
         for name in MANIFEST['components']['walkr']['resources']['skills']:
             for root in ('.claude', '.agents'):
                 skill = (self.home / root / name / 'SKILL.md').read_text()
@@ -486,8 +548,8 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertIn(str(walkr / 'src/walkr-compare.js'), compare)
         prompt = (self.profile / 'prompts/walkr-compare.md').read_text()
         self.assertIn(json.dumps(str(self.home / '.agents/skills/walkr-compare/SKILL.md')), prompt)
-        # The walkr-core skill calls its command by name: the link exists, points into the kit and can run.
-        for name, source in (('walkr', 'cli.js'), ('walkr-core', 'walkr-core.js'), ('walkr-compare', 'walkr-compare.js')):
+        # The skills call their command by name: the link exists, points into the kit and can run.
+        for name, source in (('walkr', 'cli.js'), ('walkr-compare', 'walkr-compare.js')):
             link = self.home / '.local/bin' / name
             self.assertEqual((walkr / 'src' / source).resolve(), link.resolve())
             self.assertTrue(os.access(link, os.X_OK), name)
@@ -497,7 +559,7 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
     @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
     def test_walkr_keeps_another_file_of_a_command_name_and_reports_it(self):
         env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent), 'INSTALL_SKIP_PACKAGES': '1'}
-        other = self.home / '.local/bin/walkr-core'
+        other = self.home / '.local/bin/walkr-compare'
         other.parent.mkdir(parents=True)
         other.write_text('#!/bin/sh\n')
         result = self.install(shell='none', modules='walkr', env=env)
@@ -523,6 +585,23 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertEqual('#!/usr/bin/env node\n', source.read_text())
         self.assertFalse((self.profile / 'prompts/walkr.md').exists())
 
+    def test_walkr_upgrade_keeps_an_indirect_link_and_removes_a_direct_retired_link(self):
+        self.command('node', 'exit 0\n')
+        self.success(self.install(shell='none', modules='walkr'))
+        src = self.base / 'old-walkr/src'
+        src.mkdir(parents=True)
+        (src.parent / 'package.json').write_text(json.dumps({'name': 'walkr'}))
+        for name in ('walkr-core', 'walkr-double'):
+            (src / (name + '.js')).touch()
+        bin_dir = self.home / '.local/bin'
+        (bin_dir / 'my-command').symlink_to(src / 'walkr-core.js')
+        (bin_dir / 'walkr-core').symlink_to('my-command')
+        direct = bin_dir / 'walkr-double'
+        direct.symlink_to(src / 'walkr-double.js')
+        self.success(self.install(mode='upgrade', shell='none', modules='walkr'))
+        self.assertEqual('my-command', os.readlink(bin_dir / 'walkr-core'))
+        self.assertFalse(os.path.lexists(direct))
+
     @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
     def test_walkr_replaces_a_link_to_an_older_walkr_clone(self):
         env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent), 'INSTALL_SKIP_PACKAGES': '1'}
@@ -546,21 +625,6 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertNotRegex(result.stdout, r'(?im)^complete\b')
         self.assertFalse(os.path.lexists(self.home / '.local/bin/walkr'))
         self.assertFalse((self.profile / 'prompts/walkr.md').exists())
-
-    @unittest.skipUnless(shutil.which('node'), 'the Walkr setup needs node')
-    def test_walkr_installs_the_dependencies_again_after_an_interrupted_npm_run(self):
-        # A kit copy with a node_modules folder that holds no dependency, and an npm that repairs nothing.
-        kit = self.base / 'kit'
-        shutil.copytree(ROOT, kit, symlinks=True, ignore=shutil.ignore_patterns('.git', 'node_modules', '.local'))
-        (kit / 'packages/walkr/node_modules').mkdir()
-        self.command('npm', 'echo "npm $*" >>"$HOME/npm-calls"\nexit 0\n')
-        env = {'PATH': self.env['PATH'] + ':' + str(Path(shutil.which('node')).parent)}
-        self.command('pi', 'exit 0\n')
-        result = self.run_install('--new', 'demo', '--shell', 'none', '--with', 'walkr', '--yes', env=env, script=kit / 'install.sh')
-        self.assertEqual(1, result.returncode, result.stdout + result.stderr)
-        self.assertIn('ci --ignore-scripts', (self.home / 'npm-calls').read_text())
-        self.assertIn('dependencies of packages/walkr are not complete', result.stderr)
-        self.assertFalse((self.home / '.local/bin/walkr-core').exists())
 
     def test_walkr_without_node_reports_the_step_and_keeps_the_profile(self):
         result = self.install(shell='none', modules='walkr', env={'PATH': str(self.bin) + ':/usr/bin:/bin'})

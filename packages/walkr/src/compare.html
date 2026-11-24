@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Walkr sessions</title>
   <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/_walkr/compare/a2ui.css">
   <link rel="stylesheet" href="/_walkr/compare/compare.css">
   <script type="module" src="/theme.js"></script>
 </head>
@@ -12,39 +13,48 @@
   <div class="cmp-app" id="app">
     <header class="cmp-bar">
       <span class="cmp-mark"><!--walkr-foot-->walk<span class="cmp-mark-r">r</span></span>
-      <button type="button" id="toggleList" class="btn-ghost" aria-expanded="true" aria-controls="list">Sessions <span class="cmp-badge" id="newCount" hidden></span></button>
-      <span class="cmp-type" id="type" hidden></span>
-      <h1 id="title">Walkr sessions</h1>
-      <span class="cmp-state" id="state" role="status" aria-live="polite"></span>
+      <!--walkr-sections-->
+      <button type="button" id="toggleList" class="btn-ghost cmp-sessions-toggle" aria-expanded="true" aria-controls="list">Sessions <span class="cmp-badge" id="newCount" hidden></span></button>
       <span class="cmp-bar-end">
-        <button type="button" id="newer" class="btn-ghost" title="Show the next newer session">Newer</button>
-        <button type="button" id="older" class="btn-ghost" title="Show the next older session">Older</button>
-        <label>Type <select id="typeFilter"><option value="">All types</option></select></label>
-        <label>View <select id="viewMode"></select></label>
-        <button type="button" id="showAll" class="btn-ghost" aria-controls="stage" hidden>Show all</button>
-        <label>Theme
-          <select id="theme" data-theme-picker>
-            <option value="torch-light">Torch Light</option>
-            <option value="torch-dark">Torch Dark</option>
-            <option value="plum">Fleet / Plum Dusk</option>
-            <option value="night">Fleet / Soft Night</option>
-            <option value="day">Fleet / Soft Day</option>
-            <option value="statue-light">Statue Light</option>
-            <option value="statue-dark">Statue Dark</option>
-            <option value="light">Original Light</option>
-            <option value="dark">Original Dark</option>
-          </select>
-        </label>
+        <span class="cmp-bar-group cmp-bar-step">
+          <button type="button" id="newer" class="btn-ghost" title="Show the next newer session">Newer</button>
+          <button type="button" id="older" class="btn-ghost" title="Show the next older session">Older</button>
+        </span>
+        <span class="cmp-bar-group">
+          <label><span>Workflow</span><select id="typeFilter"><option value="">All workflows</option></select></label>
+          <label><span>Renderer</span><select id="renderer"><option value="current">Current</option><option value="a2ui">A2UI</option></select></label>
+          <label><span>View</span><select id="viewMode"></select></label>
+          <button type="button" id="showAll" class="btn-ghost" aria-controls="stage" hidden>Show all</button>
+        </span>
+        <span class="cmp-bar-group">
+          <label><span>Theme</span>
+            <select id="theme" data-theme-picker>
+              <option value="torch-light">Torch Light</option>
+              <option value="torch-dark">Torch Dark</option>
+              <option value="plum">Fleet / Plum Dusk</option>
+              <option value="night">Fleet / Soft Night</option>
+              <option value="day">Fleet / Soft Day</option>
+              <option value="statue-light">Statue Light</option>
+              <option value="statue-dark">Statue Dark</option>
+              <option value="light">Original Light</option>
+              <option value="dark">Original Dark</option>
+            </select>
+          </label>
+        </span>
       </span>
     </header>
 
     <aside class="cmp-list" id="list" aria-label="Sessions, newest first">
       <ol id="sessions"></ol>
-      <p id="empty" hidden>No session of this type yet.</p>
-      <p id="coreNote">Core pages without a comment, an edit or a batch are not listed.</p>
+      <p id="empty" hidden>No session yet.</p>
     </aside>
 
     <main class="cmp-main">
+      <header class="cmp-session-head" id="sessionHead">
+        <span class="cmp-type" id="type" hidden></span>
+        <h1 id="title">Walkr sessions</h1>
+        <span class="cmp-state" id="state" role="status" aria-live="polite"></span>
+      </header>
       <div class="cmp-alert" id="alert" role="alert" hidden>
         <p id="alertText"></p>
         <button type="button" id="resolve" class="btn-primary" hidden>Retry the same request</button>
@@ -52,31 +62,44 @@
       <p class="cmp-hint" id="hint">Select a session in the list.</p>
       <div class="cmp-record" id="guide" hidden></div>
       <div class="cmp-record" id="record" hidden></div>
+      <!-- The links to the earlier and the later rounds of a Compare session. src/compare.js fills it. -->
+      <nav class="cmp-rounds" id="rounds" aria-label="Rounds of this comparison" hidden></nav>
+      <div id="aInfo" hidden></div>
+      <div id="aTabs" hidden></div>
       <details class="cmp-context" id="context" hidden>
         <summary>Brief and answers</summary>
-        <div id="contextBody"></div>
+        <div class="cmp-context-body" id="contextBody"></div>
       </details>
       <details class="cmp-original" id="original" hidden>
         <summary id="originalLabel">Original text</summary>
         <pre class="cmp-text" id="originalText"></pre>
       </details>
       <div class="cmp-tabs" id="tabs" role="tablist" aria-label="Options" hidden></div>
-      <div class="cmp-stage" id="stage" hidden></div>
-      <footer class="cmp-decide" id="decide" hidden>
-        <div class="cmp-pick">
-          <p id="result" role="status"></p>
-          <label class="cmp-none" id="noneLabel"><input type="checkbox" id="none"> No option fits</label>
-          <label class="cmp-note" id="noteLabel">Note <textarea id="note" rows="3" maxlength="8000" placeholder="Optional. Required when no option fits."></textarea></label>
-          <button type="button" id="submit" class="btn-primary" disabled>Submit result</button>
+      <!-- The option columns and the side column of a Compare session. A wide main area shows the side column on the right
+           of the columns; a narrower one shows it below them. See the header of src/compare.css. -->
+      <div class="cmp-work" id="work" hidden>
+        <div id="aStage" hidden></div>
+        <div class="cmp-stage" id="stage" hidden></div>
+        <div class="cmp-decide" id="decide" hidden>
+          <!-- The decision panel: one A2UI surface that src/compare.js builds and src/a2ui.js draws. -->
+          <div class="cmp-pick" id="decision"></div>
+          <!-- The rating, folded. It is closed at the start and for each newly selected session. -->
+          <div class="cmp-rate" id="aRating" hidden></div>
+          <details class="cmp-rate" id="rating">
+            <summary><span class="cmp-rate-head"><span id="rateTitle">Rate this session</span> <span class="cmp-rate-pill" id="rateSaved">Not rated</span></span></summary>
+            <div class="cmp-rate-body">
+              <div class="cmp-rate-stars-row">
+                <span class="cmp-stars" id="stars" role="radiogroup" aria-labelledby="rateTitle"></span>
+                <span class="cmp-rate-readout" id="rateText"></span>
+              </div>
+              <label class="cmp-note"><span>Rating note</span><textarea id="rateNote" rows="3" maxlength="2000" placeholder="Optional. What was good or bad in this session?"></textarea></label>
+              <div class="cmp-rate-actions">
+                <button type="button" id="rate" class="btn-ghost" disabled>Save rating</button>
+              </div>
+            </div>
+          </details>
         </div>
-        <div class="cmp-rate">
-          <span id="rateTitle">Rate this session</span>
-          <span class="cmp-stars" id="stars" role="radiogroup" aria-labelledby="rateTitle"></span>
-          <span id="rateText"></span>
-          <label class="cmp-note">Rating note <textarea id="rateNote" rows="3" maxlength="2000" placeholder="Optional. What was good or bad in this session?"></textarea></label>
-          <button type="button" id="rate" class="btn-ghost" disabled>Save rating</button>
-        </div>
-      </footer>
+      </div>
     </main>
   </div>
   <!--walkr-guides-->

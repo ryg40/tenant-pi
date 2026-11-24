@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """artifacts: store an HTML or Markdown file in the local artifact store and print its view link.
 
-Commands: setup, upload, list, open, delete, doctor, retention, and start, off (alias stop), status and walkr-url for
-the one local server of this user. An upload writes into the store directly and needs no running server. The server is the
-read-only program `server/artifacts_server.py` of this package; it listens on 127.0.0.1 only and has the root page /,
-the index /artifacts and the Walkr page /walkr. off stops only this server, never a Walkr process. With the key `remote`
-(artifacts setup --remote HOST), upload, list, delete and open work on the store of HOST over SSH; --here ignores
+Commands: setup, upload, list, open, archive, restore, delete, doctor, retention, and start, off (alias stop), status, events and
+walkr-url for the one local server of this user. An upload writes into the store directly and needs no running server.
+The server is the program `server/artifacts_server.py` of this package; it listens on 127.0.0.1 only and has the root
+page /, the index /artifacts, the Walkr page /walkr and, with the memory viewer of the kit, the section /memory/. off
+stops this server, its memory viewer and the live Walkr server (--keep-walkr leaves that one). With the key `remote`
+(artifacts setup --remote HOST), upload, list, archive, restore, delete and open work on the store of HOST over SSH; --here ignores
 the key for one call.
 
 Exit codes: 0 done, 2 refused input (walkr-url: the session is unknown or the ID is not valid), 3 the server or the
@@ -27,7 +28,6 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.parse
 
 # The package root from the real path of this file, so the ~/.local/bin and ~/.claude/skills links work.
 PACKAGE = Path(os.path.realpath(__file__)).parents[3]
@@ -36,6 +36,9 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(SERVER.parent))
 import artifacts_store as store_lib  # noqa: E402
 import walkr_front  # noqa: E402
+import local_sockets  # noqa: E402
+import events as events_lib  # noqa: E402
+import memory_front  # noqa: E402
 
 TYPES = {'.html': 'text/html', '.htm': 'text/html', '.md': 'text/markdown', '.markdown': 'text/markdown'}
 SCAN_TIMEOUT = 300
@@ -43,12 +46,6 @@ GIT_TIMEOUT = 10
 HEALTH_WAIT = 30
 STOP_WAIT = 10
 HEALTH_TIMEOUT = 2
-# walkr-url stops `walkr-compare open` after this time. Walkr itself gives up its start after about 6 s, and a slow
-# request after 10 s.
-WALKR_URL_WAIT = 20
-# The page address that `walkr-compare open` prints: the path holds the page secret, the fragment a session ID.
-WALKR_PAGE = re.compile(r'/_walkr/compare/g/[a-f0-9]{64}')
-WALKR_SESSION = re.compile(r'[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}')
 # A test seam, not a setting: a command line (shlex form) that scans the files of its working directory.
 SCAN_ENV = 'ARTIFACTS_SCAN_COMMAND'
 # A test seam, not a setting: a command line (shlex form) that replaces the program ssh of the remote store.
@@ -66,7 +63,7 @@ REMOTE_SCRIPT = ('unset HERDR_ENV; '
                  'if [ -x "$HOME/.local/bin/artifacts" ]; then exec "$HOME/.local/bin/artifacts" "$@"; fi; '
                  'exit 127')
 # The commands that go to the remote store when the key `remote` is set and --here is not given.
-REMOTE_COMMANDS = ('upload', 'list', 'delete', 'open')
+REMOTE_COMMANDS = ('upload', 'list', 'delete', 'archive', 'restore', 'open')
 
 
 class Stop(Exception):
@@ -390,7 +387,7 @@ def port_free(port):
 def alive(pid):
     try:
         os.kill(pid, 0)
-    except ProcessLookupError:
+    except (ProcessLookupError, OverflowError):  # OverflowError: a number that is no PID of this system
         return False
     except OSError:
         return True
@@ -411,6 +408,9 @@ def cmd_setup(args):
     data = config()
     if args.remote is not None and not store_lib.valid_remote(args.remote):
         raise Stop(2, store_lib.REMOTE_RULE + '; nothing written')
+    public = args.walkr_public_origin and store_lib.valid_public_origin(args.walkr_public_origin)
+    if args.walkr_public_origin is not None and not public:
+        raise Stop(2, store_lib.PUBLIC_RULE + '; nothing written')
     try:
         old = store_lib.port_of(data)
     except store_lib.ConfigError:
@@ -418,21 +418,32 @@ def cmd_setup(args):
     port = args.port if args.port is not None else old or store_lib.DEFAULT_PORT
     if not 1 <= port <= 65535:
         raise Stop(2, 'the port is a number from 1 to 65535')
-    # A server of this home on the old port would stay out of reach of off, which asks the configured port. The
-    # state file tells it from a server that the same user started from another home.
-    answer = health(old) if old and port != old else None
-    if answer and answer['pid'] == read_state().get('pid'):
-        raise Stop(2, f'the server runs on port {old}: run artifacts off first, then setup, then start')
+    # A server of this home on the old port would stay out of reach of off, which asks the configured port. Setup
+    # asks the old port only when the state file of this home names that port and a live PID: with no config the old
+    # port is the default, the server of another home.
+    if old and port != old:
+        state = read_state()
+        if state.get('port') == old and alive(state['pid']):
+            answer = health(old)
+            if answer and answer['pid'] == state['pid']:
+                raise Stop(2, f'the server runs on port {old}: run artifacts off first, then setup, then start')
     data['port'] = port
     if args.remote is not None:
         data['remote'] = args.remote
     elif args.local:
         data.pop('remote', None)
+    if public:
+        data[store_lib.PUBLIC_KEY] = public
+    elif args.no_walkr_public_origin:
+        data.pop(store_lib.PUBLIC_KEY, None)
     store_lib.write_config(data)
     print('config: ' + str(store_lib.config_path()))
     print(f'port: {port}')
     if args.remote is not None or args.local:
         print('remote: ' + data.get('remote', 'none (the store of this computer)'))
+    if public or args.no_walkr_public_origin:
+        print('walkr public origin: ' + data.get(store_lib.PUBLIC_KEY, 'none (loopback only)'))
+        print('restart the artifacts server and the live Walkr server: they read the key at their start')
     return 0
 
 
@@ -536,7 +547,10 @@ def cmd_list(args):
         return relay(remote_call(args.host, ['list']))
     days = retention_of(config())
     for meta in store_lib.artifacts(store_lib.store_dir()):
-        print('\t'.join((meta['slug'], plain(meta.get('title') or ''), store_lib.expiry(meta, days))))
+        fields = [meta['slug'], plain(meta.get('title') or ''), store_lib.expiry(meta, days)]
+        if store_lib.archived(meta):
+            fields.append('archived')
+        print('\t'.join(fields))
     return 0
 
 
@@ -551,16 +565,37 @@ def sheprd_command():
     return None
 
 
+def remote_slugs(args, lost):
+    for slug in args.slugs:
+        if not store_lib.SLUG.fullmatch(slug):
+            raise Stop(2, f'{plain(slug, 40)} is not a slug (32 characters of A-Z, a-z, 0-9, _ and -); {lost}')
+    return relay(remote_call(args.host, [args.command, '--', *args.slugs], lost=lost))
+
+
+def cmd_archive(args):
+    if args.host:
+        return remote_slugs(args, 'nothing is changed')
+    store = store_lib.store_dir()
+    slugs = list(dict.fromkeys(args.slugs))
+    for slug in slugs:
+        if store_lib.artifact_meta(store, slug) is None:
+            raise Stop(2, f'no artifact {plain(slug, 40)} in the store; nothing changed')
+    change = store_lib.archive_artifact if args.command == 'archive' else store_lib.restore_artifact
+    try:
+        for slug in slugs:
+            change(store, slug)
+            print(f'{args.command}d: {slug}')
+    except (OSError, store_lib.NotAnArtifact):
+        raise Stop(2, f'cannot {args.command} {slug}; artifacts list shows the store') from None
+    return 0
+
+
 def cmd_delete(args):
     """Delete the named artifacts. Each slug is checked first; one that names no artifact deletes nothing. A scratch
     directory that could not be removed stays: the command names it and exits 2. With a remote store, each slug is
     checked here against the slug pattern first."""
     if args.host:
-        for slug in args.slugs:
-            if not store_lib.SLUG.fullmatch(slug):
-                raise Stop(2, f'{plain(slug, 40)} is not a slug (32 characters of A-Z, a-z, 0-9, _ and -); '
-                              'nothing deleted')
-        return relay(remote_call(args.host, ['delete', '--', *args.slugs], lost='nothing is deleted'))
+        return remote_slugs(args, 'nothing is deleted')
     left = []
 
     def deleted(slug, scratch):
@@ -704,9 +739,9 @@ def cmd_doctor(args):
 
 
 def server_env():
-    """A small environment for the server: PATH, HOME and the XDG variables that are set."""
-    return {name: value for name, value in os.environ.items()
-            if name in ('PATH', 'HOME') or name.startswith('XDG_')}
+    """A small environment for the server: PATH, HOME and the XDG variables that are set. It is the environment of
+    `walkr-compare open` too, so the server and walkr-url use the same ~/.human-review."""
+    return walkr_front.child_env()
 
 
 def stop_child(process):
@@ -741,21 +776,37 @@ def facts(port, answer):
     root = index_url(port)
     if answer and 'schema' not in answer:
         return {'url': root, 'pages': {'root': root, 'artifacts': root}, 'modules': ['artifacts'], 'socket': None,
-                'old': True}
+                'old': True, 'events': None, 'memory': None}
     if answer:
         listed = answer.get('pages') if isinstance(answer.get('pages'), dict) else {}
         walkr = 'walkr' in listed and isinstance(answer.get('walkr'), dict)
         socket_word = answer['walkr'].get('socket') if walkr else None
         if socket_word not in ('open', 'closed'):
             walkr, socket_word = False, None
+        memory = answer['memory'].get('state') if 'memory' in listed and isinstance(answer.get('memory'), dict) \
+            else None
+        if memory not in ('running', 'stopped'):
+            memory = None
     else:
         walkr = walkr_front.installed()
         socket_word = walkr_front.socket_state() if walkr else None
+        memory = 'stopped' if memory_front.installed() else None
     pages = {'root': root, 'artifacts': artifacts_url(port)}
     if walkr:
         pages['walkr'] = walkr_page_url(port)
-    return {'url': pages['artifacts'], 'pages': pages, 'modules': ['artifacts', 'walkr'] if walkr else ['artifacts'],
-            'socket': socket_word, 'old': False}
+    if memory:
+        pages['memory'] = f'http://127.0.0.1:{port}{memory_front.PREFIX}/'
+    # The event channel: only a running server that names it in /healthz has one. The token is never here; the
+    # answer names only its file, which only this user can read.
+    channel = answer.get('events') if answer and isinstance(answer.get('events'), dict) else {}
+    path = channel.get('path')
+    events_known = None
+    if isinstance(path, str) and re.fullmatch(r'/events/v[0-9]{1,3}', path) and type(channel.get('version')) is int:
+        events_known = {'url': f'http://127.0.0.1:{port}{path}', 'version': channel['version'],
+                        'token_file': str(store_lib.state_dir() / events_lib.TOKEN_FILE)}
+    modules = ['artifacts'] + (['walkr'] if walkr else []) + (['memory'] if memory else [])
+    return {'url': pages['artifacts'], 'pages': pages, 'modules': modules, 'socket': socket_word, 'old': False,
+            'events': events_known, 'memory': memory}
 
 
 OLD_SERVER_NOTE = ('note: this server runs from before the update and has no /artifacts page; '
@@ -767,6 +818,8 @@ def page_lines(known):
     lines = ['root: ' + known['pages']['root']]
     if 'walkr' in known['pages']:
         lines.append('walkr: ' + known['pages']['walkr'])
+    if 'memory' in known['pages']:
+        lines.append('memory: ' + known['pages']['memory'])
     if known['old']:
         lines.append(OLD_SERVER_NOTE)
     return lines
@@ -854,11 +907,104 @@ def cmd_off(args):
         # The state file goes when its server stopped or its PID is gone; else a later off can still use it.
         if state and not left and (stopped or not alive(state['pid'])):
             state_file().unlink(missing_ok=True)
-        # off never signals a Walkr process: a review that an agent waits on goes on.
-        if walkr_front.socket_state() == 'open':
-            print('walkr: a live Walkr server still runs; off does not stop it')
+        # The live Walkr server is a part of the one local web app, so off stops it too. --keep-walkr leaves it: a
+        # walkr-compare wait that runs now then goes on.
+        if args.keep_walkr:
+            if walkr_front.socket_state() == 'open':
+                print('walkr: a live Walkr server still runs; --keep-walkr leaves it')
+        else:
+            walkr = stop_walkr()
+            if walkr == 'stopped':
+                print('walkr: stopped the live Walkr server; the saved sessions stay, and the next walkr-compare '
+                      'command starts a new server')
+            elif walkr == 'unproven':
+                print('walkr: cannot prove the listener belongs to your Walkr server; leaving it running. '
+                      'Stop it manually if needed.')
+            elif walkr == 'left':
+                print(f'walkr: the live Walkr server did not stop in {STOP_WAIT} s', file=sys.stderr)
+                left = 1
         print(f'off: stopped {stopped} local server' + ('' if stopped == 1 else 's'))
         return 3 if left else 0
+
+
+def stop_walkr():
+    """Stop only a current Walkr process that owns all listeners of its recorded port."""
+    record = walkr_front.read_record(protocol=True, private=True)
+    if record is None:
+        return 'unproven' if os.path.lexists(walkr_front.record_path()) else None
+    port, pid, protocol = record
+    if not valid_pid(pid) or not walkr_front.current(protocol):
+        return 'unproven'
+    if not hasattr(os, 'pidfd_open') or not hasattr(signal, 'pidfd_send_signal'):
+        return 'unproven'
+    try:
+        # Pin the process before checking its sockets. PID reuse cannot redirect the signal.
+        fd = os.pidfd_open(pid)
+        try:
+            owner = local_sockets.listener_owner(port, pid)
+            if owner == 'absent':
+                return None
+            if owner != 'owned' or not walkr_front.probe(port, pid):
+                return 'unproven'
+            signal.pidfd_send_signal(fd, signal.SIGTERM)
+        finally:
+            os.close(fd)
+    except ProcessLookupError:
+        return None
+    except (OSError, OverflowError):
+        return 'unproven'
+    deadline = time.monotonic() + STOP_WAIT
+    while time.monotonic() < deadline:
+        if not walkr_front.probe(port, pid):
+            return 'stopped'
+        time.sleep(0.1)
+    return 'left'
+
+
+def cmd_events(args):
+    """The test client of the event channel: print each message of the stream as one line, `<event> <JSON>`.
+
+    It reads the token from the token file of this user and sends it as a Bearer credential. --count N ends after N
+    messages; --last-id ID asks for the events after that ID. A beat line of the server prints nothing."""
+    port = port_of(config())
+    answer = health(port)
+    known = facts(port, answer)
+    if not answer or not known['events']:
+        raise Stop(3, f'no local server with an event channel runs on port {port}; start it with artifacts start')
+    try:
+        token = Path(known['events']['token_file']).read_text(encoding='ascii').strip()
+    except (OSError, ValueError):
+        raise Stop(3, 'the token file of the event channel cannot be read: ' + known['events']['token_file']) from None
+    headers = {'Authorization': 'Bearer ' + token, 'Accept': 'text/event-stream'}
+    if args.last_id:
+        headers['Last-Event-ID'] = args.last_id
+    # No read limit after the connect: the server sends a beat line every 15 seconds.
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=60)
+    try:
+        connection.request('GET', known['events']['url'].partition(f':{port}')[2], headers=headers)
+        reply = connection.getresponse()
+        if reply.status != 200:
+            raise Stop(3, f'the event channel answered {reply.status}: ' + plain(reply.read(300).decode('utf-8', 'replace')))
+        seen, event, data = 0, '', ''
+        for raw in reply:
+            line = raw.decode('utf-8', 'replace').rstrip('\r\n')
+            if line.startswith('event:'):
+                event = line[6:].strip()
+            elif line.startswith('data:'):
+                data += line[5:].strip()
+            elif not line and (event or data):
+                print(f'{event} {data}', flush=True)
+                seen, event, data = seen + 1, '', ''
+                if args.count and seen >= args.count:
+                    return 0
+        print('the event channel closed', file=sys.stderr)
+        return 0
+    except (OSError, http.client.HTTPException) as error:
+        raise Stop(3, f'the event channel ended: {type(error).__name__}') from None
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        connection.close()
 
 
 def cmd_status(args):
@@ -878,6 +1024,10 @@ def cmd_status(args):
         out.update({'port': port, 'host': '127.0.0.1', 'modules': known['modules'], 'pages': known['pages']})
         if known['socket']:
             out['walkr'] = {'socket': known['socket']}
+        if known['memory']:
+            out['memory'] = {'state': known['memory']}
+        if known['events']:
+            out['events'] = known['events']
         if remote:
             out['store_host'] = remote
         print(json.dumps(out))
@@ -888,6 +1038,10 @@ def cmd_status(args):
     print('root: ' + known['pages']['root'])
     if known['socket']:
         print(f'walkr: {known["pages"]["walkr"]} (live Walkr server: {known["socket"]})')
+    if known['memory']:
+        print(f'memory: {known["pages"]["memory"]} (memory viewer: {known["memory"]})')
+    if known['events']:
+        print(f'events: {known["events"]["url"]} (token file: {known["events"]["token_file"]})')
     if known['old']:
         print(OLD_SERVER_NOTE)
     if value is not None and remote is None:
@@ -898,15 +1052,12 @@ def cmd_status(args):
 def cmd_walkr_url(args):
     """Print the private address of the Walkr page on the origin of this server: one line on standard output.
 
-    `walkr-compare open` starts the live Walkr server when none runs and prints the address on the Walkr port. It
-    runs with server_env(), so it uses ~/.human-review as the server does. That environment holds neither
-    WALKR_SHEPRD_CONNECT nor HERDR_ENV, so the optional Sheprd link of Walkr stays off: Sheprd calls this command
+    walkr_front.open_page runs `walkr-compare --here open`, the same run as the page /walkr of the server. It starts the
+    live Walkr server when none runs and keeps the optional Sheprd link of Walkr off: Sheprd calls this command
     itself and must not get the address of the Walkr port."""
     port = port_of(config())
-    env = server_env()
-    program = shutil.which(walkr_front.PROGRAM, path=env.get('PATH', ''))
-    if program is None:
-        raise Stop(4, f'Walkr is not installed: the program {walkr_front.PROGRAM} is not on the PATH')
+    if not walkr_front.installed():
+        raise Stop(4, walkr_front.NOT_INSTALLED)
     answer = health(port)
     if not answer:
         raise Stop(3, f'the local server does not run on port {port}; start it with artifacts start')
@@ -914,28 +1065,12 @@ def cmd_walkr_url(args):
         # A server from before the update has no Walkr pass: the address would not work on its port.
         raise Stop(3, f'the local server on port {port} runs from before the update and has no Walkr pass; '
                       'run artifacts off, then artifacts start')
-    words = [program, 'open'] + ([args.session] if args.session else [])
     try:
-        done = subprocess.run(words, env=env, stdin=subprocess.DEVNULL, capture_output=True,
-                              timeout=WALKR_URL_WAIT, cwd=str(store_lib.state_dir()))
-    except subprocess.TimeoutExpired:
-        raise Stop(3, f'the live Walkr server gave no page address in {WALKR_URL_WAIT} s') from None
-    except OSError as error:
-        raise Stop(4, f'{walkr_front.PROGRAM} cannot run: {error.strerror}') from None
-    why = walkr_front.mask(plain(done.stderr.decode('utf-8', 'replace'), 300))
-    if done.returncode == 2:
-        raise Stop(2, 'the session is unknown or the ID is not valid' + (f' ({why})' if why else ''))
-    if done.returncode in (126, 127):
-        # The program is a Node script: env exits 127 when node is not on the PATH.
-        raise Stop(4, f'{walkr_front.PROGRAM} cannot run; is Node on the PATH?' + (f' ({why})' if why else ''))
-    if done.returncode != 0:
-        raise Stop(3, 'the live Walkr server did not answer' + (f' ({why})' if why else ''))
-    lines = done.stdout.decode('utf-8', 'replace').split()
-    address = urllib.parse.urlsplit(lines[-1] if lines else '')
-    if (address.scheme != 'http' or address.query or not WALKR_PAGE.fullmatch(address.path)
-            or address.fragment and not WALKR_SESSION.fullmatch(address.fragment)):
-        raise Stop(3, f'{walkr_front.PROGRAM} open printed no page address')
-    print(f'http://127.0.0.1:{port}{address.path}' + (f'#{address.fragment}' if address.fragment else ''))
+        path = walkr_front.open_page(args.session, cwd=str(store_lib.state_dir()))
+    except walkr_front.OpenFailed as error:
+        # The CLI shows the error output of walkr-compare too; the server shows only the fixed message.
+        raise Stop(error.code, str(error) + (f' ({error.detail})' if error.detail else '')) from None
+    print(f'http://127.0.0.1:{port}{path}')
     return 0
 
 
@@ -949,8 +1084,14 @@ def main(argv=None):
     setup.add_argument('--port', type=int, help=f'the loopback port of the server (default {store_lib.DEFAULT_PORT})')
     where = setup.add_mutually_exclusive_group()
     where.add_argument('--remote', metavar='HOST',
-                       help='an SSH destination: upload, list, delete and open use the store of HOST')
+                       help='an SSH destination for the store commands')
     where.add_argument('--local', action='store_true', help='remove the key remote: use the store of this computer')
+    public = setup.add_mutually_exclusive_group()
+    public.add_argument('--walkr-public-origin', metavar='ORIGIN',
+                        help='write the key walkrPublicOrigin: the one https origin of a reverse proxy for the Walkr '
+                             'Compare page, for example https://walkr.example.org')
+    public.add_argument('--no-walkr-public-origin', action='store_true',
+                        help='remove the key walkrPublicOrigin: the Walkr page is loopback only')
     upload = sub.add_parser('upload', help='scan one .html or .md file and store it; print the view link')
     upload.add_argument('file', help='the file, or - for standard input with --name')
     upload.add_argument('--name', help='with -: the file name of standard input (only its last path part)')
@@ -966,22 +1107,28 @@ def main(argv=None):
     sub.add_parser('list', help='one line for each stored artifact, newest first: slug, title, expiry')
     opener = sub.add_parser('open', help='print the /artifacts address or the viewer URL; show it in Sheprd in Herdr')
     opener.add_argument('slug', nargs='?')
-    delete = sub.add_parser('delete', help='delete the named artifacts from the store')
-    delete.add_argument('slugs', nargs='+', metavar='SLUG')
+    for name, help_text in (('delete', 'delete the named artifacts from the store'),
+                            ('archive', 'move the named artifacts to the archive list'),
+                            ('restore', 'return the named artifacts to the main list')):
+        sub.add_parser(name, help=help_text).add_argument('slugs', nargs='+', metavar='SLUG')
     sub.add_parser('doctor', help='the store, the port, the server, the retention and the scanner')
     retention = sub.add_parser('retention', help='print the retention, or set it: a number of days or none')
     retention.add_argument('value', nargs='?')
     sub.add_parser('start', help='start the local server when none runs; the last line is the /artifacts address')
-    sub.add_parser('off', aliases=['stop'], help='stop the local server of this user')
+    off = sub.add_parser('off', aliases=['stop'], help='stop the local server of this user and the live Walkr server')
+    off.add_argument('--keep-walkr', action='store_true', help='leave the live Walkr server running')
+    watch = sub.add_parser('events', help='print the messages of the event channel of the local server, one line each')
+    watch.add_argument('--count', type=int, metavar='N', help='end after N messages')
+    watch.add_argument('--last-id', metavar='ID', help='ask for the events after this event ID')
     sub.add_parser('status', help='running or stopped, the health and the page addresses')
     walkr_url = sub.add_parser('walkr-url', help='print the private address of the Walkr page on this server; '
                                                  'start the live Walkr server when none runs')
     walkr_url.add_argument('session', nargs='?', metavar='SESSION-ID')
     args = parser.parse_args(argv)
     commands = {'setup': cmd_setup, 'upload': cmd_upload, 'list': cmd_list, 'open': cmd_open, 'delete': cmd_delete,
-                'doctor': cmd_doctor,
+                'archive': cmd_archive, 'restore': cmd_archive, 'doctor': cmd_doctor,
                 'retention': cmd_retention, 'start': cmd_start, 'off': cmd_off, 'stop': cmd_off,
-                'status': cmd_status, 'walkr-url': cmd_walkr_url}
+                'status': cmd_status, 'walkr-url': cmd_walkr_url, 'events': cmd_events}
     try:
         args.host = remote_of(config()) if args.command in REMOTE_COMMANDS and not args.here else None
         return commands[args.command](args)

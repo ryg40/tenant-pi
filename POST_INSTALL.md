@@ -29,7 +29,7 @@ Use `/login`, `/model` and `/scoped-models` inside Pi. Press `Ctrl+S` in `/model
 
 ## A template of the kit changed
 
-`install.sh` writes `settings.json` and `models.json` only when they are absent, so a profile keeps the copy of its install. Compare the files by hand, and copy a change that you want:
+`install.sh` writes `settings.json` and `models.json` only when they are absent, so a profile keeps the copy of its install. An upgrade adds `"theme": "dark"` when the profile has no `theme` key: the reply colors of the kit, amber headings and violet inline code. A `theme` of your own stays. Compare the files by hand, and copy a change that you want:
 
 ```sh
 diff "$HOME/tenant-pi/config/settings.example.json" "$HOME/.pi/profiles/main/settings.json"

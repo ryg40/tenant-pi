@@ -1,0 +1,8 @@
+{
+  "name": "tenant-pi-memory-chain",
+  "version": "0.1.0",
+  "description": "One scoped, read-only memory search before each prompt, in shadow: a UserPromptSubmit hook that measures the chain and adds nothing to the prompt.",
+  "author": { "name": "The tenant-pi authors" },
+  "license": "MIT",
+  "keywords": ["memory", "openviking", "shadow"]
+}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memory</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the content</a>
+  <div id="mode-banner" class="mode-banner" hidden></div>
+  <header class="top">
+    <button type="button" id="rail-toggle" class="rail-toggle" aria-expanded="false" aria-controls="sources-nav">Sources</button>
+    <a class="brand" href="#/" aria-label="Memory, all sources">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="2" y="4" width="20" height="3" rx="1"></rect>
+        <rect x="2" y="10.5" width="14" height="3" rx="1"></rect>
+        <rect x="2" y="17" width="8" height="3" rx="1"></rect>
+      </svg>
+      <span>Memory</span>
+    </a>
+    <!-- The sections of the local web app: the same three links in the band of each section. As a standalone server
+         the app has no other section, and app.js hides the links. -->
+    <nav class="app-nav" id="app-nav" aria-label="Sections">
+      <a href="/artifacts">Artifacts</a>
+      <a href="/walkr">Walkr</a>
+      <a href="/memory/" aria-current="page">Memory</a>
+    </nav>
+    <form class="search" id="search-form" role="search">
+      <label class="visually-hidden" for="search-input">Search all memory</label>
+      <input id="search-input" name="q" type="search" autocomplete="off" spellcheck="false" maxlength="500"
+             placeholder="Search all memory" aria-describedby="search-hint">
+      <kbd id="search-hint" class="hint" title="Press / to search">/</kbd>
+      <button type="submit">Search</button>
+    </form>
+    <div class="top-tools">
+      <label class="theme-control" hidden>Theme
+        <select id="theme" data-theme-picker>
+          <option value="torch-light">Torch Light</option>
+          <option value="torch-dark">Torch Dark</option>
+        </select>
+      </label>
+    </div>
+  </header>
+  <div class="shell">
+    <nav class="sources-nav rail" id="sources-nav" aria-label="Providers"></nav>
+    <main id="main" tabindex="-1"></main>
+  </div>
+  <div id="status" class="visually-hidden" role="status" aria-live="polite"></div>
+  <noscript><p class="noscript">The memory viewer needs JavaScript.</p></noscript>
+</body>
+</html>

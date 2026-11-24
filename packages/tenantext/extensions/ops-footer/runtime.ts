@@ -1,10 +1,13 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { anthropicStatus, codexStatus, copilotStatus, HealthAdapter, integrationStatus, languageStatus, publicStatuses, unknown } from "./adapters.ts";
+import { antigravityStatus, anthropicStatus, codexStatus, copilotStatus, HealthAdapter, integrationStatus, languageStatus, publicStatuses, unknown } from "./adapters.ts";
 import { collectSession } from "./collector.ts";
 import { GitAdapter } from "./git.ts";
 import { MemoryTracker, vikingCounters } from "./memory.ts";
 import { ARTIFACTS_CACHE_MS } from "./artifacts.ts";
 import { OKKNOW_CACHE_MS } from "./okknow.ts";
+import { ANTIGRAVITY_POLL_MS } from "./antigravity.ts";
+/** The next Antigravity ask comes this long after the claim of the last run ended, so the shared claim does not skip it. */
+const ANTIGRAVITY_POLL_MARGIN_MS = 2_000;
 import { themePaint } from "./paint.ts";
 import { defaultLayout, hasRowsAbove, isLayoutName, layoutNames, layouts, type LayoutName } from "./layouts/index.ts";
 import { detailedReport, FooterRenderer } from "./render.ts";
@@ -63,6 +66,8 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
   let okknow: OkknowState | undefined, okknowAt = 0, okknowFlight = false;
   // The artifact server state: one background status run at a time, cached for ARTIFACTS_CACHE_MS.
   let artifacts: ArtifactsServer | undefined, artifactsAt = 0, artifactsFlight = false;
+  // The Antigravity reading: one background run at a time, at most one in ANTIGRAVITY_POLL_MS. The shared file serves the other sessions.
+  let antigravityNext = 0, antigravityFlight = false;
   const memory = new MemoryTracker();
   const integrations = new Map<IntegrationSource, IntegrationSnapshot>();
   const published = new Map<IntegrationSource, IntegrationSnapshot>();
@@ -81,7 +86,8 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
   function refreshLocal() {
     if (!ctx || closed) return;
     const session = collectSession(pi, ctx, currentState(), startedIn ?? ctx.cwd);
-    data = { session, git: git?.snapshot ?? data?.git ?? unknown("not checked"), limits: data?.limits, copilot: data?.copilot, anthropic: data?.anthropic,
+    data = { session, git: git?.snapshot ?? data?.git ?? unknown("not checked"), limits: data?.limits, copilot: data?.copilot, anthropic: data?.anthropic, antigravity: data?.antigravity,
+      antigravityAbsent: data?.antigravityAbsent,
       integrations: [], extensionStatuses: data?.extensionStatuses ?? 0, conflict: data?.conflict ?? false };
     refreshStatuses();
     bump();
@@ -148,6 +154,7 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
         if (!closed && generation === currentGeneration) { artifacts = state; refreshStatuses(); bump(); }
       }).catch(() => {}).finally(() => { if (generation === currentGeneration) artifactsFlight = false; });
     }
+    refreshAntigravity();
     if (healthFlight) return;
     healthFlight = Promise.all((["OK", "OV"] as const).map(async source => {
       const url = settings.healthUrls[source];
@@ -155,6 +162,28 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
       const result = await adapter.check(source, url, settings.healthTimeoutMs, settings.healthPollSeconds * 1000);
       if (!closed && generation === currentGeneration) { integrations.set(source, result); refreshStatuses(); bump(); }
     })).then(() => {}).catch(() => {}).finally(() => { if (generation === currentGeneration) healthFlight = undefined; });
+  }
+  /**
+   * The Antigravity reading: one run at a time, and the next ask one poll period after the start of the last one, plus a
+   * margin, so the claim of the last run has ended. When another session still runs `agy`, the next ask comes after `retryMs`.
+   */
+  function refreshAntigravity() {
+    if (!started || closed || !health || !data) return;
+    if (settings.antigravityUsage === "off") {
+      if (data.antigravity || data.antigravityAbsent?.reason !== "off") { data.antigravity = undefined; data.antigravityAbsent = { reason: "off" }; bump(); }
+      return;
+    }
+    const adapter = health, currentGeneration = generation;
+    if (!adapter.antigravity || antigravityFlight || Date.now() < antigravityNext) return;
+    antigravityFlight = true; antigravityNext = Date.now() + ANTIGRAVITY_POLL_MS + ANTIGRAVITY_POLL_MARGIN_MS;
+    void adapter.antigravity(settings.antigravityUsage).then(result => {
+      if (closed || generation !== currentGeneration || !data) return;
+      // A failed run keeps the last reading; it shows `stale` at its lifetime, as the other quota sources do.
+      if (result.kind === "failed") { if (result.retryMs !== undefined) antigravityNext = Date.now() + result.retryMs; return; }
+      data.antigravity = antigravityStatus(result, quotaLifetimeFloor(settings));
+      data.antigravityAbsent = result.kind !== "none" ? undefined : result.reason === "back-off" ? { reason: "back-off", until: result.until } : { reason: result.reason };
+      bump();
+    }).catch(() => {}).finally(() => { if (generation === currentGeneration) antigravityFlight = false; });
   }
   function startCollectors() {
     git = (dependencies.git ?? (s => new GitAdapter(s.healthTimeoutMs, s.gitCacheMs, s.gitIdlePollSeconds * 1000)))(settings);
@@ -166,14 +195,14 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
       refreshStatuses(); bump();
       // An agent turn polls at the Git cache time. An idle session polls slowly; agent_settled and tool events refresh at once.
       if (!gitFlight && (working || compacting || Date.now() - lastGit >= settings.gitIdlePollSeconds * 1000)) refreshGit();
-      if (Date.now() - lastExternal >= settings.healthPollSeconds * 1000) refreshExternal();
+      if (Date.now() - lastExternal >= settings.healthPollSeconds * 1000) refreshExternal(); else refreshAntigravity();
     }, 1000);
     timer.unref?.();
   }
   function stopCollectors() {
     clearInterval(timer); timer = undefined; generation++;
     git?.dispose(); health?.dispose(); git = undefined; health = undefined; healthFlight = undefined;
-    gitFlight = false; gitQueued = false; lastGit = 0; okknowFlight = false; artifactsFlight = false;
+    gitFlight = false; gitQueued = false; lastGit = 0; okknowFlight = false; artifactsFlight = false; antigravityFlight = false;
   }
   function enable() {
     if (!ctx || !started || closed || active || ctx.mode !== "tui") { announce(); return; }
@@ -252,6 +281,7 @@ export function installOpsFooter(pi: ExtensionAPI, dependencies: RuntimeDependen
       const nextSettings = await (dependencies.load ?? loadSettings)();
       if (closed || epoch !== settingsEpoch) return;
       disable(); integrations.clear(); settings = nextSettings;
+      if (settings.antigravityUsage === "off" && data) { data.antigravity = undefined; data.antigravityAbsent = { reason: "off" }; }
       refreshLocal();
       if (settings.enabled) enable(); else announce();
     })().catch(() => ctx?.ui.notify("Cannot reload ops-footer settings.", "error"));

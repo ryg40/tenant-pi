@@ -1,6 +1,7 @@
 /**
- * The reader of "Compact report syntax 2", section 6 of the dummies skill file REPORT.md.
- * This module is the only place that knows the syntax. It reads text and session entries; it has no side effect.
+ * The reader of the two report forms of the dummies skill: "Compact report syntax 2" (section 6 of REPORT.md)
+ * and "Detailed report syntax 1" (DETAILED.md). This module is the only place that knows the syntax.
+ * It reads text and session entries; it has no side effect.
  */
 
 /** The accepted text of a suggestion has at most this count of characters. A longer candidate gives no suggestion. */
@@ -13,13 +14,27 @@ const WARNING = /^\*\*Warning:\*\* \S(?:.*\S)?$/;
 const NEXT = /^\*\*Next:\*\*$/;
 const ACTION = /^- \*\*\[([a-z]+)\]\*\* (Agent|Owner decides|Owner)(?:, ([^:]+))?: (\S(?:.*\S)?)$/;
 const NONE = /^\*\*Next:\*\* None\. \S(?:.*\S)?$/;
+// Detailed report syntax 1. A heading of level 2, the Next heading, its action and none lines, and the page entry line.
+const HEADING = /^## \S/;
+const DETAILED_NEXT = "## Next";
+const DETAILED_ACTION = /^- \*\*\[([A-Z]+)\]\*\* (Agent|Owner decides|Owner)(?:, ([^:]+))?: (\S(?:.*\S)?)$/;
+const DETAILED_NONE = /^None\. \S(?:.*\S)?$/;
+const ADDED = /^added: \S/;
+// A warning of the detailed form anywhere in the message. A loose test: a line with a wrong end still counts.
+const WARNING_START = /^\*\*Warning:\*\*/;
 // A fence opens with three or more backticks or tildes after at most three spaces.
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const QUOTE = /^>/;
 // An empty line holds nothing or spaces only.
 const EMPTY = /^ *$/;
-// C0 and C1 controls, the bidirectional controls and the zero-width characters that can hide text in a terminal.
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/;
+// The characters that a draft never holds, in both syntaxes: each control character (the tab too), each format
+// character (the zero-width, hidden and bidirectional controls are format characters), and the line and paragraph
+// separators. A test of the categories also covers each new character of these categories.
+const UNSAFE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
+// The characters that make a detailed message ambiguous in both readers: the unsafe characters other than the tab.
+// A carriage return that is not before a line feed stays in its line, so it is one of them. The regular expressions
+// of the two readers read some of these characters in different ways, so no reader parses a line that holds one.
+const HIDDEN = /[^\P{Cc}\t]|[\p{Cf}\p{Zl}\p{Zp}]/u;
 
 export interface Action { label: string; actor: "Agent" | "Owner decides" | "Owner"; condition?: string; text: string }
 export type Report =
@@ -33,7 +48,8 @@ export type Suggestion =
   | { kind: "none"; reason: "no-final-message" | "missing" | "ambiguous" | "no-next" | "owner" | "conditional" | "approval" | "unlinked" | "unsafe" | "overlong" };
 
 /**
- * The lines that a program reads: each line outside a code fence that is not a quote.
+ * The lines that a program reads: each line outside a code fence that is not a quote. A line ends at a line feed,
+ * with an optional carriage return before it.
  * A fence closes at the next line of only the same character, at least as many times, after at most
  * three spaces and before spaces only. An open fence runs to the end of the message.
  */
@@ -49,19 +65,90 @@ function readableLines(text: string): string[] {
   return out;
 }
 
-/** Bijective base-26: a..z, aa..az, ba..zz, aaa... No label-length or action-count cap. */
-function nextActionLabel(label: string): string {
+/**
+ * Bijective base-26 from `first`: a..z, aa..az, ba..zz, aaa... for syntax 2, and A..Z, AA... for the detailed form.
+ * No label-length or action-count cap.
+ */
+function nextActionLabel(label: string, first = "a"): string {
+  const last = String.fromCharCode(first.charCodeAt(0) + 25);
   for (let i = label.length - 1; i >= 0; i--) {
-    if (label[i] !== "z") return label.slice(0, i) + String.fromCharCode(label.charCodeAt(i) + 1) + "a".repeat(label.length - i - 1);
+    if (label[i] !== last) return label.slice(0, i) + String.fromCharCode(label.charCodeAt(i) + 1) + first.repeat(label.length - i - 1);
   }
-  return "a".repeat(label.length + 1);
+  return first.repeat(label.length + 1);
 }
 
-/** Parse syntax 2 only. Legacy uppercase and mixed blocks fail closed; no subject relation is inferred. */
+/**
+ * True when a line competes with a syntax 2 report: it holds no hidden character, and it matches the detailed
+ * `action` or `none` pattern. The hidden test comes first. The regular expressions of the two readers read `.` and
+ * `\S` in different ways only for hidden characters, so the answer is the same in both readers.
+ */
+function competes(line: string): boolean {
+  return !HIDDEN.test(line) && (DETAILED_ACTION.test(line) || DETAILED_NONE.test(line));
+}
+
+/** True when a `## Next` line is followed, after at most one empty line, by a competing line. */
+function hasDetailedBlock(lines: readonly string[]): boolean {
+  return lines.some((line, i) => {
+    if (line !== DETAILED_NEXT) return false;
+    let below = i + 1;
+    if (below < lines.length && EMPTY.test(lines[below])) below++;
+    return below < lines.length && competes(lines[below]);
+  });
+}
+
+/**
+ * Parse detailed report syntax 1, for a message with no syntax 2 head line. The message needs one `## Next` line,
+ * and it must be the last level-2 heading. The block ends at the first empty line after its last line; the text
+ * after it gives no action, but a warning line there still counts.
+ */
+function parseDetailed(lines: readonly string[]): Report {
+  const nexts = lines.flatMap((line, i) => line === DETAILED_NEXT ? [i] : []);
+  if (nexts.length === 0) return { status: "missing" };
+  if (lines.some(line => HIDDEN.test(line))) return { status: "ambiguous", detail: "a control, format or separator character in the text" };
+  if (nexts.length > 1) return { status: "ambiguous", detail: "two Next headings" };
+  const next = nexts[0];
+  let last = lines.length - 1;
+  while (!HEADING.test(lines[last])) last--;
+  if (last !== next) return { status: "missing" };
+  let first = lines.findIndex(line => !EMPTY.test(line));
+  if (ADDED.test(lines[first])) first = lines.findIndex((line, i) => i > first && !EMPTY.test(line));
+  if (lines[first].startsWith("#")) return { status: "ambiguous", detail: "no result paragraph before the first heading" };
+  const actions: Action[] = [];
+  let label = "A";
+  let owner = false;
+  let none = false;
+  let end = next + 1;
+  if (end < lines.length && EMPTY.test(lines[end])) end++;
+  for (; end < lines.length && !EMPTY.test(lines[end]); end++) {
+    const line = lines[end];
+    if (none) return { status: "ambiguous", detail: "line after the None line" };
+    if (actions.length === 0 && DETAILED_NONE.test(line)) { none = true; continue; }
+    const match = DETAILED_ACTION.exec(line);
+    if (!match) return { status: "ambiguous", detail: "line in the Next block matches no pattern" };
+    const [, found, actor, condition, action] = match;
+    if (found !== label) return { status: "ambiguous", detail: "action labels must restart at A and follow base-26 order" };
+    if (owner && actor === "Agent") return { status: "ambiguous", detail: "Agent action after an Owner action" };
+    owner ||= actor !== "Agent";
+    actions.push({ label, actor: actor as Action["actor"], ...(condition ? { condition } : {}), text: action });
+    label = nextActionLabel(label, "A");
+  }
+  if (none) return { status: "none" };
+  if (actions.length === 0) return { status: "ambiguous", detail: "Next heading with no action and no None line" };
+  return { status: "next", items: new Map(), actions, warning: lines.some(line => WARNING_START.test(line)),
+    unsafe: lines.slice(first, end).some(line => UNSAFE.test(line)) };
+}
+
+/**
+ * Parse syntax 2, or the detailed syntax when the message has no syntax 2 head line. A syntax 2 message is
+ * ambiguous when it also holds a detailed Next block; a `## Next` heading over ordinary text leaves it syntax 2.
+ * Each step reads the lines of `readableLines`.
+ * Legacy uppercase and mixed blocks fail closed; no subject relation is inferred.
+ */
 export function parseReport(text: string): Report {
   const lines = readableLines(text);
   const heads = lines.flatMap((line, i) => REPORT.test(line) || OUTCOME.test(line) ? [i] : []);
-  if (heads.length === 0) return { status: "missing" };
+  if (heads.length === 0) return parseDetailed(lines);
+  if (hasDetailedBlock(lines)) return { status: "ambiguous", detail: "a compact head line and a detailed Next block" };
   if (heads.length > 1) return { status: "ambiguous", detail: "two report lines" };
   const items = new Map<string, string>();
   const actions: Action[] = [];

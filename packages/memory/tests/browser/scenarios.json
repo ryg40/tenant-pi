@@ -1,0 +1,46 @@
+{
+  "description": "Synthetic response variations for browser checks. Apply only over a sample-mode server.",
+  "sources": [
+    { "id": "openviking", "type": "openviking", "name": "OpenViking · Alice", "mode": "sample", "unit": "memory file", "lazy": false },
+    { "id": "okknow", "type": "okknow", "name": "okknow", "mode": "sample", "unit": "knowledge page", "lazy": false },
+    { "id": "openviking-bob", "type": "openviking", "name": "OpenViking · Bob", "mode": "sample", "unit": "memory file", "lazy": false, "fixture": "openviking-bob.json" },
+    { "id": "llmwiki", "type": "llmwiki", "name": "llm-wiki", "mode": "sample", "unit": "wiki page", "lazy": false },
+    { "id": "hermes", "type": "hermes", "name": "hermes-memory", "mode": "sample", "unit": "memory entry", "lazy": false },
+    { "id": "agentcore", "type": "agentcore", "name": "AgentCore memory", "mode": "sample", "unit": "memory record", "lazy": true }
+  ],
+  "overview": {
+    "okknow": { "state": "stale", "detail": "The last indexed sample pages remain available.", "error": { "code": "timeout", "message": "The synthetic source status check timed out." } },
+    "llmwiki": { "partial": true, "note": "Only the available sample pages are counted.", "notes": ["One synthetic folder is unavailable."] },
+    "hermes": { "state": "error", "error": { "message": "Synthetic source timeout. Other sources remain available." }, "total": null, "newest": null, "facets": [] },
+    "agentcore": { "total": null, "newest": null, "note": "Some sample namespaces have previous read results. Sample mode never reads AWS." }
+  },
+  "namespaces": [
+    { "path": "/global/shared", "label": "Global shared", "state": "loaded", "count": 1 },
+    { "path": "/actors/alice/private", "label": "Own private", "state": "denied", "error": { "code": "denied", "message": "The synthetic service denied this namespace read." } },
+    { "path": "/projects/example-project/shared", "label": "Project shared", "state": "partial", "partial": true, "count": 2 },
+    { "path": "/sample/empty", "label": "Empty sample namespace", "state": "empty", "count": 0 },
+    { "path": "/sample/failed", "label": "Failed sample namespace", "state": "failed", "error": { "code": "aws_failed", "message": "The synthetic namespace read failed." } },
+    { "path": "/sample/unloaded", "label": "Unloaded sample namespace" }
+  ],
+  "search": {
+    "agentcore": { "partial": true, "note": "Some synthetic namespaces could not be searched.", "errors": [
+      { "path": "/actors/alice/private", "code": "denied", "message": "The synthetic service denied this namespace read." },
+      { "path": "/sample/failed", "code": "aws_failed", "message": "The synthetic namespace read failed." }
+    ] },
+    "openviking": { "more": true, "partial": true, "note": "Synthetic keyword fallback.", "notes": ["The sample read stopped at its limit."] },
+    "hermes": { "state": "error", "error": { "message": "Synthetic source timeout. Other search results remain available." }, "items": [], "total": 0 },
+    "llmwiki": { "items": [], "total": 0 }
+  },
+  "browse": {
+    "openviking/preferences": { "pageSize": 1, "partial": true, "notes": ["Synthetic one-entry pages exercise next-page navigation."] }
+  },
+  "emptyFolder": "sample-empty",
+  "errors": {
+    "sources": "Synthetic source-list failure.",
+    "overview": "Synthetic ledger failure.",
+    "recent": "Synthetic recent-list failure.",
+    "search": "Synthetic search request failure.",
+    "browse": "Synthetic folder read failure.",
+    "item": "Synthetic entry read failure."
+  }
+}

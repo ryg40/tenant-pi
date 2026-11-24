@@ -37,24 +37,34 @@ Check these conditions in order. These checks do not enable anything.
 5. Check that the run settled without an abort. Pi must be idle with no queued message.
 6. Check that the editor is empty. Typed text prevents the suggestion.
 7. Check the final branch message against [The report syntax](#the-report-syntax). It must be a normally stopped assistant message with one valid report.
-8. Check the refusal conditions. Missing, ambiguous or `Next: None.` reports suppress the draft. So does any owner action, action condition, `Needs approval`, `Retired`, `Proposal` or `Blocked` item, or warning.
-9. Check the complete draft length and characters. The 100-character cap includes `Continue action <label>: `. Unsafe control, hidden or bidirectional characters anywhere in the block suppress the draft.
+8. Check the refusal conditions. Missing, ambiguous or `Next: None.` reports suppress the draft. So does any owner action, action condition, `Needs approval`, `Retired`, `Proposal` or `Blocked` item, or warning. A detailed report has no items: there an owner action, a condition or a `**Warning:**` line anywhere in the message suppresses the draft.
+9. Check the complete draft length and characters. The 100-character cap includes `Continue action <label>: `. An unsafe character anywhere in the block suppresses the draft; see [The report syntax](#the-report-syntax).
 10. Check the editor line and available width. A different empty-line shape or too little room after the cursor hides the suggestion without shortening it.
 
 ## The report syntax
 
-The extension reads "Compact report syntax 2", section 6 of `skills/coordinator-skills/dummies/REPORT.md`. The one module that knows the syntax is `extensions/next-prompt/report.ts`.
+The extension reads the two report forms of the dummies skill: "Compact report syntax 2", section 6 of `skills/coordinator-skills/dummies/REPORT.md`, and "Detailed report syntax 1", section 3 of `skills/coordinator-skills/dummies/DETAILED.md`. The one module that knows the syntax is `extensions/next-prompt/report.ts`. It chooses the syntax from the text alone and does not read the `format` value of the state file: a message with a `**REPORT n**` or `**OUTCOME**` head line is syntax 2, as before. It is ambiguous when it also holds a detailed Next block: a `## Next` line with a competing line below it, after at most one empty line. A competing line holds no hidden character (see [Detailed report syntax 1](#detailed-report-syntax-1)) and matches the action or `None.` pattern of the detailed syntax. A `## Next` heading over ordinary text leaves it syntax 2. Else a message with a `## Next` line is detailed syntax 1. The rules below are for syntax 2; [Detailed report syntax 1](#detailed-report-syntax-1) gives the other form.
 
 - It reads only the text of the final assistant message. It skips lines in code fences and lines that start with `>`. It never reads tool output or an older message.
 - A missing or ambiguous report gives no suggestion. So does `**Next:** None.`.
 - Item numbers restart at `1`. Independent next-action labels restart at `a`, then continue after `z` as `aa`, `ab`, through `zz`, then `aaa`. Neither sequence has a count cap. A duplicate, skipped or reordered label makes the report ambiguous.
-- Syntax 1 uppercase-subject reports and mixed forms are rejected, without a fallback. Historical pages are not migrated.
+- Legacy compact syntax 1 reports (uppercase subjects) and mixed forms are rejected, without a fallback. Historical pages are not migrated.
 - Action labels identify actions, not numeric subjects. The parser never joins them by position, label or a guess about prose.
 - Only the first action is a candidate. Any owner action, any action condition, any `Needs approval`, `Retired`, `Proposal` or `Blocked` item, or any warning suppresses the whole report's suggestion. The extension does not skip to a later action.
 - This conservative rule also suppresses safe independent actions beside unrelated approval or retired work. Without explicit safe linkage, silence is safer than implied authorization.
-- The accepted text is one line of at most 100 characters. A longer candidate, or unsafe control, hidden or bidirectional characters anywhere in the block, gives no suggestion. The extension never cuts a command, an identifier or a URL.
+- The accepted text is one line of at most 100 characters. A longer candidate, or an unsafe character anywhere in the block, gives no suggestion. The extension never cuts a command, an identifier or a URL.
+- An unsafe character is a control character (the tab too), a format character (Unicode category `Cf`: the zero-width, hidden and bidirectional controls are in it), U+2028 or U+2029. The extension tests the categories, not a list of code points. This rule serves both syntaxes, and it is wider than before: a syntax 2 block with a character such as U+2063 or U+00AD now gives no suggestion.
 
-The accepted text has the form `Continue action <label>: <action text>`, for example `Continue action a: Read the log of the failed check.` The form is the function `acceptedText` in `report.ts`. The suggestion type exposes `action`, not a numeric item reference. Free text is not a permission system; normal safety and approval checks still apply after submission.
+### Detailed report syntax 1
+
+- The extension reads the same lines: the text of the final assistant message, without code fences and quotes. A line ends at a line feed, with an optional carriage return before it.
+- A message with more than one `## Next` line is ambiguous. So is a message with a hidden character in a readable line: an unsafe character other than the tab. A carriage return that is not before a line feed stays in its line, so it is a hidden character too. A message whose last `##` heading is not `## Next` gives no report.
+- The Next block is the heading `## Next`, at most one empty line, then action lines `- **[A]** <actor>[, <condition>]: <action>` or one line `None. <reason>`. The block ends at the first empty line after its last line; the text after it gives no action.
+- Labels are capital letters from `A`, in the same bijective base-26 order as the lowercase labels. No `Agent` action comes after an `Owner` or `Owner decides` action. A wrong label, a wrong order, an unknown line in the block, or no action and no `None.` line makes the report ambiguous. So does a heading as the first line after the `added:` line: the report then has no result paragraph.
+- The draft needs a report with no `Owner` or `Owner decides` action, no condition, no `**Warning:**` line anywhere in the message (also after the block), and no unsafe character from the first paragraph to the end of the block. Then the first `Agent` action is the candidate, with the same 100-character cap.
+- The detailed form has no state words, so the rule for `Needs approval`, `Proposal`, `Blocked` and `Retired` items has no equal. The skill carries that rule another way: an approval is an `Owner decides` action, and any owner action suppresses the draft.
+
+The accepted text has the form `Continue action <label>: <action text>`, for example `Continue action a: Read the log of the failed check.` or, for a detailed report, `Continue action A: Read the log of the failed check.` The form is the function `acceptedText` in `report.ts`. The suggestion type exposes `action`, not a numeric item reference. Free text is not a permission system; normal safety and approval checks still apply after submission.
 
 ## Settings
 

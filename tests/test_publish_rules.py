@@ -422,24 +422,6 @@ class CheckTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("usage: publish_check.py", result.stderr)
 
-    def test_optional_relay_is_published_when_present_and_may_be_omitted(self):
-        directory = "packages/tenantext/skills/herdr-relay"
-        expected = {directory + "/" + name for name in
-                    ("SKILL.md", "install.sh", "relay.example.json", "scripts/relay.py", "tests/test_relay.py")}
-        self.assertTrue(expected <= set(publish_check.PUBLISH))
-        self.explicit += tuple(sorted(expected))
-        for name in expected:
-            self.add(name, "# Relay\n")
-        result = self.run_check()
-        self.assertEqual(0, result.returncode, result.stderr)
-        (self.root / directory).rename(Path(self.temp.name) / "relay-omitted")
-        result = self.run_check()
-        self.assertEqual(0, result.returncode, result.stderr)
-        # A partial directory is not an omitted component: missing explicit files still fail.
-        self.add(directory + "/SKILL.md", "# Relay\n")
-        result = self.run_check()
-        self.assertIn("publish_path: " + directory + "/install.sh", result.stderr)
-
     def test_private_list_excludes_package_file_and_private_prefix(self):
         path = self.root / publish_check.DEV_ONLY_REL
         existing = path.read_text() if path.exists() else ""

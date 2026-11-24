@@ -60,9 +60,9 @@ Each tool has `executionMode: "sequential"`. Pi runs it one at a time with the o
 
 | Parameter | Value | `spawn.py` gets |
 | --- | --- | --- |
-| `harness` | `pi` or `claude` | `--harness` |
+| `harness` | `pi`, `claude` or `agy` (the Antigravity CLI; see `SPAWN.md` of the herdr skill, section "The agy harness") | `--harness` |
 | `role` | `researcher`, `scout`, `worker` or `reviewer`. `coordinator` is refused. | `--role` |
-| `model` | Optional only when `models.json` of the herdr skill names a model for the role and the harness. Without a model, `spawn.py` starts no pane, and the tool returns its exit 2 with the message. | `--model` |
+| `model` | Optional only when `models.json` of the herdr skill names a model for the role and the harness. Without a model, `spawn.py` starts no `pi` or `claude` pane, and the tool returns its exit 2 with the message. An `agy` pane starts with the default model of `agy`. | `--model` |
 | `thinking` | Optional. `off`, `minimal`, `low`, `medium`, `high`, `xhigh` or `max` | `--thinking` |
 | `cwd` | Required. The absolute working directory of the new agent. | `--cwd` |
 | `prompt` or `prompt_file` | Exactly one. The task. | nothing; `ask.py` sends it |

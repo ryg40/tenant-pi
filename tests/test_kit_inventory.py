@@ -1,6 +1,4 @@
 """The resource catalog matches the manifest and the architecture model; the inventory reads a profile and writes nothing."""
-import ast
-import copy
 import json
 import os
 from pathlib import Path
@@ -19,7 +17,7 @@ CATALOG = json.loads((ROOT / "config/catalog.json").read_text())
 FIELDS = {"name", "group", "title", "description", "when_on", "when_off", "default", "needs", "docs"}
 NEEDS = {"linux", "macos", "consent", "credentials", "node24", "root"}
 # The catalog items that are not manifest components, from the specification of the catalog.
-EXTRAS = {"mcp-codemode", "walkr-proxy", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc", "launcher"}
+EXTRAS = {"mcp-codemode", "memory", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc", "launcher"}
 ITEM_KEYS = {"name", "group", "installed", "active", "version_installed", "version_pinned", "state_source", "plan"}
 RUNTIME_KEYS = {"installed", "required", "status"}
 
@@ -132,6 +130,7 @@ class InventoryTests(unittest.TestCase):
         local_bin = self.home / ".local/bin"
         local_bin.mkdir(parents=True)
         (local_bin / "okknow").symlink_to(ROOT / "packages/okknow/skills/okknow/scripts/okknow")
+        (local_bin / kit_inventory.HERDR_LINK[0]).symlink_to(tenantext / kit_inventory.HERDR_LINK[1])
         # The Walkr commands and the shared skills, but not the Claude Code and Codex skills of the setup.
         for command, file in kit_inventory.WALKR_LINKS:
             (local_bin / command).symlink_to(ROOT / "packages/walkr/src" / file)
@@ -143,7 +142,7 @@ class InventoryTests(unittest.TestCase):
         self.write(self.home / ".bashrc", "# >>> tenant-pi demo >>>\nalias demo=/old/launcher\n# <<< tenant-pi demo <<<\n")
         # Own switches: off in the settings files of the items, by the environment, or by the filter list.
         switches = self.profile("switches", {"packages": [{
-            "source": str(tenantext), "skills": ["!skills/herdr-relay"], "prompts": [],
+            "source": str(tenantext), "skills": ["!skills/tracker-site"], "prompts": [],
             "extensions": ["extensions/tenantext/index.ts", "extensions/anthropic-usage/index.ts",
                            "extensions/copilot-usage/index.ts", "extensions/ops-footer/index.ts"]}]})
         self.write(switches / "anthropic-usage/settings.json", {"mode": "off"})
@@ -212,7 +211,7 @@ class InventoryTests(unittest.TestCase):
                 # Not in the plain extension list of the entry, or off in its own settings or by the environment.
                 "context-meter": (True, False, "skip"), "anthropic-usage": (True, False, "skip"),
                 "copilot-usage": (True, False, "skip"), "ops-footer": (True, False, "skip"),
-                "herdr-relay": (True, False, "skip")}, self.states(switches, TENANTEXT_COPILOT_USAGE="off"))
+                "tracker-site": (True, False, "skip")}, self.states(switches, TENANTEXT_COPILOT_USAGE="off"))
             self.assertEqual((True, True, "keep"), self.states(switches)["copilot-usage"])
         with self.subTest("package.json only"):
             self.assertEqual(("partial", False, "upgrade"), self.states(npm_only)["questions"])
@@ -320,67 +319,16 @@ class InventoryTests(unittest.TestCase):
         self.assertNotEqual(True, active)
         self.assertNotIn(plan, ("install", "upgrade"))
 
-    def test_a_kit_step_turns_an_item_on_and_a_command_link_of_another_clone_stays(self):
-        # A plain filter list that predates the kit step of herdr-idle-cleanup: no handoffs extension, no skills.
+    def test_a_command_link_of_another_clone_stays(self):
         old = {"source": str(ROOT / "packages/tenantext"), "extensions": ["extensions/tenantext/index.ts"],
                "skills": [], "prompts": []}
         fresh = self.profile("fresh", {"packages": [old, str(ROOT / "packages/okknow")]})
-        stepped = self.profile("stepped", {"packages": [old]})
-        self.write(stepped / "kit-steps.json", {"version": 1, "added": ["herdr-idle-cleanup"]})
-        with self.subTest("kit step"):
-            # The step adds the extension to the plain list, so the run turns it on; [] stays, so the skill stays off.
-            self.assertStates({"handoffs": (True, False, "install"), "herdr-idle-cleanup": (True, False, "skip")},
-                              self.states(fresh))
-            # After the step, a removal by the user stays.
-            self.assertEqual((True, False, "skip"), self.states(stepped)["handoffs"])
-        with self.subTest("command link of another clone"):
-            other = self.base / "other/okknow"
-            self.write(other, "#!/bin/sh\n")
-            (self.home / ".local/bin").mkdir(parents=True)
-            (self.home / ".local/bin/okknow").symlink_to(other)
-            # install.sh keeps the link, so a run with the package entry of this kit changes nothing.
-            self.assertEqual((True, True, "keep"), self.states(fresh)["okknow"])
-
-    def test_a_kit_step_plans_no_install_when_the_profile_keeps_the_item_off_after_it(self):
-        # Three profiles where the step adds handoffs and Pi still leaves it off: a negative glob, a disabled link
-        # and a Pi-Bolt package list.
-        old = {"source": str(ROOT / "packages/tenantext"), "extensions": ["extensions/tenantext/index.ts"],
-               "skills": [], "prompts": []}
-        glob = self.profile("glob", {"packages": [old | {"extensions": old["extensions"] + ["!extensions/handoffs/**"]}]})
-        link = self.profile("link", {"packages": [old], "extensions": ["-extensions/handoffs.ts"]})
-        (link / "extensions").mkdir()
-        (link / "extensions/handoffs.ts").symlink_to(ROOT / "packages/tenantext/extensions/handoffs/index.ts")
-        bolt = self.profile("bolt", {"packages": [old], "piBolt": {"packagesOverlay": True, "packages": [dict(old)]}})
-        for name, profile, args in (("negative glob", glob, ()), ("disabled link", link, ()),
-                                    ("Pi-Bolt list", bolt, ("--runtime", str(self.bin / "pi-bolt")))):
-            with self.subTest(name):
-                self.assertNotEqual("install", self.states(profile, *args)["handoffs"][2])
-
-
-class InstallerParityTests(unittest.TestCase):
-    def test_kit_steps_and_add_kit_items_match_install_sh(self):
-        # The inventory predicts the kit steps of install.sh with a copy of KIT_STEPS and add_kit_items.
-        text = (ROOT / "install.sh").read_text()
-        start = text.index("<<'PY'\n") + len("<<'PY'\n")
-        helper = ast.parse(text[start:text.index("\nPY\n", start)])
-        nodes = [node for node in helper.body
-                 if isinstance(node, ast.Assign) and [getattr(one, "id", None) for one in node.targets] == ["KIT_STEPS"]
-                 or isinstance(node, ast.FunctionDef) and node.name == "add_kit_items"]
-        self.assertEqual(2, len(nodes))
-        installer = {}
-        exec(compile(ast.Module(body=nodes, type_ignores=[]), "install.sh", "exec"), installer)
-        self.assertEqual(installer["KIT_STEPS"], kit_inventory.KIT_STEPS)
-        cases = [entry for step in kit_inventory.KIT_STEPS.values() for entry in step.items()] + [("skills", [])]
-        for autoload in (None, False, True):
-            for current in (None, [], ["!x"], ["+skills/a"], ["-skills/a"], ["skills/z"], ["skills/a", "!y"], "text", [1]):
-                for key, items in cases + [("skills", ["skills/a", "skills/b"])]:
-                    entry = {"source": "s"} | ({} if current is None else {key: copy.deepcopy(current)}) | (
-                        {} if autoload is None else {"autoload": autoload})
-                    after = copy.deepcopy(entry)
-                    installer["add_kit_items"](after, key, list(items))
-                    with self.subTest(entry=entry, items=items):
-                        self.assertEqual(after.get(key) if after != entry else None,
-                                         kit_inventory.add_kit_items(copy.deepcopy(entry), key, list(items)))
+        other = self.base / "other/okknow"
+        self.write(other, "#!/bin/sh\n")
+        (self.home / ".local/bin").mkdir(parents=True)
+        (self.home / ".local/bin/okknow").symlink_to(other)
+        # install.sh keeps the link, so a run with the package entry of this kit changes nothing.
+        self.assertEqual((True, True, "keep"), self.states(fresh)["okknow"])
 
 
 if __name__ == "__main__":

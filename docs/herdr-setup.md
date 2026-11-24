@@ -17,7 +17,7 @@ The third-party package `@ogulcancelik/pi-herdr` is not a part of this kit.
 
 The component `herdr-watch` is a Pi extension of this kit. It waits on a Herdr pane in the background and delivers the reply as a task notification; see [its document](../packages/tenantext/docs/herdr-watch.md).
 
-The skill `herdr-relay` and the extension `herdr-watch` find the scripts of the Herdr skill at `~/.agents/skills/herdr` first. `HERDR_SKILL_HOME` (relay) and `HERDR_SKILL_DIR` (watch) name another folder. Without that folder, the relay stops with an error; the watch falls back to the copy of the kit.
+The extension `herdr-watch` finds the scripts of the Herdr skill at `~/.agents/skills/herdr` first. `HERDR_SKILL_DIR` names another folder. Without that folder, the watch falls back to the copy of the kit.
 
 ## The Herdr check
 

@@ -1,0 +1,2 @@
+# The dependencies, also when node_modules is a link.
+node_modules

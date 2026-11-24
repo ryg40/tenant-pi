@@ -73,9 +73,11 @@ export function quotaCandidates(quota: QuotaView, paint: Paint, aged: Aged, now:
   };
   const compact = alert ? { text: quota.alerts.map(a => paintAlert(paint, a, aged, `${a.glyph} ${a.compact}`)).join("  ") } : undefined;
   // Below full-chip width, keep one representative window per account in identity order.
-  const narrow = { text: joinParts(quota.accounts.map(a => a.alert
-    ? `${paint.fg("muted", a.short)} ${paintAlert(paint, a.alert, aged, "✗ error")}`
-    : a.windows.length ? `${paint.fg("muted", a.short)} ${quotaChip(a.windows.find(w => w.alert) ?? a.windows[0], paint)}` : undefined), "  ") };
+  // The account renderer of the wider levels paints it, so an aged alert chip fades here too.
+  const narrow = { text: joinParts(quota.accounts.map(a => {
+    const window = a.windows.find(w => w.alert) ?? a.windows[0];
+    return account({ ...a, windows: window ? [window] : [] }, true, 10, "none", "none", false);
+  }), "  ") };
   const candidates = [
     // A stacked row has room for the date of a far reset on a normal window too. It keeps every relative reset before it drops the normal ones.
     // The period end goes before a reset date that repeats a relative reset, and drops before any relative reset.
@@ -349,6 +351,16 @@ function serviceText(s: IntegrationSnapshot, now: number): string {
   return `${s.source} ${status}${s.index ? ` index:${s.index}` : ""}`;
 }
 /** Every value the footer hides stays here: tokens, cache, cost, host, session, paths, worktrees, all windows with absolute resets, counts, routing, freshness. */
+/** The report line for a missing `Antigravity` row. It holds the reason only, never text of the `agy` payload. */
+function antigravityAbsentLine(absent: DashboardSnapshot["antigravityAbsent"]): string {
+  if (!absent) return "";
+  const reason = absent.reason === "no-agy" ? "agy is not on the PATH"
+    : absent.reason === "no-sign-in" ? `no agy sign-in file; on a computer that keeps the sign-in in a keyring, set antigravityUsage to "on"`
+    : absent.reason === "back-off" ? `agy asked for a sign-in or did not answer in time; no run until ${new Date(absent.until).toISOString()} (local ${formatLocalTime(absent.until)})`
+    : absent.reason === "api-key" ? "agy has an API-key sign-in, which has no account quota"
+    : `antigravityUsage is "off"`;
+  return `ANTIGRAVITY not shown: ${reason}`;
+}
 export function detailedReport(data: DashboardSnapshot, context: ContextService, now = Date.now(), rows?: { settings: Settings; width: number }): string {
   const dropped = rows ? droppedQuotaAccounts(data, context, rows.settings, rows.width, now) : [];
   const s = data.session;
@@ -367,7 +379,7 @@ export function detailedReport(data: DashboardSnapshot, context: ContextService,
     const checked = p.providerCheckedAt !== undefined ? `${iso(p.providerCheckedAt)} (${formatRelative(now - p.providerCheckedAt)} ago)` : "age unknown";
     return `${a.label} period end: ${iso(p.endsAt)} (local ${formatLocalTime(p.endsAt)}); state:${state}${state === "past" ? " (not an upcoming charge)" : ""}; provider checked:${checked}; source:${source}; billing date not verified`;
   };
-  const windows = (a: NonNullable<typeof limits>["accounts"][number]) => a.windows.map(w => w.unavailable ? `${w.name} n/a` : `${w.name} ${Math.round(w.percent ?? 0)}%${w.resetsAt ? ` resets ${new Date(w.resetsAt).toISOString()} (${formatWhen(w.resetsAt)}, in ${formatRelative(w.resetsAt - now)})` : ""}`).join("; ");
+  const windows = (a: { windows: NonNullable<typeof limits>["accounts"][number]["windows"] }) => a.windows.map(w => w.unavailable ? `${w.name} n/a` : `${w.name} ${Math.round(w.percent ?? 0)}%${w.resetsAt ? ` resets ${new Date(w.resetsAt).toISOString()} (${formatWhen(w.resetsAt)}, in ${formatRelative(w.resetsAt - now)})` : ""}`).join("; ");
   return [
     `MODEL ${s.state} ${s.provider}/${s.model} think:${s.thinking}`,
     `Session:${s.session}; host:${s.hostname}; remote:${s.remote ? "yes" : "no"}; duration:${Math.max(0, Math.floor((now - s.startedAt) / 1000))}s`,
@@ -387,6 +399,8 @@ export function detailedReport(data: DashboardSnapshot, context: ContextService,
       ...data.anthropic.accounts.map(a => `${a.label}: ${a.state}; ${windows(a) || "no windows"}`)].join("\n") : "ANTHROPIC not detected (see /anthropic-usage)",
     data.copilot ? [freshnessLine("COPILOT", data.copilot), `source:${data.copilot.source ?? "n/a"}; plan:${data.copilot.plan ?? "n/a"}`,
       ...data.copilot.accounts.map(a => `${a.label}: ${a.state}; ${a.windows.map(w => w.unavailable ? `${w.name} n/a` : `${w.name} ${Math.round(w.percent ?? 0)}%${w.entitlement !== undefined && w.remaining !== undefined ? ` (${Math.round(w.entitlement - w.remaining)}/${Math.round(w.entitlement)} used)` : ""}${w.resetsAt ? ` resets ${new Date(w.resetsAt).toISOString()} (in ${formatRelative(w.resetsAt - now)})` : ""}`).join("; ") || "no windows"}`)].join("\n") : "COPILOT not detected (see /copilot-usage)",
+    data.antigravity ? [freshnessLine("ANTIGRAVITY", data.antigravity), ...data.antigravity.accounts.map(a => `${a.label} (Gemini group): ${a.state}; ${windows(a) || "no windows"}`),
+      ...data.antigravity.other.map(g => `Antigravity group ${safeText(g.name)}: ${windows(g) || "no windows"}`)].join("\n") : antigravityAbsentLine(data.antigravityAbsent),
     dropped.length ? `Quota rows not shown: ${dropped.join(", ")}. The row budget is maximumRows:${rows!.settings.maximumRows} in the ops-footer settings; a larger value shows them.` : "",
     ...data.integrations.map(i => freshnessLine(i.source, i) + "; " + serviceText(i, now)),
     ...memoryGroups(data, now).map(g => g.text),

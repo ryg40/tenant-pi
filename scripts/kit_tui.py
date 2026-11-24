@@ -7,7 +7,6 @@ for key; else the script prints one line on stderr and exits 2. A catalog item n
 inventory. An inventory row without a catalog entry shows the mark `no description`.
 Each item starts on when its `active` is true, else off; the `plan` of the inventory never turns an item on.
 An installed item that is off, with the plan upgrade or skip, starts off. A `remove` plan shows as a removal.
-An installed item that is off with the plan install starts off too: the kit step of the run turns it on.
 
 The plan: with a planner command after `--`, the screen runs it with `--with <the choices that are on, or none>`,
 and with `--runtime NAME` after a switch away from the start runtime. The planner prints the inventory JSON of
@@ -185,8 +184,8 @@ def read_inventory(data):
         bad += [] if isinstance(state['state_source'], list) and all(filled(one) for one in state['state_source']) \
             else ['state_source']
         bad += [] if isinstance(state['plan'], str) and state['plan'] in PLANS else ['plan']
-        # keep: installed and on, or without an on/off state. install: absent, or installed and off when the kit
-        # step of the run turns it on. An installed item that is off is skip.
+        # keep: installed and on, or without an on/off state. install: absent; the check also accepts an installed
+        # item that is off. An installed item that is off is skip.
         if not bad and state['plan'] == 'keep' and (installed is False or active is False):
             bad.append('plan keep for an item that is absent or off')
         if not bad and state['plan'] == 'install' and installed is not False and active is not False:
@@ -748,14 +747,9 @@ class Screen:
             notes.append('requested: the installer asks for your consent after this screen')
         elif item.consent and item.choice and not item.on and not item.initial and not item.blocked:
             notes.append('needs your consent: Space requests it, and the installer asks after this screen')
-        if item.active is False and item.installed is not False and plan == 'install':
-            notes.append('it is off now; the kit step of this upgrade turns it on once, and kit-steps.json of the '
-                         'profile records the step')
         if item.active is False and item.installed is not False and plan in ('upgrade', 'skip'):
-            # Its own switch, a filter or a link of the profile keeps it off, also after a kit step.
+            # Its own switch, a filter or a link of the profile keeps it off.
             notes.append('it is off; the run ' + ('repairs it and ' if plan == 'upgrade' else '') + 'leaves it off')
-        if item.name == 'walkr-proxy' and item.on:
-            notes.append('guide only: the run prints the hosted-mode steps and writes nothing')
         replacing = model.replacing(item)
         if plan == 'remove' and replacing:
             notes.append(', '.join(other.name for other in replacing) + ' replaces it: the run removes it')

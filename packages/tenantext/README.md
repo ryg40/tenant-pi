@@ -7,13 +7,12 @@ The Pi extensions that `pi.extensions` of `package.json` lists form the installa
 - **tenantext**: Simplified English output rules, a startup guard, and a context report.
 - **codex-accounts**: Isolated Codex OAuth accounts, subscription limits, and optional LiteLLM automatic routing.
 - **context-meter**: Full-width context-source visualization, transition guidance, and system-prompt warnings.
-- **ops-footer**: A multi-row session dashboard with context, quotas, Git worktrees, and integration health.
+- **ops-footer**: A multi-row session dashboard with context, quotas, Git worktrees, and integration health. It runs `agy -p "/usage"` for an `Antigravity` quota row when `agy` is on the `PATH` (setting `antigravityUsage`).
 - **copilot-usage**: A GitHub Copilot quota meter that finds a local credential by itself and feeds the footer.
 - **anthropic-usage**: An Anthropic subscription quota meter that reads an active Claude Code or Pi login and feeds the footer.
 - **doctor**: `/tenantext-doctor` checks what this machine has and writes the matching settings.
 - **resources**: `/resources` lists extensions, skills, prompts and MCP servers, with enable controls and saved profiles.
 - **herdr-watch**: `herdr_spawn` starts a task session in a new Herdr pane and sends its task; `herdr_watch_start` prompts a pane that exists. Both wait on the pane in the background and deliver its reply as a task notification. See [docs/herdr-watch.md](docs/herdr-watch.md).
-- **handoffs**: at session start, runs `idle_cleanup.py startup` of the herdr-idle-cleanup skill and starts one assessment turn when it claims open handoff entries of the repository. `/handoffs` lists the entries (this repository first), shows one, and sets `ack`, `done`, `dismiss` or `reopen`. `/herdr-idle on|off|status` turns the startup check on or off, or shows its state. Task sessions of `spawn.py` and Pi reloads claim nothing. See [the skill](skills/herdr-idle-cleanup/SKILL.md).
 - **next-prompt**: One faint next-action suggestion in the empty editor, read from the final dummies report; Tab takes it as a draft. See [docs/next-prompt.md](docs/next-prompt.md).
 - **command-rules**: Blocks a shell command that matches a deny rule of `claude-code/scripts/command-rules.mjs`. The first rule sends `find / ...` to `rg`. Two rules deny a bare `env` or `printenv`, alone or before a pipe, because they print every secret; `printenv NAME`, `env NAME=value command` and `env -i ...` pass. One rule denies the AWS CLI read of a Secrets Manager secret value, also with global options of the AWS CLI. The Claude Code plugin applies the same rules.
 - **cross-session-recall**: Every interactive input in one SQLite store of the user; the newest distinct inputs seed Up/Down, `/recall [query]` searches all of them. See [docs/cross-session-recall.md](docs/cross-session-recall.md).
@@ -73,7 +72,6 @@ The suite loads these stable resources:
 | doctor | `extensions/doctor/index.ts` |
 | resources | `extensions/resources/index.ts` |
 | herdr-watch | `extensions/herdr-watch/index.ts` |
-| handoffs | `extensions/handoffs/index.ts` |
 | next-prompt | `extensions/next-prompt/index.ts` |
 | cross-session-recall | `extensions/cross-session-recall/index.ts` |
 | command-rules | `extensions/command-rules/index.ts` |
@@ -611,7 +609,8 @@ Files:
 | --- | --- |
 | `.claude-plugin/marketplace.json` | Marketplace manifest at the package root (`packages/tenantext`) |
 | `claude-code/.claude-plugin/plugin.json` | Plugin manifest |
-| `claude-code/hooks/hooks.json` | `SessionStart` hook, matcher `startup\|resume\|clear\|compact` |
+| `claude-code/hooks/hooks.json` | `SessionStart` hook, matcher `startup\|resume\|clear\|compact`; `PreToolUse` hook for `Bash`; opt-in `Stop` (`async: true`) and `UserPromptSubmit` hooks for the owner-task rail |
+| `claude-code/scripts/owner-popup-hook.mjs` | Opt-in launcher for the owner-task rail (`owner-popup/`); silent exit 0 unless `~/.config/owner-popup/settings.json` enables it |
 | `claude-code/scripts/session-start.mjs` | Emits the rule block as `additionalContext`, records the run, exits 0 on every path |
 | `claude-code/scripts/ste.mjs` | Backs `/ste` |
 | `claude-code/scripts/permission-profile.mjs` | Shared mode state and launch validation |
@@ -620,8 +619,6 @@ Files:
 | `claude-code/install-launcher.mjs` | Standalone, collision-preserving launcher installation. `--account` links `claude-account` |
 | `claude-code/bin/claude-account.mjs` | The `claude-account` command: log in two Claude accounts and switch the live login. See [Claude accounts](docs/claude-accounts.md) |
 | `claude-code/scripts/claude-accounts.mjs` | The account store of `claude-account`. The Anthropic meter and the status line read it |
-| `claude-code/scripts/herdr-idle.mjs` | Backs `/herdr-idle`: runs `idle_cleanup.py switch` of the herdr-idle-cleanup skill |
-| `claude-code/scripts/idle-script.mjs` | Finds `idle_cleanup.py` for the `SessionStart` hook and `/herdr-idle` |
 | `claude-code/scripts/pre-tool-use.mjs` | `PreToolUse` hook for `Bash`. Denies a command that matches a rule, and allows the call on every failure |
 | `claude-code/scripts/command-rules.mjs` | The command rules and their matcher. The Pi extension `command-rules` imports this file |
 | `claude-code/scripts/rules.mjs` | Copy of `src/rules.ts`. A test asserts the two blocks are identical |
@@ -646,6 +643,7 @@ Layout:
 | Path | Content |
 | --- | --- |
 | `extensions/` | Stable suite entry points, Codex routing, context meter, and operations footer |
+| `owner-popup/` | Opt-in owner-task rail producer, row parser, loopback decider client, isolated writer, and A2UI surface builder. See [Owner-task rail](docs/owner-popup.md) |
 | `src/index.ts` | Tenantext implementation: events, command, and status |
 | `src/rules.ts` | Rule block and version |
 | `src/guard.ts` | Guard state machine, pure |

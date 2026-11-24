@@ -25,6 +25,11 @@ export const NO_NEW_REPLY_STATUS = "no new reply, read the screen";
 export const NO_TRANSCRIPT_STATUS = "no transcript path, read the screen";
 /** spawn.py waits up to 60 seconds for the agent and runs `pi --list-models` once; this bound covers both. */
 export const SPAWN_TIMEOUT_SECONDS = 180;
+/**
+ * spawn.py of an agy pane then sends one first message (the role prompt file) and waits up to 300 seconds for its
+ * turn, and up to 120 seconds more for ask.py to end. The limit of an agy spawn covers both waits.
+ */
+export const AGY_SPAWN_TIMEOUT_SECONDS = SPAWN_TIMEOUT_SECONDS + 300 + 120;
 /** After a stop, spawn.py gets this many milliseconds to end on SIGTERM; then its process group gets SIGKILL. */
 export const SPAWN_KILL_GRACE_MS = 5000;
 /** The extension keeps at most this many characters of each output stream of spawn.py. */
@@ -34,7 +39,7 @@ const KIT_SCRIPTS = join(KIT_SKILL, "scripts");
 
 /** The contract of the herdr skill (contract.json): the exit codes of ask.py and spawn.py and the marker lines of ask.py. */
 interface ExitCodes { [name: string]: { code: number; meaning: string } }
-interface Contract { ask: { exit: ExitCodes; no_new_reply_line: string; no_transcript_line: string }; spawn: { exit: ExitCodes } }
+interface Contract { ask: { exit: ExitCodes; no_new_reply_line: string; no_transcript_line: string }; spawn: { exit: ExitCodes; started_line_prefix: string } }
 const skillJson = (name: string): unknown => JSON.parse(readFileSync(join(KIT_SKILL, name), "utf8"));
 const CONTRACT = skillJson("contract.json") as Contract;
 const meanings = (codes: ExitCodes): Readonly<Record<number, string>> => Object.fromEntries(Object.values(codes).map(({ code, meaning }) => [code, meaning]));
@@ -43,12 +48,14 @@ const meanings = (codes: ExitCodes): Readonly<Record<number, string>> => Object.
 export const EXIT_MEANING = meanings(CONTRACT.ask.exit);
 /** The exit codes of spawn.py and their meanings, from contract.json. */
 export const SPAWN_EXIT_MEANING = meanings(CONTRACT.spawn.exit);
+/** The prefix of the stderr line in which spawn.py names a started agy pane before it waits for the first turn. */
+export const SPAWN_STARTED_PREFIX = CONTRACT.spawn.started_line_prefix;
 /** ask.py exits with 0 and prints this line when the transcript has no new reply. The screen tail follows it. */
 export const NO_NEW_REPLY_LINE = CONTRACT.ask.no_new_reply_line;
 /** ask.py exits with 0 and prints this line in place of the NO NEW REPLY line when Herdr gave no transcript path. */
 export const NO_TRANSCRIPT_LINE = CONTRACT.ask.no_transcript_line;
 
-export const HARNESSES = ["pi", "claude"] as const;
+export const HARNESSES = ["pi", "claude", "agy"] as const;
 /** The roles of roles.json of the herdr skill, in its order. */
 export const ROLES: readonly string[] = Object.keys((skillJson("roles.json") as { roles: Record<string, unknown> }).roles);
 
@@ -117,6 +124,23 @@ export function lastJsonLine(output: string): Record<string, unknown> | undefine
 		} catch { /* not JSON */ }
 	}
 	return undefined;
+}
+
+/** The pane ID and the name from the last started line of spawn.py on stderr (an agy pane), else undefined. */
+export function startedPane(stderr: string): { pane_id: string; name: string } | undefined {
+	for (const line of stderr.split("\n").reverse()) {
+		if (!line.startsWith(SPAWN_STARTED_PREFIX)) continue;
+		try {
+			const value = JSON.parse(line.slice(SPAWN_STARTED_PREFIX.length)) as Record<string, unknown>;
+			if (typeof value.pane_id === "string" && value.pane_id && typeof value.name === "string" && value.name) return { pane_id: value.pane_id, name: value.name };
+		} catch { /* not JSON */ }
+	}
+	return undefined;
+}
+
+/** The limit of spawn.py for a harness: an agy spawn also waits for the first turn. */
+export function spawnTimeoutSeconds(harness: string): number {
+	return harness === "agy" ? AGY_SPAWN_TIMEOUT_SECONDS : SPAWN_TIMEOUT_SECONDS;
 }
 
 /** A word that a POSIX shell reads as one argument. */
@@ -269,7 +293,7 @@ const text = (value: string) => [{ type: "text" as const, text: value }];
 interface SpawnRun { code: number | null; signal: string | null; stdout: string; stderr: string; timedOut: boolean; aborted: boolean }
 
 /** Run spawn.py with an argument list and no shell, in a process group of its own. A timeout or an abort ends the group. */
-function runSpawn(script: string, args: string[], cwd: string, abort?: AbortSignal): Promise<SpawnRun> {
+function runSpawn(script: string, args: string[], cwd: string, limitSeconds: number, abort?: AbortSignal): Promise<SpawnRun> {
 	return new Promise((done, fail) => {
 		const child = spawn("python3", [script, ...args], { cwd, detached: true, stdio: ["ignore", "pipe", "pipe"] });
 		let stdout = "", stderr = "", timedOut = false, aborted = false;
@@ -283,7 +307,7 @@ function runSpawn(script: string, args: string[], cwd: string, abort?: AbortSign
 		// SIGTERM first; a spawn.py that ignores it gets SIGKILL after the grace time.
 		const stop = () => { send("SIGTERM"); killTimer ??= setTimeout(() => send("SIGKILL"), SPAWN_KILL_GRACE_MS); };
 		const onAbort = () => { aborted = true; stop(); };
-		const timer = setTimeout(() => { timedOut = true; stop(); }, SPAWN_TIMEOUT_SECONDS * 1000);
+		const timer = setTimeout(() => { timedOut = true; stop(); }, limitSeconds * 1000);
 		const settle = () => { clearTimeout(timer); clearTimeout(killTimer); abort?.removeEventListener("abort", onAbort); };
 		abort?.addEventListener("abort", onAbort, { once: true });
 		child.once("error", error => { settle(); fail(new Error(`Could not start python3: ${error.message}`)); });
@@ -466,27 +490,32 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		if (!existsSync(ask)) throw new Error(`ask.py of the herdr skill was not found beside spawn.py: ${ask}.`);
 		if (abort?.aborted) throw new Error("The tool call was stopped before spawn.py started. No pane was started.");
 
-		const run = await runSpawn(found.path, spawnArgs({ ...params, cwd }), ctx.cwd, abort);
+		const limit = spawnTimeoutSeconds(params.harness);
+		const run = await runSpawn(found.path, spawnArgs({ ...params, cwd }), ctx.cwd, limit, abort);
 		const facts = spawnFacts(lastJsonLine(run.stdout));
+		// An agy spawn that was stopped in the wait for its first turn printed no JSON line, but named its pane on stderr.
+		const started = facts ? undefined : startedPane(run.stderr);
 		const fail = (lines: string[]) => {
 			const out = run.stdout.trim(), err = run.stderr.trim();
-			if (facts) lines.push(`pane: ${facts.pane_id} (${facts.name})`);
+			const pane = facts ?? started;
+			if (pane) lines.push(`pane: ${pane.pane_id} (${pane.name})`);
 			// Exit 4: the pane waits for the decision of the user, so the result has no close command.
-			if (facts && run.code !== 4) lines.push(`close: ${closeCommand(scripts, facts.pane_id)}`);
+			if (pane && run.code !== 4) lines.push(`close: ${closeCommand(scripts, pane.pane_id)}`);
 			lines.push(`stderr (last ${Math.min(err.length, STDERR_LIMIT)} characters):`, err.slice(-STDERR_LIMIT) || "(empty)");
 			lines.push(`stdout (last ${Math.min(out.length, TAIL_LIMIT)} characters):`, out.slice(-TAIL_LIMIT) || "(empty)");
 			return {
 				content: text(lines.join("\n")), isError: true,
-				details: { spawn: facts ?? null, exitCode: run.code, signal: run.signal, timedOut: run.timedOut, aborted: run.aborted },
+				details: { spawn: facts ?? null, ...(started ? { started } : {}), exitCode: run.code, signal: run.signal, timedOut: run.timedOut, aborted: run.aborted },
 			};
 		};
 		const orphan = "A new pane can be open without a task: list the panes with panes.py of the herdr skill and close it with close.py.";
-		if (run.timedOut) return fail([`spawn.py did not finish in ${SPAWN_TIMEOUT_SECONDS} seconds and was stopped. No watch was started.`, orphan]);
-		if (run.aborted) return fail(["The tool call was stopped while spawn.py ran. No watch was started.", orphan]);
+		const startedLine = started ? `The pane ${started.pane_id} (${started.name}) started and waited for its first turn. Close it with the close line, or read its screen.` : orphan;
+		if (run.timedOut) return fail([`spawn.py did not finish in ${limit} seconds and was stopped. No watch was started.`, startedLine]);
+		if (run.aborted) return fail(["The tool call was stopped while spawn.py ran. No watch was started.", startedLine]);
 		if (run.code !== 0) {
 			const exit = run.code ?? (run.signal ? `signal ${run.signal}` : "none");
 			const lines = [`spawn.py failed: exit ${exit} (${SPAWN_EXIT_MEANING[run.code ?? -1] ?? "unknown exit code"}). No watch was started.`];
-			if (run.code === 4 && facts) lines.push(`Read the question with \`herdr agent read ${facts.pane_id} --source visible\`, show it to the user, and wait for the decision. Then send the task with herdr_watch_start, or close the pane.`);
+			if (run.code === 4 && facts) lines.push(`Read the question with \`last-reply.py ${facts.pane_id}\` of the herdr skill (it prints the screen when the pane has no transcript), show it to the user, and wait for the decision. Then send the task with herdr_watch_start, or close the pane.`);
 			return fail(lines);
 		}
 		if (!facts) return fail(["spawn.py exited with 0 but printed no JSON line with name and pane_id. No watch was started."]);
@@ -549,7 +578,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		label: "Herdr spawn",
 		executionMode: "sequential",
 		description: "Start a task session in a new Herdr pane with spawn.py of the herdr skill, send it the task, and wait for its reply in the background. "
-			+ "The call returns when spawn.py has started the pane (about 10 to 60 seconds, at most 180 seconds), with the pane id, the agent name and a task id. "
+			+ `The call returns when spawn.py has started the pane (about 10 to 60 seconds, at most ${SPAWN_TIMEOUT_SECONDS} seconds; an agy pane also waits for the turn of its first message, the role prompt file, at most ${AGY_SPAWN_TIMEOUT_SECONDS} seconds), with the pane id, the agent name and a task id. `
 			+ "Then the watch runs in the background. When the pane finishes, the reply arrives as a <herdr-task-notification> message that starts a turn. "
 			+ "A failed start returns an error and starts no watch.",
 		promptSnippet: "Start a task session in a new Herdr pane, send the task, and get its reply later as a task notification",
@@ -561,9 +590,9 @@ export default function herdrWatch(pi: ExtensionAPI) {
 				+ "A notification with a timeout or a blocked status has no close line: the pane still works or waits for the user, so do not close it.",
 		],
 		parameters: Type.Object({
-			harness: stringEnum(HARNESSES, { description: "The agent program: pi or claude" }),
+			harness: stringEnum(HARNESSES, { description: "The agent program: pi, claude or agy (the Antigravity CLI; it gets the role prompt and the task like the other harnesses)" }),
 			role: stringEnum(ROLES, { description: "The role of the task session. coordinator is refused: a coordinator is a primary session." }),
-			model: Type.Optional(Type.String({ description: "pi: provider/model or a name that pi --list-models finds one time. claude: a model ID or a CLI alias. Omit it only when models.json of the herdr skill names a model for the role and the harness: without a model, spawn.py starts no pane and the call returns its exit 2." })),
+			model: Type.Optional(Type.String({ description: "pi: provider/model or a name that pi --list-models finds one time. claude: a model ID or a CLI alias. agy: a slug of agy models. Omit it only when models.json of the herdr skill names a model for the role and the harness: without a model, spawn.py starts no pi or claude pane and the call returns its exit 2; agy starts with its default model." })),
 			thinking: Type.Optional(Type.String({ description: "off, minimal, low, medium, high, xhigh or max. Omit it for the level of models.json or of the harness." })),
 			cwd: Type.String({ description: "Absolute working directory of the new agent" }),
 			prompt: Type.Optional(Type.String({ description: "The task text. Give this or prompt_file." })),

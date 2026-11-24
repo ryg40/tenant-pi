@@ -97,14 +97,23 @@ if [ -z "$name" ]; then ask "Name of $mode profile:"; name=$answer; fi
 desktop_module=computer-use
 [ "$(uname -s)" = Darwin ] && desktop_module=computer-use-macos
 # all means every optional module of this platform; it stands alone.
-optional_modules=wiki,hermes,mcp,$desktop_module,okknow,artifacts,walkr
+optional_modules=wiki,hermes,mcp,$desktop_module,okknow,artifacts,walkr,memory
+# agy is a module for another harness (Antigravity CLI), so all leaves it out, as mcp-codemode.
 # The AWS rows: the components of config/manifest.json with a git source (scripts/kit_aws.py). all leaves them out.
 aws_modules=aws-core,aws-agents,aws-data-analytics,aws-agents-for-devsecops,aws-startup-advisor,aws-emulator
 # The checks of a --with value that ask nothing and write nothing. A refused platform exits before the first write.
 check_modules() {
   case ,$modules, in
     ,all,) modules=$optional_modules ;;
-    *,all,*) fail "all stands alone; use $optional_modules, mcp-codemode, walkr-proxy, $aws_modules, all or none" ;;
+    *,all,*) fail "all stands alone; use $optional_modules, mcp-codemode, agy, $aws_modules, all or none" ;;
+  esac
+  # The memory viewer is a section of the local server of the artifacts module.
+  case ,$modules, in
+    *,memory,*)
+      case ,$modules, in
+        *,artifacts,*) ;;
+        *) fail "memory needs artifacts: the memory viewer is a section of the local artifacts server; use --with artifacts,memory" ;;
+      esac ;;
   esac
   # An AWS plugin row needs aws-core.
   case ,$modules, in
@@ -192,7 +201,7 @@ if [ -z "$modules" ] && [ "$ui" != plain ] && [ "$approved" != yes ] &&
           echo 'tui:     the inventory did not run (see the line above), so the plain questions follow' >&2
         elif selection=$(printf '%s\n' "$profile_state" |
             python3 "$kit/scripts/kit_tui.py" --inventory - --catalog "$kit/config/catalog.json" --no-remove \
-              --choices "$optional_modules,mcp-codemode,walkr-proxy,$aws_modules" --exclusive mcp,mcp-codemode --replaces mcp-codemode=mcp \
+              --choices "$optional_modules,mcp-codemode,agy,$aws_modules" --exclusive mcp,mcp-codemode --replaces mcp-codemode=mcp \
               --requires aws-agents=aws-core --requires aws-data-analytics=aws-core \
               --requires aws-agents-for-devsecops=aws-core --requires aws-startup-advisor=aws-core \
               --runtime "${runtimes%%,*}" --runtimes "$runtimes" -- python3 "$kit/scripts/kit_inventory.py" "$@"); then
@@ -215,7 +224,7 @@ print(",".join(name for name in data["consent"] if name in known and name in dat
                and name not in ("computer-use", "computer-use-macos")))
 # DUMMIES is active in the profile: its block is there and the Pi switch is on.
 print("on" if "dummies" in data["enable"] else "")
-' "$optional_modules,mcp-codemode,walkr-proxy,$aws_modules") || fail "the selection of the screen is not valid"
+' "$optional_modules,mcp-codemode,agy,$aws_modules") || fail "the selection of the screen is not valid"
           modules=$(printf '%s\n' "$parsed" | sed -n 1p)
           [ -n "$runtime_choice" ] || runtime_choice=$(printf '%s\n' "$parsed" | sed -n 2p)
           tui_consent=$(printf '%s\n' "$parsed" | sed -n 3p)
@@ -231,9 +240,8 @@ print("on" if "dummies" in data["enable"] else "")
       fi ;;
   esac
 fi
-# mcp-codemode is a choice for a comparison profile, so all leaves it out. all leaves out the AWS rows too, and
-# walkr-proxy, the guide row of Walkr hosted mode.
-if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, walkr-proxy, $aws_modules, all or none]:"; modules=$answer; asked=yes; fi
+# all holds mcp, and mcp-codemode replaces it, so all leaves out mcp-codemode. all leaves out agy and the AWS rows too.
+if [ -z "$modules" ]; then ask "Optional modules [$optional_modules, mcp-codemode, agy, $aws_modules, all or none]:"; modules=$answer; asked=yes; fi
 check_modules
 # A module that needs consent and that the screen turned on gets an explicit yes here. A no cancels the run.
 if [ -n "$tui_consent" ]; then
@@ -303,33 +311,6 @@ import tempfile
 PLUGIN = 'computer-use-linux@computer-use-linux'
 # The settings that install.sh writes for computer-use-macos: the bundled driver, the core tools, both confirmations.
 MACOS_DESKTOP_DEFAULTS = {'mode': 'bundled', 'toolProfile': 'core', 'confirmAppLaunch': True, 'confirmDangerousActions': True}
-# Kit resources that an upgrade adds once to the filter lists of the tenantext entry of a profile, by the rules of
-# docs/resources.md. Each step runs once for each profile; kit-steps.json of the profile records it, so a later
-# removal by the user stays.
-KIT_STEPS = {
-    'herdr-idle-cleanup': {'skills': ['skills/herdr-idle-cleanup'], 'extensions': ['extensions/handoffs/index.ts'],
-                           'prompts': ['prompts/herdr-idle-cleanup.md']},
-}
-
-
-def add_kit_items(entry, key, items):
-    """Add items to the filter list `key` of a package entry when the list would not load them.
-
-    A list with a plain entry includes only its matches: add the item. A missing key, `[]` and a list of only
-    `!`, `+` or `-` entries stay: the file loads already, or the user turned the kind or the item off (this
-    installer writes the tenantext entry as a plain source, never `[]`). With `autoload: false` the list is a
-    delta: add the item. An item that an entry names already, with or without a prefix, stays as the user set it.
-    """
-    current = entry.get(key)
-    delta = entry.get('autoload') is False
-    if current is None and delta:
-        current = entry[key] = []
-    if not isinstance(current, list):
-        return
-    if not delta and not any(isinstance(one, str) and one[:1] not in ('!', '+', '-') for one in current):
-        return
-    named = {one.lstrip('!+-') for one in current if isinstance(one, str)}
-    current.extend(item for item in items if item not in named)
 
 
 def fail(message):
@@ -374,9 +355,9 @@ try:
     if modules == ['none']:
         modules = []
     aws_names = os.environ['aws_modules'].split(',')
-    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'artifacts', 'walkr', 'walkr-proxy', 'questions', *aws_names)
+    if any(module not in ('wiki', 'hermes', 'mcp', 'mcp-codemode', 'computer-use', 'computer-use-macos', 'okknow', 'artifacts', 'walkr', 'memory', 'questions', 'agy', *aws_names)
            for module in modules):
-        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, walkr-proxy, ' + os.environ['aws_modules'] + ', all or none')
+        fail('unknown optional module; use ' + os.environ['optional_modules'] + ', mcp-codemode, agy, ' + os.environ['aws_modules'] + ', all or none')
     manifest = json.loads((kit / 'config/manifest.json').read_text())
     # questions is mandatory; accept its old --with name without installing twice. Only an npm source is a Pi package
     # install: okknow, artifacts and walkr are tree packages, the AWS rows come from one git clone, and mcp-codemode
@@ -400,6 +381,8 @@ try:
     artifacts_package = kit / manifest['components']['artifacts']['source']['path']
     artifacts_script = artifacts_package / 'skills/artifacts/scripts/artifacts'
     artifacts_link = home / '.local/bin/artifacts'
+    herdr_role_set_script = kit / 'packages/tenantext/skills/herdr/scripts/role_set.py'
+    herdr_role_set_link = home / '.local/bin/herdr-role-set'
     choice = os.environ['runtime_choice']
     if any(ord(c) < 32 or ord(c) == 127 for c in choice):
         fail('runtime path has a control character')
@@ -407,7 +390,8 @@ try:
     if not runtime.is_file() or not os.access(runtime, os.X_OK):
         fail('runtime must be an executable file: ' + str(runtime))
     # Herdr knows a Pi agent by the name of the started file. The Pi-Bolt installer links
-    # pi-bolt to a release file named pi, so the launcher starts that file.
+    # pi-bolt to a release file named pi, so the launcher starts that file. In the default Linux x86-64 build,
+    # Pi-Bolt 1.3.0 links it to a start script; the launcher keeps the link, and the script ends in the release file pi.
     if choice == 'pi-bolt' and runtime.resolve().name == 'pi':
         runtime = runtime.resolve()
     launcher = home / '.local/bin' / name
@@ -418,12 +402,14 @@ try:
     end = '# <<< tenant-pi ' + name + ' <<<'
     launcher_mark = '# tenant-pi launcher: ' + name
     # With the okknow CLI link of the kit, the launcher puts its directory at the end of PATH.
-    # The same holds for the artifacts and Walkr command links of the kit, which are in the same directory.
-    walkr_link = home / '.local/bin/walkr-core'
+    # The same holds for the artifacts, Walkr and Herdr command links of the kit, which are in the same directory.
+    walkr_link = home / '.local/bin/walkr-compare'
     okknow_path = ['export PATH="$PATH":' + shlex.quote(str(okknow_link.parent))] if (
         okknow_link.is_symlink() and okknow_link.resolve() == okknow_script.resolve()
         or artifacts_link.is_symlink() and artifacts_link.resolve() == artifacts_script.resolve()
-        or walkr_link.is_symlink() and walkr_link.resolve() == (kit / 'packages/walkr/src/walkr-core.js').resolve()) else []
+        or walkr_link.is_symlink() and walkr_link.resolve() == (kit / 'packages/walkr/src/walkr-compare.js').resolve()
+        or herdr_role_set_script.is_file() and herdr_role_set_link.is_symlink()
+        and herdr_role_set_link.resolve() == herdr_role_set_script.resolve()) else []
     launch_text = '\n'.join(['#!/bin/sh', launcher_mark, '# tenant-pi runtime: ' + choice,
         'export PI_CODING_AGENT_DIR=' + shlex.quote(str(profile)),
         'unset PI_CODING_AGENT_SESSION_DIR',
@@ -481,6 +467,9 @@ try:
     defaults['packages'] = [item.replace('{kit}', str(kit)) for item in defaults['packages']]
     settings = json.loads(settings_path.read_text()) if settings_path.exists() else defaults
     before = json.loads(json.dumps(settings))
+    # The built-in Pi theme of the template gives the reply colors of the kit: amber headings, violet inline code.
+    # An upgrade adds it when the key is absent; a theme that the user set stays, as the pi-computer-use values do.
+    theme = settings.setdefault('theme', defaults['theme'])
     packages = settings.setdefault('packages', [])
     if not isinstance(packages, list):
         fail('settings packages must be a list')
@@ -501,22 +490,6 @@ try:
                     packages[index] = desired
         if not found:
             packages.append(desired)
-    steps_path = profile / 'kit-steps.json'
-    if steps_path.is_symlink():
-        fail('refusing symlink kit steps file: ' + str(steps_path))
-    try:
-        done_steps = json.loads(steps_path.read_text())['added'] if steps_path.exists() else []
-    except (ValueError, KeyError, TypeError):
-        fail('invalid kit steps file: ' + str(steps_path) + '; remove the file to run the steps again')
-    if not isinstance(done_steps, list):
-        fail('invalid kit steps file: ' + str(steps_path) + '; remove the file to run the steps again')
-    new_steps = [step for step in KIT_STEPS if step not in done_steps]
-    for entry in packages:
-        if not (isinstance(entry, dict) and entry.get('source') == str(kit / 'packages/tenantext')):
-            continue
-        for step in new_steps:
-            for key, items in KIT_STEPS[step].items():
-                add_kit_items(entry, key, items)
     if 'computer-use-macos' in modules:
         # The safe defaults of the macOS desktop extension; a value that the user set stays.
         desktop = settings.setdefault('pi-computer-use', {})
@@ -558,6 +531,22 @@ try:
     if 'artifacts' in modules:
         skills += [artifacts_package / item for item in manifest['components']['artifacts']['resources']['skills']]
 
+    def agy_step(step):
+        # The kit list of skills for agy: the skills of the Claude Code links above, with a SKILL.md.
+        import subprocess
+        args = [sys.executable, str(kit / 'scripts/kit_agy.py'), step]
+        for skill in skills:
+            if (skill / 'SKILL.md').is_file():
+                args += ['--skill', str(skill)]
+        if 'artifacts' in modules:
+            args.append('--artifacts')
+        done = subprocess.run(args, capture_output=True, text=True)
+        sys.stderr.write(done.stderr)
+        for line in done.stdout.splitlines():
+            print(line if line.startswith('agy:') else 'agy: ' + line)
+        if done.returncode:
+            fail('scripts/kit_agy.py ' + step + ' exited ' + str(done.returncode))
+
     def okknow_link_state():
         # Make or replace only a link of this kit; keep another okknow command.
         if not okknow_link.exists() and not okknow_link.is_symlink():
@@ -574,9 +563,39 @@ try:
                                             or artifacts_link.resolve().is_relative_to(kit.resolve())):
             return None
         return 'skipped: ' + str(artifacts_link) + ' exists and is not a link of this kit'
+
+    def herdr_role_set_link_state():
+        # Make or replace only a link into this kit (also dangling); keep another herdr-role-set command.
+        if not herdr_role_set_link.exists() and not herdr_role_set_link.is_symlink():
+            return None
+        if herdr_role_set_link.is_symlink():
+            try:
+                if herdr_role_set_link.resolve().is_relative_to(kit.resolve()):
+                    return None
+            except (OSError, RuntimeError):
+                pass
+        return 'skipped: ' + str(herdr_role_set_link) + ' exists and is not a link of this kit'
     adapter_path = profile / 'mcp-adapter.json'
     native_path = profile / 'mcp.json'
     mcp_path = native_path if 'mcp-codemode' in modules else adapter_path
+    # mcp-codemode switches a profile with adapter servers through scripts/mcp_to_native.py: a private backup, then
+    # mcp.json with codemode exposure and the settings. It runs while the adapter is selected, or while no mcp.json
+    # exists yet. The tool refuses an mcp.json that it did not write, and a required server that would be lost.
+    adapter_spec = 'npm:' + manifest['components']['mcp']['source']['spec'].rsplit('@', 1)[0]
+    old_packages = before.get('packages') if isinstance(before.get('packages'), list) else []
+    adapter_on = any(isinstance(source, str) and source.rsplit('@', 1)[0] == adapter_spec
+                     for source in (entry.get('source') if isinstance(entry, dict) else entry for entry in old_packages))
+    convert_mcp = 'mcp-codemode' in modules and adapter_path.is_file() and (adapter_on or not native_path.exists())
+
+    def convert_step(*extra):
+        import subprocess
+        done = subprocess.run([sys.executable, str(kit / 'scripts/mcp_to_native.py'), '--profile', str(profile), *extra],
+                              capture_output=True, text=True)
+        for line in done.stdout.splitlines():
+            print('mcp-codemode: ' + line)
+        sys.stderr.write(done.stderr)
+        if done.returncode:
+            fail('scripts/mcp_to_native.py exited ' + str(done.returncode) + '; see docs/guides/modules.md#mcp-with-codemode')
 
     def claude_links():
         # Replace a broken link or a link into this clone; keep a link to another skill source.
@@ -609,20 +628,25 @@ try:
             print('herdr: none (pi-bolt has its own Herdr reporter)')
         elif shutil.which('herdr'):
             print('herdr: Pi integration in ' + str(profile / 'extensions'))
+        if herdr_role_set_script.is_file():
+            print('herdr: CLI link ' + str(herdr_role_set_link)
+                  + (' (' + herdr_role_set_link_state() + ')' if herdr_role_set_link_state() else ''))
         if settings_path.exists() and changed:
             print('Proposed settings.json change:')
-            for key in ('packages', 'skills', 'pi-computer-use', 'extensions', 'defaultTools'):
+            for key in ('theme', 'packages', 'skills', 'pi-computer-use', 'extensions', 'defaultTools'):
                 if before.get(key) != settings.get(key):
                     print(key + ':')
                     print('- ' + json.dumps(before.get(key), ensure_ascii=True))
                     print('+ ' + json.dumps(settings.get(key), ensure_ascii=True))
+        if theme != defaults['theme']:
+            print('theme: ' + json.dumps(theme, ensure_ascii=True) + ' stays (a value of the profile); the kit theme is '
+                  + json.dumps(defaults['theme']))
         for spec in specs:
             print('install module: ' + spec)
         if 'mcp-codemode' in modules:
             print('mcp-codemode: servers from ' + str(native_path) + '; no adapter package; settings defaultTools ' + json.dumps(settings['defaultTools']))
-            if adapter_path.exists() and not native_path.exists():
-                print('mcp-codemode: ' + str(adapter_path) + ' stays; to convert it, run: python3 ' + shlex.quote(str(kit / 'scripts/mcp_to_native.py'))
-                      + ' --from ' + shlex.quote(str(adapter_path)) + ' --to ' + shlex.quote(str(native_path)))
+            if convert_mcp:
+                convert_step('--dry-run')
         if 'computer-use-macos' in modules:
             print('settings pi-computer-use: ' + json.dumps(settings['pi-computer-use'], ensure_ascii=True)
                   + ' (no driver start and no macOS grant during the install)')
@@ -635,8 +659,9 @@ try:
             # Walkr has its own installer for the skills and the Pi prompts; the kit runs it after the profile step.
             print('walkr: package ' + str(kit / manifest['components']['walkr']['source']['path'])
                   + ' (its setup writes the Walkr skills to ~/.claude, ~/.codex and ~/.agents, and the prompts to the profile)')
-        if 'walkr-proxy' in modules:
-            print('walkr-proxy: no write and no install; the run prints the guide of Walkr hosted mode at its end')
+        if 'memory' in modules:
+            print('memory: package ' + str(kit / 'packages/memory')
+                  + ' (npm ci installs its dependencies; artifacts start runs it as the section /memory/)')
         if 'okknow' in modules:
             print('okknow: package ' + str(okknow_package))
             print('okknow: CLI link ' + str(okknow_link) + (' (' + okknow_link_state() + ')' if okknow_link_state() else ''))
@@ -654,6 +679,9 @@ try:
             print('artifacts: package ' + str(artifacts_package))
             print('artifacts: CLI link ' + str(artifacts_link)
                   + (' (' + artifacts_link_state() + ')' if artifacts_link_state() else ''))
+        if 'agy' in modules:
+            # The lines of the agy step; the step writes only when <home>/.gemini/config exists.
+            agy_step('plan')
         if os.environ.get('dummies') == 'yes':
             print('DUMMIES: on for Pi, shared by all profiles of this user; autostart block in the instruction file of the profile, else a new AGENTS.md')
         for line in aws_lines + kit_aws.plan_lines(home, profile, aws_rows, modules, os.environ.get('claude_aws') == 'yes',
@@ -672,12 +700,13 @@ try:
         profile.mkdir(parents=True, exist_ok=True)
         for line in aws_lines:
             print(line)
+        # The switch backs up the profile before its first change, so it comes before the settings write.
+        if convert_mcp:
+            convert_step()
         if not settings_path.exists() or changed:
             if settings_path.exists():
                 backup(settings_path)
             put(settings_path, json.dumps(settings, indent=2) + '\n')
-        if new_steps:
-            put(steps_path, json.dumps({'version': 1, 'added': done_steps + new_steps}, indent=2) + '\n')
         if not models_path.exists():
             put(models_path, models)
         import subprocess
@@ -723,6 +752,19 @@ try:
                 artifacts_link.unlink()
             artifacts_link.symlink_to(artifacts_script)
             print('artifacts: ' + str(artifacts_link))
+    elif action == 'herdr-cli':
+        if herdr_role_set_script.is_file():
+            state = herdr_role_set_link_state()
+            if state:
+                print(state, file=sys.stderr)
+            else:
+                herdr_role_set_link.parent.mkdir(parents=True, exist_ok=True)
+                if herdr_role_set_link.is_symlink():
+                    herdr_role_set_link.unlink()
+                herdr_role_set_link.symlink_to(herdr_role_set_script)
+                print('herdr:   ' + str(herdr_role_set_link))
+    elif action == 'agy':
+        agy_step('apply')
     elif action == 'okknow-mcp':
         # Only the command of a header helper enters the file, never a credential.
         import subprocess
@@ -733,7 +775,8 @@ try:
             sys.exit(0)
         header = '!' + shlex.quote(command) + ' auth-header'
         entry = {'type': 'http', 'url': done.stdout.strip() + '/mcp', 'headers': {'Authorization': header}}
-        entry |= {'timeout': 60} if mcp_path == native_path else {'lifecycle': 'lazy', 'requestTimeoutMs': 60000}
+        # The native entry has codemode exposure, as each entry of scripts/mcp_to_native.py.
+        entry |= {'timeout': 60, 'exposure': 'codemode'} if mcp_path == native_path else {'lifecycle': 'lazy', 'requestTimeoutMs': 60000}
         if mcp_path.is_symlink():
             fail('refusing a symlink ' + mcp_path.name)
         data = json.loads(mcp_path.read_text()) if mcp_path.exists() else {}
@@ -890,6 +933,9 @@ elif command -v herdr >/dev/null 2>&1; then
 else
   echo "herdr:   no herdr command on PATH, so no Herdr Pi integration"
 fi
+# herdr-role-set: the Start helper of the Herdr app, linked with the herdr skill.
+herdr_cli_failed=no
+helper herdr-cli || herdr_cli_failed=yes
 # okknow: the CLI link, then the setup wizard writes the user config, then the MCP entry.
 okknow_failed=no
 case ,$modules, in
@@ -909,9 +955,17 @@ artifacts_failed=no
 case ,$modules, in
   *,artifacts,*) helper artifacts-cli || artifacts_failed=yes ;;
 esac
+# agy: the rules, the kit skills, the command rules and, with the OpenViking Claude Code plugin, the memory hooks in
+# ~/.gemini/config (scripts/kit_agy.py). Without that folder the step prints one line and writes nothing.
+# A later run without agy removes nothing: python3 scripts/kit_agy.py remove does that.
+agy_failed=no
+case ,$modules, in
+  *,agy,*) helper agy || agy_failed=yes ;;
+esac
 # The Walkr setup makes ~/.claude when it is absent. The Claude skill links of the kit follow the state before it.
 claude_dir=no; [ -d "$HOME/.claude" ] && claude_dir=yes
-# walkr: the dependencies of the package, then its own setup writes the skills and the Pi prompts.
+# walkr: the command links, then its own setup writes the skills and the Pi prompts. The package has no runtime
+# dependency, so no npm step runs.
 # The package is not a Pi package of the profile: the skills hold the path of this clone.
 walkr_failed=no
 case ,$modules, in
@@ -919,33 +973,32 @@ case ,$modules, in
     walkr_dir=$kit/packages/walkr
     if ! command -v node >/dev/null 2>&1; then
       echo 'walkr:   no node command on PATH' >&2; walkr_failed=yes
-    elif [ "${INSTALL_SKIP_PACKAGES:-}" != 1 ]; then
-      # A node_modules folder proves nothing: an interrupted npm run leaves one. Load each dependency.
-      walkr_deps() { (cd "$walkr_dir" && node --input-type=module -e 'await import("css-tree"); await import("marked"); await import("parse5");') >/dev/null 2>&1; }
-      if ! walkr_deps; then
-        (cd "$walkr_dir" && npm ci --ignore-scripts --omit=dev) && walkr_deps || {
-          echo 'walkr:   the dependencies of packages/walkr are not complete' >&2; walkr_failed=yes; }
-      fi
     fi
-    # The walkr-core skill calls its command by name, so the six commands get links, as in the Walkr installer.
-    if [ "$walkr_failed" = no ]; then
-      mkdir -p "$HOME/.local/bin"
-      for pair in walkr:cli.js walkr-core:walkr-core.js walkr-double:walkr-double.js walkr-coinflip:walkr-coinflip.js walkr-trainer:walkr-trainer.js walkr-compare:walkr-compare.js; do
-        link=$HOME/.local/bin/${pair%%:*} target=$walkr_dir/src/${pair#*:}
-        if [ -L "$link" ]; then
-          # A matching filename proves no ownership. Read the resolved package metadata, without executing it.
-          if python3 - "$link" "${pair#*:}" <<'PY'
-import json, sys
+    # True when the link $1 points to the file $2 in the src directory of a package named walkr. A matching file
+    # name proves no ownership. Read the package metadata, but do not follow a second link.
+    walkr_owned() {
+      python3 - "$1" "$2" <<'PY'
+import json, os, sys
 from pathlib import Path
 try:
-    target = Path(sys.argv[1]).resolve()
-    package = json.loads((target.parent.parent / 'package.json').read_text())
-    owned = target.parent.name == 'src' and target.name == sys.argv[2] and package.get('name') == 'walkr'
+    link = Path(sys.argv[1])
+    target = link.parent / os.readlink(link)
+    # A direct link can be dangling after the package removed a retired command.
+    owned = (not target.is_symlink() and target.parent.name == 'src' and target.name == sys.argv[2]
+             and (target.is_file() or not target.exists())
+             and json.loads((target.parent.parent / 'package.json').read_text()).get('name') == 'walkr')
 except (OSError, ValueError, RuntimeError, AttributeError):
     owned = False
 sys.exit(0 if owned else 1)
 PY
-          then
+    }
+    # The skills call their command by name, so the two commands get links, as in the Walkr installer.
+    if [ "$walkr_failed" = no ]; then
+      mkdir -p "$HOME/.local/bin"
+      for pair in walkr:cli.js walkr-compare:walkr-compare.js; do
+        link=$HOME/.local/bin/${pair%%:*} target=$walkr_dir/src/${pair#*:}
+        if [ -L "$link" ]; then
+          if walkr_owned "$link" "${pair#*:}"; then
             rm -f "$link"
           else
             echo "walkr:   $link is a link to another place; move it away and run again" >&2; walkr_failed=yes; continue
@@ -959,6 +1012,18 @@ PY
           echo "walkr:   could not create $link" >&2; walkr_failed=yes
         fi
       done
+      # The commands of the retired modes (packages/walkr/CHANGELOG.md): an earlier install linked them. Remove a
+      # link only when it is a link of a walkr package; a file or a link of another owner with such a name stays.
+      for pair in walkr-core:walkr-core.js walkr-double:walkr-double.js walkr-coinflip:walkr-coinflip.js walkr-trainer:walkr-trainer.js; do
+        link=$HOME/.local/bin/${pair%%:*}
+        if [ -L "$link" ] && walkr_owned "$link" "${pair#*:}"; then
+          if rm -f "$link"; then
+            echo "walkr:   removed $link (the command is retired)"
+          else
+            echo "walkr:   could not remove $link" >&2; walkr_failed=yes
+          fi
+        fi
+      done
     fi
     if [ "$walkr_failed" = no ]; then
       node --input-type=module -e '
@@ -967,6 +1032,24 @@ PY
         for (const line of installSkills(home, { global: true, home, piAgentDir: profile })) console.log("walkr:   " + line);
       ' "$walkr_dir/src/setup.js" "$HOME" "$profile" || walkr_failed=yes
     fi ;;
+esac
+# memory: the dependencies of the memory viewer (the AWS SDK of its AgentCore source). The run links nothing and
+# changes no profile: the local server of the artifacts module starts the viewer as its section /memory/.
+memory_failed=no
+case ,$modules, in
+  *,memory,*)
+    memory_dir=$kit/packages/memory
+    if ! command -v node >/dev/null 2>&1; then
+      echo 'memory:  no node command on PATH' >&2; memory_failed=yes
+    elif [ "${INSTALL_SKIP_PACKAGES:-}" != 1 ]; then
+      # A node_modules folder proves nothing: an interrupted npm run leaves one. Load each dependency, with Node 24.
+      memory_deps() { (cd "$memory_dir" && node --input-type=module -e 'if (Number(process.versions.node.split(".")[0]) < 24) process.exit(3); await import("@aws-sdk/client-bedrock-agentcore"); await import("@aws-sdk/credential-provider-ini");') >/dev/null 2>&1; }
+      if ! memory_deps; then
+        (cd "$memory_dir" && npm ci --ignore-scripts --omit=dev) && memory_deps || {
+          echo 'memory:  the dependencies of packages/memory are not complete, or node is older than version 24' >&2; memory_failed=yes; }
+      fi
+    fi
+    [ "$memory_failed" = yes ] || echo "memory:  $memory_dir (artifacts start runs it as the section /memory/)" ;;
 esac
 # The skill's own script turns DUMMIES on for Pi and writes the autostart block into the profile.
 dummies_failed=no dummies_on= dummies_status=
@@ -1014,12 +1097,24 @@ if [ "$okknow_failed" = yes ]; then
   echo 'install: an okknow step failed; the profile and the alias are in place. Run okknow setup' >&2
   exit 1
 fi
+if [ "$herdr_cli_failed" = yes ]; then
+  echo 'install: the herdr-role-set CLI link failed; the profile and the alias are in place' >&2
+  exit 1
+fi
 if [ "$artifacts_failed" = yes ]; then
   echo 'install: the artifacts CLI link failed; the profile and the alias are in place. See docs/guides/modules.md#artifacts' >&2
   exit 1
 fi
+if [ "$agy_failed" = yes ]; then
+  echo 'install: the agy step failed; the profile and the alias are in place. See docs/guides/modules.md#agy' >&2
+  exit 1
+fi
 if [ "$walkr_failed" = yes ]; then
   echo 'install: the walkr step failed; the profile and the alias are in place. See docs/guides/modules.md#walkr' >&2
+  exit 1
+fi
+if [ "$memory_failed" = yes ]; then
+  echo 'install: the memory step failed; the profile and the alias are in place. See docs/guides/modules.md#memory' >&2
   exit 1
 fi
 if [ "$dummies_failed" = yes ]; then
@@ -1038,18 +1133,4 @@ if [ "$aws_claude_failed" = yes ]; then
   echo 'install: the Claude Code AWS step failed; the profile and the alias are in place. See docs/guides/aws-agent-toolkit.md' >&2
   exit 1
 fi
-# walkr-proxy: a guide only. The run wrote nothing for it; the user sets up the hosted server and the proxy by hand.
-case ,$modules, in
-  *,walkr-proxy,*)
-    cat <<GUIDE
-walkr-proxy: Walkr hosted mode is the review server of $kit/packages/walkr/Dockerfile behind a reverse proxy.
-walkr-proxy: the installer wrote nothing for it. Set these values for the review server:
-walkr-proxy:   HUMAN_REVIEW_HOSTED=1
-walkr-proxy:   HUMAN_REVIEW_TRUSTED_PROXIES=<the fixed IP address of the proxy>
-walkr-proxy:   HUMAN_REVIEW_PUBLIC_URL=<the public address of the proxy>
-walkr-proxy: the proxy must send the Host header 127.0.0.1:<HUMAN_REVIEW_PORT>, or the server answers 403.
-walkr-proxy: the steps: $kit/packages/walkr/docs/core.md, section "Hosted mode behind a proxy"
-GUIDE
-    ;;
-esac
 printf 'Complete: %s\n' "$name"

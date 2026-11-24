@@ -1,0 +1,27 @@
+{
+  "description": "Synthetic OpenViking memory files for Bob. Not live memory.",
+  "facetDepth": 1,
+  "folderLabels": { "preferences": "Preferences", "entities": "Entities" },
+  "docs": [
+    {
+      "id": "sample-bob-gateway",
+      "folder": ["entities"],
+      "title": "Gateway release checklist",
+      "kind": "entities",
+      "date": "2026-11-08T09:00:00Z",
+      "dateLabel": "modified",
+      "body": "# Gateway release checklist\n\nBob checks the sample gateway before a release.\n\n1. Check the route table.\n2. Test a reload.\n3. Keep the rollback file.\n\n| Check | Result |\n| --- | --- |\n| Sample route | Ready |\n| Reload | Ready |\n\nSee [[entities/gateway|Gateway]].",
+      "meta": [["URI", "viking://user/bob/memories/entities/gateway.md"]]
+    },
+    {
+      "id": "sample-bob-reports",
+      "folder": ["preferences"],
+      "title": "Report sources separately",
+      "kind": "preferences",
+      "date": "2026-11-01T10:00:00Z",
+      "dateLabel": "modified",
+      "body": "Keep facts from each source separate. A gateway report names the source of each result.\n\nA placeholder stays private: {{ov_privacy:sample:viking://user/bob/privacy/credential/example#/values/token}}.",
+      "meta": [["URI", "viking://user/bob/memories/preferences/reports.md"], ["Privacy placeholders", "1"]]
+    }
+  ]
+}

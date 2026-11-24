@@ -90,7 +90,7 @@ An option wins over the variable. The publisher runs Git with `commit.gpgsign=fa
 `scripts/publish_check.py` computes the set from the source commit:
 
 - Exact files: `package.json`, `package-lock.json`, `README.md`, `GLOSSARY.md`, `LICENSE`, `INSTALL.md`, `install.sh`, `.gitignore`, `CHANGELOG.md`.
-- Directory rules: `src/`, `test/`, `skills/`, `prompts/`, `integrations/pi/`, `docs/`, `assets/`, `.github/workflows/`.
+- Directory rules: `src/`, `test/`, `skills/`, `prompts/`, `docs/`, `assets/`, `.github/workflows/`.
 - In `scripts/`, only the publisher files: `publish_portable.py`, `publish_check.py`, `scan.sh`, `install-hooks.sh`, `git-hooks/`, `test_publish.py` and the four `host-values.*` lists.
 - Minus each path of `scripts/dev-only-files.txt`. The list excludes itself.
 

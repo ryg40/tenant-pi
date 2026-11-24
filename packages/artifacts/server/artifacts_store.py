@@ -28,6 +28,15 @@ REMOTE = re.compile(r'(?:[A-Za-z0-9_][A-Za-z0-9._-]{0,31}@)?[A-Za-z0-9][A-Za-z0-
 REMOTE_RULE = ('remote is a plain SSH destination: a host name or alias, or user@host, of letters, digits, '
                '".", "_" and "-"; it starts with a letter or a digit; at most 32 characters for the user and 253 '
                'for the host')
+# The key `walkrPublicOrigin`: the one public origin of the Walkr Compare page behind a reverse proxy, exactly
+# `https://<name>` or `https://<name>:<port>`. The name is a DNS name of letters, digits, "-" and "."; it is no IP
+# address and no loopback name; the port is 1 to 65535 with no leading zero and not 443 (write no port for 443, as a
+# browser sends none). The JavaScript copy of this rule is PUBLIC_ORIGIN in packages/walkr/src/allowed-hosts.js.
+PUBLIC_KEY = 'walkrPublicOrigin'
+LABEL = r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?'
+PUBLIC_ORIGIN = re.compile(r'https://(?P<name>' + LABEL + r'(?:\.' + LABEL + r')*)(?::(?P<port>[1-9][0-9]{0,4}))?')
+PUBLIC_RULE = ('walkrPublicOrigin is one origin https://NAME or https://NAME:PORT: a DNS name (no IP address, no '
+               'loopback name), no path, no query, no user part; a port from 1 to 65535 and not 443')
 # The config keys of the old remote and clone design: the CLI keeps them in the file and ignores them.
 OLD_KEYS = ('origin', 'tokenFile', 'clone')
 # A file of an artifact directory opens with no symlink at the last part of its path.
@@ -100,6 +109,35 @@ def remote_of(data):
 
 def valid_remote(value):
     return isinstance(value, str) and REMOTE.fullmatch(value) is not None
+
+
+def valid_public_origin(value):
+    """The origin of `value` in lower case when it fits PUBLIC_RULE, else None."""
+    if not isinstance(value, str) or not value.isascii():
+        return None
+    value = value.lower()
+    match = PUBLIC_ORIGIN.fullmatch(value)
+    if match is None:
+        return None
+    name, port = match.group('name', 'port')
+    last = name.rsplit('.', 1)[-1]
+    # A last label of digits or of 0x hex makes the name an IPv4 address in a browser (the URL standard).
+    if (len(name) > 253 or re.fullmatch(r'[0-9]+|0x[0-9a-f]*', last) or name == 'localhost'
+            or name.endswith('.localhost') or port and (int(port) > 65535 or port == '443')):
+        return None
+    return value
+
+
+def public_origin_of(data):
+    """The origin of the key walkrPublicOrigin, or None when the key is absent. Raises ConfigError for a value that
+    does not fit PUBLIC_RULE."""
+    value = data.get(PUBLIC_KEY)
+    if value is None:
+        return None
+    origin = valid_public_origin(value)
+    if origin is None:
+        raise ConfigError(f'{PUBLIC_RULE}; the value in {config_path()} is not one')
+    return origin
 
 
 def retention_of(data):
@@ -212,10 +250,14 @@ def version(meta):
     return f'{changed} r{count}' if count else changed
 
 
+def archived(meta):
+    return parse_time(meta.get('archivedAt')) is not None
+
+
 def state(items, retention=''):
     """One value that changes when the list of artifacts, one artifact or the retention text changes: a hash of the
-    slugs, their created times, their versions and the retention text."""
-    facts = sorted((meta['slug'], meta['createdAt'], version(meta)) for meta in items)
+    slugs, their created times, their versions, their archive status and the retention text."""
+    facts = sorted((meta['slug'], meta['createdAt'], version(meta), archived(meta)) for meta in items)
     return hashlib.sha256(json.dumps([retention, facts]).encode('utf-8')).hexdigest()[:24]
 
 
@@ -332,6 +374,54 @@ class NotAnArtifact(Exception):
     """A slug that names no artifact of the store."""
 
 
+def stage(folder, data, mode=0o600):
+    """Write a new regular file beside the destination. Return its name for os.replace."""
+    scratch = '.replace-' + secrets.token_hex(8)
+    fd = os.open(scratch, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600, dir_fd=folder)
+    try:
+        with os.fdopen(fd, 'wb') as handle:
+            handle.write(data)
+            os.fchmod(handle.fileno(), mode)
+    except BaseException:
+        os.unlink(scratch, dir_fd=folder)
+        raise
+    return scratch
+
+
+def set_archived(store, slug, target):
+    if artifact_meta(store, slug) is None:
+        raise NotAnArtifact(slug)
+    folder = os.open(os.path.join(store, slug), NOFOLLOW | os.O_DIRECTORY)
+    try:
+        fcntl.flock(folder, fcntl.LOCK_EX)
+        meta = read_meta(store, slug)
+        if meta is None:
+            raise NotAnArtifact(slug)
+        if archived(meta) == target:
+            return
+        if target:
+            meta['archivedAt'] = iso(now_utc())
+        else:
+            del meta['archivedAt']
+        mode = stat.S_IMODE(os.stat(META, dir_fd=folder, follow_symlinks=False).st_mode)
+        scratch = stage(folder, (json.dumps(meta, indent=2) + '\n').encode('utf-8'), mode)
+        try:
+            os.replace(scratch, META, src_dir_fd=folder, dst_dir_fd=folder)
+        except BaseException:
+            os.unlink(scratch, dir_fd=folder)
+            raise
+    finally:
+        os.close(folder)
+
+
+def archive_artifact(store, slug):
+    set_archived(store, slug, True)
+
+
+def restore_artifact(store, slug):
+    set_archived(store, slug, False)
+
+
 def replace_artifact(store, slug, raw, file_name, content_type, title=None, repo=None, keep_repo=True):
     """Store new bytes under an existing slug and return the new facts.
 
@@ -358,14 +448,10 @@ def replace_artifact(store, slug, raw, file_name, content_type, title=None, repo
                 'contentType': content_type, 'repo': old.get('repo') if keep_repo else repo,
                 'createdAt': old['createdAt'], 'updatedAt': iso(now_utc()), 'revision': revision(old) + 1,
                 'byteSize': len(raw)}
+        if archived(old):
+            meta['archivedAt'] = old['archivedAt']
         for name, data in ((SOURCE, raw), (META, (json.dumps(meta, indent=2) + '\n').encode('utf-8'))):
-            # A scratch name starts with `.`; the server reads only `source` and `meta.json`.
-            scratch = '.replace-' + secrets.token_hex(8)
-            fd = os.open(scratch, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600,
-                         dir_fd=folder)
-            scratches[name] = scratch
-            with os.fdopen(fd, 'wb') as handle:
-                handle.write(data)
+            scratches[name] = stage(folder, data)
         for name in (SOURCE, META):
             os.replace(scratches[name], name, src_dir_fd=folder, dst_dir_fd=folder)
             del scratches[name]

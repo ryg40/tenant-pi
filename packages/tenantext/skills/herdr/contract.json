@@ -1,5 +1,5 @@
 {
-  "comment": "The contract of the scripts of this skill: the exit codes of ask.py and spawn.py with a short meaning, and the marker lines of ask.py. ask.py, spawn.py, the herdr-watch extension and the herdr-relay skill read this file. The roles are in roles.json. The tables in SKILL.md and SPAWN.md tell an agent what to do for each code.",
+  "comment": "The contract of the scripts of this skill: the exit codes of ask.py, spawn.py, handoff.py and role_set.py with a short meaning, the marker lines of ask.py, and the backend refusal codes of each script. ask.py, spawn.py, handoff.py, role_set.py and the herdr-watch extension read this file. The roles are in roles.json. The tables in SKILL.md and SPAWN.md tell an agent what to do for each code.",
   "ask": {
     "exit": {
       "reply": { "code": 0, "meaning": "reply" },
@@ -13,7 +13,8 @@
     },
     "no_new_reply_line": "NO NEW REPLY in the transcript",
     "no_transcript_line": "NO TRANSCRIPT PATH from Herdr for this pane",
-    "api_error_note": "note: reply was an API error"
+    "api_error_note": "note: reply was an API error",
+    "no_block_note": "note: no result block; the pane may not be done. Read the screen."
   },
   "spawn": {
     "exit": {
@@ -21,7 +22,8 @@
       "failed": { "code": 1, "meaning": "the start failed, spawn.py closed the new pane again" },
       "invalid": { "code": 2, "meaning": "an input is not valid, nothing was started" },
       "startup_question": { "code": 4, "meaning": "the agent stopped at a startup question, the pane stays open" }
-    }
+    },
+    "started_line_prefix": "spawn.py started pane: "
   },
   "handoff": {
     "exit": {
@@ -35,5 +37,21 @@
       "close_failed": { "code": 8, "meaning": "the handoff is done, but Herdr did not close the previous coordinator pane" }
     },
     "accepted_marker": "HANDOFF-ACCEPTED"
+  },
+  "role_set": {
+    "command": "herdr-role-set",
+    "space_id": "opaque non-empty UTF-8 string with no whitespace and no control characters; passed to hc as one argument without a shell",
+    "unknown_space": "exit 0 with zero actions: a well-formed ID with no live local terminal is an empty space, not bad input",
+    "handoff_command": "carries the target harness before the model (<prefix> <harness> <model> [<thinking>]); a coordinator choice with the harness agy gives no handoff",
+    "exit": {
+      "ok": { "code": 0, "meaning": "dry run printed, empty or unknown space (zero actions), or all actions finished" },
+      "failed": { "code": 1, "meaning": "an action, herdr-core call, or internal error failed" },
+      "invalid": { "code": 2, "meaning": "bad input: unknown label, unknown version, or missing or invalid space (empty, whitespace, control character, or invalid UTF-8)" }
+    }
+  },
+  "backend": {
+    "comment": "Each script selects its backend before any terminal action. herdr1: Herdr 1 (`herdr`). core: herdr-core (`herdr-core` or `hc`) with the Herdr app; spawn.py (hc run), init.py, panes.py, ask.py, last-reply.py, close.py and handoff.py are ported to it, in a terminal with the labels herdr.space and herdr.tab. With no HC_TERMINAL_ID the backend is herdr1. Else each candidate must be live and an ancestor of the calling process; when both are valid, the candidate with the nearer root (the inner one) wins; equal roots or neither: refuse. On a refusal, each script does nothing and exits with its code below. A ported script on a core terminal without these labels also refuses with its code.",
+    "names": ["herdr1", "core"],
+    "refusal_exit": { "ask": 2, "spawn": 2, "handoff": 2, "init": 1, "panes": 1, "close": 1, "last-reply": 1 }
   }
 }

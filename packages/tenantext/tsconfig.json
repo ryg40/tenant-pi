@@ -13,6 +13,8 @@
   },
   "include": [
     "extensions/**/*.ts",
+    "owner-popup/**/*.ts",
+    "owner-popup/**/*.d.ts",
     "src/**/*.ts",
     "test/**/*.ts",
     "scripts/**/*.ts"

@@ -1,0 +1,142 @@
+{
+ "description": "Synthetic llm-wiki pages. Not live memory.",
+ "facetDepth": 2,
+ "folderLabels": {
+  "wiki": "Wiki pages",
+  "wiki/concepts": "Concepts",
+  "wiki/entities": "Entities",
+  "wiki/analyses": "Analyses",
+  "wiki/sources": "Sources",
+  "wiki/syntheses": "Syntheses"
+ },
+ "docs": [
+  {
+   "id": "sample-wiki-concept-least-privilege",
+   "folder": [
+    "wiki",
+    "concepts"
+   ],
+   "title": "Least privilege for stack credentials",
+   "kind": "concept",
+   "date": "2026-10-18",
+   "dateLabel": "updated",
+   "tags": [
+    "security",
+    "credentials"
+   ],
+   "body": "# Least privilege for stack credentials\n\nEach stack gets its own credential, scoped to one service and one purpose. A test deployment never reuses a production credential.\n\nSee [[concepts/secret-files]].",
+   "meta": [
+    [
+     "Path",
+     "wiki/concepts/least-privilege.md"
+    ],
+    [
+     "type",
+     "concept"
+    ],
+    [
+     "created",
+     "2026-09-01"
+    ],
+    [
+     "updated",
+     "2026-10-18"
+    ]
+   ]
+  },
+  {
+   "id": "sample-wiki-concept-secret-files",
+   "folder": [
+    "wiki",
+    "concepts"
+   ],
+   "title": "Secret files",
+   "kind": "concept",
+   "date": "2026-09-03",
+   "dateLabel": "updated",
+   "tags": [
+    "security"
+   ],
+   "body": "# Secret files\n\nCompose mounts a secret file at `/run/secrets/<name>`. The process reads it once. The value never enters an environment variable.",
+   "meta": [
+    [
+     "Path",
+     "wiki/concepts/secret-files.md"
+    ],
+    [
+     "type",
+     "concept"
+    ]
+   ]
+  },
+  {
+   "id": "sample-wiki-entity-storage-node",
+   "folder": [
+    "wiki",
+    "entities"
+   ],
+   "title": "Storage node",
+   "kind": "entity",
+   "date": "2026-10-29",
+   "dateLabel": "updated",
+   "body": "# Storage node\n\nA small server with two mirrored disks. It holds the backups of the lab.",
+   "meta": [
+    [
+     "Path",
+     "wiki/entities/storage-node.md"
+    ],
+    [
+     "type",
+     "entity"
+    ]
+   ]
+  },
+  {
+   "id": "sample-wiki-analysis-memory-tiers",
+   "folder": [
+    "wiki",
+    "analyses"
+   ],
+   "title": "Three tiers of agent memory",
+   "kind": "analysis",
+   "date": "2026-11-03",
+   "dateLabel": "updated",
+   "tags": [
+    "memory"
+   ],
+   "body": "# Three tiers of agent memory\n\n| Tier | Example | Lifetime |\n| --- | --- | --- |\n| Session | the open conversation | minutes |\n| Working | a project brief | weeks |\n| Long term | a preference | months |\n\nA reader must know which tier a fact comes from.",
+   "meta": [
+    [
+     "Path",
+     "wiki/analyses/memory-tiers.md"
+    ],
+    [
+     "type",
+     "analysis"
+    ]
+   ]
+  },
+  {
+   "id": "sample-wiki-source-release-notes",
+   "folder": [
+    "wiki",
+    "sources"
+   ],
+   "title": "Release notes of a proxy server",
+   "kind": "source",
+   "date": "2026-08-21",
+   "dateLabel": "created",
+   "body": "# Release notes of a proxy server\n\nThe new version reloads routes without a restart. Upgrade the test instance first.",
+   "meta": [
+    [
+     "Path",
+     "wiki/sources/proxy-release-notes.md"
+    ],
+    [
+     "type",
+     "source"
+    ]
+   ]
+  }
+ ]
+}

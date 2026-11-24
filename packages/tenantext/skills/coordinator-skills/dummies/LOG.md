@@ -4,7 +4,12 @@
 
 ## The outcome report
 
-When the work is complete, end your last message with one outcome report. It replaces the report of that turn and every prose summary of the work. Claude Code and Pi use the compact form of `REPORT.md` section 3, in compact report syntax 2 of `REPORT.md` section 6. Give the `added:` line of the page entry above it. With `log: off` in the output of `state.py`, there is no page entry and no `added:` line; the outcome report stays.
+When the work is complete, end your last message with one outcome report. It replaces the report of that turn and every prose summary of the work. It follows the `format:` part of the output of `state.py`:
+
+- With `format: compact`, use the compact form of `REPORT.md` section 3, in compact report syntax 2 of `REPORT.md` section 6, as the example and its four rules below say.
+- With `format: detailed`, use the outcome of `DETAILED.md` section 2: a detailed report of the whole work, in detailed report syntax 1. Write the `--summary` of the page entry as the result in 12 words or less. The example and its four rules below are for the compact form only: a detailed outcome has no `OUTCOME` line, no items, no state words and no lowercase labels. The rest of this file applies to both forms.
+
+When you added the page entry, give its `added:` line above the outcome report. With `log: off` in the output of `state.py`, there is no page entry and no `added:` line; the outcome report stays. In the detailed form, the entry and its `added:` line belong to the last report of the turn. When the report at the end of the work asks an owner decision in the question tool, that report comes first, with no `added:` line. The entry and the outcome come after the answer, as `DETAILED.md` section 2 says.
 
 ```markdown
 **OUTCOME** The plan is settled; live changes wait for approval
@@ -31,9 +36,9 @@ Tell the users of the service about the wait before the change.
 
 ## The log page
 
-The page `DUMMIES` is the human session log of a project: one entry for each session, the newest first. It is the page `projects/<project>/DUMMIES` of OpenKnowledge. The script `page.py` reads and writes it through the `okknow` command only. On a host with no `okknow` command, the log is the local file DUMMIES.md of the user in the directory `<XDG_CONFIG_HOME or ~/.config>/dummies-skill/logs/<project>`, shared by Claude Code and Pi. Each command of `page.py` uses it then, and `state.py` shows it as `log: on (local file <path>)`. `<project>` is the name of the repository directory; `--project <slug>` names another project. Outside a Git repository, `--project <slug>` is necessary.
+The page `DUMMIES` is the human session log of a project: one entry for each session, the newest first. It is the page `projects/<project>/DUMMIES` of OpenKnowledge. The script `page.py` reads and writes it through the `okknow` command only. On a host with no `okknow` command, the log is the local file DUMMIES.md of the user in the directory `<XDG_CONFIG_HOME or ~/.config>/dummies-skill/logs/<project>`, shared by Claude Code, Pi and agy. Each command of `page.py` uses it then, and `state.py` shows it as `log: on (local file <path>)`. `<project>` is the name of the repository directory; `--project <slug>` names another project. Outside a Git repository, `--project <slug>` is necessary.
 
-The page keeps its own schema: the four labels and the Markdown tables below. Compact report syntax 2 is the chat contract only. It does not apply to the page, and a program that reads a report never reads the page.
+The page keeps its own schema: the four labels and the Markdown tables below. Compact report syntax 2 and detailed report syntax 1 are chat contracts only. They do not apply to the page, and a program that reads a report never reads the page.
 
 ## Add the entry of this session
 
@@ -42,7 +47,7 @@ Skip this section when the output of `state.py` shows `log: off`. The user sets 
 Write only the body. The script makes the entry heading, `### <Mon D, YYYY, H:MM AM|PM> <zone> | Agent: <agent> | Model: <model> | <summary>`, with the time in the zone of the page and the model of the session data. It adds the entry directly below the entries heading, reads the page back and proves that each older entry is unchanged.
 
 ````sh
-python3 D/page.py add --summary "<the OUTCOME line: the result in 12 words or less>" <<'EOF'
+python3 D/page.py add --summary "<the OUTCOME line, or for the detailed form the result: 12 words or less>" <<'EOF'
 **Important:** <ONE ITEM IN CAPITAL LETTERS>
 **Open:** <what is not done or not proven, and who must act>
 **Next:** <the next step>
@@ -68,7 +73,7 @@ EOF
 ````
 
 - The entry is the outcome report in the schema of the page. The four label lines are necessary, in this order and form: `Important`, `Open`, `Next`, `Goal`. Write them for a junior developer, as in the report. The page has no line limit: a sentence can be longer than in the chat.
-- Map the outcome report to the labels. `Important`: the main warning or the most important item, in CAPITAL LETTERS. `Open`: the items that are not `Done` and not `Retired`, each with its state word, and the later actions of `**Next:**`. `Next`: the recommended next action, or `None.` and its reason. `Goal`: the goal at the start of the session. `#### Done`: the `Done` items, compressed to five rows.
+- Map the outcome report to the labels. `Goal`: the goal at the start of the session. For the compact form: `Important`: the main warning or the most important item, in CAPITAL LETTERS. `Open`: the items that are not `Done` and not `Retired`, each with its state word, and the later actions of `**Next:**`. `Next`: the recommended next action, or `None.` and its reason. `#### Done`: the `Done` items, compressed to five rows. For the detailed form: `Important`: the main warning or the most important fact, in CAPITAL LETTERS. `Open`: the lines of `## Not verified`, the warnings and the later actions of `## Next`. `Next`: the first action of `## Next`, or its `None.` line. `#### Done`: the proven facts of the report, compressed to five rows.
 - Write each subject in words. Report numbers and action labels are local to one report, so a label alone in the page names nothing.
 - Keep a source change, a push, a build and a deployment apart. Name the commit identifiers, the endpoints and the checks with their results.
 - Write no credential. Name the place of a secret, not its value.
@@ -89,7 +94,7 @@ EOF
 | 8 | The page does not follow the contract | Run `python3 D/page.py check`. Give the user the findings. Do not repair the page without the user. |
 | 9 | The write is not proven | Give the user the message. Read the page. Do not write again. |
 
-`add` creates the page when it is absent. A new page takes the zone of another `DUMMIES` page of the knowledge base, and the `handoffs` page of the project gets one pointer line when that page exists. When the script cannot read the session data, add `--harness <pi|claude>`, `--model <identifier>` and `--session <id>`. Never guess the model behind an alias: with no identifier the script writes `unknown`. The session is different: with no session identifier, `add` stops with exit 2. When your harness has no identifier, make one new unique text for this session and give it as `--session <id>` in each `add` of the session.
+`add` creates the page when it is absent. A new page takes the zone of another `DUMMIES` page of the knowledge base, and the `handoffs` page of the project gets one pointer line when that page exists. When the script cannot read the session data, add `--harness <pi|claude|agy>`, `--model <identifier>` and `--session <id>`. Never guess the model behind an alias: with no identifier the script writes `unknown`. The session is different: with no session identifier, `add` stops with exit 2. When your harness has no identifier, make one new unique text for this session and give it as `--session <id>` in each `add` of the session.
 
 ## Log summary
 

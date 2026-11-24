@@ -32,7 +32,8 @@ Without a terminal: `okknow setup --origin <url> --yes`. With `--yes`, setup sen
 | Harness | List tools | Call a tool |
 |---|---|---|
 | Claude Code | `/mcp`, or the deferred tool list | `mcp__okknow__exec`, `mcp__okknow__write`, ... |
-| Pi | `mcp({ server: "okknow" })` | `mcp({ tool: "okknow_exec", args: { command: "ls projects" } })` |
+| Pi with the `mcp` tool (MCP adapter) | `mcp({ server: "okknow" })` | `mcp({ tool: "okknow_exec", args: { command: "ls projects" } })` |
+| Pi with the `codemode` tool (native MCP) | `return (await describeNamespace("okknow"))?.tools` in a codemode script | `await tools.mcp__okknow__exec({ command: "ls projects" })`, a `CallToolResult`: read `content`, check `isError` |
 | Shell | `okknow tools` | `okknow call <tool> '<json>'` |
 
 Common MCP calls:

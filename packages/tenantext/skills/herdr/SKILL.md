@@ -1,6 +1,6 @@
 ---
 name: herdr
-description: Control Herdr with the `herdr` CLI. Two functions. (1) Use an agent pane that exists - find it, read it, send it a prompt, wait, collect the reply. (2) Start a new agent in the tab of its role from four inputs - harness (pi or claude), role (coordinator, researcher, scout, worker, reviewer), model, thinking level. Use when the user names Herdr, a pane ("the pane to the right"), a tab, a workspace, another agent session, "herdr fable" / "herdr opus", or asks to spawn, launch, delegate or fan out. Works the same from Claude Code and from Pi.
+description: Control Herdr with the `herdr` CLI. Two functions. (1) Use an agent pane that exists - find it, read it, send it a prompt, wait, collect the reply. (2) Start a new agent in the tab of its role from four inputs - harness (pi, claude or agy), role (coordinator, researcher, scout, worker, reviewer), model, thinking level. Use when the user names Herdr, a pane ("the pane to the right"), a tab, a workspace, another agent session, "herdr fable" / "herdr opus", or asks to spawn, launch, delegate or fan out. Works the same from Claude Code and from Pi.
 ---
 
 # Herdr
@@ -18,6 +18,8 @@ S="<absolute skill directory>/scripts"
 ```
 
 If the check fails, tell the user that you are not inside Herdr, and stop.
+One exception: in a pane of the Herdr app (herdr-core sets `HC_TERMINAL_ID`),
+all scripts work without `HERDR_ENV`; see `SPAWN.md` section 3a.
 
 ## 0. Start
 
@@ -31,6 +33,14 @@ names you `<project>-coordinator-1`. It is safe to run again. Tabs, panes and
 names follow `LAYOUT.md`; the scripts apply it, so do not rename or move tabs
 and panes by hand.
 
+Each script selects its backend before it acts: Herdr 1, or herdr-core in a
+terminal of the Herdr app (`HC_TERMINAL_ID` is set). `spawn.py`, `init.py`,
+`panes.py`, `ask.py`, `last-reply.py`, `close.py` and `handoff.py` work on
+both; on herdr-core the pane ID is the core address, for example `t13`. When
+the backend is not clear, a script
+does nothing and prints one line that names the cause. Its exit code is in the `backend`
+entry of `contract.json`. Report the line to the user.
+
 ## 1. Choose the function from the user's words
 
 | The user says | Function |
@@ -38,7 +48,7 @@ and panes by hand.
 | "the pane to the right", "the other pane", "that session", "the existing agent", "use the pane" | A. Use a pane that exists. Do not start a pane. |
 | "read the pane", "what is that agent doing" | A, steps A1 and A3 only. Send no input. |
 | "spawn", "launch", "start", "new pane", "delegate", "fan out", "task session", "herdr fable", "herdr opus" | B. Start a new agent. |
-| "handoff to a new <model> coordinator", "hand off" | Write the handoff file, then run `python3 $S/handoff.py --file <handoff.md> --model <model>` in Claude Code (`run_in_background: true`) and in Pi. It closes your pane after a confirmed handoff. See `SPAWN.md`, "Coordinator handoff". |
+| "handoff to a new <model> coordinator", "hand off" | Write the handoff file, then run `python3 $S/handoff.py --file <handoff.md> --model <model>` in Claude Code (`run_in_background: true`) and in Pi. It closes your pane after a confirmed handoff; on herdr-core it ends your terminal (the app then closes its pane). See `SPAWN.md`, "Coordinator handoff". |
 | "solo", "no task sessions", "do it yourself" | Neither. Do the work yourself. |
 
 A direction ("right", "left", "below") or the name of a pane always points to a
@@ -83,7 +93,7 @@ set the timeout of your shell tool above the `--timeout` value.
 | Exit | Meaning | What to do |
 | --- | --- | --- |
 | 0 | The reply is printed | Use the reply. Continue the task of the user. A line `note: reply was an API error` means that the text is the last assistant message that the agent wrote after the prompt, not a final reply. When the note ends with `; from before this prompt`, the text is from an earlier turn. A line `NO NEW REPLY in the transcript` means that the agent wrote no new reply: read the screen tail that follows it, and do not send the prompt again before you know why. The `herdr-watch` status of this case is `no new reply, read the screen`. A line `NO TRANSCRIPT PATH from Herdr for this pane` means that Herdr knows no transcript of the pane, so `ask.py` cannot read the reply: read the screen tail. Possible causes: the Herdr integration of the harness is missing, the pane runs without `HERDR_SOCKET_PATH` (Pi-Bolt), or the transcript file does not exist yet. Tell the user. Its `herdr-watch` status is `no transcript path, read the screen`. For a Pi or Pi-Bolt pane with no transcript path, `ask.py` with a prompt first looks for the session file of the pane on disk, in `<agent dir>/sessions/--<cwd with / as ->--/`. It takes a file only when exactly one file of that cwd holds the sent prompt in a user entry written after the send. A prompt of up to 200 characters must end that entry; a longer prompt must be in it whole. A prompt shorter than 20 characters never matches. Herdr shows a Pi-Bolt pane as idle and stalls on the prompt: after the stall, `ask.py` looks for that file for up to 60 seconds, inside `--timeout`. With a file, `ask.py` follows the turn in it and not the Herdr status. The turn ends when the last message entry after the prompt is a final assistant reply (text, no tool call, no `error` or `aborted` stop) and the file has not changed for 5 seconds. A failed attempt that Pi retries is no final reply. A `custom_message` entry after the reply (an extension can start a new turn with it) means that the turn still works. A turn that still works at `--timeout` gives exit 124, not exit 5. Before it prints the reply, and at `--timeout`, `ask.py` checks the file again by the rule that found it, for the same pane id. When the file fails that check, `ask.py` gives `NO TRANSCRIPT PATH` and the screen; it takes no other file and does not send the prompt again. `ask.py` keeps the path of a matched file in the pane record of the skill. `--wait-only` and `last-reply.py` read the file that an earlier prompt in this pane found, and no other file on disk. `--wait-only` follows that file to the end of the turn by the same rule. They read it only when the record of this pane id has the same agent name and a Pi harness, the file exists, and its header `cwd` is the current cwd of the pane. They also refuse the file when its header time is earlier than the pane record, or when another session file of the same folder has a later header time (after `/new`, `/resume` or a restart in the pane, or a later session in the same cwd). A new `spawn.py` record for a reused pane id has no path. Else, for a Pi-Bolt pane they still give `NO TRANSCRIPT PATH` and the screen. `last-reply.py` prints the same `note:` line after its `source=` line. When a file matches, the line `note: Herdr gave no transcript path; the reply below is from the Pi session file on disk: <path>` comes before the reply, and the status is `reply`. |
-| 3 | The target works on another turn. Nothing was sent | In Pi: `herdr_watch_start` with `wait_only: true` and no prompt; after its notification, send the prompt with `herdr_watch_start`. Without the tool: `herdr agent wait <pane-id> --timeout 600000`, then call `ask.py` again. Or ask the user. |
+| 3 | The target works on another turn. Nothing was sent | In Pi: `herdr_watch_start` with `wait_only: true` and no prompt; after its notification, send the prompt with `herdr_watch_start`. Without the tool: `herdr agent wait <pane-id> --timeout 600000` (on herdr-core: `ask.py <address> --wait-only`), then call `ask.py` again. Or ask the user. |
 | 4 | The target waits on a question or an approval | Show the screen text to the user. Do not answer it yourself. |
 | 5 | Herdr wrote the prompt but no turn started. After the stall of Herdr, `ask.py` waited up to 60 seconds more, inside `--timeout`, and never sent the prompt again. For a Pi pane with no transcript path, no session file on disk held the prompt in that time | Read the screen. Do not send the prompt again before you know why. |
 | 6 | The reply is an API error and the transcript holds no other reply | Read the commit of the agent for its record. Send the task again only in a new pane. |
@@ -112,7 +122,7 @@ In Pi, `herdr_watch_start` with `wait_only: true` and no prompt runs that form i
 One command, four inputs. Read `SPAWN.md` in this skill directory before the first launch.
 
 ```bash
-python3 $S/spawn.py --harness <pi|claude> --role <role> [--model <name>] [--thinking <level>] --cwd "$PWD"
+python3 $S/spawn.py --harness <pi|claude|agy> --role <role> [--model <name>] [--thinking <level>] --cwd "$PWD"
 ```
 
 In Pi with the `herdr_spawn` tool (the `herdr-watch` extension), start every
@@ -129,10 +139,10 @@ exists, use `herdr_watch_start`. Use the blocking `ask.py` only in these cases:
 
 | Input | Values | If the user does not give it |
 | --- | --- | --- |
-| harness | `pi`, `claude` | `claude` for "fable", "opus", "sonnet", "haiku", "claude". `pi` for a model name that `pi --list-models` finds. Otherwise your own harness. |
+| harness | `pi`, `claude`, `agy` (the Antigravity CLI; `SPAWN.md`, section "The agy harness") | `claude` for "fable", "opus", "sonnet", "haiku", "claude". `agy` for "agy", "antigravity" or a slug of `agy models`. `pi` for a model name that `pi --list-models` finds. Otherwise your own harness. |
 | role | `coordinator`, `researcher` (context gatherer, the web first), `scout` (context gatherer, local files and repositories first), `worker`, `reviewer` | Choose from the task. Ask only if two roles fit. |
-| model | The name that the user gives. pi: `provider/model` or a name that `pi --list-models` finds one time. claude: a model ID or a CLI alias. | Leave it out only when the local file names a model for the role and the harness. Else ask the user: without a model, `spawn.py` starts no pane and exits with 2. |
-| thinking | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` | Leave it out. The local file can supply a level. |
+| model | The name that the user gives. pi: `provider/model` or a name that `pi --list-models` finds one time. claude: a model ID or a CLI alias. agy: a slug of `agy models`. | Leave it out only when the local file names a model for the role and the harness. Else ask the user: without a model, `spawn.py` starts no `pi` or `claude` pane and exits with 2. `agy` without a model starts with its own default model. |
+| thinking | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. agy: `low` to `max` only | Leave it out. The local file can supply a level. |
 
 The user usually names the model and the thinking level. Pass them as given;
 do not replace them.
@@ -156,6 +166,12 @@ optional entries of a machine file; `SPAWN.md` section 2a explains them.
 - Each role has its own tab: `coordinator`, `researcher`, `scout`, `worker`, `reviewer`.
 - A new coordinator (a handoff) goes below the active coordinator pane.
 - The name is `<project>-<role>-<n>`, for example `proj-scout-2`. Use it as the handle.
+
+An `agy` pane that `spawn.py` or `herdr_spawn` starts gets the role prompt
+and the result format of its role through its first message (`SPAWN.md`,
+section "The agy harness"). `herdr-role-set` tries to deliver that message;
+check `first_message` in its launch line before a task goes to the pane.
+Send it the task in the same form as to the other harnesses.
 
 Then send the task, verify the result, and close the pane. `herdr_spawn` sends
 the task itself, and the `close:` line of its notification closes the pane by
@@ -190,6 +206,8 @@ herdr agent read <pane-id> --source recent-unwrapped --lines 120   # plain text,
 herdr agent send-keys <pane-id> esc
 herdr pane run <shell-pane-id> "<shell command>"              # shell panes only
 ```
+
+In the Herdr app, read a pane with `hc read <address>` in place of `herdr agent read`.
 
 Status values: `idle` and `done` both mean ready for input. `working` means a
 turn runs. `blocked` means a question or an approval is on the screen.

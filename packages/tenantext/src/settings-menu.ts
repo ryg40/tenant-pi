@@ -1,4 +1,7 @@
+import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { dummiesFormat, statePath, type DummiesFormat } from "../extensions/next-prompt/dummies.ts";
 import { ensureSettings as ensureFooterSettings, healthUrl, loadLocalSettings, saveSettings as saveFooterSettings, type Settings } from "../extensions/ops-footer/settings.ts";
 import { ensureSettings as ensureMainSettings, loadSettings as loadMainSettings, saveSettings as saveMainSettings, type TenantextSettings } from "./settings.ts";
 import { loadSettings as loadNextPromptSettings, saveSettings as saveNextPromptSettings } from "./next-prompt-settings.ts";
@@ -21,6 +24,21 @@ const flags = [
   ["showUnavailableOptionalSources", "Show unavailable sources"], ["showArtifactServer", "Artifact server row"],
 ] as const;
 const endpoints = [["OK", "OpenKnowledge health URL"], ["OV", "OpenViking health URL"]] as const;
+// state.py is the one writer of the dummies state file: the menu runs it and never writes the file itself.
+const DUMMIES_STATE = fileURLToPath(new URL("../skills/coordinator-skills/dummies/scripts/state.py", import.meta.url));
+const DUMMIES_TIMEOUT_MS = 10_000;
+
+/** Run `state.py format <value>`. Undefined when it saved the value, else the last error line of the script. */
+export function setDummiesFormat(value: DummiesFormat, script = DUMMIES_STATE): Promise<string | undefined> {
+  return new Promise(resolve => {
+    execFile("python3", [script, "format", value], { timeout: DUMMIES_TIMEOUT_MS }, (error, _stdout, stderr) => {
+      if (!error) { resolve(undefined); return; }
+      if (error.killed) { resolve(`state.py format did not end in ${DUMMIES_TIMEOUT_MS / 1000} s`); return; }
+      resolve(String(stderr).split("\n").map(line => line.trim()).filter(Boolean).pop()
+        ?? `state.py format failed: ${error.message.split("\n")[0]}`);
+    });
+  });
+}
 
 /** An interactive menu built from the same names that the JSON parser accepts. */
 export async function settingsMenu(ctx: ExtensionContext, actions: SettingsMenuActions): Promise<void> {
@@ -30,6 +48,7 @@ export async function settingsMenu(ctx: ExtensionContext, actions: SettingsMenuA
   let main = loadMainSettings();
   let footer = await loadLocalSettings(); // Do not show or save environment endpoint overrides.
   let nextPrompt = loadNextPromptSettings().settings;
+  let format = dummiesFormat(statePath());
   while (true) {
     const items: { key: string; label: string }[] = [
       ...flags.map(([key, label]) => ({ key, label: `${label}: ${
@@ -37,6 +56,7 @@ export async function settingsMenu(ctx: ExtensionContext, actions: SettingsMenuA
       ...Object.entries(numbers).map(([key, [, , label]]) => ({ key, label: `${label}: ${footer[key as keyof Settings]}` })),
       ...endpoints.map(([key, label]) => ({ key: `healthUrls.${key}`, label: `${label}: ${footer.healthUrls[key] ? "configured" : "unset"}` })),
       { key: "nextPrompt", label: `Next-prompt suggestion: ${nextPrompt.enabled ? "on" : "off"}` },
+      { key: "dummiesFormat", label: `Dummies report format: ${format}` },
     ];
     const selected = await ctx.ui.select("Tenantext settings (Esc to close)", items.map(item => item.label));
     if (!selected) return;
@@ -70,6 +90,10 @@ export async function settingsMenu(ctx: ExtensionContext, actions: SettingsMenuA
         if (!value) continue;
         const next = { ...nextPrompt, enabled: value === "on" };
         saveNextPromptSettings(next); nextPrompt = next; actions.nextPromptChanged?.(next.enabled);
+      } else if (key === "dummiesFormat") {
+        const failure = await setDummiesFormat(format === "compact" ? "detailed" : "compact");
+        if (failure) { ctx.ui.notify(failure, "error"); continue; }
+        format = dummiesFormat(statePath());
       } else if (key === "healthUrls.OK" || key === "healthUrls.OV") {
         const source = key.endsWith("OK") ? "OK" : "OV";
         const text = await ctx.ui.input(`${key} (blank clears; Esc keeps current value)`, "http://host/health");

@@ -10,12 +10,14 @@ export interface Settings {
   showHealthyServices: boolean; showUnavailableOptionalSources: boolean;
   /** The artifact server row of the Memory place. Off: no row and no run of the `artifacts` CLI. */
   showArtifactServer: boolean;
+  /** The Antigravity quota row. `auto`: run `agy` only when its sign-in file exists. `on`: without that check. `off`: no row and no run of `agy`. */
+  antigravityUsage: "auto" | "on" | "off";
   healthUrls: Partial<Record<"OK" | "OV", string>>;
 }
 export const defaults: Settings = {
   enabled: true, placement: "belowEditor", minimumRows: 1, maximumRows: 8,
   healthPollSeconds: 60, healthTimeoutMs: 2000, gitCacheMs: 1000, gitIdlePollSeconds: 15,
-  showHealthyServices: false, showUnavailableOptionalSources: false, showArtifactServer: true, healthUrls: {},
+  showHealthyServices: false, showUnavailableOptionalSources: false, showArtifactServer: true, antigravityUsage: "auto", healthUrls: {},
 };
 export const settingsPath = () => join(agentDir(), "ops-footer", "settings.json");
 export function healthUrl(value: unknown): string | undefined {
@@ -38,6 +40,7 @@ export function parseSettings(value: unknown): Settings {
     const n = v[key];
     if (typeof n === "number" && Number.isFinite(n)) out[key] = Math.max(low, Math.min(high, Math.floor(n)));
   }
+  if (v.antigravityUsage === "auto" || v.antigravityUsage === "on" || v.antigravityUsage === "off") out.antigravityUsage = v.antigravityUsage;
   out.minimumRows = Math.min(out.minimumRows, out.maximumRows);
   const urls = v.healthUrls as Record<string, unknown> | undefined;
   for (const key of ["OK", "OV"] as const) {
@@ -87,6 +90,6 @@ export async function ensureSettings(path = settingsPath()): Promise<void> {
     }
   }
   const guide = join(dirname(path), "settings.example.jsonc");
-  try { await writeFile(guide, `// Operations footer options. Copy values into settings.json (plain JSON, without comments).\n{\n  // enabled: true | false — show the operations footer.\n  "enabled": true,\n  // placement: "belowEditor" — fixed location.\n  "placement": "belowEditor",\n  // minimumRows: 1–12, not greater than maximumRows.\n  "minimumRows": 1,\n  // maximumRows: 3–12, not less than minimumRows.\n  "maximumRows": 8,\n  // healthPollSeconds: 10–3600 seconds.\n  "healthPollSeconds": 60,\n  // healthTimeoutMs: 100–10000 milliseconds.\n  "healthTimeoutMs": 2000,\n  // gitCacheMs: 250–60000 milliseconds; the Git poll interval during an agent turn.\n  "gitCacheMs": 1000,\n  // gitIdlePollSeconds: 2–3600 seconds; the Git poll interval while the agent is idle.\n  "gitIdlePollSeconds": 15,\n  // showHealthyServices: true | false.\n  "showHealthyServices": false,\n  // showUnavailableOptionalSources: true | false.\n  "showUnavailableOptionalSources": false,\n  // showArtifactServer: true | false — the artifact server row of the module artifacts.\n  "showArtifactServer": true,\n  // healthUrls: optional credential-free, query-free HTTP(S) URLs; empty means disabled.\n  "healthUrls": { "OK": "", "OV": "" }\n}\n`, { flag: "wx", mode: 0o600 }); }
+  try { await writeFile(guide, `// Operations footer options. Copy values into settings.json (plain JSON, without comments).\n{\n  // enabled: true | false — show the operations footer.\n  "enabled": true,\n  // placement: "belowEditor" — fixed location.\n  "placement": "belowEditor",\n  // minimumRows: 1–12, not greater than maximumRows.\n  "minimumRows": 1,\n  // maximumRows: 3–12, not less than minimumRows.\n  "maximumRows": 8,\n  // healthPollSeconds: 10–3600 seconds.\n  "healthPollSeconds": 60,\n  // healthTimeoutMs: 100–10000 milliseconds.\n  "healthTimeoutMs": 2000,\n  // gitCacheMs: 250–60000 milliseconds; the Git poll interval during an agent turn.\n  "gitCacheMs": 1000,\n  // gitIdlePollSeconds: 2–3600 seconds; the Git poll interval while the agent is idle.\n  "gitIdlePollSeconds": 15,\n  // showHealthyServices: true | false.\n  "showHealthyServices": false,\n  // showUnavailableOptionalSources: true | false.\n  "showUnavailableOptionalSources": false,\n  // showArtifactServer: true | false — the artifact server row of the module artifacts.\n  "showArtifactServer": true,\n  // antigravityUsage: "auto" | "on" | "off" — the Antigravity quota row from agy -p \"/usage\". auto runs agy only when its sign-in file exists; on also runs it without that file (a sign-in in a keyring); off starts no agy process.\n  "antigravityUsage": "auto",\n  // healthUrls: optional credential-free, query-free HTTP(S) URLs; empty means disabled.\n  "healthUrls": { "OK": "", "OV": "" }\n}\n`, { flag: "wx", mode: 0o600 }); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
 }

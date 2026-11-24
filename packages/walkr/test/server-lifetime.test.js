@@ -1,3 +1,4 @@
+import "./no-outer-config.js"; // First: no test reads the artifacts config of the outer user.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

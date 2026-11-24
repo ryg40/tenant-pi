@@ -55,7 +55,7 @@ One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `
 
 When plain Pi moves ahead of Pi-Bolt's embedded Pi, supply `pin --range` with a reviewed range that includes both Pi versions.
 
-Pi and Pi-Bolt 1.3.0 now both run Pi 1.6.0. The accepted range stays `>=1.5.0 <1.7`. Both pinned runtimes report `match`. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
+The current pins are Pi 1.6.0 and Pi-Bolt 1.3.0, which carries Pi 1.6.0. The reviewed range stays `>=1.5.0 <1.7`. The embedded Pi matches the tested pin, so `check_runtime.py` reports Pi-Bolt 1.3.0 as `match`. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
 2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.3.0`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
@@ -84,11 +84,18 @@ The [Pi-Bolt 1.2.1 release notes](https://github.com/opensec-git/Pi-Bolt/release
 
 The verified npm wrapper tarballs add only the version and a more accurate compiled-extension notice. Their dependencies, signature checks and service-restart behavior are unchanged. No kit settings migration is identified. Remote control, service updates, recompilation and desktop interaction still need separate checks.
 
-[Pi-Bolt 1.3.0](https://github.com/opensec-git/Pi-Bolt/releases/tag/bolt-v1.3.0) carries Pi 1.6.0 on a new engine. Automatic updates and remote control stay off by default. Leave automatic updates off to keep the kit pin. The Linux x86-64 installer can put a start script between the `pi-bolt` link and the executable. The default model and Anthropic message-thread defaults still differ from plain Pi. No kit settings migration is needed.
-
 Pi 1.5.2 adds a fork choice when a session's folder no longer exists, including extension-driven session switches. It also fixes failed imports leaving copies and updates the Anthropic OAuth client version. No kit installer, settings, extension or skill migration is identified from these changes. Interactive session recovery and native-provider authentication remain outside the offline qualification.
 
 Pi 1.6.0 has one breaking change: `render()` of an extension component returns `readonly string[]`, and `Container` returns a cached array. No kit extension changes render output in place; the Tenantext typecheck passes. Pi 1.6.0 adds GPT-6.2 Sol (500K context on Codex) and GPT-6.2 Astra (272K) to the Pi catalog. The Codex gateway routes now take the exact catalog prices and limits and still cap each route at 272,000 tokens. RPC session replacement runs `session_start` handlers once, and `--mode json` keeps the events of `session_start` handlers. `pi.exec` reports 128 plus the signal number for a command that a signal ends. The `find` tool takes path patterns relative to the search directory. No kit installer, settings, extension or skill migration is identified from these changes. Interactive TUI behavior and live provider requests remain outside the offline qualification.
+
+The [Pi-Bolt 1.3.0 release notes](https://github.com/opensec-git/Pi-Bolt/releases/tag/bolt-v1.3.0) add these effects:
+
+- The embedded Pi moves from 1.5.2 to 1.6.0, and the engine is new. Pi-Bolt keeps two defaults from before Pi 1.6.0: GPT-6.1 Sol stays the default model of the `openai`, `azure` and `openai-codex` providers, and Anthropic message threads stay on for the `anthropic` provider only. `cacheWarming` stays `"streaming"`, and remote control stays off. The kit sets none of these values.
+- For the default Linux x86-64 build, the installer writes the start script `<install>/pi-bolt-linux-x64.start` and links `pi-bolt` to it. The other builds, for example the baseline and JIT builds, keep their link to the release file. The script starts the read-ahead helper `pi-start`, and the helper replaces itself with the release file `pi`, so the process name stays `pi`. The kit launcher records the link, because the resolved name is not `pi`. `pi-bolt doctor` reports that link as another Pi-Bolt.
+- Automatic updates are new and off by default. When you turn them on in `/settings`, Pi-Bolt installs a new release in the background at most once a day, and the runtime can then move away from the kit pin. The kit does not turn them on.
+- `pi-bolt --herdr-pi` is new: in a Herdr pane, Pi-Bolt reports as the Pi integration of Herdr. The kit does not use the option.
+
+Observed on Linux x86-64 with a kit profile: Pi-Bolt 1.3.0 starts in RPC mode, lists the kit commands and keeps the default model and thinking level of the profile. No kit installer, settings, extension or skill migration is identified. Not verified: the interactive screen, a live model reply, remote control, `pi-bolt compile`, macOS and Windows.
 
 ## The module versions
 

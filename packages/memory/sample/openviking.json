@@ -1,0 +1,138 @@
+{
+ "description": "Synthetic OpenViking memory files. Not live memory.",
+ "facetDepth": 1,
+ "folderLabels": {
+  "preferences": "Preferences",
+  "entities": "Entities",
+  "events": "Events",
+  "cases": "Cases",
+  "profile": "Profile"
+ },
+ "docs": [
+  {
+   "id": "sample-ov-profile",
+   "folder": [
+    "profile"
+   ],
+   "title": "Profile",
+   "kind": "profile",
+   "date": "2026-11-02T08:10:00Z",
+   "dateLabel": "modified",
+   "body": "# Alice\n- Runs a small home lab with Docker Compose stacks. (as of 2026-10-01)\n- Prefers short status reports with one recommended next step. (as of 2026-10-14)",
+   "meta": [
+    [
+     "URI",
+     "viking://user/sample/memories/profile.md"
+    ],
+    [
+     "Privacy placeholders",
+     "0"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ov-pref-deploy",
+   "folder": [
+    "preferences"
+   ],
+   "title": "Deployment safety",
+   "kind": "preferences",
+   "date": "2026-10-28T19:04:00Z",
+   "dateLabel": "modified",
+   "body": "- Separates repository changes, image publication and live deployment.\n- Tests a candidate on an isolated port before a cutover.\n- Backs up production state and checks the rollback first.",
+   "meta": [
+    [
+     "URI",
+     "viking://user/sample/memories/preferences/deployment_safety.md"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ov-pref-ui",
+   "folder": [
+    "preferences"
+   ],
+   "title": "Dashboard style",
+   "kind": "preferences",
+   "date": "2026-09-30T11:20:00Z",
+   "dateLabel": "modified",
+   "body": "- Wants tables for comparisons and lists for parallel items.\n- Avoids decorative cards and all-caps labels.\n- Expects visible keyboard focus and a dark theme.",
+   "meta": [
+    [
+     "URI",
+     "viking://user/sample/memories/preferences/dashboard_style.md"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ov-entity-gateway",
+   "folder": [
+    "entities",
+    "software_project"
+   ],
+   "title": "Example gateway",
+   "kind": "entities",
+   "date": "2026-11-05T07:45:00Z",
+   "dateLabel": "modified",
+   "body": "# Example gateway\nA reverse proxy stack in front of the lab services. It reloads its configuration gracefully; a restart drops open sessions.",
+   "meta": [
+    [
+     "URI",
+     "viking://user/sample/memories/entities/software_project/example_gateway.md"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ov-entity-wiki",
+   "folder": [
+    "entities",
+    "software_project"
+   ],
+   "title": "Notes wiki",
+   "kind": "entities",
+   "date": "2026-10-11T15:00:00Z",
+   "dateLabel": "modified",
+   "body": "# Notes wiki\nA Markdown knowledge base. Agents write through its API, never into its volume.",
+   "meta": [
+    [
+     "URI",
+     "viking://user/sample/memories/entities/software_project/notes_wiki.md"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ov-event-backup",
+   "folder": [
+    "events"
+   ],
+   "title": "Backup restore drill",
+   "kind": "events",
+   "date": "2026-10-20T21:30:00Z",
+   "dateLabel": "modified",
+   "body": "On 2026-10-20 a restore drill of the database volume passed in 4 minutes. The drill used a copy, not the live volume.",
+   "meta": [
+    [
+     "URI",
+     "viking://user/sample/memories/events/backup_restore_drill.md"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ov-case-dns",
+   "folder": [
+    "cases"
+   ],
+   "title": "DNS cache after a move",
+   "kind": "cases",
+   "date": "2026-09-12T09:00:00Z",
+   "dateLabel": "modified",
+   "body": "Problem: a moved service kept the old address for one hour.\nCause: a long TTL on the local resolver.\nFix: lower the TTL a day before a move.",
+   "meta": [
+    [
+     "URI",
+     "viking://user/sample/memories/cases/dns_cache_after_move.md"
+    ]
+   ]
+  }
+ ]
+}

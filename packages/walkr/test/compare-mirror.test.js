@@ -1,3 +1,4 @@
+import "./no-outer-config.js"; // First: no test reads the artifacts config of the outer user.
 import test from "./posix-only-mode.js";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -53,7 +54,7 @@ test("the mirror shows the sessions of its root at a fixed address and refuses e
   const one = await (await m.get(`/_walkr/compare/api/sessions/${f.sessionId}`, { headers })).json();
   assert.equal(one.view.title, "Mirror trial");
   assert.equal((await m.get(`${pagePath.replace("/g/", "/o/")}/${f.sessionId}/a`)).status, 200);
-  for (const file of ["/theme.css", "/theme.js", "/_walkr/compare/app.js", "/health"]) assert.equal((await m.get(file)).status, 200, file);
+  for (const file of ["/theme.css", "/theme.js", "/_walkr/compare/app.js", "/_walkr/compare/a2ui.js", "/_walkr/compare/a2ui.css", "/health"]) assert.equal((await m.get(file)).status, 200, file);
 
   for (const route of ["seen", "submit", "rate", "outcome"]) {
     const answer = await m.get(`/_walkr/compare/api/sessions/${f.sessionId}/${route}`, { method: "POST", headers, body: "{}" });

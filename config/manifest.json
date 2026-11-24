@@ -352,146 +352,6 @@
         }
       ]
     },
-    "herdr-relay": {
-      "source": {
-        "kind": "tree",
-        "path": "packages/tenantext"
-      },
-      "status": "unverified",
-      "requires": [
-        "core",
-        "herdr"
-      ],
-      "owner": "tenantext",
-      "license": "MIT",
-      "resources": {
-        "extensions": [],
-        "skills": [
-          "skills/herdr-relay"
-        ],
-        "prompts": [],
-        "themes": []
-      },
-      "env": [],
-      "gaps": [
-        {
-          "code": "pi_line_unqualified",
-          "fact": "No test in this repository loads the component with the kit pin."
-        },
-        {
-          "code": "host_tool_required",
-          "fact": "The optional skill needs the herdr CLI, Python 3 and the installed herdr skill (default ~/.agents/skills/herdr). The kit does not install or check them."
-        },
-        {
-          "code": "kit_test_missing",
-          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
-        }
-      ]
-    },
-    "herdr-idle-cleanup": {
-      "source": {
-        "kind": "tree",
-        "path": "packages/tenantext"
-      },
-      "status": "unverified",
-      "requires": [
-        "core",
-        "herdr"
-      ],
-      "owner": "tenantext",
-      "license": "MIT",
-      "resources": {
-        "extensions": [],
-        "skills": [
-          "skills/herdr-idle-cleanup"
-        ],
-        "prompts": [],
-        "themes": []
-      },
-      "env": [],
-      "gaps": [
-        {
-          "code": "pi_line_unqualified",
-          "fact": "No test in this repository loads the component with the kit pin."
-        },
-        {
-          "code": "host_tool_required",
-          "fact": "The skill needs the herdr CLI, Python 3 and the scripts of the herdr skill in the kit (skills/herdr/scripts). The kit does not install or check the herdr CLI or Python 3."
-        },
-        {
-          "code": "kit_test_missing",
-          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
-        }
-      ]
-    },
-    "handoffs": {
-      "source": {
-        "kind": "tree",
-        "path": "packages/tenantext"
-      },
-      "status": "unverified",
-      "requires": [
-        "core",
-        "herdr-idle-cleanup"
-      ],
-      "owner": "tenantext",
-      "license": "MIT",
-      "resources": {
-        "extensions": [
-          "extensions/handoffs/index.ts"
-        ],
-        "skills": [],
-        "prompts": [],
-        "themes": []
-      },
-      "env": [],
-      "gaps": [
-        {
-          "code": "pi_line_unqualified",
-          "fact": "No test in this repository loads the component with the kit pin."
-        },
-        {
-          "code": "host_tool_required",
-          "fact": "The extension runs idle_cleanup.py of the herdr-idle-cleanup skill (HERDR_IDLE_CLEANUP_DIR, else ~/.agents/skills/herdr-idle-cleanup, else the kit copy) with Python 3 at each session start and for /handoffs and /herdr-idle. Python 3 is a host tool; the kit does not install or check it."
-        },
-        {
-          "code": "kit_test_missing",
-          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
-        }
-      ]
-    },
-    "herdr-idle-cleanup-prompt": {
-      "source": {
-        "kind": "tree",
-        "path": "packages/tenantext"
-      },
-      "status": "unverified",
-      "requires": [
-        "core",
-        "herdr-idle-cleanup"
-      ],
-      "owner": "tenantext",
-      "license": "MIT",
-      "resources": {
-        "extensions": [],
-        "skills": [],
-        "prompts": [
-          "prompts/herdr-idle-cleanup.md"
-        ],
-        "themes": []
-      },
-      "env": [],
-      "gaps": [
-        {
-          "code": "pi_line_unqualified",
-          "fact": "No test in this repository loads the component with the kit pin."
-        },
-        {
-          "code": "kit_test_missing",
-          "fact": "No unit test of the kit loads the component. The profile-load step of scripts/pi_update.py qualify resolves it in a profile of install.sh, with the Pi of the qualification."
-        }
-      ]
-    },
     "herdr-watch": {
       "source": {
         "kind": "tree",
@@ -1125,7 +985,7 @@
         },
         {
           "code": "sheprd_open_unverified",
-          "fact": "Verified by hand in the web view of Sheprd on Linux. With Servo 0.8.0, through an SSH port forward: the index, the viewer, the code colors and the gallery load. A click on a link failed there while the web view held a Ctrl key state from an earlier key combination: the web view then asked for a new window, and Sheprd refused it. Not verified: the command artifacts open in a Herdr pane with Sheprd on the same computer, a click on a thumbnail of the table, the root page and the page /walkr in the web view, and Sheprd on macOS. No test runs in a Sheprd web view."
+          "fact": "Verified by hand in the web view of Sheprd on Linux. With Servo 0.8.0, through an SSH port forward, before the pages got the Torch design and the previews on demand: the index, the viewer, the code colors and the gallery loaded. A click on a link failed there while the web view held a Ctrl key state from an earlier key combination: the web view then asked for a new window, and Sheprd refused it. Not verified: the pages of now in the web view of Sheprd (the Torch design and its theme script, the index with the preview card of a table row and the previews of the gallery cards in view, and the frame of a Markdown view, whose address a script sets), which only a Chromium browser showed; the command artifacts open in a Herdr pane with Sheprd on the same computer, the root page and the page /walkr in the web view, and Sheprd on macOS. No test runs in a Sheprd web view."
         },
         {
           "code": "platform_unverified",
@@ -1141,7 +1001,7 @@
         },
         {
           "code": "local_server_live_unverified",
-          "fact": "The Linux checks of the kit start and stop the local server, and send it requests, in a scratch home. Not verified by a test: the root page, the Walkr page /walkr, the index page /artifacts and the viewer page in a browser (the thumbnails, the sort, the filter, the URL fragment and the live refresh), the hourly retention sweep, and the peer check, which no test can reach because the server listens on 127.0.0.1 only. The tests read the Walkr fields of artifacts status with a fake Walkr server, not with a real one; no test reads the Walkr line of artifacts off."
+          "fact": "The Linux checks of the kit start and stop the local server, and send it requests, in a scratch home. Not verified by a test: the root page, the Walkr page /walkr, the index page /artifacts and the viewer page in a browser (the previews, the sort, the filter, the URL fragment and the live refresh), the hourly retention sweep, and the peer check, which no test can reach because the server listens on 127.0.0.1 only. The tests read the Walkr fields of artifacts status with a fake Walkr server, not with a real one. The tests of the event channel /events/v1 and of the pass of the Memory section run with a scratch home and a fake child; no test starts the real memory viewer below the server, and no test reads the channel through an SSH port forward or with the Herdr app."
         }
       ]
     },
@@ -1188,10 +1048,6 @@
         "extensions": [],
         "skills": [
           "skills/walkr",
-          "skills/walkr-core",
-          "skills/walkr-double",
-          "skills/walkr-coinflip",
-          "skills/walkr-trainer",
           "skills/walkr-compare"
         ],
         "prompts": [],
@@ -1203,10 +1059,7 @@
         "HUMAN_REVIEW_BIND",
         "HUMAN_REVIEW_ALLOWED_HOSTS",
         "HUMAN_REVIEW_IDLE_MS",
-        "HUMAN_REVIEW_NO_BROWSER",
-        "HUMAN_REVIEW_COMPARE_ROOT",
-        "HUMAN_REVIEW_TRAINER_ROOT",
-        "HUMAN_REVIEW_DOUBLE_ARCHIVE_DIR"
+        "HUMAN_REVIEW_COMPARE_ROOT"
       ],
       "gaps": [
         {
@@ -1214,12 +1067,12 @@
           "fact": "The skills and the Pi prompts that the manifest names are templates with placeholders; the profile settings do not load packages/walkr as a Pi package. install.sh --with walkr runs the Walkr setup, which writes them with the path of this clone to ~/.claude/skills, ~/.codex/skills, ~/.agents/skills and <profile>/prompts. A moved clone needs a new run."
         },
         {
-          "code": "dependencies_required",
-          "fact": "The package needs npm ci --ignore-scripts in packages/walkr before its first command. install.sh --with walkr runs it when node_modules is absent."
+          "code": "compare_only",
+          "fact": "The package keeps one mode, Compare. Core, Double, Coinflip, Trainer and the shared GUI are retired since 2026-11-23; the release tag portable/20261122-548259a is the last release with their code. The package has no runtime dependency, so install.sh --with walkr runs no npm step."
         },
         {
           "code": "pi_line_unqualified",
-          "fact": "No test in this repository loads the Walkr skills or prompts with the kit pin, and no Pi or Pi-Bolt session ran a Walkr workflow from this package. The Pi extensions of packages/walkr/integrations/pi load with pi -e, not from the profile settings; no run with Pi-Bolt."
+          "fact": "No test in this repository loads the Walkr skills or prompts with the kit pin."
         },
         {
           "code": "platform_unverified",
@@ -1248,10 +1101,6 @@
         "skills": [],
         "prompts": [
           "prompts/walkr.md",
-          "prompts/walkr-core.md",
-          "prompts/walkr-double.md",
-          "prompts/walkr-coinflip.md",
-          "prompts/walkr-trainer.md",
           "prompts/walkr-compare.md"
         ],
         "themes": []
@@ -1265,6 +1114,44 @@
         {
           "code": "pi_line_unqualified",
           "fact": "No test in this repository loads a Walkr prompt with the kit pin, and no Pi or Pi-Bolt session ran one from this package."
+        }
+      ]
+    },
+    "agy": {
+      "source": {
+        "kind": "tree",
+        "path": "packages/agy"
+      },
+      "status": "unverified",
+      "requires": [
+        "core"
+      ],
+      "owner": "agy",
+      "license": "MIT",
+      "resources": {
+        "extensions": [],
+        "skills": [],
+        "prompts": [],
+        "themes": [],
+        "rules": [
+          "rules/style.md",
+          "rules/tenant-kit.md",
+          "rules/tenant-kit-artifacts.md"
+        ]
+      },
+      "env": [],
+      "gaps": [
+        {
+          "code": "live_session_unverified",
+          "fact": "Tested with agy 1.5.15 on Linux only, with scratch homes: scripts/kit_agy.py and install.sh --with agy write and remove the rules, the skill links and the JSON keys. No agy session ran with these files: not verified are the kit skills in a session, a command that the kit rules deny, and an OpenViking recall."
+        },
+        {
+          "code": "platform_unverified",
+          "fact": "No macOS run of install.sh --with agy, of scripts/kit_agy.py or of the hook adapters."
+        },
+        {
+          "code": "herdr_classic_unverified",
+          "fact": "Classic Herdr with an agy pane is not tested, and no test runs the real herdr integration install antigravity-cli; the tests use fake herdr commands only."
         }
       ]
     },

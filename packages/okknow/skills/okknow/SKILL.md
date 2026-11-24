@@ -13,7 +13,7 @@ Use the first path that works.
 
 | Order | Path | How |
 |---|---|---|
-| 1 | MCP server `okknow` | Claude Code: tools `mcp__okknow__<tool>`. Pi: `mcp({ tool: "okknow_<tool>", args: {...} })`; if Pi says "not connected", call `mcp({ connect: "okknow" })` once. Omit the `cwd` argument. |
+| 1 | MCP server `okknow` | Claude Code: tools `mcp__okknow__<tool>`. Pi with the `mcp` tool (MCP adapter): `mcp({ tool: "okknow_<tool>", args: {...} })`; if Pi says "not connected", call `mcp({ connect: "okknow" })` once. Pi with the `codemode` tool (native MCP): in a codemode script, `await tools.mcp__okknow__<tool>({...})`; a call resolves to a `CallToolResult` (read the text of `content`, check `isError`) or rejects with an `Error`. The tool that the session has (`mcp` or `codemode`) tells the form. Omit the `cwd` argument. |
 | 2 | CLI `okknow` | `okknow read <doc>`, `ls <dir>`, `search <query>`, `write <doc> <file> --summary ...`, `asset put <file> <dest>`, `doctor`. When `okknow` is not on `PATH`, run `~/.local/bin/okknow`. |
 | Never | Write, edit, move, or delete files in the content directory of the server | Writes bypass the collaboration server, lose attribution, and conflict with open editors. |
 | Never | `ok mcp`, `ok start` or `npx @inkeep/open-knowledge` against the content directory of a running server | OK allows one server process per project. |

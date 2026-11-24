@@ -56,22 +56,12 @@ test("offline package installs and preflights with complete rendered references 
   }
   references(path.join(unpacked, "README.md"));
   // Every {{LOCAL_*_COMMAND}} placeholder in a source skill renders to its quoted checkout command.
-  const rendered = { DOUBLE: ["walkr-double", "gui view"], COINFLIP: ["walkr-coinflip", "gui view"], TRAINER: ["walkr-trainer", "serve"], COMPARE: ["walkr-compare", "create"] };
+  const rendered = { COMPARE: ["walkr-compare", "create"] };
   const placeholders = new Set(SKILL_NAMES.flatMap((name) => [...fs.readFileSync(path.join(unpacked, "skills", name, "SKILL.md"), "utf8")
     .matchAll(/\{\{LOCAL_([A-Z]+)_COMMAND\}\}/g)].map((match) => match[1])));
   assert.deepEqual([...placeholders].sort(), Object.keys(rendered).sort());
   for (const [mode, [name, args]] of Object.entries(rendered)) {
     const skill = fs.readFileSync(path.join(home, ".agents/skills", name, "SKILL.md"), "utf8");
     assert.ok(skill.includes(`node '${path.join(unpacked, "src", `${name}.js`)}' ${args}`), mode);
-  }
-  // Every packed extension resolves its relative imports inside the package, wherever the files sit.
-  const extensions = fs.readdirSync(path.join(unpacked, "integrations/pi"), { recursive: true }).filter((entry) => entry.endsWith(".ts"));
-  assert.ok(extensions.length > 0);
-  for (const entry of extensions) {
-    const file = path.join(unpacked, "integrations/pi", entry);
-    const text = fs.readFileSync(file, "utf8");
-    for (const [, relative] of text.matchAll(/from "(\.[^"]+)"/g)) {
-      assert.equal(fs.existsSync(path.resolve(path.dirname(file), relative)), true);
-    }
   }
 });

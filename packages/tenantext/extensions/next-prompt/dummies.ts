@@ -8,9 +8,13 @@ import { isAbsolute, join } from "node:path";
  * the state file and the Herdr role. Nothing here changes the state.
  */
 
-const HARNESSES = ["claude", "pi"];
+const HARNESSES = ["claude", "pi", "agy"];
 const RECORDS = ["autostart", "created"];
+// The shared values of each harness, as SHARED of state.py: the allowed words, the default of an absent key first.
+const SHARED: Record<string, readonly string[]> = { log: ["on", "off"], format: ["compact", "detailed"] };
 const ROLES = ["coordinator", "researcher", "scout", "worker", "reviewer"];
+
+export type DummiesFormat = "compact" | "detailed";
 
 /** `dummies-skill/state.json` in an absolute `XDG_CONFIG_HOME`, else in `~/.config`. */
 export function statePath(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
@@ -18,24 +22,35 @@ export function statePath(env: NodeJS.ProcessEnv = process.env, home = homedir()
   return join(base, "dummies-skill", "state.json");
 }
 
-/** True only when the state file is valid and its `pi` value is `on`. An absent, invalid or linked file counts as off. */
-export function dummiesOn(path = statePath()): boolean {
+/** The content of a valid state file, or undefined for an absent, invalid or linked file. The rules of `load_state`. */
+function readState(path: string): Record<string, unknown> | undefined {
   try {
-    if (lstatSync(path).isSymbolicLink()) return false;
+    if (lstatSync(path).isSymbolicLink()) return undefined;
     const data = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    if (!data || typeof data !== "object" || Array.isArray(data)) return false;
+    if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
     const record = data as Record<string, unknown>;
     // As state.py: an absent key has the default, and a JSON null is not valid.
-    if (HARNESSES.some(one => record[one] !== undefined && record[one] !== "on" && record[one] !== "off")) return false;
+    if (HARNESSES.some(one => record[one] !== undefined && record[one] !== "on" && record[one] !== "off")) return undefined;
     for (const key of RECORDS) {
       const files = record[key] === undefined ? {} : record[key];
-      if (!files || typeof files !== "object" || Array.isArray(files)) return false;
-      if (!Object.values(files).every(value => Array.isArray(value) && value.every(one => typeof one === "string"))) return false;
+      if (!files || typeof files !== "object" || Array.isArray(files)) return undefined;
+      if (!Object.values(files).every(value => Array.isArray(value) && value.every(one => typeof one === "string"))) return undefined;
     }
-    return record.pi === "on";
+    if (Object.entries(SHARED).some(([key, words]) => record[key] !== undefined && !words.includes(record[key] as string))) return undefined;
+    return record;
   } catch {
-    return false;
+    return undefined;
   }
+}
+
+/** True only when the state file is valid and the named harness value is `on`. An absent, invalid or linked file counts as off. */
+export function dummiesOn(path = statePath(), harness: "pi" | "claude" | "agy" = "pi"): boolean {
+  return readState(path)?.[harness] === "on";
+}
+
+/** The shared report format: `compact` for an absent key or file. An invalid or linked file counts as off, with the default. */
+export function dummiesFormat(path = statePath()): DummiesFormat {
+  return readState(path)?.format === "detailed" ? "detailed" : "compact";
 }
 
 /** The role in a Herdr agent name of the form `<project>-<role>-<n>`, or undefined. */

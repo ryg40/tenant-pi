@@ -2,9 +2,10 @@ import type { AnthropicStatusSnapshot } from "../anthropic-usage/status.ts";
 import type { CodexStatusSnapshot } from "../codex-accounts/status.ts";
 import type { CopilotStatusSnapshot } from "../copilot-usage/status.ts";
 import { CLOCK_SKEW_MS, parseZonedTimestamp } from "../../src/period-end.ts";
+import { ANTIGRAVITY_POLL_MS, checkAntigravity, type AntigravityOptions, type AntigravityResult } from "./antigravity.ts";
 import { checkArtifacts } from "./artifacts.ts";
 import { checkOkknow } from "./okknow.ts";
-import type { ArtifactsServer, IntegrationSnapshot, IntegrationSource, LimitsAccount, LimitsPeriod, LimitsSnapshot, LimitsWindow, OkknowState, StatusSnapshot, StatusState } from "./types.ts";
+import type { ArtifactsServer, DashboardSnapshot, IntegrationSnapshot, IntegrationSource, LimitsAccount, LimitsPeriod, LimitsSnapshot, LimitsWindow, OkknowState, StatusSnapshot, StatusState } from "./types.ts";
 
 const states = new Set(["ok", "warning", "error", "unknown"]);
 export function state(value: unknown): StatusState {
@@ -234,19 +235,37 @@ export function anthropicStatus(value: unknown, now = Date.now(), lifetimeFloor 
   return { state: severity, summary: severity, accounts: [{ label: "Claude", order: 900, state: accountState(v.state), windows: v.state === "error" ? [] : windows, ...(plan ? { plan } : {}) }],
     route: { state: "unknown" }, source, plan, ...times(v, now, MAX_QUOTA_LIFETIME_MS, lifetimeFloor) };
 }
+/**
+ * The Antigravity reading as one `Antigravity` account after Copilot. A reading with no Gemini window has nothing to meter.
+ * The lifetime is three poll periods, so one skipped or failed poll shows no `stale`.
+ */
+export function antigravityStatus(result: AntigravityResult, lifetimeFloor = 0): DashboardSnapshot["antigravity"] {
+  if (result.kind !== "reading" || !result.reading.windows.length) return;
+  let severity: StatusState = "ok";
+  for (const w of result.reading.windows) if ((w.percent ?? 100) <= 10) severity = "warning";
+  return { state: severity, summary: severity, accounts: [{ label: "Antigravity", order: 1100, state: "ok", windows: result.reading.windows }],
+    route: { state: "unknown" }, other: result.reading.other, checkedAt: result.at, staleAfter: Math.max(3 * ANTIGRAVITY_POLL_MS, lifetimeFloor) };
+}
 
 export type HealthFetch = typeof fetch;
 export type OkknowCheck = typeof checkOkknow;
 export type ArtifactsCheck = typeof checkArtifacts;
+export type AntigravityCheck = (track: (stop: () => void) => () => void, options: Pick<AntigravityOptions, "usage">) => Promise<AntigravityResult>;
 export class HealthAdapter {
   private controllers = new Set<AbortController>();
   private disposed = false;
   private fetcher: HealthFetch;
   private okknowCheck: OkknowCheck;
   private artifactsCheck: ArtifactsCheck;
+  private antigravityCheck: AntigravityCheck;
   private stops = new Set<() => void>();
-  constructor(fetcher: HealthFetch = fetch, okknowCheck: OkknowCheck = checkOkknow, artifactsCheck: ArtifactsCheck = checkArtifacts) {
-    this.fetcher = fetcher; this.okknowCheck = okknowCheck; this.artifactsCheck = artifactsCheck;
+  constructor(fetcher: HealthFetch = fetch, okknowCheck: OkknowCheck = checkOkknow, artifactsCheck: ArtifactsCheck = checkArtifacts, antigravityCheck: AntigravityCheck = checkAntigravity) {
+    this.fetcher = fetcher; this.okknowCheck = okknowCheck; this.artifactsCheck = artifactsCheck; this.antigravityCheck = antigravityCheck;
+  }
+  /** The Antigravity reading from `agy -p "/usage"`, in the background, through the shared reading of the computer. */
+  async antigravity(usage: "auto" | "on" = "auto"): Promise<AntigravityResult> {
+    if (this.disposed) return { kind: "failed" };
+    return this.antigravityCheck(stop => { this.stops.add(stop); return () => this.stops.delete(stop); }, { usage });
   }
   /** The okknow state from its CLI, in the background. `undefined`: okknow has no origin or no CLI. */
   async okknow(): Promise<OkknowState | undefined> {

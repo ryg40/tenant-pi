@@ -31,8 +31,7 @@
       "./extensions/herdr-watch/index.ts",
       "./extensions/next-prompt/index.ts",
       "./extensions/cross-session-recall/index.ts",
-      "./extensions/command-rules/index.ts",
-      "./extensions/handoffs/index.ts"
+      "./extensions/command-rules/index.ts"
     ],
     "skills": [
       "./skills"
@@ -43,6 +42,7 @@
   },
   "files": [
     "extensions",
+    "owner-popup",
     "claude-code",
     "src",
     "skills",

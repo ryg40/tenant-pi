@@ -164,6 +164,17 @@ FAKE_HERDR = textwrap.dedent('''\
     print(json.dumps({"result": {"agent": json.loads(os.environ["FAKE_HERDR_AGENT"])}}))
     ''')
 
+FAKE_HC = textwrap.dedent('''\
+    #!%(python)s
+    """A fake hc command of the Herdr app: `get <terminal> --json` prints the record of FAKE_HC_TERMINAL."""
+    import os
+    import sys
+
+    if sys.argv[1:2] != ["get"] or "FAKE_HC_TERMINAL" not in os.environ:
+        sys.exit(1)
+    print(os.environ["FAKE_HC_TERMINAL"])
+    ''')
+
 BODY = textwrap.dedent("""\
     **Important:** VERSION 2.4.0 IS MERGED, BUT THE COMMITS ARE NOT PUSHED.
     **Open:** Clients must read the tool list again. The user approves the push.
@@ -252,7 +263,7 @@ class Sandbox(unittest.TestCase):
         self.home, self.bin, self.tools, self.ok = (self.work / name for name in ("home", "bin", "tools", "ok"))
         for directory in (self.home, self.bin, self.tools, self.ok / "pages"):
             directory.mkdir(parents=True)
-        for name, text in (("okknow", FAKE_OKKNOW), ("herdr", FAKE_HERDR)):
+        for name, text in (("okknow", FAKE_OKKNOW), ("herdr", FAKE_HERDR), ("hc", FAKE_HC)):
             path = self.bin / name
             path.write_text(text % {"python": sys.executable}, encoding="utf-8")
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
@@ -356,13 +367,53 @@ class StateTests(Sandbox):
                 self.assertTrue(self.state(**extra).stdout.startswith(f"dummies: off for {harness} | "))
         # The argument wins over a marker. Two markers with no AI_AGENT need Herdr or the argument.
         self.assertTrue(self.state("status", "--harness", "pi", CLAUDECODE="1").stdout.startswith("dummies: off for pi"))
-        for extra in ({}, {"CLAUDECODE": "1", "PI_CODING_AGENT": "true"}):
-            unknown = self.state(**extra)
+        for extra in ({}, {"CLAUDECODE": "1", "PI_CODING_AGENT": "true"}, {"ANTIGRAVITY_AGENT": "1", "CLAUDECODE": "1"},
+                      {"ANTIGRAVITY_AGENT": "1", "PI_CODING_AGENT": "true"}):
+            unknown = self.state("on", "--autostart", **extra)
             self.assertEqual(2, unknown.returncode)
-            self.assertIn("the harness is not known: add --harness pi or --harness claude", unknown.stderr)
+            self.assertIn("the harness is not known", unknown.stderr)
+            self.assertFalse((self.home / ".gemini/GEMINI.md").exists())
+            self.assertFalse(self.state_file().exists())
         herdr = {"HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1",
                  "FAKE_HERDR_AGENT": json.dumps({"agent": "pi", "name": "demo-coordinator-1"})}
         self.assertTrue(self.state(**herdr).stdout.startswith("dummies: off for pi | "))
+
+    def test_agy_changes_no_file_and_no_value_of_claude_and_pi(self):
+        agent_dir = self.work / "profile"
+        agent_dir.mkdir()
+        pi = {"AI_AGENT": "pi", "PI_CODING_AGENT_DIR": str(agent_dir)}
+        for extra in ({"CLAUDECODE": "1"}, pi):
+            self.assertEqual(0, self.state("on", "--autostart", **extra).returncode)
+        files = {path: path.read_bytes() for path in (self.home / ".claude/CLAUDE.md", agent_dir / "AGENTS.md")}
+        before = self.saved()
+        for args in (("off", "--harness", "agy"), ("on", "--harness", "agy", "--autostart")):
+            with self.subTest(args=args):
+                result = self.state(*args, **pi)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertIn("agy", result.stdout)
+                self.assertEqual(files, {path: path.read_bytes() for path in files})
+                after = self.saved()
+                for key in ("claude", "pi"):
+                    self.assertEqual(before[key], after[key])
+                    for table in ("autostart", "created"):
+                        self.assertEqual(before.get(table, {}).get(key), after.get(table, {}).get(key))
+        gemini = self.home / ".gemini/GEMINI.md"
+        self.assertIn(BEGIN, gemini.read_text(encoding="utf-8"))
+        self.assertEqual([str(gemini)], self.saved()["autostart"]["agy"])
+
+    def test_an_agy_session_is_agy_and_an_old_state_file_stays_valid(self):
+        self.state_file().parent.mkdir(parents=True)
+        self.state_file().write_text(json.dumps({"claude": "on", "pi": "off"}), encoding="utf-8")
+        result = self.state(ANTIGRAVITY_AGENT="1")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(result.stdout.startswith("dummies: off for agy | "), result.stdout)
+
+    def test_an_agy_session_shows_the_format_of_a_claude_session(self):
+        self.assertEqual(0, self.state("format", "detailed", CLAUDECODE="1").returncode)
+        def form(**env):
+            return self.state(**env).stdout.split("| format: ", 1)[1].split(" |", 1)[0]
+        self.assertEqual(form(CLAUDECODE="1"), "detailed")
+        self.assertEqual(form(ANTIGRAVITY_AGENT="1"), form(CLAUDECODE="1"))
 
     def test_role_of_a_herdr_pane(self):
         for name, expected in (("demo-coordinator-1", "role: coordinator (Herdr) |"),
@@ -374,6 +425,25 @@ class StateTests(Sandbox):
                                     FAKE_HERDR_AGENT=json.dumps({"agent": "claude", "name": name}))
                 self.assertIn(expected, result.stdout)
         self.assertIn("role: not known (no Herdr): your start prompt decides |", self.state(CLAUDECODE="1").stdout)
+
+    def test_role_of_a_terminal_of_the_herdr_app_in_the_first_tab(self):
+        def role(stdout):
+            return stdout.split("| role: ", 1)[1].split(" |", 1)[0]
+        legacy = {"HERDR_ENV": "1", "HERDR_PANE_ID": "w1:p1",
+                  "FAKE_HERDR_AGENT": json.dumps({"agent": "claude", "name": "demo-coordinator-1"})}
+        for record, expected, extra in (({"name": None, "labels": {"where": "demo / 1"}}, "coordinator", {}),
+                                        ({"name": None, "labels": {"where": "demo / 1", "skill.role": "worker"}},
+                                         "worker", {}),
+                                        ({"name": "demo-reviewer-2", "labels": {"where": "demo / 1"}}, "reviewer", {}),
+                                        # Inherited legacy variables of a coordinator pane do not decide the role.
+                                        ({"name": "demo-worker-3", "labels": {"where": "demo / 2"}}, "worker", legacy)):
+            with self.subTest(record=record, legacy=bool(extra)):
+                result = self.state(CLAUDECODE="1", HC_TERMINAL_ID="t1", FAKE_HC_TERMINAL=json.dumps(record), **extra)
+                self.assertEqual(0, result.returncode, result.stderr)
+                text = role(result.stdout)
+                self.assertEqual(expected, text.split(" ", 1)[0], text)
+                if expected != "coordinator":
+                    self.assertNotIn("coordinator", text)
 
     def test_on_changes_no_instruction_file_without_the_option(self):
         memory = self.home / ".claude/CLAUDE.md"
@@ -454,7 +524,7 @@ class StateTests(Sandbox):
     def test_a_state_file_that_is_not_valid(self):
         self.state_file().parent.mkdir(parents=True)
         for text in ("{not json", "[]", '{"claude": "yes"}', '{"pi": true}', '{"autostart": {"pi": "AGENTS.md"}}',
-                     '{"created": {"pi": "AGENTS.md"}}', '{"created": ["AGENTS.md"]}'):
+                     '{"created": {"pi": "AGENTS.md"}}', '{"created": ["AGENTS.md"]}', '{"format": "wide"}'):
             with self.subTest(text=text):
                 self.state_file().write_text(text, encoding="utf-8")
                 status = self.state(CLAUDECODE="1")
@@ -467,6 +537,19 @@ class StateTests(Sandbox):
                     self.assertEqual("", result.stdout)
                     self.assertEqual(text, self.state_file().read_text(encoding="utf-8"))
                 self.assertFalse((self.home / ".claude").exists())
+
+    def test_format_is_one_shared_value_that_on_off_and_log_keep(self):
+        # An absent key reads as compact. The part has a fixed place between log and role.
+        self.assertIn(" | format: compact | role: ", self.state(CLAUDECODE="1").stdout)
+        result = self.state("format", "detailed")
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn("format: detailed", result.stdout)
+        self.assertEqual("detailed", self.saved()["format"])
+        for extra in ({"CLAUDECODE": "1"}, {"AI_AGENT": "pi"}):
+            self.assertIn(" | format: detailed | role: ", self.state(**extra).stdout)
+        for word in (("on",), ("off",), ("on",), ("log", "off")):
+            self.assertEqual(0, self.state(*word, CLAUDECODE="1").returncode)
+        self.assertEqual("detailed", self.saved()["format"])
 
     def test_wrong_arguments_exit_2(self):
         for args in (("start",), ("off", "--autostart"), ("status", "--autostart"), ("on", "--harness", "codex")):

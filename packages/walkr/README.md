@@ -1,20 +1,15 @@
 # Walkr
 
-Walkr lets you review the work of a coding agent in your browser.
-It opens an HTML file, a Markdown file or a `localhost` page.
-You edit text, delete elements and write comments on the page. Then you select Send.
-Your agent receives all of the feedback in one batch, with the exact text and element of each comment.
-
-Walkr also has four modes for design choices, options and data.
-Double shows two candidates of a page side by side, and you keep or delete regions over rounds.
-Coinflip shows two candidates of one component, and you pick a winner round by round.
-Trainer shows items in groups of three, and your ranks become a preference dataset.
-Compare shows 2 or 3 options of a code change or of a short text. You pick one and rate the session with stars.
+Walkr Compare shows 2 or 3 prepared options of one change in your browser, side by side.
+The options are versions of a code change or of a short text. Your coding agent prepares them.
+You pick one option, comment, and rate the session with stars. The agent reads your result and goes on.
 Everything runs on your computer. Walkr needs no account, cloud service or database.
+
+Compare is the one mode of Walkr. The other modes are retired since 2026-11-23: Core (the page editor), Double, Coinflip, Trainer and the shared GUI. The release tag `portable/20261122-548259a` is the last release with their code. See the [changelog](CHANGELOG.md).
 
 ## Install
 
-You need Node.js 20.19.0 or newer, npm and Git.
+You need Node.js 20.19.0 or newer and Git. The package has no runtime dependency.
 
 Walkr is the package `packages/walkr` of the tenant-pi kit. `install.sh --with walkr` of the kit installs it for Claude Code and for a Pi profile. To install Walkr by itself, with its command links:
 
@@ -22,59 +17,29 @@ Walkr is the package `packages/walkr` of the tenant-pi kit. `install.sh --with w
 cd <kit clone>/packages/walkr && ./install.sh
 ```
 
-The script installs the dependencies, links the six commands into `~/.local/bin` and installs the agent skills.
+The script links the two commands `walkr` and `walkr-compare` into `~/.local/bin` and installs the agent skills.
 The [install guide](INSTALL.md) explains each option, the manual steps and the uninstall.
 
 ## Quick start
 
-1. Open a file for review:
-
-   ```sh
-   walkr /absolute/path/page.html
-   ```
-
-   Walkr starts a local server and opens the page in your browser.
-   It prints the review URL, for example `http://127.0.0.1:<port>/s/<session-id>`.
-2. Edit and comment on the page. Then select Send.
-3. The agent collects the feedback with a bounded poll, applies it, and acknowledges the batch:
-
-   ```sh
-   walkr poll /absolute/path/page.html --timeout 240
-   walkr poll /absolute/path/page.html --ack <batch_id> --timeout 240
-   walkr status /absolute/path/page.html
-   ```
+1. Ask your agent for a comparison, for example `/walkr compare cfn options` or `/walkr simplify ticket`.
+2. The agent prepares the options and runs `walkr-compare create`. It gives you the private URL of the page.
+3. Read the options in the page, pick one, and select Submit (done) or Next round.
+4. The agent gets your result from `walkr-compare wait`, and the page shows that the agent received it.
 
 You seldom type these commands yourself. The agent skills tell the agent to run them.
-`walkr-core setup` installs six skills: `walkr`, `walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer` and `walkr-compare`.
-`walkr-core setup --global` installs them for your user. The installer runs setup for you.
-Then ask your agent for a review, or type `/walkr <file>`.
+`walkr setup` installs two skills: `walkr` and `walkr-compare`. `walkr setup --global` installs them for your user. The installer runs setup for you.
 
-## Modes
+## Commands, page and data
 
-| Mode | Command | What you do | Guide |
-| --- | --- | --- | --- |
-| Core | `walkr-core` (also `walkr`) | Review one HTML or Markdown file, or a `localhost` page. Send exact feedback to the agent. | [Core](docs/core.md) |
-| Double | `walkr-double` | Compare two candidates of one page side by side. Keep or delete regions over rounds. | [Double](docs/double.md) |
-| Coinflip | `walkr-coinflip` | Pick a winner between two candidates of one component, round by round. | [Coinflip](docs/coinflip.md) |
-| Trainer | `walkr-trainer` | Rank items in groups of three to build a dataset. | [Trainer](docs/trainer.md) |
-| Compare | `walkr-compare` | Pick one of 2 or 3 options of a code change or of a short text. Rate each session. | [Compare](docs/compare.md) |
+| Part | Where |
+| --- | --- |
+| The page, the request format, the commands and the HTTP interface | [Compare](docs/compare.md) |
+| The commands and the skills, and what setup writes | [Commands and skills](docs/modes.md) |
+| A read-only page for the sessions of several computers | [Mirror](mirror/README.md) |
+| The words | [Glossary](GLOSSARY.md) |
 
-Double, Coinflip and Trainer share one browser view, the shared GUI. You type a brief there, and the connected agent makes the candidates.
-In Double and Coinflip, the prompt box also [steers](docs/steering.md) an active review.
-Compare has its own page, the history page: it lists the sessions of every type, newest first. Compare sessions take your pick and rating there; the other types show read-only.
-Type `/walkr compare cfn options` or `/walkr simplify ticket` to your agent to start a Compare session. `walkr-compare open` prints the private URL of the page.
-The optional [history mirror](mirror/README.md) shows the history of several computers on one read-only page.
-The `Dockerfile` of the package builds the review server of hosted mode.
-[Modes, commands and skills](docs/modes.md) lists every command and skill. The [glossary](GLOSSARY.md) defines the words.
-
-## Pi integrations
-
-Walkr has optional extensions for the Pi coding agent in `integrations/pi/*.ts`.
-`shared-gui.ts` connects one Pi chat to the shared GUI.
-`double-chat.ts` and `double-session-chat.ts` return Double results to the chat that started them.
-`core-wake.ts` wakes the chat that started a Core review when a Send waits.
-Nothing loads them automatically. Load one when you start Pi, with `pi --extension <absolute path>`.
-Claude Code, Codex and other agents use the commands and the skills.
+The artifacts server of the kit shows the Compare page in its section Walkr, on its own port. See `packages/artifacts/README.md` of the kit.
 
 ## Credits
 

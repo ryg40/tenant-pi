@@ -90,6 +90,15 @@ class PiLauncher(unittest.TestCase):
                 spawn.prepare_pi_launcher("new-pane", "/bin/true")
         self.assertEqual(call.call_count, 1)
 
+    def test_busy_new_shell_is_checked_again_until_it_is_at_its_prompt(self):
+        busy = {"result": {"process_info": {"foreground_processes": [{"name": "bash"}, {"name": "sleep"}]}}}
+        ready = {"result": {"process_info": {"foreground_processes": [{"name": "bash"}]}}}
+        with patch.object(spawn.time, "sleep"), \
+                patch.object(spawn, "herdr", side_effect=[(0, busy, ""), (0, ready, ""), (0, {"result": {}}, "")]) as call:
+            spawn.prepare_pi_launcher("new-pane", "/bin/true")
+        self.assertEqual([c.args[:2] for c in call.call_args_list],
+                         [("pane", "process-info"), ("pane", "process-info"), ("pane", "run")])
+
     def test_wrapper_delivery_error_fails(self):
         info = {"result": {"process_info": {"foreground_processes": [{"name": "bash"}]}}}
         with patch.object(spawn, "herdr", side_effect=[(0, info, ""), (1, None, "error")]):

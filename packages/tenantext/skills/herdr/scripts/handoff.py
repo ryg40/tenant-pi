@@ -18,6 +18,16 @@ Usage: handoff.py --file <handoff.md> [--harness claude|pi] [--model NAME] [--th
    Any failure closes nothing and leaves both panes open. A failed second send appends a line with
    status "failed" and the cause.
 
+On herdr-core (a pane of the Herdr app, no HERDR_ENV) the steps are the same: the caller is a local pane of
+the app with a valid coordinator record, the open panes are the live local terminals of its space, spawn.py
+starts the new coordinator in the tab of the caller, and the last step is `hc kill` of the caller's own
+terminal. Two records differ here: the local record of this skill (removed before the kill) and the core record
+of the terminal. Directly before the kill, handoff.py starts a helper process for a best-effort cleanup: it waits
+up to 60 seconds until the core shows the own terminal as finished, then removes its core record with `hc rm`, but
+only when its labels name the role coordinator and the own space. A failed kill writes the local record back and
+exits with close_failed; the helper removes nothing while the terminal stays live. A failed `hc rm` changes no
+exit code.
+
 Exit codes: see the `handoff` entry of contract.json.
 """
 import datetime
@@ -26,11 +36,13 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from _common import (CONTRACT, ROLES, agent_info, error_code, exit_codes, herdr, live_agents,  # noqa: E402
-                     read_record, remove_record, tabs, write_record)
+from _common import (CONTRACT, ROLES, agent_info, core_error_kind, core_harness, core_record, core_role,  # noqa: E402
+                     core_terminals, error_code, exit_codes, hc, herdr, herdr_app_pane, live_agents, read_record,
+                     remove_record, require_backend, tabs, write_record)
 
 EXIT = exit_codes("handoff")
 SPAWN_EXIT = exit_codes("spawn")
@@ -45,6 +57,8 @@ SEND_SECONDS = 45
 # ask.py ends by itself at --timeout; this extra time only guards against a hung ask.py.
 ASK_GRACE = 300
 SECTION = "## Open panes at the handoff"
+# After `hc kill` of the own terminal the helper waits this long for the state "finished", then gives up.
+REMOVE_SECONDS = 60
 
 
 def fail(msg, code):
@@ -89,6 +103,24 @@ def check_caller():
     return me, record.get("workspace_id"), harness
 
 
+def check_core_caller(found):
+    """Return (address, space, harness) of the calling coordinator on herdr-core. Exit with usage otherwise.
+
+    The caller is a local pane of the Herdr app (herdr_app_pane) whose valid record (core_record) has the role
+    coordinator and the space of the pane.
+    """
+    me = herdr_app_pane(found)
+    address = (me or {}).get("address") or found.get("terminal")
+    record = core_record(dict(me, address=address)) if me else None
+    space = ((me or {}).get("labels") or {}).get("herdr.space")
+    if not record or record.get("role") != "coordinator" or record.get("workspace_id") != space:
+        fail(f"terminal {address} is not a coordinator pane of the Herdr app: no valid coordinator record of "
+             "init.py or spawn.py. Run init.py first.", EXIT["usage"])
+    harness = core_harness(me) or record.get("harness")
+    harness = "pi" if harness == "pi-bolt" else harness
+    return address, space, harness
+
+
 def check_file(path):
     path = os.path.realpath(path)
     try:
@@ -120,6 +152,24 @@ def open_panes(workspace_id, me):
             continue
         lines.append(f"- `{pid}` {names.get(pid, '-')}, role {role or '-'}, status {p.get('agent_status') or '-'}, "
                      f"cwd `{p.get('cwd') or '-'}`")
+    return lines
+
+
+def core_open_panes(space, me):
+    """On herdr-core: one line for each live local terminal of the space that is not `me`, no coordinator, and
+    hosts an agent or has a valid record. The source is the one of panes.py: core_terminals(space).
+    """
+    terminals = core_terminals(space)
+    if terminals is None:
+        fail("could not list the herdr-core terminals of the space", EXIT["usage"])
+    lines = []
+    for t in terminals:
+        address = t.get("address")
+        role = core_role(t)
+        if address == me or role == "coordinator" or not ((t.get("status") or {}).get("app") or core_record(t)):
+            continue
+        lines.append(f"- `{address}` {t.get('name') or '-'}, role {role or '-'}, "
+                     f"status {(t.get('status') or {}).get('state') or '-'}, cwd `{t.get('cwd') or '-'}`")
     return lines
 
 
@@ -247,15 +297,72 @@ def send_second(pane, prompt):
     return False, f"ask.py exit {code}"
 
 
+def remove_when_finished(address, space, seconds=REMOVE_SECONDS, pause=1.0):
+    """The helper: wait until the terminal `address` is finished or gone, then remove its record from the core.
+
+    It runs `hc rm` one time, and only when `hc get` shows all three facts: the state "finished", the label
+    skill.role "coordinator" and the label herdr.space `space`. A terminal that the core no longer knows needs no
+    removal. A terminal that stays live (a failed kill), of another space or of another role is never removed.
+    Return True when it ran `hc rm`.
+    """
+    end = time.time() + seconds
+    while True:
+        code, data, raw = hc("get", address, "--json", timeout=20)
+        if core_error_kind(data) == "not_found":
+            return False
+        if code == 0 and isinstance(data, dict) and data.get("state") == "finished":
+            labels = data.get("labels") or {}
+            if labels.get("skill.role") != "coordinator" or labels.get("herdr.space") != space:
+                return False
+            hc("rm", address, "--json", timeout=20)  # housekeeping: a failed removal changes nothing
+            return True
+        if time.time() >= end:
+            return False
+        time.sleep(pause)
+
+
+# Starts the command of its arguments in a new session and exits at once (a double fork). So the helper is no
+# descendant of the caller: Claude Code ends the process tree of its background command when the terminal dies,
+# and a new session alone does not take the helper out of that tree. No signal ever goes to the helper: after a
+# failed kill it sees a live terminal, removes nothing and ends after REMOVE_SECONDS.
+DETACH = ("import subprocess, sys; subprocess.Popen(sys.argv[1:], start_new_session=True, "
+          "stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)")
+
+
+def start_removal(address, space):
+    """Start the helper outside the process tree of this command. Best effort: every error is ignored."""
+    code = ("import sys; sys.path.insert(0, {here!r}); import handoff; "
+            "handoff.remove_when_finished(sys.argv[2], sys.argv[1])").format(here=HERE)
+    try:
+        mid = subprocess.Popen([sys.executable, "-c", DETACH, sys.executable, "-c", code, space, address], cwd=HERE,
+                               stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return  # housekeeping: the handoff still closes this terminal
+    try:
+        mid.wait(timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        try:
+            mid.kill()  # a hung intermediate does not stay
+            mid.wait(timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+
 def main():
+    found = require_backend("handoff", core=True)
+    on_core = found["backend"] == "core"
     opts = parse(sys.argv[1:])
-    me, workspace, own_harness = check_caller()
+    me, workspace, own_harness = check_core_caller(found) if on_core else check_caller()
     path, text = check_file(opts["file"])
     harness = opts["harness"] or own_harness
+    if harness == "agy":
+        # The handoff to an agy coordinator is not proven (role_set.py refuses it too), so it stays refused.
+        why = "--harness agy was given" if opts["harness"] else f"pane {me} runs agy"
+        fail(f"handoff.py starts no agy coordinator ({why}); give --harness claude or --harness pi", EXIT["usage"])
     if harness not in HARNESSES:
         fail(f"cannot tell the harness of pane {me} ({harness}); give --harness claude or --harness pi", EXIT["usage"])
 
-    append_panes(path, text, open_panes(workspace, me))
+    append_panes(path, text, core_open_panes(workspace, me) if on_core else open_panes(workspace, me))
     pane, name = spawn(opts, harness)
     new = f"new pane {pane} {name}; both panes stay open"
 
@@ -286,11 +393,20 @@ def main():
     own = read_record(me)
     remove_record(me)  # as close.py does: a later pane with this ID is no coordinator
     # The last step: this is the pane of the caller, so the close ends this command.
-    code, data, raw = herdr("pane", "close", me)
-    if code != 0 or error_code(data):
+    if on_core:
+        # The kill ends this command, so a detached helper removes the finished core record of the own terminal.
+        start_removal(me, workspace)
+        code, data, raw = hc("kill", me, "--json", timeout=30)
+        failed = code != 0 or core_error_kind(data)
+        how = f"hc kill {me}"
+    else:
+        code, data, raw = herdr("pane", "close", me)
+        failed = code != 0 or error_code(data)
+        how = f"herdr pane close {me}"
+    if failed:
         if own:
             write_record(me, own)
-        fail(f"herdr pane close {me}: {raw[:200]}; the handoff to {pane} {name} is done", EXIT["close_failed"])
+        fail(f"{how}: {raw[:200]}; the handoff to {pane} {name} is done", EXIT["close_failed"])
 
 
 if __name__ == "__main__":

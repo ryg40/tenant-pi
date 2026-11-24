@@ -5,8 +5,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { ensureStateDir, SERVER_PROTOCOL, serverPath } from "./paths.js";
 
-// The background server of Core and Compare: one for each state directory. The commands of these two modes
-// start it when no compatible server runs. Double, Coinflip and Trainer never use this: you start their server.
+// The background server of Walkr: one for each state directory. A walkr-compare command starts it when no
+// compatible server runs.
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 export function readServerRecord() {
@@ -78,9 +78,6 @@ export async function ensureServer() {
   ensureStateDir();
   const saved = readServerRecord();
   if (saved?.protocol === SERVER_PROTOCOL && saved.port && (await alive(saved.port))) return saved;
-  if (process.env.HUMAN_REVIEW_HOSTED === "1") {
-    throw new Error("The managed review server is unavailable. Check docker compose ps; do not start another server.");
-  }
   await stopOlderServer(saved);
 
   const child = spawn(process.execPath, [path.join(here, "server-entry.js")], {
@@ -96,5 +93,5 @@ export async function ensureServer() {
     // version answers /health too, and must not be adopted here.
     if (record?.protocol === SERVER_PROTOCOL && record.port && (await alive(record.port))) return record;
   }
-  throw new Error("Could not start the local human-review server.");
+  throw new Error("Could not start the local Walkr server.");
 }

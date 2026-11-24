@@ -1,2 +1,4 @@
 #!/usr/bin/env node
-import "./cli.js";
+import { refuseRetired } from "./retired.js";
+
+refuseRetired("walkr-core");

@@ -315,19 +315,17 @@
       "plan": "skip"
     },
     {
-      "name": "herdr",
-      "group": "herdr",
-      "installed": true,
-      "active": true,
-      "version_installed": "1.0.0",
-      "version_pinned": "1.0.0",
-      "state_source": [
-        "/home/user/.pi/profiles/demo/settings.json"
-      ],
-      "plan": "keep"
+      "name": "memory",
+      "group": "memory",
+      "installed": false,
+      "active": null,
+      "version_installed": null,
+      "version_pinned": null,
+      "state_source": [],
+      "plan": "skip"
     },
     {
-      "name": "herdr-relay",
+      "name": "herdr",
       "group": "herdr",
       "installed": true,
       "active": true,
@@ -347,45 +345,6 @@
       "version_pinned": "1.0.0",
       "state_source": [
         "/home/user/.pi/profiles/demo/settings.json"
-      ],
-      "plan": "keep"
-    },
-    {
-      "name": "herdr-idle-cleanup",
-      "group": "herdr",
-      "installed": true,
-      "active": true,
-      "version_installed": "1.0.0",
-      "version_pinned": "1.0.0",
-      "state_source": [
-        "/home/user/.pi/profiles/demo/settings.json",
-        "/home/user/.pi/profiles/demo/kit-steps.json"
-      ],
-      "plan": "keep"
-    },
-    {
-      "name": "handoffs",
-      "group": "herdr",
-      "installed": true,
-      "active": true,
-      "version_installed": "1.0.0",
-      "version_pinned": "1.0.0",
-      "state_source": [
-        "/home/user/.pi/profiles/demo/settings.json",
-        "/home/user/.pi/profiles/demo/kit-steps.json"
-      ],
-      "plan": "keep"
-    },
-    {
-      "name": "herdr-idle-cleanup-prompt",
-      "group": "herdr",
-      "installed": true,
-      "active": true,
-      "version_installed": "1.0.0",
-      "version_pinned": "1.0.0",
-      "state_source": [
-        "/home/user/.pi/profiles/demo/settings.json",
-        "/home/user/.pi/profiles/demo/kit-steps.json"
       ],
       "plan": "keep"
     },

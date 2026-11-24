@@ -1,6 +1,6 @@
 # In-tree packages
 
-`packages/tenantext` holds the source of the optional Pi package. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. `packages/agentcore-pi` holds the AgentCore Memory extension for Pi on the shared memory core: recall before each typed prompt and the confirmed propose tool `agentcore_propose`; it is the optional `agentcore` memory module. `packages/agentcore-memory-core` holds the shared memory core for several people: the contract, its implementation and the review CLI. `packages/agentcore-claude` holds the Claude Code plugin of the shared memory: a recall hook and an MCP server with the propose and review tools. `packages/agentcore-memory-admin` holds the registry script of the shared memory, an owner tool. `packages/walkr` holds the review tool Walkr with its skills and prompts for Claude Code and Pi; it is the optional `walkr` module.
+`packages/tenantext` holds the source of the optional Pi package. `packages/openviking-pi` holds a vendored copy of the OpenViking extension for Pi; it is the `openviking` memory module. `packages/agentcore-pi` holds the AgentCore Memory extension for Pi on the shared memory core: recall before each typed prompt and the confirmed propose tool `agentcore_propose`; it is the optional `agentcore` memory module. `packages/agentcore-memory-core` holds the shared memory core for several people: the contract, its implementation and the review CLI. `packages/agentcore-claude` holds the Claude Code plugin of the shared memory: a recall hook and an MCP server with the propose and review tools. `packages/agentcore-memory-admin` holds the registry script of the shared memory, an owner tool. `packages/memory-chain` holds the memory chain in shadow: one scoped memory search before each prompt for Pi and Claude Code, which measures and adds nothing to the prompt. `packages/walkr` holds Walkr Compare with its skills and prompts for Claude Code and Pi; it is the optional `walkr` module.
 Each package has its own license metadata, tests and documentation. Each package names its Node range in the `engines` field of its `package.json`. Tenantext pins `@types/node` to a version of the Node line of that range.
 
 ## Kit components
@@ -11,11 +11,7 @@ Each extension and each skill of the packages is one component in `config/manife
 
 Facts of the components:
 
-- `herdr-relay` needs the herdr skill at `~/.agents/skills/herdr`, or the folder of `HERDR_SKILL_HOME`. No component requires it. A kit without the relay directory remains valid, as for the folder of each `tree` component.
 - `herdr-watch` starts a task session in a Herdr pane, or prompts a pane, and delivers the reply as a task notification. In Pi with the component, the watch is the default way to start a task session and to prompt a pane. The `herdr` command, Python 3 and the herdr skill scripts are host tools that the kit does not install. [The extension document](../packages/tenantext/docs/herdr-watch.md) names its tools. Not verified: a load of the component with the kit pin, and a live session with a Herdr pane.
-- `herdr-idle-cleanup` scans and classifies all Herdr workspaces, ranks the final reports of the idle agent panes into a handoff under `~/.local/share/tenant-pi/handoffs/`, closes the idle workspaces after the user's yes, and publishes a handoff after a secret scan when the owner asks. It needs the `herdr` command, Python 3 and the herdr skill next to it. [The guide](guides/herdr-idle-cleanup.md) gives the steps. Not verified: a real close and a live upload.
-- `herdr-idle-cleanup-prompt` is the Pi prompt template `/herdr-idle-cleanup`: it loads the skill and runs its default run. It requires `herdr-idle-cleanup`. Not verified: a live Pi or Pi-Bolt session with the prompt.
-- `handoffs` runs the startup assessment of the open handoff entries of the repository in Pi, and adds `/handoffs` and `/herdr-idle` (turns the startup check on or off, or shows its state). It requires `herdr-idle-cleanup`. Not verified: a live Pi or Pi-Bolt session with the extension.
 - An `unverified` component names its gaps in the manifest: the facts that no test proves.
 - `openviking` is a memory module and one `pi install` line: its local-file source is `packages/openviking-pi/index.ts`. See [the memory modules](memory-modules.md).
 - `herdr` holds the skill only. The Herdr application is a host tool: the kit does not install it. See [Herdr and the question tool](herdr-setup.md).
@@ -29,7 +25,8 @@ Facts of the components:
 - `cross-session-recall` stores each interactive input in one SQLite store of the user and seeds the Up/Down history of the editor from it. [The extension document](../packages/tenantext/docs/cross-session-recall.md) names the store, its variable `CROSS_SESSION_RECALL_DIR` and the commands. The package test composes it with `next-prompt` on a fake editor. Not verified: a load of the component with the kit pin.
 - `resources` adds the `/resources` command. The command shows the extensions, skills, prompts and MCP servers of the agent directory, turns each one on or off, and saves named profiles. `docs/resources.md` has the command and the settings syntax. The component declares no environment variable. It follows the reviewed resource settings syntax. Not verified: a load of the component with the kit pin.
 - The extensions of `packages/tenantext` need no `node_modules/` at load time. OpenViking and AgentCore need `npm ci --ignore-scripts` before their first start; see [the memory modules](memory-modules.md).
-- `walkr` is the review tool Walkr, a fork of Human Review 0.8.2 that moved into the kit on 2026-11-10. It keeps its own license file, change log, glossary and tests in `packages/walkr`. It needs Node 20.19 or later and `npm ci --ignore-scripts`. Its skills and prompts are templates: `install.sh --with walkr` runs the Walkr setup, which writes them for Claude Code, Codex, the shared agents folder and the Pi profile. See [walkr](guides/modules.md#walkr). `npm test` in the package runs its tests; 10 of them need `HUMAN_REVIEW_TEST_PI_PACKAGE` and are skipped without it.
+- `memory` is the memory viewer: a read-only web app for the memories of several memory systems. It was a separate container app with its own sign-in; in the kit it is a local module with no container, no proxy and no sign-in. It is no Pi package: the local server of `artifacts` starts it as its section `/memory/`. It needs Node 24 and `npm ci --ignore-scripts --omit=dev` (the AWS SDK of its AgentCore source); `install.sh --with memory` runs that step. `npm test` in the package runs its unit tests, which need no network; 2 live checks are skipped. See [memory](guides/modules.md#memory).
+- `walkr` is Walkr Compare, from a fork of Human Review 0.8.2 that moved into the kit on 2026-11-10. Since 2026-11-23 the package keeps one mode, Compare; the release tag `portable/20261122-548259a` is the last release with the retired modes. It keeps its own license file, change log, glossary and tests in `packages/walkr`. It needs Node 20.19 or later and has no runtime dependency; `npm ci --ignore-scripts` installs the two packages that its tests need. Its skills and prompts are templates: `install.sh --with walkr` runs the Walkr setup, which writes them for Claude Code, Codex, the shared agents folder and the Pi profile. See [walkr](guides/modules.md#walkr). `npm test` in the package runs its tests; 2 of them need `HUMAN_REVIEW_TEST_PI_PACKAGE` and are skipped without it.
 
 ## Decision-server credential
 
@@ -198,6 +195,28 @@ node --test packages/agentcore-claude/tests/
 ```
 
 Not verified: the plugin with the real core, and every live AWS call.
+
+## Memory chain (`packages/memory-chain`)
+
+One fixed, read-only memory search before each eligible user prompt, for Pi and Claude Code. It runs in shadow only: it writes one record line for each prompt and adds nothing to the prompt. It is not a kit component: no manifest entry, installer row or profile names it. No hook or extension of the chain is installed on any host.
+The package README is `packages/memory-chain/README.md`. It gives the switch file, the stores and their scope, the time budget, the block limits and the shadow record.
+The owner command `node packages/memory-chain/scripts/replay.mjs --sample <file> [--out <file>]` shows the chain block beside the current recall for each prompt of a sample file. The current recall there is the vendored OpenViking recall with the Pi peer options and no session id, not the recall of the Claude Code plugin.
+
+| Item | Value |
+| --- | --- |
+| Source | `packages/memory-chain`, own code. |
+| License | The repository MIT license covers this code. |
+| Dependencies | None. It imports the OpenViking helpers of `packages/openviking-pi/shared/` by relative path. |
+| Load | Only in place from the kit clone: the Pi file `packages/memory-chain/index.ts`, or `claude --plugin-dir packages/memory-chain`. |
+| Switch | `${XDG_CONFIG_HOME:-~/.config}/tenant-pi/memory-chain/settings.json` with `mode` `off` or `shadow`. No file means `off`. |
+
+The package tests use isolated stores and a fake OpenViking server on loopback:
+
+```sh
+cd packages/memory-chain && npm test
+```
+
+Not verified: a live session of either harness with the switch on.
 
 ## AgentCore memory admin (`packages/agentcore-memory-admin`)
 

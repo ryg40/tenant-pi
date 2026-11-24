@@ -8,6 +8,9 @@
       "claude": {
         "model": "<alias>",
         "thinking": "high"
+      },
+      "agy": {
+        "model": "<slug of agy models>"
       }
     }
   }

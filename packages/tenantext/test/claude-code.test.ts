@@ -29,7 +29,7 @@ test("the Claude Code plugin ships the Herdr runtime and command without drift",
 		"roles/contract.md", "roles/coordinator.md", "roles/researcher.md", "roles/reviewer.md",
 		"roles/scout.md", "roles/worker.md", "scripts/_common.py", "scripts/ask.py", "scripts/close.py",
 		"scripts/credsync-launch.sh", "scripts/handoff.py", "scripts/init.py", "scripts/last-reply.py", "scripts/mcp-bearer-helper.sh",
-		"scripts/panes.py", "scripts/resources.py", "scripts/spawn.py",
+		"scripts/panes.py", "scripts/resources.py", "scripts/role_set.py", "scripts/spawn.py",
 	];
 	// Private model notes are absent from portable snapshots in both directories.
 	if (existsSync(join(source, "MODEL-NOTES.md"))) expected.push("MODEL-NOTES.md");
@@ -50,8 +50,7 @@ test("the Claude Code plugin ships the Herdr runtime and command without drift",
 });
 
 function run(script: string, args: string[], stdin: string, dir: string): string {
-	// HERDR_IDLE_CLEANUP_DIR names a folder with no script, so the hook never claims a real handoff entry.
-	return execFileSync("node", [join(root, script), ...args], { input: stdin, env: { ...process.env, TENANTEXT_CLAUDE_DIR: dir, HERDR_IDLE_CLEANUP_DIR: dir }, encoding: "utf8" });
+	return execFileSync("node", [join(root, script), ...args], { input: stdin, env: { ...process.env, TENANTEXT_CLAUDE_DIR: dir }, encoding: "utf8" });
 }
 
 test("session-start hook injects the rules by default and records the run", () => {

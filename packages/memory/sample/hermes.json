@@ -1,0 +1,260 @@
+{
+ "description": "Synthetic hermes-memory entries. Not live memory.",
+ "facetDepth": 1,
+ "folderLabels": {
+  "store": "Store (sessions.db)",
+  "store/memory": "Memory",
+  "store/user": "User profile",
+  "store/failure": "Failures",
+  "active": "Active files",
+  "active/memory": "MEMORY.md",
+  "active/user": "USER.md",
+  "active/failure": "failures.md",
+  "projects": "Project files"
+ },
+ "docs": [
+  {
+   "id": "sample-hm-db-1",
+   "folder": [
+    "store",
+    "memory"
+   ],
+   "title": "Compose stacks live under one directory each.",
+   "kind": "convention",
+   "scope": "Global",
+   "date": "2026-10-30",
+   "dateLabel": "last referenced",
+   "tags": [
+    "memory",
+    "convention"
+   ],
+   "body": "Compose stacks live under one directory each, with `compose.yaml`, `.env.example`, `scripts/` and `docs/` at the root.",
+   "meta": [
+    [
+     "Row",
+     "memories.id = 1"
+    ],
+    [
+     "Target",
+     "memory"
+    ],
+    [
+     "Category",
+     "convention"
+    ],
+    [
+     "Project",
+     "global"
+    ],
+    [
+     "Created",
+     "2026-07-01"
+    ],
+    [
+     "Last referenced",
+     "2026-10-30"
+    ],
+    [
+     "Hits",
+     "14"
+    ]
+   ]
+  },
+  {
+   "id": "sample-hm-db-2",
+   "folder": [
+    "store",
+    "memory"
+   ],
+   "title": "The proxy reload keeps open sessions; a restart drops them.",
+   "kind": "tool-quirk",
+   "scope": "Project gateway",
+   "date": "2026-10-12",
+   "dateLabel": "last referenced",
+   "tags": [
+    "memory",
+    "tool-quirk",
+    "gateway"
+   ],
+   "body": "The proxy reload keeps open sessions; a restart drops them. Use the reload command after a configuration change.",
+   "meta": [
+    [
+     "Row",
+     "memories.id = 2"
+    ],
+    [
+     "Target",
+     "memory"
+    ],
+    [
+     "Category",
+     "tool-quirk"
+    ],
+    [
+     "Project",
+     "gateway"
+    ],
+    [
+     "Created",
+     "2026-08-14"
+    ],
+    [
+     "Last referenced",
+     "2026-10-12"
+    ],
+    [
+     "Hits",
+     "3"
+    ]
+   ]
+  },
+  {
+   "id": "sample-hm-db-3",
+   "folder": [
+    "store",
+    "user"
+   ],
+   "title": "Prefers one recommended next step at the end of a report.",
+   "kind": "preference",
+   "scope": "Global",
+   "date": "2026-11-01",
+   "dateLabel": "last referenced",
+   "tags": [
+    "user",
+    "preference"
+   ],
+   "body": "Prefers one recommended next step at the end of a report, with the reason in one sentence.",
+   "meta": [
+    [
+     "Row",
+     "memories.id = 3"
+    ],
+    [
+     "Target",
+     "user"
+    ],
+    [
+     "Category",
+     "preference"
+    ],
+    [
+     "Project",
+     "global"
+    ],
+    [
+     "Created",
+     "2026-06-11"
+    ],
+    [
+     "Last referenced",
+     "2026-11-01"
+    ]
+   ]
+  },
+  {
+   "id": "sample-hm-db-4",
+   "folder": [
+    "store",
+    "failure"
+   ],
+   "title": "A health check passed while the model returned errors.",
+   "kind": "failure",
+   "scope": "Project inference",
+   "date": "2026-10-05",
+   "dateLabel": "last referenced",
+   "tags": [
+    "failure",
+    "inference"
+   ],
+   "body": "A health check passed while the model returned errors. Check one real request, not only the health route.",
+   "meta": [
+    [
+     "Row",
+     "memories.id = 4"
+    ],
+    [
+     "Target",
+     "failure"
+    ],
+    [
+     "Category",
+     "failure"
+    ],
+    [
+     "Project",
+     "inference"
+    ],
+    [
+     "Created",
+     "2026-10-05"
+    ],
+    [
+     "Last referenced",
+     "2026-10-05"
+    ],
+    [
+     "Failure reason",
+     "The health route does not load the model."
+    ],
+    [
+     "Corrected to",
+     "Send one real request after each change."
+    ]
+   ]
+  },
+  {
+   "id": "sample-hm-file-1",
+   "folder": [
+    "active",
+    "memory"
+   ],
+   "title": "Compose stacks live under one directory each.",
+   "kind": "memory",
+   "scope": "Memory (MEMORY.md)",
+   "date": "2026-10-30",
+   "dateLabel": "last referenced",
+   "body": "Compose stacks live under one directory each, with `compose.yaml`, `.env.example`, `scripts/` and `docs/` at the root.",
+   "meta": [
+    [
+     "Source",
+     "MEMORY.md, entry 1"
+    ],
+    [
+     "Created",
+     "2026-07-01"
+    ],
+    [
+     "Last referenced",
+     "2026-10-30"
+    ]
+   ]
+  },
+  {
+   "id": "sample-hm-project-1",
+   "folder": [
+    "projects",
+    "gateway"
+   ],
+   "title": "The gateway repository uses the branch main.",
+   "kind": "project memory",
+   "scope": "Project gateway",
+   "date": "2026-09-14",
+   "dateLabel": "last referenced",
+   "body": "The gateway repository uses the branch main. Runtime state in `data/` is ignored.",
+   "meta": [
+    [
+     "Source",
+     "projects/gateway/MEMORY.md, entry 1"
+    ],
+    [
+     "Created",
+     "2026-09-14"
+    ],
+    [
+     "Last referenced",
+     "2026-09-14"
+    ]
+   ]
+  }
+ ]
+}

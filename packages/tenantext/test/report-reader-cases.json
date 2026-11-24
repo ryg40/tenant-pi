@@ -1,0 +1,106 @@
+{
+  "about": "Report messages for the report reader extensions/next-prompt/report.ts (test/next-prompt.test.ts). It gives the class: report, ambiguous or missing. For a report, draft is the label of the next-prompt draft, or null for no draft. dialog is the text of an earlier assistant message that opened the question tool before the final message.",
+  "cases": [
+    {
+      "name": "valid detailed report with one unconditional Agent action",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the notes.",
+      "class": "report",
+      "draft": "A"
+    },
+    {
+      "name": "two readable Next headings with different actors",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Owner decides: Keep the notes, or remove them.\n\n## Next\n\n- **[A]** Agent: Read the notes.",
+      "class": "ambiguous"
+    },
+    {
+      "name": "warning before the block",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n**Warning:** The tag is public.\n\n## Next\n\n- **[A]** Agent: Read the notes.",
+      "class": "report",
+      "draft": null
+    },
+    {
+      "name": "warning after the block",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the notes.\n\n**Warning:** The tag is public.",
+      "class": "report",
+      "draft": null
+    },
+    {
+      "name": "U+2063 in an action text",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the\u2063notes.",
+      "class": "ambiguous"
+    },
+    {
+      "name": "U+202E in an action text",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the\u202enotes.",
+      "class": "ambiguous"
+    },
+    {
+      "name": "carriage return alone as line end",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\r\r## Next\r\r- **[A]** Agent: Read the notes.",
+      "class": "missing"
+    },
+    {
+      "name": "U+2028 inside an action",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the\u2028notes.",
+      "class": "ambiguous"
+    },
+    {
+      "name": "syntax 2 report with prose under a Next heading",
+      "text": "**REPORT 1** The notes are ready\n- **[1]** Done: The notes are on the branch.\n**Next:**\n- **[a]** Agent: Read the notes.\n\n## Next\n\n- Useful reading.",
+      "class": "report",
+      "draft": "a"
+    },
+    {
+      "name": "syntax 2 report plus a detailed Next block",
+      "text": "**REPORT 1** The notes are ready\n- **[1]** Done: The notes are on the branch.\n**Next:**\n- **[a]** Agent: Read the notes.\n\nThe notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the notes.",
+      "class": "ambiguous"
+    },
+    {
+      "name": "syntax 2 report with U+2063 in its action",
+      "text": "**REPORT 1** The notes are ready\n- **[1]** Done: The notes are on the branch.\n**Next:**\n- **[a]** Agent: Read the\u2063notes.",
+      "class": "report",
+      "draft": null
+    },
+    {
+      "name": "Next heading only inside a code fence",
+      "text": "The notes are ready.\n\n```markdown\nThe notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the notes.\n```",
+      "class": "missing"
+    },
+    {
+      "name": "blank-separated action after the block is not an action",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Read the notes.\n\n- **[B]** Owner decides: Keep the notes, or remove them.",
+      "class": "report",
+      "draft": "A"
+    },
+    {
+      "name": "chat answer that ends with a Next heading and ordinary bullets",
+      "text": "Here is what to read.\n\n## Next\n\n- The notes of the check.\n- The log of the build.",
+      "class": "ambiguous"
+    },
+    {
+      "name": "accents and non-Latin letters still give a draft",
+      "text": "The notes are ready, and the check passes (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Agent: Lies die Gr\u00f6\u00dfe nach: caf\u00e9, \u043f\u0440\u0438\u0432\u0435\u0442, \u65e5\u672c\u8a9e \u2014 \u201cok\u201d.",
+      "class": "report",
+      "draft": "A"
+    },
+    {
+      "name": "final message after an answered dialog",
+      "dialog": "The picker is on `main`, and its tests pass (12 pass, 0 fail).\n\n## Next\n\n- **[A]** Owner decides: Close the picker task, or keep it open.",
+      "text": "You chose to keep the picker task open, so it stays open until the browser check.\n\n## Next\n\n- **[A]** Agent: Run the browser check of the picker.",
+      "class": "report",
+      "draft": "A"
+    },
+    {
+      "name": "syntax 2 report with a Next heading over a None line that holds U+2029",
+      "text": "**REPORT 1** Ready\n- **[1]** Done: Ready.\n**Next:**\n- **[a]** Agent: Read notes.\n\n## Next\nNone. Read\u2029notes.",
+      "class": "report",
+      "draft": "a"
+    },
+    {
+      "name": "detailed report after a quote line that holds a lone carriage return and a compact head line",
+      "text": "> Head:\r**OUTCOME** Ready\nReady.\n\n## Next\n- **[A]** Agent: Read notes.",
+      "class": "report",
+      "draft": "A"
+    }
+  ]
+}

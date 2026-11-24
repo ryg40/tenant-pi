@@ -103,12 +103,12 @@ export function cwdLabel(cwd: string, startedIn: string, root?: string, home = p
   return `cwd ${cwd}`;
 }
 /**
- * Codex accounts, the Claude account and the Copilot account as one quota group in identity order.
+ * Codex accounts, the Claude account, the Copilot account and the Antigravity account as one quota group in identity order.
  * The route belongs to Codex; staleness to whichever source is stale.
  */
 export function combinedLimits(data: DashboardSnapshot, now: number): LimitsSnapshot | undefined {
   const codex = data.limits;
-  const sources = [codex, data.anthropic, data.copilot].filter((s): s is LimitsSnapshot => s !== undefined);
+  const sources = [codex, data.anthropic, data.copilot, data.antigravity].filter((s): s is LimitsSnapshot => s !== undefined);
   if (sources.length < 2) return sources[0];
   const base = sources[0];
   // A later stale source wins, so a stale Copilot or Claude reading marks the group.
@@ -120,7 +120,7 @@ export function combinedLimits(data: DashboardSnapshot, now: number): LimitsSnap
 }
 /** A Codex account label is `Codex` or `Codex<N>`. The route and the Codex tail never go to another provider's row. */
 export const isCodexLabel = (label: string): boolean => /^Codex\d*\s*$/.test(label);
-const shortLabel = (label: string): string => label === "Copilot" ? "CP" : label.replace(/^Claude/, "CL").replace(/^Codex/, "C");
+const shortLabel = (label: string): string => label === "Copilot" ? "CP" : label === "Antigravity" ? "AG" : label.replace(/^Claude/, "CL").replace(/^Codex/, "C");
 const windowName = (name: string): string => ({ weekly: "week", daily: "24h" })[name] ?? name;
 export function quotaView(limits: LimitsSnapshot, now: number): QuotaView {
   const alerts: Alert[] = [];

@@ -75,12 +75,21 @@ export interface MemorySnapshot {
   /** Present when the module `artifacts` has a CLI, and the setting `showArtifactServer` is on. */
   artifacts?: ArtifactsServer;
 }
+/**
+ * Why there is no `Antigravity` row: `no-agy` (not on the PATH), `no-sign-in` (no sign-in file in `auto`), `back-off` (a sign-in
+ * request or a stopped run, until `until`), `api-key` (exit code 2) or `off` (the setting).
+ */
+export type AntigravityAbsence = { reason: "no-agy" | "no-sign-in" | "api-key" | "off" } | { reason: "back-off"; until: number };
 export interface DashboardSnapshot {
   session: SessionSnapshot; git: GitSnapshot; limits?: LimitsSnapshot;
   /** GitHub Copilot quota, one account ordered after every Codex account. Absent when no local credential reached the endpoint. */
   copilot?: LimitsSnapshot & { source?: string; plan?: string };
   /** Anthropic subscription quota, one `Claude` account after every Codex account and before Copilot. Absent when no active credential gave a reading. */
   anthropic?: LimitsSnapshot & { source?: string; plan?: string };
+  /** Antigravity quota, one `Antigravity` account after Copilot: the Gemini group. `other`: the groups that only the report shows. Absent with no reading. */
+  antigravity?: LimitsSnapshot & { other: { name: string; windows: LimitsWindow[] }[] };
+  /** Why the footer shows no `Antigravity` row; only `/ops-footer report` shows it. Absent with a row, or with no known reason. */
+  antigravityAbsent?: AntigravityAbsence;
   integrations: IntegrationSnapshot[]; extensionStatuses: number; conflict: boolean;
   languageStatus?: string;
   memory?: MemorySnapshot;

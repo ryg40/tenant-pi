@@ -1,0 +1,11 @@
+{
+  "name": "agy",
+  "version": "0.1.0",
+  "description": "The files of the kit component agy: rules, kit command rules and OpenViking memory hooks for Antigravity CLI.",
+  "license": "MIT",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test 'tests/*.test.mjs'"
+  }
+}

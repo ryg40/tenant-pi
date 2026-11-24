@@ -52,4 +52,31 @@ if [ -d "$HOME/.pi/agent" ]; then
     echo "command: $HOME/.pi/agent/prompts/$command.md"
   done
 fi
+mkdir -p "$HOME/.local/bin"
+role_set_link="$HOME/.local/bin/herdr-role-set"
+if [ ! -e "$role_set_link" ] && [ ! -L "$role_set_link" ]; then
+  ln -sfn "$dest/scripts/role_set.py" "$role_set_link"
+  echo "link:    $role_set_link"
+elif [ -L "$role_set_link" ] && python3 - "$role_set_link" "$src" "$dest" <<'PY'
+from pathlib import Path
+import sys
+
+link = Path(sys.argv[1])
+src = Path(sys.argv[2]).resolve()
+dest = Path(sys.argv[3]).resolve()
+roots = [src, dest]
+if src.parts[-4:] == ("packages", "tenantext", "skills", "herdr") and (src.parents[3] / "install.sh").is_file():
+    roots.append(src.parents[3].resolve())
+try:
+    target = link.resolve()
+except (OSError, RuntimeError):
+    sys.exit(1)
+sys.exit(0 if any(target.is_relative_to(root) for root in roots) else 1)
+PY
+then
+  ln -sfn "$dest/scripts/role_set.py" "$role_set_link"
+  echo "link:    $role_set_link"
+else
+  echo "kept:    $role_set_link exists and is not a link of this kit" >&2
+fi
 echo "Start a new session, or run /reload in pi, to load the skill."

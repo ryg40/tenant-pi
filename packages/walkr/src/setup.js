@@ -2,75 +2,21 @@ import fs from "node:fs";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-
-/** Keep this private checkout independent of the unrelated public npm package. */
-export function invocation(run = spawnSync) {
-  const probe = process.platform === "win32" ? "where" : "which";
-  const found = run(probe, ["human-review"], { encoding: "utf8", windowsHide: true });
-  const resolved = found.status === 0 ? found.stdout.trim().split(/\r?\n/)[0].trim() : "";
-  return resolved && !isTransientBin(resolved)
-    ? "human-review"
-    : `${commandArg(process.execPath)} ${commandArg(path.join(here, "cli.js"))}`;
-}
-
-/**
- * True for a bin that exists only for one command or only inside one project.
- * Every transient channel routes through a `node_modules` directory: `npx`,
- * `pnpm dlx`, `yarn dlx`, `bunx`, and a plain project-local dependency. npm's
- * npx cache additionally sits under `_npx`, which is worth keeping as its own
- * check because npm may relocate the bin inside it. Durable installs resolve
- * through a bin directory with neither segment: `npm i -g`, `npm link`, volta,
- * nvm, asdf, and the pnpm and yarn globals.
- *
- * A durable path that happens to contain either segment degrades to this checkout
- * invocation, so the failure direction here is cosmetic.
- */
-export function isTransientBin(binPath) {
-  const segments = binPath.split(/[\\/]/);
-  return segments.includes("_npx") || segments.includes("node_modules");
-}
-
-/**
- * Quote a path for copy-paste into any shell. JSON.stringify would double
- * Windows backslashes; plain double quotes work in bash, zsh, cmd and
- * PowerShell alike, and paths cannot legally contain a double quote on Windows.
- */
-export function shellQuote(arg) {
-  const text = String(arg);
-  return /^[\w@%+=:,./-]+$/.test(text) ? text : `"${text.replaceAll('"', '\\"')}"`;
-}
 
 function posixQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+export const SKILL_NAMES = Object.freeze(["walkr", "walkr-compare"]);
 /**
- * Quote one argument of a command that an agent runs or an owner pastes.
- * POSIX single quotes keep `$`, backticks and `"` literal in bash and zsh,
- * where shellQuote's double quotes would expand them. Windows keeps shellQuote.
+ * The skills of the retired modes (CHANGELOG.md, 2026-11-23). An earlier setup wrote one skill file and one Pi prompt
+ * for each. Setup removes such a file only when its own record names it and its content is unchanged.
  */
-export function commandArg(arg, platform = process.platform) {
-  const text = String(arg);
-  if (platform === "win32") return shellQuote(text);
-  return /^[\w@%+=:,./-]+$/.test(text) ? text : posixQuote(text);
-}
-
-/**
- * The Core command that review output names. The managed host installs
- * `walkr-core`, the name that the walkr-core skill uses; elsewhere the
- * private checkout invocation applies.
- */
-export function reviewInvocation(env = process.env, run = spawnSync) {
-  return env.HUMAN_REVIEW_HOSTED === "1" ? "walkr-core" : invocation(run);
-}
-
-export const SKILL_NAMES = Object.freeze([
-  "walkr", "walkr-core", "walkr-double", "walkr-coinflip", "walkr-trainer", "walkr-compare",
-]);
+export const RETIRED_SKILL_NAMES = Object.freeze(["walkr-core", "walkr-double", "walkr-coinflip", "walkr-trainer"]);
+const RETIRED_FILES = new Set(RETIRED_SKILL_NAMES.flatMap((name) => [`skills/${name}/SKILL.md`, `prompts/${name}.md`]));
 const repository = path.resolve(here, "..");
 const digest = (text) => createHash("sha256").update(text).digest("hex");
 const BLOCK_START = "<!-- walkr:start -->";
@@ -78,7 +24,13 @@ const BLOCK_END = "<!-- walkr:end -->";
 const LEGACY_HEADING = "## Reviewing files and localhost pages with human-review";
 const LEGACY_SKILL_HASH = "e919a34c4fbe8fb6f5f446fbf64d2492d3e07d094fcb858d9da15a151fb74a46";
 const LEGACY_AGENTS_HASH = "1389b703c97b0ad6f9e05171c96dddf799dc1b0243104c8f43be9bdfcece3d68";
-export const AGENTS_BLOCK = `## Walkr review modes
+export const AGENTS_BLOCK = `## Walkr Compare
+
+To let the owner pick among 2 or 3 prepared options, read the installed walkr-compare skill.
+Use walkr when a request names Walkr and no mode. Core, Double, Coinflip and Trainer are retired.
+Skill invocation does not authorize deployment or a chat connection.`;
+/** The block that setup wrote before the retirement. Setup replaces it; any other text between the markers stays. */
+const RETIRED_AGENTS_BLOCK = `## Walkr review modes
 
 For HTML or Markdown feedback, read the installed walkr-core skill.
 For an explicit named mode, read walkr-double, walkr-coinflip, or walkr-trainer.
@@ -123,7 +75,7 @@ export function mergeAgentsBlock(existing, block = AGENTS_BLOCK) {
     const last = existing.indexOf(end);
     if (last < first) return { text: existing, action: "custom" };
     const body = existing.slice(first + start.length, last).trim();
-    if (legacy ? !isLegacy(body, "agents") : body !== AGENTS_BLOCK.trim()) {
+    if (legacy ? !isLegacy(body, "agents") : body !== AGENTS_BLOCK.trim() && body !== RETIRED_AGENTS_BLOCK.trim()) {
       return { text: existing, action: "custom" };
     }
     const tail = existing.slice(last + end.length).replace(/^\n/, "");
@@ -334,9 +286,6 @@ export function installSkills(cwd, {
       const standalone = path.join(base, "skills", `${name}.md`);
       if (safePath(standalone)) conflict(standalone, "standalone skill name collision");
       plans.get(base).files.set(`skills/${name}/SKILL.md`, readSkill(name)
-        .replaceAll("{{LOCAL_DOUBLE_COMMAND}}", `node ${posixQuote(path.join(repository, "src", "walkr-double.js"))}`)
-        .replaceAll("{{LOCAL_COINFLIP_COMMAND}}", `node ${posixQuote(path.join(repository, "src", "walkr-coinflip.js"))}`)
-        .replaceAll("{{LOCAL_TRAINER_COMMAND}}", `node ${posixQuote(path.join(repository, "src", "walkr-trainer.js"))}`)
         .replaceAll("{{LOCAL_COMPARE_COMMAND}}", `node ${posixQuote(path.join(repository, "src", "walkr-compare.js"))}`)
         .replaceAll("{{REPOSITORY}}", repository));
     }
@@ -351,6 +300,7 @@ export function installSkills(cwd, {
   }
   const writes = [];
   const moves = [];
+  const removals = [];
   const done = [];
   for (const [base, plan] of plans) {
     const manifestFile = path.join(base, ".walkr-setup.json");
@@ -361,8 +311,21 @@ export function installSkills(cwd, {
         const parsed = JSON.parse(previous);
         if (parsed.version !== 1 || !parsed.files || Array.isArray(parsed.files) || typeof parsed.files !== "object") throw new Error();
         owned = parsed.files;
-        if (Object.entries(owned).some(([key, value]) => !plan.files.has(key) || !/^[a-f0-9]{64}$/.test(value))) throw new Error();
+        if (Object.entries(owned).some(([key, value]) => !(plan.files.has(key) || RETIRED_FILES.has(key)) || !/^[a-f0-9]{64}$/.test(value))) throw new Error();
       } catch { conflict(manifestFile, "unknown ownership manifest"); }
+    }
+    // A file of a retired mode that the record names: remove it when it is unchanged, keep it when the user changed it.
+    // The new record names neither. A retired file that no record names is not touched.
+    for (const relative of Object.keys(owned).filter((key) => RETIRED_FILES.has(key))) {
+      const file = path.join(base, relative);
+      const existing = readRegular(file);
+      if (existing === null) continue;
+      if (digest(existing) === owned[relative]) {
+        removals.push(file);
+        done.push(`Remove the retired ${relative.startsWith("prompts/") ? "prompt" : "skill"}  ${file}`);
+      } else {
+        done.push(`Keep ${file}: a retired Walkr file with changed content. Remove it by hand.`);
+      }
     }
     const hashes = {};
     for (const [relative, content] of plan.files) {
@@ -422,6 +385,11 @@ export function installSkills(cwd, {
     for (const [file, content] of writes) {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, content);
+    }
+    for (const file of removals) {
+      fs.unlinkSync(file);
+      // The folder of a retired skill goes only when it is empty.
+      if (path.basename(file) === "SKILL.md") { try { fs.rmdirSync(path.dirname(file)); } catch {} }
     }
   }
   done.push(piBase ? `Pi aliases: ${path.join(piBase, "prompts")}. Reload only after reviewing the installed resources.` : "Pi aliases not installed. Pass piAgentDir explicitly for the active profile.");

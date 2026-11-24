@@ -27,9 +27,10 @@ Options: --project SLUG    the page is projects/SLUG/DUMMIES. Default: the name 
                            option is necessary
          --page NAME       another page name
          --file PATH       a local file in place of the knowledge base
-         --harness pi|claude, --agent TEXT, --model TEXT, --session ID, --session-file PATH
+         --harness pi|claude|agy, --agent TEXT, --model TEXT, --session ID, --session-file PATH
                            the session data, when the script cannot read it. `add`
-                           needs a session identifier
+                           needs a session identifier. An agy session gives
+                           --model and --session itself
 A zone is a label and a fixed UTC offset, for example "UTC (UTC+00:00)".
 The variable DUMMIES_NOW (an ISO time) replaces the clock. It is for tests only:
 when it is set, each heading has that time and not the time of the write.
@@ -70,7 +71,7 @@ LABELS = ("Important", "Open", "Next", "Goal")
 # The labels of an entry in the old form. `check` and `recent` read such an entry; `add` writes the new form only.
 OLD_LABELS = ("Goal", "Executed", "Relevance", "Effects", "Next")
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-AGENTS = {"claude": "Claude Code", "pi": "Pi"}
+AGENTS = {"claude": "Claude Code", "pi": "Pi", "agy": "Antigravity"}
 SUMMARY_WORDS = 12
 ZONE = re.compile(r"(?P<label>[A-Za-z][A-Za-z0-9_/+-]{0,31}) \(UTC(?P<sign>[+-])(?P<hours>[0-9]{2}):(?P<minutes>[0-9]{2})\)")
 HEADING = re.compile(
@@ -554,6 +555,9 @@ def session_facts(args, env=None):
         session_file = session_file or env.get("PI_SESSION_FILE")
     elif harness == "claude":
         session = session or env.get("CLAUDE_CODE_SESSION_ID")
+    elif harness == "agy":
+        # Each shell command of agy has the conversation identifier. No file of agy is read.
+        session = session or env.get("ANTIGRAVITY_CONVERSATION_ID")
     held = (record or {}).get("agent_session") or {}
     if record and record.get("agent") == harness and isinstance(held.get("value"), str):
         if held.get("kind") == "path":
@@ -578,7 +582,7 @@ def session_facts(args, env=None):
         models, source = ["unknown"], "not known"
     agent = clean(args.agent) if args.agent else AGENTS.get(harness)
     if not agent:
-        raise Stop(2, "the agent is not known: add --harness pi, --harness claude or --agent <name>")
+        raise Stop(2, "the agent is not known: add --harness pi, --harness claude, --harness agy or --agent <name>")
     return {"harness": harness or "agent", "agent": agent, "model": ", ".join(models), "source": source,
             "session": clean(session).replace(" ", "-") if session else "unknown"}
 

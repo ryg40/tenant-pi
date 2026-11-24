@@ -6,7 +6,11 @@ import shutil
 import subprocess
 import tempfile
 
-HARNESSES = ("claude", "pi")
+HARNESSES = ("claude", "pi", "agy")
+# The agent names of a Herdr record for each harness. herdr-core names an agy pane `antigravity`.
+HERDR_NAMES = {"claude": "claude", "pi": "pi", "agy": "agy", "antigravity": "agy"}
+# The two forms of the report, the default first. `REPORT.md` gives the compact form, `DETAILED.md` the detailed form.
+FORMATS = ("compact", "detailed")
 
 
 class Stop(Exception):
@@ -45,7 +49,7 @@ def state_path(env=None):
 def local_log_path(project, page="DUMMIES", env=None):
     """The local log file of a project on a host with no okknow command: `dummies-skill/logs/<project>/<page>.md`.
 
-    It is in the config directory of the user and not in a repository. Both harnesses of the user share it.
+    It is in the config directory of the user and not in a repository. Each harness of the user shares it.
     """
     return os.path.join(config_dir(env), "logs", project, page.rsplit("/", 1)[-1] + ".md")
 
@@ -128,18 +132,25 @@ def herdr_agent(env=None):
 
 
 def detect_harness(named=None, env=None, agent=None):
-    """`claude` or `pi`: the argument, then the marker of the harness, then the Herdr record. Else None."""
+    """`claude`, `pi` or `agy`: the argument, then the marker of the harness, then the Herdr record. Else None.
+
+    `ANTIGRAVITY_AGENT` is set in each shell command of agy. It means agy only when no marker of claude or pi
+    is set: two markers of different harnesses give no guess, and the Herdr record or the argument decides.
+    """
     env = os.environ if env is None else env
     if named:
         return named
     marker = (env.get("AI_AGENT") or "").lower()
-    if marker == "pi":
-        return "pi"
-    if marker.startswith("claude"):
-        return "claude"
     in_pi, in_claude = env.get("PI_CODING_AGENT") == "true", env.get("CLAUDECODE") == "1"
-    if in_pi != in_claude:
-        return "pi" if in_pi else "claude"
-    if (agent or {}).get("agent") in HARNESSES:
-        return agent["agent"]
-    return None
+    in_agy = bool(env.get("ANTIGRAVITY_AGENT"))
+    other = marker == "pi" or marker.startswith("claude") or in_pi or in_claude
+    if not in_agy or not other:
+        if marker == "pi":
+            return "pi"
+        if marker.startswith("claude"):
+            return "claude"
+        if in_pi != in_claude:
+            return "pi" if in_pi else "claude"
+        if in_agy:
+            return "agy"
+    return HERDR_NAMES.get((agent or {}).get("agent"))

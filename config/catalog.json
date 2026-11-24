@@ -271,7 +271,7 @@
       "group": "skills",
       "title": "/artifacts-server command",
       "description": "A Pi prompt that starts, stops or checks the local artifacts server. It comes with artifacts.",
-      "when_on": "/artifacts-server start runs the artifacts server on 127.0.0.1, port 6790 by default, with a root page, the artifacts page /artifacts and the Walkr page /walkr. These pages need no token and no login, so each local user of the computer can read them. With Walkr, the server passes the Walkr Compare page to the live Walkr server, and /artifacts-server walkr prints the private address of that page. /artifacts-server off stops only this server and no Walkr review. It writes a state file and a log. With a retention set by artifacts retention, it deletes the older artifacts.",
+      "when_on": "/artifacts-server start runs the artifacts server on 127.0.0.1, port 6790 by default, with a root page, the artifacts page /artifacts, the Walkr page /walkr and, with the memory module, the Memory section /memory/. These pages need no token and no login, so each local user of the computer can read them. With Walkr, the server passes the Walkr Compare page to the live Walkr server, and /artifacts-server walkr prints the private address of that page. The server has one event channel for a desktop app, /events/v1, behind a token in a file of mode 0600. /artifacts-server off stops this server, the memory viewer and, when Linux proves ownership of the listener, the live Walkr server. It writes a state file, a token file and a log. With a retention set by artifacts retention, it deletes the older artifacts.",
       "when_off": "You run the artifacts command by hand. A running server does not stop.",
       "default": "ask",
       "needs": ["consent"],
@@ -281,8 +281,8 @@
       "name": "walkr",
       "group": "walkr",
       "title": "Walkr local server",
-      "description": "The agent prepares a review, you look at it in a browser page, and the agent reads your notes, pick and rating.",
-      "when_on": "The installer links six walkr commands into ~/.local/bin, writes the skills to ~/.claude, ~/.codex and ~/.agents, and downloads missing dependencies. In use, it starts a local web server of your account and keeps sessions and reports on disk. The page URL holds a secret; a bind-all override sends plain HTTP over your network.",
+      "description": "Walkr Compare: the agent prepares 2 or 3 options, you pick one in a browser page, and the agent reads your pick, notes and rating.",
+      "when_on": "The installer links the two commands walkr and walkr-compare into ~/.local/bin and writes the skills to ~/.claude, ~/.codex and ~/.agents. It removes its own links and skills of the retired Walkr modes. In use, it starts a local web server of your account and keeps sessions and reports on disk. The page URL holds a secret; a bind-all override sends plain HTTP over your network.",
       "when_off": "Reviews happen in the chat only. Old records stay, and a running server does not stop.",
       "default": "ask",
       "needs": ["consent", "node24"],
@@ -292,7 +292,7 @@
       "name": "walkr-prompts",
       "group": "walkr",
       "title": "Walkr commands",
-      "description": "One Pi prompt for each Walkr mode, for example /walkr and /walkr-compare. They come with walkr.",
+      "description": "The Pi prompts /walkr and /walkr-compare. They come with walkr.",
       "when_on": "The Walkr setup writes the prompts into the profile.",
       "when_off": "No Walkr prompts in Pi. The Walkr commands, skills and sessions stay.",
       "default": "ask",
@@ -300,15 +300,15 @@
       "docs": "docs/guides/modules.md#walkr"
     },
     {
-      "name": "walkr-proxy",
-      "group": "walkr",
-      "title": "Walkr proxy (hosted mode)",
-      "description": "A guide for Walkr hosted mode: the review server of packages/walkr/Dockerfile behind a reverse proxy, for example Caddy. Most environments do not need it. It does not need the Walkr local server.",
-      "when_on": "The installer writes nothing and installs nothing for this row. At the end of the run, it prints the three values HUMAN_REVIEW_HOSTED, HUMAN_REVIEW_TRUSTED_PROXIES and HUMAN_REVIEW_PUBLIC_URL and the path of the docs section. You set up the server and the proxy by hand.",
-      "when_off": "The installer prints no guide. A hosted server that runs does not change.",
-      "default": "off",
-      "needs": [],
-      "docs": "packages/walkr/docs/core.md#hosted-mode-behind-a-proxy"
+      "name": "memory",
+      "group": "memory",
+      "title": "Memory viewer",
+      "description": "A read-only web page for the memories of your agent memory systems: OpenViking, OpenKnowledge, llm-wiki, hermes-memory and AgentCore. It is the section /memory/ of the local artifacts server.",
+      "when_on": "The installer downloads the dependencies of packages/memory (the AWS SDK for the AgentCore source) with npm. artifacts start then also starts the viewer on 127.0.0.1. Without the settings file ~/.config/tenant-artifacts/memory-sources.json it shows synthetic sample data. With that file it reads your private memory and shows it on the page, which needs no login: each program of your user that reaches the local server can read it. On macOS, each local user of the computer can read it. Nothing that it reads leaves the computer.",
+      "when_off": "The local server has no Memory section; its page says that the viewer is not installed. The memory systems do not change.",
+      "default": "ask",
+      "needs": ["consent", "node24"],
+      "docs": "docs/guides/modules.md#memory"
     },
     {
       "name": "herdr",
@@ -317,17 +317,6 @@
       "description": "The skill that starts and drives other agent panes in Herdr. It does not install the Herdr application.",
       "when_on": "It needs Herdr, Python and its scripts. The agents that it starts get your access and can make paid model calls.",
       "when_off": "No Herdr guidance for the agent. The Herdr application stays, and agents can still start in other ways. The other Herdr items need this skill.",
-      "default": "on",
-      "needs": [],
-      "docs": "docs/herdr-setup.md"
-    },
-    {
-      "name": "herdr-relay",
-      "group": "herdr",
-      "title": "Herdr relay",
-      "description": "Runs a blocked shell command through a standing worker pane in Herdr.",
-      "when_on": "It needs the herdr skill, or HERDR_SKILL_HOME, and Python. The command runs with the access of the worker pane; this is not a security sandbox. It does nothing until it is used.",
-      "when_off": "The relay is not offered. This does not stop a command from running in another way.",
       "default": "on",
       "needs": [],
       "docs": "docs/herdr-setup.md"
@@ -344,39 +333,6 @@
       "docs": "packages/tenantext/docs/herdr-watch.md"
     },
     {
-      "name": "herdr-idle-cleanup",
-      "group": "herdr",
-      "title": "Idle pane cleanup",
-      "description": "A skill that scans each Herdr workspace, keeps the reports of idle panes and closes them after your yes.",
-      "when_on": "A scan writes scan.json, and the reports go to handoff files under ~/.local/share/tenant-pi/handoffs. publish --upload sends report text with a configured token.",
-      "when_off": "No scan from the skill. Its scripts and old handoff files stay. The handoff check and its command need this skill.",
-      "default": "on",
-      "needs": [],
-      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
-    },
-    {
-      "name": "handoffs",
-      "group": "herdr",
-      "title": "Handoff check at start",
-      "description": "The startup check of the idle pane cleanup, with /handoffs and /herdr-idle.",
-      "when_on": "At the start of a new interactive session, it claims the open handoff entries of the repository and writes their state. A claimed entry can start one assessment model turn, which can cost money. Task sessions and reloads claim nothing. /herdr-idle shows the state; /herdr-idle off turns the check off.",
-      "when_off": "No check at session start and no assessment turn.",
-      "default": "on",
-      "needs": [],
-      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
-    },
-    {
-      "name": "herdr-idle-cleanup-prompt",
-      "group": "herdr",
-      "title": "/herdr-idle-cleanup command",
-      "description": "A Pi prompt that loads the idle pane cleanup skill and runs its default run.",
-      "when_on": "/herdr-idle-cleanup is a command in Pi.",
-      "when_off": "Only this shortcut goes. The skill and its scripts still work; ask for the skill in plain words.",
-      "default": "on",
-      "needs": [],
-      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
-    },
-    {
       "name": "questions",
       "group": "herdr",
       "title": "Question tool",
@@ -386,6 +342,19 @@
       "default": "on",
       "needs": [],
       "docs": "docs/herdr-setup.md"
+    },
+    {
+      "name": "agy",
+      "group": "herdr",
+      "title": "Antigravity CLI (agy)",
+      "description": "The kit parts for the agy command of Antigravity CLI: the plain reply style, the kit rules, the kit skills, the kit command rules and, with the OpenViking Claude Code plugin, the OpenViking memory hooks. --with all leaves it out.",
+      "when_on": "The installer links two rule files (three with the artifacts module) and the kit skills into ~/.gemini/config and writes the hooks.json key tenant-kit. With the OpenViking plugin, it also writes the hooks.json key openviking, an MCP entry and three read-only allow rules; the hooks send the conversation of agy to your OpenViking server. Each other file and key stays, and a changed JSON file gets one backup. It needs a folder ~/.gemini/config: run agy one time and sign in first. It never installs agy and never reads the login.",
+      "when_off": "agy has none of the kit parts. A later run without it removes nothing: python3 scripts/kit_agy.py remove in the clone removes them.",
+      "default": "off",
+      "needs": [
+        "consent"
+      ],
+      "docs": "docs/guides/modules.md#agy"
     },
     {
       "name": "mcp",
@@ -402,8 +371,8 @@
       "name": "mcp-codemode",
       "group": "mcp",
       "title": "MCP with codemode",
-      "description": "The MCP client of Pi and its codemode tool, without the adapter. In codemode, the model writes scripts that call the tools. For a comparison profile.",
-      "when_on": "The installer adds +codemode to defaultTools and removes the adapter entry, -builtin:mcp and -builtin:codemode. It does not convert the server file of the adapter. At session start, Pi connects to each enabled server of mcp.json; a server with \"enabled\": false gets no connection. The servers get the credentials of their configuration: environment values, headers, OAuth tokens or a provider login. A script that the model writes runs when the model calls the codemode tool, and it can call each tool of the connected servers. What a server does with the data and what it costs depends on the server.",
+      "description": "The MCP client of Pi and its codemode tool, without the adapter. In codemode, the model writes scripts that call the tools, and the prompt lists no MCP tool.",
+      "when_on": "The installer adds +codemode to defaultTools and removes the adapter entry, -builtin:mcp and -builtin:codemode. With mcp-adapter.json, it first saves the adapter file, the settings, mcp.json, mcp-onboarding.json and kit-aws.json to a private folder <profile>/backups/mcp-native-<UTC time>, then converts the servers to mcp.json with codemode exposure (scripts/mcp_to_native.py --profile). A server that needs a field with no native equal gets enabled false; a kit server that would be lost stops the run before a change. scripts/mcp_to_native.py --restore <folder> puts the old files back. At session start, Pi connects to each enabled server of mcp.json; a server with \"enabled\": false gets no connection. The servers get the credentials of their configuration: environment values, headers, OAuth tokens or a provider login. A script that the model writes runs when the model calls the codemode tool, and it can call each tool of the connected servers. What a server does with the data and what it costs depends on the server.",
       "when_off": "The installer changes nothing. Pi still turns codemode on for an enabled server with codemode exposure (the server setting that makes its tools callable only from codemode scripts, the default), and its MCP client stays on unless -builtin:mcp is set.",
       "default": "off",
       "needs": [],

@@ -6,6 +6,15 @@
 // thumbnail frame of the index (`?thumb`) loads no library past marked.
 "use strict";
 
+// The theme. This view is sandboxed and has no storage: the page that frames it gives the theme in the query
+// `theme`, and the server writes it into data-theme of the root element. When the reader changes the theme, the
+// viewer page sends the new name as a message.
+window.addEventListener("message", (event) => {
+  if (event.source !== window.parent || !event.data) return;
+  const theme = event.data.artifactsTheme;
+  if (theme === "torch-light" || theme === "torch-dark") document.documentElement.dataset.theme = theme;
+});
+
 (() => {
   const source = document.getElementById("source");
   if (!source || typeof marked === "undefined" || typeof marked.parse !== "function") return;

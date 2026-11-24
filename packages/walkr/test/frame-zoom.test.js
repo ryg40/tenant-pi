@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import { JSDOM } from "jsdom";
 import { mountFrameZoom, normalizeZoom, ZOOM_LEVELS, ZOOM_KEY } from "../src/frame-zoom.js";
-import { readReceipt, RECEIPT_LIMITS } from "../src/double-chat-receipt.js";
 
 function fixture() {
   const dom = new JSDOM(`<h3 id="host"></h3><div id="stage"><iframe id="frame" sandbox="" srcdoc="<p>candidate</p>"></iframe></div>`, { url: "http://127.0.0.1:1" });
@@ -51,27 +50,4 @@ test("zoom restores a saved level and ignores an unknown one", () => {
   const zoom = mountFrameZoom({ document: f.doc, stage: f.stage, host: f.host, name: "c", label: "x", storage: blocked });
   zoom.set(0.5);
   assert.equal(zoom.level, 0.5);
-});
-
-test("a receipt is found when an earlier chat entry is larger than a packet", async (t) => {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "walkr-receipt-"));
-  t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  const file = path.join(dir, "session.jsonl");
-  // A real Pi profile saves a system prompt of more than 256 KiB before the packet.
-  const branch = [
-    { type: "custom", id: "a1", parentId: null, customType: "attempt" },
-    { type: "message", id: "b2", parentId: "a1", message: { role: "system", content: "s".repeat(RECEIPT_LIMITS.lineBytes + 20000) } },
-    { type: "custom_message", id: "c3", parentId: "b2", content: "packet" },
-  ];
-  const lines = [{ type: "session", version: 3, id: "sid" }, ...branch];
-  await fs.writeFile(file, lines.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-  const options = { signal: new AbortController().signal, check() {} };
-  assert.equal(await readReceipt({ origin: { sessionFile: file, sessionId: "sid" } }, branch, 2, options), true);
-  // A changed packet is still refused.
-  const changed = structuredClone(branch); changed[2].content = "other";
-  assert.equal(await readReceipt({ origin: { sessionFile: file, sessionId: "sid" } }, changed, 2, options), false);
-  // An entry above the entry limit is refused, as before.
-  const huge = [{ type: "session", version: 3, id: "sid" }, { type: "custom", id: "a1", parentId: null, data: "x".repeat(RECEIPT_LIMITS.entryBytes) }];
-  await fs.writeFile(file, huge.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-  await assert.rejects(readReceipt({ origin: { sessionFile: file, sessionId: "sid" } }, [huge[1]], 0, options), /receipt/);
 });

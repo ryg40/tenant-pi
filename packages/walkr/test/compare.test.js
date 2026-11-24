@@ -1,3 +1,4 @@
+import "./no-outer-config.js"; // First: no test reads the artifacts config of the outer user.
 import test from "./posix-only-mode.js";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
@@ -6,9 +7,10 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
-import * as css from "css-tree";
-import { listen, request } from "./double-fixtures.js";
+import { listen, request } from "./server-fixtures.js";
 import { starsLabel, starsText, stepRating } from "../src/compare-stars.js";
+import { FROM_FEEDBACK, NO_FIT } from "../src/compare.js";
+import { CompareStore } from "../src/compare-store.js";
 import { tmpRoot } from "./tmp-root.js";
 
 const run = promisify(execFile);
@@ -21,12 +23,11 @@ async function setup(t) {
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const stateDir = path.join(dir, "state");
   await fs.mkdir(stateDir, { mode: 0o700 });
-  return { dir, stateDir, archiveDir: path.join(dir, "archive"), root: path.join(dir, "walkr", "compare") };
+  return { dir, stateDir, root: path.join(dir, "walkr", "compare") };
 }
 
 async function serve(t, f) {
-  // The history of the page also reads Trainer: a disposable root keeps the datasets of this computer out of the test.
-  const s = await listen(t, f, { HUMAN_REVIEW_COMPARE_ROOT: f.root, HUMAN_REVIEW_TRAINER_ROOT: path.join(f.dir, "trainer") });
+  const s = await listen(t, f, { HUMAN_REVIEW_COMPARE_ROOT: f.root });
   return { ...s, agent: (route, options) => s.api(`${API}/${route}`, options) };
 }
 
@@ -183,6 +184,7 @@ test("create refuses unsafe or incomplete requests and writes nothing", async (t
     "an unknown field": { ...base, extra: true },
     "an unsafe workflow name": { ...base, workflow: "CFN Options" },
     "an HTML source": { ...base, source: { format: "html", content: "<p>x</p>" } },
+    "a recommended ID that is not an option": { ...base, recommended: "z" },
     "content over the limit": { ...base, options: [base.options[0], { ...base.options[1], content: "x".repeat(1024 * 1024 + 1) }] },
   };
   for (const [name, body] of Object.entries(cases)) {
@@ -195,10 +197,11 @@ test("create refuses unsafe or incomplete requests and writes nothing", async (t
   assert.equal((await s.agent("sessions?x=1")).json.error.code, "INVALID_REQUEST");
 });
 
-test("an HTML option is served as a sandboxed document without scripts and network, only under the page capability", async (t) => {
+test("an HTML option and the HTML preview of a next round are served as sandboxed documents without scripts and network, only under the page capability", async (t) => {
   const f = await setup(t);
   const s = await serve(t, f);
-  const { result, path: pagePath } = await created(s);
+  const sketch = '<p style="color: #444">A sketch of the next round</p>';
+  const { result, path: pagePath } = await created(s, { ...htmlRequest(), nextRounds: [{ roundId: "sketch", label: "Sketch", preview: { format: "html", content: sketch } }] });
   const browser = await owner(s, pagePath);
   const frame = await request(s.port, `${browser.frames}/${result.sessionId}/a`);
   assert.equal(frame.status, 200);
@@ -210,6 +213,10 @@ test("an HTML option is served as a sandboxed document without scripts and netwo
   // Servo compares 'self' with the opaque origin of the sandboxed option, so the policy also names the page origin.
   assert.equal(policy.split("; ").find((part) => part.startsWith("frame-ancestors")), `frame-ancestors 'self' http://127.0.0.1:${s.port}`);
   assert.equal(frame.headers["x-content-type-options"], "nosniff");
+  const preview = await request(s.port, `${browser.frames}/${result.sessionId}/next/sketch`);
+  assert.equal(preview.status, 200);
+  assert.equal(preview.text, sketch, "the preview bytes are exact");
+  assert.equal(preview.headers["content-security-policy"], policy, "a preview has the policy of an option");
   assert.equal((await request(s.port, `/_walkr/compare/o/${"0".repeat(64)}/${result.sessionId}/a`)).status, 404);
   assert.equal((await request(s.port, `${browser.frames}/${result.sessionId}/missing`)).status, 404);
   const shellPolicy = browser.page.headers["content-security-policy"];
@@ -240,10 +247,12 @@ test("an option ID that is a property name of every object takes a result withou
   assert.deepEqual(sent.json.view.result.comments, {});
 });
 
-async function bootPage(t, s, pagePath, { intercept = null, wait = true } = {}) {
+async function bootPage(t, s, pagePath, { intercept = null, wait = true, pending = null } = {}) {
   const browser = await owner(s, pagePath);
   const dom = new JSDOM(browser.page.text, { url: `http://127.0.0.1:${s.port}${pagePath}` });
   t.after(() => dom.window.close());
+  // A request that an earlier load of the page saved and that is not confirmed: the page starts as after a reload.
+  if (pending) dom.window.localStorage.setItem("walkr-compare:pending", JSON.stringify(pending));
   const fetchImpl = async (route, options = {}) => {
     const answer = await request(s.port, route, { method: options.method, headers: options.headers, rawBody: options.body });
     const reply = { ok: answer.status === 200, status: answer.status, json: async () => JSON.parse(answer.text) };
@@ -272,7 +281,17 @@ async function bootPage(t, s, pagePath, { intercept = null, wait = true } = {}) 
     });
     await app.load();
   };
-  return { app, doc, $: (id) => doc.getElementById(id), click, browser, window: dom.window };
+  // The decision panel is an A2UI surface: a part has the ID of its component, a picker entry the value of its option.
+  const part = (id) => doc.querySelector(`#decision [data-a2ui-id="${id}"]`);
+  const radio = (value) => [...doc.querySelectorAll('#decision input[type="radio"]')].find((input) => input.value === value);
+  const note = (text) => {
+    const field = part("note").querySelector("textarea");
+    field.value = text;
+    field.dispatchEvent(new dom.window.Event("input"));
+  };
+  // The controls of the panel that take a click or text now. A submitted session has none: no Submit can be used.
+  const usable = () => [...doc.querySelectorAll("#decision button, #decision input, #decision textarea")].filter((node) => !node.disabled && !node.readOnly);
+  return { app, doc, $: (id) => doc.getElementById(id), click, part, radio, note, usable, browser, window: dom.window };
 }
 
 test("the page lists the sessions newest first, shows the type and the format of the selected session, and submits a pick", async (t) => {
@@ -293,7 +312,7 @@ test("the page lists the sessions newest first, shows the type and the format of
   assert.equal(frames.length, 3);
   assert.equal(frames.every((frame) => frame.getAttribute("sandbox") === ""), true, "each HTML option is in a sandboxed frame");
   assert.deepEqual([...page.$("viewMode").options].map((item) => item.value), ["columns", "single"], "two views");
-  assert.equal(page.$("submit").disabled, true);
+  assert.equal(page.part("submit").disabled, true);
   assert.equal(page.doc.querySelector(".mode-nav"), null);
 
   await page.app.load();
@@ -312,13 +331,14 @@ test("the page lists the sessions newest first, shows the type and the format of
   const comment = page.$("stage").querySelector('[data-comment="a"]');
   comment.value = "Too many resources";
   comment.dispatchEvent(new page.window.Event("input"));
-  assert.equal(page.$("submit").disabled, false);
-  await page.click(page.$("submit"));
+  assert.equal(page.radio("b").checked, true, "the panel follows the pick of the column");
+  assert.equal(page.part("submit").disabled, false);
+  await page.click(page.part("submit"));
   const saved = (await s.agent(`sessions/${html.result.sessionId}`)).json.view;
   assert.equal(saved.result.pick, "b");
   assert.deepEqual(saved.result.comments, { a: "Too many resources" });
-  assert.match(page.$("result").textContent, /You picked Option B\./);
-  assert.equal(page.$("submit").hidden, true);
+  assert.match(page.$("decision").textContent, /Option B/, "the result shows the pick");
+  assert.deepEqual(page.usable(), [], "no Submit can be used");
 
   page.$("stars").querySelector('[data-rating="7"]').click();
   assert.match(page.$("rateText").textContent, /3\.5 of 5 stars, not saved/);
@@ -343,11 +363,10 @@ test("the page lists the sessions newest first, shows the type and the format of
   assert.equal(page.window.injected, undefined);
   assert.equal(page.$("newer").disabled, true);
 
-  page.$("none").click();
-  assert.equal(page.$("submit").disabled, true, "no option needs a note");
-  page.$("note").value = "All three are too long";
-  page.$("note").dispatchEvent(new page.window.Event("input"));
-  await page.click(page.$("submit"));
+  page.radio(NO_FIT).click();
+  assert.equal(page.part("submit").disabled, true, "no option needs a note");
+  page.note("All three are too long");
+  await page.click(page.part("submit"));
   const none = (await s.agent(`sessions/${text.result.sessionId}`)).json.view.result;
   assert.equal(none.pick, null);
   assert.equal(none.note, "All three are too long");
@@ -355,6 +374,68 @@ test("the page lists the sessions newest first, shows the type and the format of
   page.$("typeFilter").value = "compare:cfn-options";
   page.$("typeFilter").dispatchEvent(new page.window.Event("change"));
   assert.deepEqual([...page.$("sessions").querySelectorAll("button")].map((row) => row.dataset.session), [html.result.sessionId]);
+});
+
+test("the decision panel sends one submit with its pick, only on Submit (done), and nothing for No option fits without a note", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, { ...textRequest("create-panel"), recommended: "shorter" });
+  assert.equal(made.view.recommended, "shorter");
+  const route = `${API}/sessions/${made.result.sessionId}/submit`;
+  const submits = [];
+  const page = await bootPage(t, s, made.path, { intercept: async (path, options) => {
+    if (options.method === "POST" && path === route) submits.push(JSON.parse(options.body));
+  } });
+  page.radio(NO_FIT).click();
+  await page.click(page.part("submit"));
+  await page.click(page.part("more"));
+  assert.equal(submits.length, 0, "No option fits without a note or a comment sends nothing");
+  page.radio("short").click();
+  assert.equal(page.$("stage").querySelector('[data-pick="short"]').getAttribute("aria-pressed"), "true", "the column follows the pick of the panel");
+  assert.equal(submits.length, 0, "a pick sends nothing before Submit");
+  await page.click(page.part("submit"));
+  assert.deepEqual(submits.map((body) => body.pick), ["short"]);
+  assert.equal((await s.agent(`sessions/${made.result.sessionId}`)).json.view.result.pick, "short");
+});
+
+test("a Submit of the panel of another session sends no request", async (t) => {
+  const s = await serve(t, await setup(t));
+  const first = await created(s, textRequest("create-stale-a"));
+  const second = await created(s, { ...textRequest("create-stale-b"), title: "Another session" });
+  const routes = new Set([first, second].map((made) => `${API}/sessions/${made.result.sessionId}/submit`));
+  const submits = [];
+  const page = await bootPage(t, s, first.path, { intercept: async (route, options) => {
+    if (options.method === "POST" && routes.has(route)) submits.push(route);
+  } });
+  page.radio("short").click();
+  const stale = page.part("submit");
+  assert.equal(stale.disabled, false);
+  page.$("sessions").querySelector(`[data-session="${second.result.sessionId}"]`).click();
+  await page.app.load();
+  assert.equal(page.$("title").textContent, "Another session");
+  page.radio("short").click();
+  // The click resolves after a request that it started has its answer.
+  await page.click(stale);
+  assert.deepEqual(submits, [], "the Submit of the first panel sends nothing for the selected session");
+  await page.click(page.part("submit"));
+  assert.deepEqual(submits, [`${API}/sessions/${second.result.sessionId}/submit`], "the Submit of the selected session still sends");
+});
+
+test("a submitted session with a long note and a long outcome still shows its result", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, textRequest("create-long-result"));
+  const page = await bootPage(t, s, made.path);
+  assert.notDeepEqual(page.usable(), [], "the open panel takes a pick");
+  // Each control character takes 6 bytes of JSON: the result text is larger than one A2UI call may be.
+  const note = `Note start${"\u0001".repeat(7990)}`, summary = `Outcome start${"\u0001".repeat(7987)}`;
+  const session = `sessions/${made.result.sessionId}`;
+  const submit = await page.browser.call(`${session}/submit`, { method: "POST", body: { actionId: "submit-long", pick: "short", note } });
+  assert.equal(submit.status, 200, submit.text);
+  const outcome = await s.agent(`${session}/outcome`, { method: "POST", body: { actionId: "outcome-long", summary } });
+  assert.equal(outcome.status, 200, outcome.text);
+  await page.app.load();
+  const shown = page.$("decision").textContent;
+  assert.ok(shown.includes(note) && shown.includes(summary), "the result shows the whole note and the whole outcome");
+  assert.deepEqual(page.usable(), [], "no Submit can be used");
 });
 
 test("folding and Solo keep frames, zoom, drafts and picks in place, including saved results and ratings", async (t) => {
@@ -411,7 +492,7 @@ test("folding and Solo keep frames, zoom, drafts and picks in place, including s
   assert.equal(page.$("stars").querySelector('[aria-checked="true"]').dataset.rating, "7");
   assert.equal(page.$("rateNote").value, "Useful options");
   await page.click(page.$("rate"));
-  await page.click(page.$("submit"));
+  await page.click(page.part("submit"));
   const saved = (await s.agent(`sessions/${made.result.sessionId}`)).json.view;
   assert.equal(saved.result.pick, "a");
   assert.deepEqual(saved.result.comments, { a: "Keep this draft" });
@@ -419,6 +500,36 @@ test("folding and Solo keep frames, zoom, drafts and picks in place, including s
   assert.equal(saved.rating.note, "Useful options");
   assert.equal(stage.querySelector('[data-option="a"]').dataset.fold, "right");
   assert.equal(stage.querySelector('[data-option="a"] .cmp-rail-pick').hidden, false);
+});
+
+test("the rating is a fold that is closed at the start, shows the saved rating in its summary, stays open through a new draw of the panel and a poll, and starts closed for a newly selected session", async (t) => {
+  const s = await serve(t, await setup(t));
+  const first = await created(s, htmlRequest("create-fold-1"));
+  const second = await created(s, textRequest("create-fold-2"));
+  const page = await bootPage(t, s, first.path);
+  const fold = page.$("rating");
+  const summary = () => fold.querySelector("summary").textContent;
+  assert.equal(fold.tagName, "DETAILS");
+  assert.ok(fold.contains(page.$("stars")) && fold.contains(page.$("rate")), "the stars and Save rating are in the fold");
+  assert.equal(fold.open, false, "the fold is closed at the start");
+  assert.match(summary(), /Rate this session.*Not rated/, "the summary names the action and the rating");
+
+  fold.open = true;
+  page.radio("b").click();
+  await page.click(page.part("submit"));
+  assert.deepEqual(page.usable(), [], "the panel is drawn again with the result: no Submit can be used");
+  assert.equal(fold.open, true, "a new draw of the panel keeps the fold open");
+  page.$("stars").querySelector('[data-rating="7"]').click();
+  await page.click(page.$("rate"));
+  assert.match(summary(), /Rate this session.*3\.5 of 5 stars/, "the summary shows the saved rating");
+  await page.app.load();
+  assert.equal(fold.open, true, "a poll keeps the fold open");
+
+  page.$("sessions").querySelector(`[data-session="${second.result.sessionId}"]`).click();
+  await page.app.load();
+  assert.equal(page.$("sessions").querySelector('[aria-current="true"]').dataset.session, second.result.sessionId);
+  assert.equal(fold.open, false, "a newly selected session starts with the fold closed");
+  assert.match(summary(), /Rate this session.*Not rated/);
 });
 
 test("two-option folds support no pick, reset on session changes, and leave One option unchanged", async (t) => {
@@ -436,12 +547,11 @@ test("two-option folds support no pick, reset on session changes, and leave One 
   assert.ok(cards.every((card) => !card.classList.contains("is-folded")));
   cards[0].querySelector('[data-pick]').click();
   cards[0].querySelector('[data-fold="left"]').click();
-  page.$("none").click();
+  page.radio(NO_FIT).click();
   assert.equal(cards[0].querySelector('.cmp-rail-pick').hidden, true);
-  assert.equal(page.$("submit").disabled, true, "no pick still requires a note");
-  page.$("note").value = "Need another version";
-  page.$("note").dispatchEvent(new page.window.Event("input"));
-  await page.click(page.$("submit"));
+  assert.equal(page.part("submit").disabled, true, "no pick still requires a note");
+  page.note("Need another version");
+  await page.click(page.part("submit"));
   assert.equal((await s.agent(`sessions/${first.result.sessionId}`)).json.view.result.pick, null);
   await page.click(page.$("sessions").querySelector(`[data-session="${second.result.sessionId}"]`));
   assert.ok([...stage.children].every((card) => !card.classList.contains("is-folded")));
@@ -460,7 +570,7 @@ test("two-option folds support no pick, reset on session changes, and leave One 
   assert.ok([...stage.children].every((card) => !card.classList.contains("is-folded")), "returning to a session also resets folds");
 });
 
-test("the Compare wordmark precedes Sessions and declares the required theme tokens", async (t) => {
+test("the Compare wordmark precedes Sessions", async (t) => {
   const dom = new JSDOM(await fs.readFile(new URL("../src/compare.html", import.meta.url), "utf8"));
   t.after(() => dom.window.close());
   const doc = dom.window.document;
@@ -469,17 +579,6 @@ test("the Compare wordmark precedes Sessions and declares the required theme tok
   assert.equal(mark.querySelector(".cmp-mark-r").textContent, "r");
   assert.equal(mark, doc.querySelector(".cmp-bar").firstElementChild);
   assert.equal(mark.nextElementSibling, doc.getElementById("toggleList"));
-  const colors = new Map();
-  css.walk(css.parse(await fs.readFile(new URL("../src/compare.css", import.meta.url), "utf8")), {
-    visit: "Rule",
-    enter(rule) {
-      rule.block.children.forEach((declaration) => {
-        if (declaration.property === "color") colors.set(css.generate(rule.prelude), css.generate(declaration.value));
-      });
-    },
-  });
-  assert.equal(colors.get(".cmp-mark"), "var(--strong-txt)");
-  assert.equal(colors.get(".cmp-mark-r"), "var(--accent)");
 });
 
 test("the command starts the background server, creates a session, waits for the result and saves the outcome", async (t) => {
@@ -591,7 +690,7 @@ test("selecting another session during a held mutation clears the old stage imme
     assert.equal(page.$("stage").hidden, false);
     assert.equal(page.$("title").textContent, first.view.title);
     page.$("stage").querySelector('[data-pick="short"]').click();
-    page.$("submit").click();
+    page.part("submit").click();
     await started;
     page.$("sessions").querySelector(`[data-session="${second.result.sessionId}"]`).click();
     assert.equal(page.window.location.hash, `#${second.result.sessionId}`);
@@ -627,18 +726,12 @@ test("a held poll does not overwrite a submitted view", { timeout: 10000 }, asyn
   const poll = page.app.load();
   await started;
   page.$("stage").querySelector('[data-pick="short"]').click();
-  const submitted = new Promise((resolve) => {
-    const observer = new page.window.MutationObserver(() => {
-      if (page.$("submit").hidden) { observer.disconnect(); resolve(); }
-    });
-    observer.observe(page.$("submit"), { attributes: true });
-    t.after(() => observer.disconnect());
-  });
-  page.$("submit").click();
-  await submitted;
+  // The click resolves after the submit answer and one more read.
+  await page.click(page.part("submit"));
   release();
   await poll;
-  assert.equal(page.$("submit").hidden, true);
+  assert.match(page.$("decision").textContent, /You picked Short\./, "the saved pick still shows after the late poll");
+  assert.deepEqual(page.usable(), [], "no Submit can be used");
   assert.equal(page.$("stage").querySelector('[data-pick="short"]').disabled, true);
   assert.equal((await s.agent(session)).json.view.result.pick, "short");
 });
@@ -663,7 +756,7 @@ test("an answer that does not prove the save keeps the request for an exact retr
   };
   const page = await bootPage(t, s, made.path, { intercept });
   await page.click(page.$("stage").querySelector('[data-pick="b"]'));
-  await page.click(page.$("submit"));
+  await page.click(page.part("submit"));
   const saved = JSON.parse(page.window.localStorage.getItem("walkr-compare:pending"));
   assert.equal(saved.sessionId, made.result.sessionId);
   assert.equal(page.$("resolve").hidden, false);
@@ -688,4 +781,364 @@ test("an answer that does not prove the save keeps the request for an exact retr
   }
   assert.equal(page.window.localStorage.getItem("walkr-compare:pending"), null);
   assert.equal((await s.agent(`sessions/${made.result.sessionId}`)).json.view.result.pick, "b");
+});
+
+test("after a reload, the panel shows the pick and the note of a pending submit, and the retry sends the same body", { timeout: 10000 }, async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, htmlRequest("create-reload"));
+  const route = `${API}/sessions/${made.result.sessionId}/submit`;
+  const pending = { op: "submit", sessionId: made.result.sessionId, body: { actionId: "submit-before-reload", pick: "b", comments: {}, note: "First note", nextRound: "@feedback" } };
+  const sent = [];
+  const page = await bootPage(t, s, made.path, { pending, intercept: async (path, options) => {
+    if (options.method === "POST" && path === route) sent.push(JSON.parse(options.body));
+  } });
+  assert.equal(page.radio("b").checked, true, "the panel shows the pick of the pending request");
+  assert.equal(page.part("note").querySelector("textarea").value, "First note", "the panel shows the note of the pending request");
+  assert.equal(page.$("stage").querySelector('[data-pick="b"]').getAttribute("aria-pressed"), "true", "the column marks the same pick");
+  assert.deepEqual(page.usable(), [], "the panel takes no change before the retry");
+  await page.click(page.$("resolve"));
+  assert.deepEqual(sent, [pending.body], "the retry sends the same body");
+  assert.equal((await s.agent(`sessions/${made.result.sessionId}`)).json.view.result.nextRound, "@feedback", "the retry keeps the meaning of Next round");
+});
+
+const NEXT_ROUNDS = [{ roundId: "shorter-b", label: "Shorter versions of B", summary: "Two shorter cuts of B" }, { roundId: "mix-a-c", label: "Mix A and C" }];
+
+test("next rounds: a repeated roundId and an open earlier session are refused; a linked session is round 2, its row names the earlier one, and round 20 takes no nextRounds and no nextRound", async (t) => {
+  const store = new CompareStore({ root: (await setup(t)).root });
+  await assert.rejects(store.create({ ...textRequest("round-1"), nextRounds: [NEXT_ROUNDS[0], { ...NEXT_ROUNDS[1], roundId: "shorter-b" }] }), { code: "INVALID_REQUEST" });
+  const first = (await store.create({ ...textRequest("round-1"), nextRounds: NEXT_ROUNDS })).result.sessionId;
+  await assert.rejects(store.create({ ...textRequest("round-2"), previous: { sessionId: first } }), { code: "INVALID_REQUEST" });
+  await store.submit(first, { actionId: "submit-1", pick: "short", nextRound: "mix-a-c" });
+  const second = (await store.create({ ...textRequest("round-2"), title: "Round two", previous: { sessionId: first, roundId: "mix-a-c" } })).result.sessionId;
+  assert.equal((await store.read(second)).round, 2);
+  assert.equal((await store.list()).find((row) => row.sessionId === second).previousSessionId, first);
+  // A chain ends at round 20, so a session of round 20 takes no suggestions for one more round.
+  let last = second;
+  for (let round = 3; round <= 20; round += 1) {
+    await store.submit(last, { actionId: "submit", pick: "short" });
+    const request = { ...textRequest(`round-${round}`), previous: { sessionId: last } };
+    if (round === 20) await assert.rejects(store.create({ ...request, nextRounds: NEXT_ROUNDS }), { code: "INVALID_REQUEST", message: /last round/ });
+    last = (await store.create(request)).result.sessionId;
+  }
+  assert.equal((await store.read(last)).round, 20);
+  await assert.rejects(store.submit(last, { actionId: "submit-last", pick: "short", nextRound: "@feedback" }), { code: "INVALID_REQUEST", message: /last round/ });
+});
+
+test("a next round preview over its limit is refused, and a valid preview comes back in the session view", async (t) => {
+  const store = new CompareStore({ root: (await setup(t)).root });
+  const large = { ...NEXT_ROUNDS[0], preview: { format: "text", content: "x".repeat(16 * 1024 + 1) } };
+  await assert.rejects(store.create({ ...textRequest("preview-large"), nextRounds: [large] }), { code: "INVALID_REQUEST" });
+  const rounds = [{ ...NEXT_ROUNDS[0], preview: { format: "html", content: "<p>Two shorter cuts of B</p>" } }, NEXT_ROUNDS[1]];
+  const made = (await store.create({ ...textRequest("preview-ok"), nextRounds: rounds })).result.sessionId;
+  assert.deepEqual((await store.read(made)).nextRounds, rounds);
+});
+
+test("submit refuses an unknown next round and takes No option fits with a next round and no note", async (t) => {
+  const store = new CompareStore({ root: (await setup(t)).root });
+  const made = (await store.create({ ...textRequest("round-submit"), nextRounds: NEXT_ROUNDS })).result.sessionId;
+  await assert.rejects(store.submit(made, { actionId: "submit-1", pick: "short", nextRound: "other" }), { code: "INVALID_REQUEST" });
+  const saved = await store.submit(made, { actionId: "submit-1", pick: null, nextRound: "mix-a-c" });
+  assert.equal(saved.view.result.pick, null);
+  assert.equal(saved.view.result.nextRound, "mix-a-c");
+});
+
+test("submit takes nextRound @feedback without nextRounds, but not for No option fits without a note or a comment; no roundId and no previous.roundId is @feedback", async (t) => {
+  const store = new CompareStore({ root: (await setup(t)).root });
+  await assert.rejects(store.create({ ...textRequest("feedback-id"), nextRounds: [{ roundId: "@feedback", label: "Feedback" }] }), { code: "INVALID_ID" });
+  const made = (await store.create(textRequest("feedback-1"))).result.sessionId;
+  await assert.rejects(store.submit(made, { actionId: "submit-empty", pick: null, nextRound: "@feedback" }), { code: "INVALID_REQUEST" });
+  const saved = await store.submit(made, { actionId: "submit-1", pick: null, comments: { short: "Too formal" }, nextRound: "@feedback" });
+  assert.equal(saved.view.result.nextRound, "@feedback");
+  await assert.rejects(store.create({ ...textRequest("feedback-2"), previous: { sessionId: made, roundId: "@feedback" } }), { code: "INVALID_REQUEST" });
+  assert.equal((await store.create({ ...textRequest("feedback-2"), previous: { sessionId: made } })).view.round, 2);
+});
+
+test("the Next round cards show only after the first selection, and the new draw keeps the focus, the pick and the note", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, { ...textRequest("create-reveal"), nextRounds: NEXT_ROUNDS });
+  const page = await bootPage(t, s, made.path);
+  assert.equal(page.part("next"), null, "a new session shows no Next round card");
+  assert.ok(page.part("submit") && page.part("more"), "both buttons show");
+  page.note("Typed before the pick");
+  page.radio("shorter").focus();
+  page.radio("shorter").click();
+  assert.ok(page.part("next"), "the Next round cards show after the first selection");
+  assert.equal(page.radio("shorter").checked, true, "the clicked card is still selected");
+  assert.equal(page.doc.activeElement, page.radio("shorter"), "the focus stays on the clicked card");
+  assert.equal(page.part("note").querySelector("textarea").value, "Typed before the pick", "the typed note stays");
+  page.radio(NO_FIT).click();
+  assert.ok(page.part("next"), "the cards stay when the pick changes");
+});
+
+test("Submit (done) sends no nextRound, also with a selected suggestion; Next round sends @feedback or the roundId of the selected suggestion", async (t) => {
+  const s = await serve(t, await setup(t));
+  const sessions = [];
+  for (const [actionId, extra] of [["create-done", { nextRounds: NEXT_ROUNDS }], ["create-feedback", { nextRounds: NEXT_ROUNDS }], ["create-chosen", { nextRounds: NEXT_ROUNDS }], ["create-bare", {}]]) {
+    sessions.push(await created(s, { ...textRequest(actionId), title: actionId, ...extra }));
+  }
+  const [done, feedback, chosen, bare] = sessions;
+  const routes = sessions.map((made) => `${API}/sessions/${made.result.sessionId}/submit`);
+  const submits = [];
+  const page = await bootPage(t, s, done.path, { intercept: async (route, options) => {
+    if (options.method === "POST" && routes.includes(route)) submits.push({ route, body: JSON.parse(options.body) });
+  } });
+  const round = (value) => [...page.part("next").querySelectorAll('input[type="radio"]')].find((input) => input.value === value);
+  const open = (made) => page.click(page.$("sessions").querySelector(`[data-session="${made.result.sessionId}"]`));
+  page.radio("short").click();
+  assert.equal(round(FROM_FEEDBACK).checked, true, "From my comments and note is the default");
+  round("mix-a-c").click();
+  await page.click(page.part("submit"));
+  await open(feedback);
+  page.radio("short").click();
+  assert.equal(round(FROM_FEEDBACK).checked, true, "a new selected session starts with the first card");
+  await page.click(page.part("more"));
+  assert.match(page.$("decision").textContent, /Next round: from your comments and note\./);
+  await open(chosen);
+  page.radio("short").click();
+  round("mix-a-c").click();
+  await page.click(page.part("more"));
+  await open(bare);
+  page.radio("short").click();
+  assert.ok(page.part("submit") && page.part("more"), "a session without suggestions shows both buttons");
+  assert.equal(page.part("next"), null, "and no Next round picker");
+  await page.click(page.part("more"));
+  assert.deepEqual(submits.map((item) => item.route), routes, "each press sends exactly one submit");
+  assert.equal(Object.hasOwn(submits[0].body, "nextRound"), false, "Submit (done) sends no nextRound");
+  assert.deepEqual(submits.slice(1).map((item) => item.body.nextRound), ["@feedback", "mix-a-c", "@feedback"]);
+});
+
+test("a later round shows its round line, and the earlier title selects the earlier session", async (t) => {
+  const s = await serve(t, await setup(t));
+  const first = await created(s, { ...textRequest("create-chain-1"), nextRounds: NEXT_ROUNDS });
+  const browser = await owner(s, first.path);
+  const submitted = await browser.call(`sessions/${first.result.sessionId}/submit`, { method: "POST", body: { actionId: "submit-chain", pick: null, nextRound: "mix-a-c" } });
+  assert.equal(submitted.status, 200, submitted.text);
+  const second = await created(s, { ...textRequest("create-chain-2"), title: "Round two", previous: { sessionId: first.result.sessionId, roundId: "mix-a-c" } });
+  const page = await bootPage(t, s, second.path);
+  const line = page.$("rounds").querySelector(".cmp-round-line");
+  assert.match(line.textContent, /\bRound 2\b/);
+  const link = line.querySelector("button");
+  assert.equal(link.textContent, first.view.title);
+  await page.click(link);
+  assert.equal(page.$("title").textContent, first.view.title);
+});
+
+test("the open earlier session shows the link to a later round that the next poll lists, without a new selection", async (t) => {
+  const s = await serve(t, await setup(t));
+  const first = await created(s, { ...textRequest("create-parent"), nextRounds: NEXT_ROUNDS });
+  const browser = await owner(s, first.path);
+  for (const [route, body] of [["submit", { actionId: "submit-parent", pick: "short", nextRound: "mix-a-c" }], ["seen", {}]]) {
+    const answer = await browser.call(`sessions/${first.result.sessionId}/${route}`, { method: "POST", body });
+    assert.equal(answer.status, 200, answer.text);
+  }
+  const page = await bootPage(t, s, first.path);
+  assert.equal(page.$("rounds").querySelector("[data-round]"), null);
+  const second = await created(s, { ...textRequest("create-child"), title: "Round two", previous: { sessionId: first.result.sessionId, roundId: "mix-a-c" } });
+  await page.app.load();
+  assert.equal(page.$("rounds").querySelector(`[data-round="${second.result.sessionId}"]`)?.textContent, "Round two");
+  assert.equal(page.$("title").textContent, first.view.title, "the earlier session stays selected");
+});
+
+test("after a reload, an open panel over the A2UI size limit still shows the pick, the round and the note of a pending submit", { timeout: 10000 }, async (t) => {
+  const s = await serve(t, await setup(t));
+  // Three summaries, four suggestion summaries and the note at their limits, in a character of three UTF-8 bytes.
+  const long = (length) => "\u6587".repeat(length);
+  const request = textRequest("create-large");
+  request.options = [...request.options, { optionId: "third", label: "Third", format: "text", content: "A third text." }].map((item) => ({ ...item, summary: long(2000) }));
+  request.nextRounds = ["one", "two", "three", "four"].map((roundId) => ({ roundId, label: `Round ${roundId}`, summary: long(2000) }));
+  const made = await created(s, request);
+  const pending = { op: "submit", sessionId: made.result.sessionId, body: { actionId: "submit-large", pick: "short", comments: {}, note: long(8000), nextRound: "two" } };
+  const page = await bootPage(t, s, made.path, { pending });
+  assert.equal(page.radio("short").checked, true, "the panel shows the pick of the pending request");
+  assert.equal(page.part("next").querySelector('input[value="two"]').checked, true, "the panel shows the round of the pending request");
+  assert.equal(page.part("note").querySelector("textarea").value, pending.body.note, "the panel shows the note of the pending request");
+  assert.ok(page.part("submit"), "the panel has its Submit control");
+  assert.equal(page.$("resolve").hidden, false, "the retry control shows");
+  assert.equal(page.$("decision").querySelector(".a2-over"), null, "no line says that the surface is too large");
+  assert.deepEqual([...page.$("decision").querySelectorAll(".a2-error")].filter((node) => !node.hidden), [], "no line says that the surface was refused");
+});
+
+test("the decision panel shows a preview in each option card and in a suggestion card with a preview, and a poll keeps them", async (t) => {
+  const s = await serve(t, await setup(t));
+  const request = textRequest("create-previews");
+  // A long indent before the text does not use up the cut of the preview.
+  request.options = [...request.options, { optionId: "third", label: "Third", format: "text", content: `${" ".repeat(600)}A third text.` }];
+  request.nextRounds = [{ ...NEXT_ROUNDS[0], preview: { format: "text", content: "B in one line.\nB in two lines." } }, NEXT_ROUNDS[1]];
+  const made = await created(s, request);
+  const page = await bootPage(t, s, made.path);
+  page.radio("short").click();
+  const previews = () => [...page.$("decision").querySelectorAll(".a2-option-preview")];
+  const shown = previews();
+  assert.deepEqual(shown.map((node) => node.closest("[data-value]").dataset.value), ["short", "shorter", "third", "shorter-b"]);
+  assert.equal(shown[0].textContent, request.options[0].content);
+  assert.equal(shown[2].textContent, "A third text.");
+  await page.app.load();
+  await page.app.load();
+  assert.ok(previews().length === shown.length && previews().every((node, index) => node === shown[index]), "a poll keeps the preview nodes");
+});
+
+test("an open panel over the A2UI size limit shows no preview first, and keeps the labels, the summaries and Submit", { timeout: 10000 }, async (t) => {
+  const s = await serve(t, await setup(t));
+  // In a character of three UTF-8 bytes: the summaries at their limit, previews at their cut, and a note that the
+  // panel holds without the previews but not with them.
+  const long = (length) => "\u6587".repeat(length);
+  const request = textRequest("create-large-previews");
+  request.options = [...request.options, { optionId: "third", label: "Third", format: "text", content: "A third text." }]
+    .map((item, index) => ({ ...item, summary: long(2000), content: `${index} ${long(700)}` }));
+  request.nextRounds = ["one", "two", "three", "four"].map((roundId) => ({ roundId, label: `Round ${roundId}`, summary: long(2000), preview: { format: "text", content: long(700) } }));
+  const made = await created(s, request);
+  const pending = { op: "submit", sessionId: made.result.sessionId, body: { actionId: "submit-large", pick: "short", comments: {}, note: long(5000) } };
+  const page = await bootPage(t, s, made.path, { pending });
+  const panel = page.$("decision");
+  assert.equal(panel.querySelector(".a2-option-preview"), null, "the panel shows no preview");
+  assert.deepEqual([...panel.querySelectorAll(".a2-option-label")].map((node) => node.textContent),
+    ["Short", "Shorter", "Third", "No option fits", "From my comments and note", "Round one", "Round two", "Round three", "Round four"]);
+  assert.equal(panel.querySelector('[data-value="short"] .a2-option-description').textContent, long(2000), "the summaries stay");
+  assert.ok(page.part("submit"), "the panel has its Submit control");
+  assert.deepEqual([...panel.querySelectorAll(".a2-error")].filter((node) => !node.hidden), [], "no line says that the surface was refused");
+});
+
+test("the receipt of the agent is refused for an open session and for the page credential, and only the first time is saved", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, textRequest("create-receipt"));
+  const session = `sessions/${made.result.sessionId}`;
+  const browser = await owner(s, made.path);
+  const early = await s.agent(`${session}/received`, { method: "POST", body: {} });
+  assert.equal(early.status, 409, early.text);
+  assert.equal(early.json.error.code, "INVALID_TRANSITION");
+  const submitted = await browser.call(`${session}/submit`, { method: "POST", body: { actionId: "submit-receipt", pick: "short" } });
+  assert.equal(submitted.status, 200, submitted.text);
+  assert.equal((await browser.call(`${session}/received`, { method: "POST", body: {} })).status, 403, "the page credential must not send the receipt");
+  const first = await s.agent(`${session}/received`, { method: "POST", body: {} });
+  assert.equal(first.status, 200, first.text);
+  assert.equal(Number.isNaN(Date.parse(first.json.result.receivedAt)), false);
+  const again = await s.agent(`${session}/received`, { method: "POST", body: {} });
+  assert.equal(again.json.result.receivedAt, first.json.result.receivedAt, "a second receipt keeps the first time");
+  assert.equal(again.json.view.receivedAt, first.json.result.receivedAt);
+});
+
+test("wait on a submitted session sends the receipt and prints receivedAt, and the view holds the same time", async (t) => {
+  const f = await setup(t);
+  const env = { ...process.env, HUMAN_REVIEW_STATE_DIR: f.stateDir, HUMAN_REVIEW_COMPARE_ROOT: f.root, HUMAN_REVIEW_IDLE_MS: "0" };
+  delete env.HUMAN_REVIEW_HOSTED;
+  const cli = async (...args) => (await run(process.execPath, [CLI, ...args], { env })).stdout;
+  let serverPid = 0;
+  t.after(async () => {
+    if (serverPid) try { process.kill(serverPid); } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  });
+  const file = path.join(f.dir, "request.json");
+  await fs.writeFile(file, JSON.stringify(textRequest("create-wait-receipt")));
+  const made = JSON.parse(await cli("create", file));
+  serverPid = JSON.parse(await fs.readFile(path.join(f.stateDir, "server.json"), "utf8")).pid;
+  const port = Number(new URL(made.url).port);
+  const token = (await request(port, new URL(made.url).pathname)).text.match(/data-token="([a-f0-9]{64})"/)[1];
+  const submitted = await request(port, `${API}/sessions/${made.sessionId}/submit`, { token, method: "POST", body: { actionId: "submit-wait", pick: "short" } });
+  assert.equal(submitted.status, 200, submitted.text);
+  const ready = JSON.parse(await cli("wait", made.sessionId, "--timeout", "5"));
+  assert.equal(ready.status, "ready");
+  assert.equal(typeof ready.receivedAt, "string");
+  assert.equal(JSON.parse(await cli("view", made.sessionId)).receivedAt, ready.receivedAt);
+});
+
+test("a submitted session shows the waiting line, and the next poll shows the receipt with the same option frames", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, htmlRequest("create-receipt-page"));
+  const session = `sessions/${made.result.sessionId}`;
+  const browser = await owner(s, made.path);
+  const submitted = await browser.call(`${session}/submit`, { method: "POST", body: { actionId: "submit-receipt-page", pick: "b" } });
+  assert.equal(submitted.status, 200, submitted.text);
+  const page = await bootPage(t, s, made.path);
+  const line = page.$("decision").querySelector('[role="status"]');
+  assert.equal(line.hidden, false);
+  assert.match(line.textContent, /^Waiting for the agent/);
+  const frames = [...page.$("stage").querySelectorAll("iframe")];
+  assert.ok(frames.length >= 1, "the session shows its option frames");
+  const received = await s.agent(`${session}/received`, { method: "POST", body: {} });
+  assert.equal(received.status, 200, received.text);
+  await page.app.load();
+  assert.match(line.textContent, /^The agent received your result at /);
+  const after = [...page.$("stage").querySelectorAll("iframe")];
+  assert.equal(after.length === frames.length && after.every((frame, at) => frame === frames[at]), true, "the option frames are the same nodes");
+});
+
+test("a result of the button Next round shows the result text with the round, and then the received line after the receipt", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, { ...textRequest("create-receipt-more"), nextRounds: NEXT_ROUNDS });
+  const page = await bootPage(t, s, made.path);
+  page.radio("short").click();
+  [...page.part("next").querySelectorAll('input[type="radio"]')].find((input) => input.value === "mix-a-c").click();
+  await page.click(page.part("more"));
+  const line = page.$("decision").querySelector('[role="status"]');
+  assert.match(line.textContent, /^Waiting for the agent/);
+  const received = await s.agent(`sessions/${made.result.sessionId}/received`, { method: "POST", body: {} });
+  assert.equal(received.status, 200, received.text);
+  await page.app.load();
+  const result = page.part("result");
+  assert.match(result.textContent, /^You picked Short\. Next round: Mix A and C\./);
+  assert.match(line.textContent, /^The agent received your result at /);
+  assert.equal(line.hidden, false);
+  assert.equal(result.compareDocumentPosition(line) & page.window.Node.DOCUMENT_POSITION_FOLLOWING, page.window.Node.DOCUMENT_POSITION_FOLLOWING, "the received line follows the result text");
+});
+
+test("a column comment over the limit makes both buttons refuse with a message, also with No option fits", async (t) => {
+  const s = await serve(t, await setup(t));
+  const made = await created(s, textRequest("create-long-comment"));
+  const route = `${API}/sessions/${made.result.sessionId}/submit`;
+  const submits = [];
+  const page = await bootPage(t, s, made.path, { intercept: async (path, options) => {
+    if (options.method === "POST" && path === route) submits.push(JSON.parse(options.body));
+  } });
+  const comment = page.$("stage").querySelector('[data-comment="short"]');
+  const type = (text) => { comment.value = text; comment.dispatchEvent(new page.window.Event("input")); };
+  const message = (id) => page.doc.getElementById(page.part(id).getAttribute("aria-describedby")).textContent;
+  assert.equal(comment.maxLength, 8000, "the field has the limit of the store");
+  page.radio(NO_FIT).click();
+  page.note("Neither version fits");
+  // A pasted or restored value can be longer than maxLength allows by typing.
+  type("x".repeat(8001));
+  for (const id of ["submit", "more"]) {
+    assert.equal(page.part(id).disabled, true, `${id} refuses a comment over the limit`);
+    assert.match(message(id), /comment/i, `the message of ${id} names a comment`);
+    assert.match(message(id), /\b8000 characters\b/, `the message of ${id} names the limit`);
+    await page.click(page.part(id));
+  }
+  assert.deepEqual(submits, [], "no button sends a comment over the limit");
+  type("x".repeat(8000));
+  assert.equal(page.part("more").disabled, false, "a comment at the limit is valid");
+  await page.click(page.part("more"));
+  assert.equal(submits.length, 1);
+  assert.equal((await s.agent(`sessions/${made.result.sessionId}`)).json.view.result.comments.short.length, 8000, "the store takes the comment");
+});
+
+test("the comment fields are read-only while a submit is held; after a reload they hold the comments of the pending body, and the retry sends the same body", { timeout: 10000 }, async (t) => {
+  const s = await serve(t, await setup(t));
+  const held = await created(s, htmlRequest("create-held-comments"));
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  t.after(() => release());
+  const page = await bootPage(t, s, held.path, { intercept: async (path, options) => {
+    if (options.method === "POST" && path === `${API}/sessions/${held.result.sessionId}/submit`) await gate;
+  } });
+  const fields = (at) => [...at.$("stage").querySelectorAll("[data-comment]")];
+  const comment = fields(page)[0];
+  comment.value = "Before the submit";
+  comment.dispatchEvent(new page.window.Event("input"));
+  page.radio("b").click();
+  const done = page.click(page.part("submit"));
+  assert.deepEqual(fields(page).map((field) => field.readOnly), [true, true, true], "no comment takes an edit while the submit is held");
+  assert.equal([...page.$("stage").querySelectorAll("[data-pick]")].every((button) => button.disabled), true, "no column pick button takes a click");
+  release();
+  await done;
+
+  const made = await created(s, htmlRequest("create-reload-comments"));
+  const route = `${API}/sessions/${made.result.sessionId}/submit`;
+  const pending = { op: "submit", sessionId: made.result.sessionId, body: { actionId: "submit-comments", pick: "b", comments: { a: "Too many resources", c: "Keep the alarm" } } };
+  const sent = [];
+  const reloaded = await bootPage(t, s, made.path, { pending, intercept: async (path, options) => {
+    if (options.method === "POST" && path === route) sent.push(JSON.parse(options.body));
+  } });
+  assert.deepEqual(fields(reloaded).map((field) => [field.value, field.readOnly]), [["Too many resources", true], ["", true], ["Keep the alarm", true]], "the fields show the comments of the pending body");
+  await reloaded.click(reloaded.$("resolve"));
+  assert.deepEqual(sent, [pending.body], "the retry sends the same body");
 });

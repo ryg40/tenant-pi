@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { mock, test } from "node:test";
-import { mkdtemp, rm, writeFile, readFile, chmod } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createCodexStatus } from "../extensions/codex-accounts/status.ts";
-import { anthropicStatus, codexStatus, copilotStatus, freshness, HealthAdapter, integrationStatus, publicStatuses, safeText, unknown } from "../extensions/ops-footer/adapters.ts";
+import { antigravityStatus, anthropicStatus, codexStatus, copilotStatus, freshness, HealthAdapter, integrationStatus, publicStatuses, safeText, unknown } from "../extensions/ops-footer/adapters.ts";
+import { antigravityReadingPath, antigravitySignInPath, checkAntigravity, parseAntigravityUsage, type AntigravityResult } from "../extensions/ops-footer/antigravity.ts";
 import { collectSession } from "../extensions/ops-footer/collector.ts";
 import { GitAdapter, parseStatus, parseWorktrees } from "../extensions/ops-footer/git.ts";
 import { MemoryTracker } from "../extensions/ops-footer/memory.ts";
@@ -19,7 +20,7 @@ import { defaults, ensureSettings, healthUrl, loadLocalSettings, loadSettings, p
 import { ANTHROPIC_STATUS, CODEX_REFRESH, CODEX_STATUS, COPILOT_STATUS, INTEGRATION_STATUS, OWNERSHIP, OWNERSHIP_QUERY, type ContextService, type DashboardSnapshot, type GitSnapshot } from "../extensions/ops-footer/types.ts";
 import { cwdLabel, formatRelative, formatWhen, gitFacts, memoryGroups, serviceGroups } from "../extensions/ops-footer/view.ts";
 import { quotaChip } from "../extensions/ops-footer/widgets.ts";
-import { contextStub, contextUnknown, fixtures, healthy, HOUR, integration, limits, NOW } from "./footer-fixtures.ts";
+import { contextStub, contextUnknown, copilot, fixtures, healthy, HOUR, integration, limits, NOW } from "./footer-fixtures.ts";
 
 const widths = [8, 12, 20, 30, 40, 50, 80, 120, 138, 160, 200];
 const settings = { ...defaults, healthUrls: {} };
@@ -83,6 +84,14 @@ test("layout v4 row budget: maximumRows 3 keeps the model row, the directory row
   assert.deepEqual(six.slice(3).map(r => r.split(" ")[0]), ["Codex1", "Codex2", "Claude"]);
   assert.match(six[5], /  \+2$/); assert.doesNotMatch(six.slice(0, 5).join("\n"), /\+\d/);
   assert.deepEqual(six.slice(3), layouts.v3(five, contextStub(), { ...settings, maximumRows: 6 }, 160, plainPaint, NOW).below.slice(1), "as in v3");
+});
+test("a narrow quota row fades an aged alert chip like the wider rows", () => {
+  const data = healthy(); data.limits = undefined; data.copilot = copilot(5);
+  data.copilot.accounts[0].windows = ["premium", "chat", "compl"].map(name => ({ name, percent: 5, unavailable: false, resetsAt: NOW + HOUR }));
+  const row = (aged: boolean) => dashboardRows(data, contextStub(), settings, 40, ansiPaint, NOW, () => aged).at(-1)!;
+  assert.match(stripTerminalSequences(row(false)), /^CP  ✗ premium 5% $/, "the narrow form: one chip");
+  assert.equal(stripTerminalSequences(row(true)), stripTerminalSequences(row(false)), "glyph and word stay");
+  assert.notEqual(row(true), row(false), "the aged chip has other colors");
 });
 test("layout v4 narrow terminals: width 30 gives the compact row then the bar; width 15 gives the bar only", () => {
   const at = (width: number) => layouts.v4(healthy(), contextStub(), settings, width, plainPaint, NOW);
@@ -518,7 +527,7 @@ test("Git collects real unborn, dirty, linked-worktree, detached and not-repo fi
 
 type Handler = (event: any, ctx: any) => unknown;
 /** The fake TUI paints the widget above the editor and the footer at the last width on each request, as Pi does on its next frame. */
-function harness(gitRefresh: () => Promise<GitSnapshot> = async () => unknown()) {
+function harness(gitRefresh: () => Promise<GitSnapshot> = async () => unknown(), health?: () => HealthAdapter) {
   const handlers = new Map<string, Set<Handler>>(); const bus = new Map<string, Set<(value: unknown) => void>>();
   const commands = new Map<string, { handler: Handler }>();
   let component: any, top: any, widgetSets = 0, width = 120, lastFooter: unknown, contextDisposed = 0, subscriptions = 0, gitDisposed = 0, healthDisposed = 0, gitRefreshes = 0, refreshes = 0, renders = 0;
@@ -555,7 +564,7 @@ function harness(gitRefresh: () => Promise<GitSnapshot> = async () => unknown())
   const install = (enabled = true, overrides: Partial<Settings> = {}) => installOpsFooter(pi as ExtensionAPI, {
     context: () => context, load: async () => ({ ...defaults, ...overrides, enabled }),
     git: () => ({ snapshot: unknown(), refresh: () => { gitRefreshes++; return gitRefresh(); }, dispose: () => { gitDisposed++; } }) as unknown as GitAdapter,
-    health: () => ({ check: async () => unknown(), dispose: () => { healthDisposed++; } }) as unknown as HealthAdapter,
+    health: health ?? (() => ({ check: async () => unknown(), dispose: () => { healthDisposed++; } }) as unknown as HealthAdapter),
     save: async () => {},
   });
   const emit = async (name: string, event: any = {}) => { for (const fn of [...handlers.get(name) ?? []]) await fn(event, ctx); };
@@ -997,4 +1006,124 @@ test("a saved footer setting that names a removed layout gives the default layou
   assert.deepEqual(h.notices, ["Footer layout: v4. Use /ops-footer layout v4|v3."], "a removed name keeps v4 with a hint");
   await h.emit("session_shutdown");
   await rm(dir, { recursive: true, force: true });
+});
+
+/** The `/usage` payload of `agy` 1.5.15, from a real reading on 2026-11-24 with the descriptions left out. */
+const agyUsage = { status: "SUCCESS", num_turns: 0, command: { name: "usage", data: { groups: [
+  { name: "Gemini Models", buckets: [
+    { id: "gemini-weekly", window: "weekly", remaining_fraction: 0.9875161647796631, reset_time: "2026-12-01T01:16:36Z" },
+    { id: "gemini-5h", window: "5h", remaining_fraction: 0.9800644516944885, reset_time: "2026-11-24T06:16:36Z" }] },
+  { name: "Claude and GPT models", buckets: [
+    { id: "3p-weekly", window: "weekly", remaining_fraction: 1, reset_time: "2026-12-01T01:58:16Z" },
+    { id: "3p-5h", window: "5h", remaining_fraction: 1, reset_time: "2026-11-24T06:58:16Z" }] }] } } };
+test("antigravity: the Gemini group gives the 5h and 7d windows of the row after Copilot; the other group is only in the report", () => {
+  const reading = parseAntigravityUsage(agyUsage)!;
+  assert.deepEqual(reading.windows.map(w => [w.name, w.percent, w.resetsAt]), [
+    ["5h", 0.9800644516944885 * 100, Date.parse("2026-11-24T06:16:36Z")], ["7d", 0.9875161647796631 * 100, Date.parse("2026-12-01T01:16:36Z")]]);
+  const data = { ...healthy(), copilot: copilot(), antigravity: antigravityStatus({ kind: "reading", at: NOW - 30_000, reading }) };
+  const rows = render(data, contextStub(), 200, plainPaint, { maximumRows: 12 });
+  const copilotRow = rows.findIndex(r => /^Copilot\b/.test(r)), row = rows.findIndex(r => /^Antigravity\b/.test(r));
+  assert.ok(copilotRow >= 0 && row > copilotRow, "the row comes after Copilot");
+  assert.match(rows[row], /5h 98%/); assert.match(rows[row], /7d 99%/);
+  assert.ok(!rows.join("\n").includes("Claude and GPT"), "the other group is not in the footer");
+  assert.ok(detailedReport(data, contextStub(), NOW).includes("Claude and GPT models"), "the report has the other group");
+});
+/** A fake `agy` in its own folder of `dir`: it adds one line to `runs`, then runs the shell text `body`. */
+async function fakeAgy(dir: string, name: string, runs: string, body: string): Promise<string> {
+  const bin = join(dir, name); await mkdir(bin);
+  await writeFile(join(bin, "agy"), `#!/bin/sh\necho run >> "${runs}"\n${body}\n`); await chmod(join(bin, "agy"), 0o755);
+  return bin;
+}
+const countRuns = async (runs: string) => { try { return (await readFile(runs, "utf8")).split("\n").filter(Boolean).length; } catch { return 0; } };
+/** A sign-in file of `agy` in `home`, with the modification time `time`. The footer only checks it with stat. */
+async function signInFile(home: string, time: number): Promise<string> {
+  const path = antigravitySignInPath(home); await mkdir(dirname(path), { recursive: true }); await writeFile(path, "");
+  await utimes(path, time / 1000, time / 1000);
+  return path;
+}
+test("antigravity runtime: off starts no agy; no agy on PATH or exit code 2 gives no row and no alert", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agy-runtime-"));
+  try {
+    const payload = join(dir, "usage.json"); await writeFile(payload, JSON.stringify(agyUsage));
+    const home = join(dir, "home"); await signInFile(home, Date.now() - 60_000);
+    const good = await fakeAgy(dir, "good", join(dir, "good.runs"), `cat "${payload}"`);
+    const apiKey = await fakeAgy(dir, "api-key", join(dir, "api-key.runs"), `cat "${payload}"\nexit 2`);
+    const empty = join(dir, "empty"); await mkdir(empty);
+    /** One session with its own cache folder and PATH. It reads the footer once the runtime has the result of the injected check. */
+    const session = async (name: string, bin: string, usage: "auto" | "off") => {
+      const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: home, XDG_CACHE_HOME: join(dir, `${name}-cache`) };
+      let calls = 0, settle!: (result: AntigravityResult) => void;
+      const checked = new Promise<AntigravityResult>(resolve => { settle = resolve; });
+      const h = harness(undefined, () => new HealthAdapter((async () => new Response(null)) as typeof fetch, async () => undefined, async () => undefined,
+        async (track, options) => { calls++; const result = await checkAntigravity(track, { ...options, env }); settle(result); return result; }));
+      h.install(true, { antigravityUsage: usage, maximumRows: 12 }); await h.emit("session_start");
+      if (usage !== "off") await checked;
+      // The runtime takes the result in a later step of the same turn; one macrotask lets it finish.
+      await new Promise(resolve => setImmediate(resolve));
+      const footer = h.footer(200); await h.emit("session_shutdown");
+      return { footer, calls };
+    };
+    const noRow = (footer: string, why: string) => assert.doesNotMatch(footer, /Antigravity|\bAG\b/, why);
+    const on = await session("on", good, "auto");
+    assert.ok(await countRuns(join(dir, "good.runs")) >= 1, "control: the fake agy ran"); assert.match(on.footer, /^Antigravity\b/m, "control: the fake agy gives a row");
+    const before = await countRuns(join(dir, "good.runs"));
+    const off = await session("off", good, "off");
+    assert.equal(off.calls, 0, "off asks for no reading"); assert.equal(await countRuns(join(dir, "good.runs")), before, "off starts no agy process"); noRow(off.footer, "off: no row");
+    noRow((await session("missing", empty, "auto")).footer, "no agy on PATH: no row and no alert");
+    const refused = await session("refused", apiKey, "auto");
+    assert.ok(await countRuns(join(dir, "api-key.runs")) >= 1, "the fake agy ran and exited with code 2"); noRow(refused.footer, "exit code 2: no row and no alert");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("antigravity sign-in guard: auto needs the sign-in file; a sign-in request backs off every mode until the file changes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agy-guard-"));
+  try {
+    const payload = join(dir, "usage.json"); await writeFile(payload, JSON.stringify(agyUsage));
+    const home = join(dir, "home"); await mkdir(home);
+    const runs = join(dir, "runs"), good = await fakeAgy(dir, "good", runs, `cat "${payload}"`);
+    // A fake agy with no sign-in: it asks on stderr and waits, as agy does.
+    const asks = await fakeAgy(dir, "asks", runs, `echo "Authentication required. Please visit the URL to log in:" >&2\nexec sleep 60`);
+    const T = Date.parse("2026-11-24T12:00:00Z");
+    const check = (bin: string, cache: string, time: number, usage?: "auto" | "on") =>
+      checkAntigravity(undefined, { env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, XDG_CACHE_HOME: join(dir, cache) }, now: () => time, usage });
+    let n = await countRuns(runs);
+    assert.equal((await check(good, "first", T)).kind, "none");
+    assert.equal(await countRuns(runs), n, "auto with no sign-in file starts no agy");
+    await signInFile(home, T - 3_600_000);
+    assert.equal((await check(good, "first", T)).kind, "reading", "control: with the sign-in file, auto runs agy");
+    assert.ok(await countRuns(runs) > n, "control: agy ran");
+    assert.equal((await check(asks, "asked", T, "on")).kind, "none", "a sign-in request gives no row");
+    n = await countRuns(runs);
+    for (const usage of ["on", "auto"] as const) assert.equal((await check(good, "asked", T + 3_600_000, usage)).kind, "none", `the back-off holds with ${usage}`);
+    assert.equal(await countRuns(runs), n, "during the back-off no session starts agy, also with on");
+    await signInFile(home, T + 7_000_000);
+    assert.equal((await check(good, "asked", T + 7_200_000)).kind, "reading", "a newer sign-in file ends the back-off");
+    assert.ok(await countRuns(runs) > n, "agy ran after the new sign-in");
+    // With no terminal, agy can also refuse at once with exit code 1: that starts the back-off too.
+    const refuses = await fakeAgy(dir, "refuses", runs, `echo "Error: authentication required. Run 'agy' to log in, then retry." >&2\nexit 1`);
+    const T2 = T + 8_000_000;
+    assert.equal((await check(refuses, "refused", T2, "on")).kind, "none");
+    n = await countRuns(runs);
+    assert.equal((await check(good, "refused", T2 + 3_600_000, "on")).kind, "none", "an at-once refusal also backs off");
+    assert.equal(await countRuns(runs), n, "no agy during that back-off");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("antigravity privacy: no description, unknown field or other group name of the payload reaches the shared file or the report", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "agy-privacy-"));
+  try {
+    const marker = "MARKER7Q";
+    const usage = { status: "SUCCESS", account: marker, command: { name: "usage", data: { note: marker, groups: [
+      { name: "Gemini Models", description: marker, extra: marker, buckets: [{ window: "5h", remaining_fraction: 0.5, reset_time: "2026-11-24T06:16:36Z", description: marker }] },
+      { name: `Ask ${marker}`, buckets: [{ window: "5h", remaining_fraction: 0.5, reset_time: "2026-11-24T06:16:36Z" }] },
+      { name: "Claude and GPT models", description: marker, buckets: [{ window: "weekly", remaining_fraction: 1, reset_time: "2026-12-01T01:58:16Z" }] }] } } };
+    const payload = join(dir, "usage.json"); await writeFile(payload, JSON.stringify(usage));
+    const home = join(dir, "home"); await signInFile(home, Date.now() - 60_000);
+    const env = { PATH: `${await fakeAgy(dir, "good", join(dir, "runs"), `cat "${payload}"`)}:/usr/bin:/bin`, HOME: home, XDG_CACHE_HOME: join(dir, "cache") };
+    const result = await checkAntigravity(undefined, { env });
+    assert.equal(result.kind, "reading", "control: the payload gives a reading");
+    const shared = await readFile(antigravityReadingPath(env), "utf8");
+    const report = detailedReport({ ...healthy(), antigravity: antigravityStatus(result) }, contextStub(), NOW);
+    assert.ok(report.includes("Claude and GPT models"), "control: the report lists the other model group");
+    assert.ok(!shared.includes(marker), "the shared file holds no other text of the payload");
+    assert.ok(!report.includes(marker), "the report holds no other text of the payload");
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });

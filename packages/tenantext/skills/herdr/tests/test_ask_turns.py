@@ -20,6 +20,8 @@ sys.path.insert(0, os.path.join(SKILL, "scripts"))
 # The same isolation as test_herdr_skill.py, for either order of the test files: _common reads both at import.
 os.environ.setdefault("HERDR_SKILL_STATE_DIR", tempfile.mkdtemp(prefix="herdr-skill-test-"))
 os.environ.setdefault("HERDR_SKILL_RESOURCES", os.path.join(os.environ["HERDR_SKILL_STATE_DIR"], "no-machine-file.json"))
+# The in-process runs of main() take the Herdr 1 path, also when the tests run in a herdr-core terminal.
+os.environ.pop("HC_TERMINAL_ID", None)
 
 spec = importlib.util.spec_from_file_location("ask_turns", os.path.join(SKILL, "scripts", "ask.py"))
 ask = importlib.util.module_from_spec(spec)

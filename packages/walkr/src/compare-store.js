@@ -3,8 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
-import { capture, fail, hash, id, inspect, readBytes } from "./double-archive.js";
-import { canonical } from "./trainer-store.js";
+import { canonical, capture, fail, hash, id, inspect, readBytes } from "./store-files.js";
 import { isCanonicalAbsolute } from "./canonical-path.js";
 import { POSIX_ONLY_CODE, posixOnlyRefusal } from "./posix-only.js";
 import { RATING_MAX, RATING_MIN } from "./compare-stars.js";
@@ -16,7 +15,13 @@ const SESSION = /^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$/;
 const WORKFLOW = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const REPO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const FORMATS = new Set(["html", "text", "markdown"]);
-export const LIMITS = { options: [2, 3], content: 1024 * 1024, text: 8000, short: 200, clarifications: 12 };
+// `preview`: the bytes of the content of one next round preview.
+export const LIMITS = { options: [2, 3], content: 1024 * 1024, preview: 16 * 1024, text: 8000, short: 200, clarifications: 12, nextRounds: 4, rounds: 20 };
+/**
+ * The `nextRound` of a submit that asks for one more round from the pick, the comments and the note. The character "@"
+ * is not valid in a roundId, so no suggestion can have this name.
+ */
+export const FEEDBACK_ROUND = "@feedback";
 const queues = new Map();
 
 /** The configured session root, by default ~/.local/.walkr/compare. Tests and trials set HUMAN_REVIEW_COMPARE_ROOT. */
@@ -51,10 +56,17 @@ function shortId(value, name) {
   return value;
 }
 
-function content(value, name) {
+// The rule of an optionId and of a roundId: 1 to 64 letters, digits, dots, underscores or hyphens.
+function choiceId(value, name) {
+  shortId(value, name);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(value)) fail("INVALID_ID", `${name} uses 1-64 letters, digits, dots, underscores or hyphens.`);
+  return value;
+}
+
+function content(value, name, max = LIMITS.content) {
   if (!FORMATS.has(value.format)) fail("INVALID_REQUEST", `${name} format must be html, text or markdown.`);
-  if (typeof value.content !== "string" || !value.content.trim() || Buffer.byteLength(value.content) > LIMITS.content) {
-    fail("INVALID_REQUEST", `${name} content must be a nonempty string of at most ${LIMITS.content} bytes.`);
+  if (typeof value.content !== "string" || !value.content.trim() || Buffer.byteLength(value.content) > max) {
+    fail("INVALID_REQUEST", `${name} content must be a nonempty string of at most ${max} bytes.`);
   }
   return { format: value.format, content: value.content, contentSha256: hash(value.content) };
 }
@@ -70,7 +82,7 @@ function receipt(prior, requestSha256) {
 }
 
 function normalizeCreate(body) {
-  shape(body, ["actionId", "workflow", "title", "brief", "options"], ["clarifications", "repo", "source"]);
+  shape(body, ["actionId", "workflow", "title", "brief", "options"], ["clarifications", "repo", "source", "recommended", "nextRounds", "previous"]);
   shortId(body.actionId, "actionId");
   if (typeof body.workflow !== "string" || !WORKFLOW.test(body.workflow)) {
     fail("INVALID_REQUEST", "workflow uses 1-64 lowercase letters, digits or hyphens, and starts with a letter or digit.");
@@ -102,8 +114,7 @@ function normalizeCreate(body) {
   const seen = new Set(), bytes = new Set();
   out.options = body.options.map((option) => {
     shape(option, ["optionId", "label", "format", "content"], ["summary"]);
-    shortId(option.optionId, "optionId");
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(option.optionId)) fail("INVALID_ID", "optionId uses 1-64 letters, digits, dots, underscores or hyphens.");
+    choiceId(option.optionId, "optionId");
     if (seen.has(option.optionId)) fail("INVALID_REQUEST", "Each option needs a unique optionId.");
     seen.add(option.optionId);
     const saved = { optionId: option.optionId, label: text(option.label, "Option label", { max: LIMITS.short }) };
@@ -113,7 +124,58 @@ function normalizeCreate(body) {
     bytes.add(saved.contentSha256);
     return saved;
   });
+  // The option that the agent recommends. The page marks it; the owner still picks.
+  if (body.recommended !== undefined) {
+    if (typeof body.recommended !== "string" || !seen.has(body.recommended)) fail("INVALID_REQUEST", "recommended names the optionId of one option of this request.");
+    out.recommended = body.recommended;
+  }
+  // The suggestions of the agent for one more round. The owner can choose one of them with the result.
+  if (body.nextRounds !== undefined) {
+    if (!Array.isArray(body.nextRounds) || !body.nextRounds.length || body.nextRounds.length > LIMITS.nextRounds) {
+      fail("INVALID_REQUEST", `nextRounds is a list of 1 to ${LIMITS.nextRounds} suggestions.`);
+    }
+    const rounds = new Set();
+    out.nextRounds = body.nextRounds.map((item) => {
+      shape(item, ["roundId", "label"], ["summary", "preview"]);
+      choiceId(item.roundId, "roundId");
+      if (rounds.has(item.roundId)) fail("INVALID_REQUEST", "Each next round needs a unique roundId.");
+      rounds.add(item.roundId);
+      const saved = { roundId: item.roundId, label: text(item.label, "Next round label", { max: LIMITS.short }) };
+      if (item.summary !== undefined) saved.summary = text(item.summary, "Next round summary", { max: 2000 });
+      // A small sketch of what the round will compare. The card of the suggestion shows it cut to a small box.
+      if (item.preview !== undefined) {
+        shape(item.preview, ["format", "content"]);
+        const sketch = content(item.preview, "Next round preview", LIMITS.preview);
+        saved.preview = { format: sketch.format, content: sketch.content };
+      }
+      return saved;
+    });
+  }
+  // The earlier round of this session. Create checks it against the records of the root.
+  if (body.previous !== undefined) {
+    shape(body.previous, ["sessionId"], ["roundId"]);
+    if (typeof body.previous.sessionId !== "string" || !SESSION.test(body.previous.sessionId)) fail("INVALID_REQUEST", "previous.sessionId must be a Compare session ID.");
+    out.previous = { sessionId: body.previous.sessionId };
+    if (body.previous.roundId !== undefined) {
+      if (typeof body.previous.roundId !== "string") fail("INVALID_REQUEST", "previous.roundId must be a roundId of the earlier session.");
+      if (body.previous.roundId === FEEDBACK_ROUND) fail("INVALID_REQUEST", `A round after nextRound ${FEEDBACK_ROUND} names no previous.roundId. Leave it out.`);
+      out.previous.roundId = body.previous.roundId;
+    }
+  }
   return out;
+}
+
+/** The round of a new session that names `previous`, from the records of the root. A failed rule writes nothing. */
+function nextRoundOf(previous, docs) {
+  const earlier = docs.find((doc) => doc.sessionId === previous.sessionId);
+  if (!earlier) fail("INVALID_REQUEST", "previous.sessionId names no Compare session of this root.");
+  if (!earlier.result) fail("INVALID_REQUEST", "previous.sessionId names a session without a submitted result. Wait for the result first.");
+  if (previous.roundId !== undefined && !earlier.nextRounds?.some((item) => item.roundId === previous.roundId)) {
+    fail("INVALID_REQUEST", "previous.roundId names no roundId of the nextRounds of the earlier session.");
+  }
+  const round = (earlier.round ?? 1) + 1;
+  if (round > LIMITS.rounds) fail("INVALID_REQUEST", `A chain of linked sessions has at most ${LIMITS.rounds} rounds.`);
+  return round;
 }
 
 /**
@@ -228,7 +290,7 @@ export class CompareStore {
       await this.#syncDir(dir);
     } catch (error) {
       if (replacing) fail("COMMIT_UNCERTAIN", "The save may have committed. Retry the exact original request and action ID.", { reason: error.code || "UNKNOWN" });
-      if (error.name === "DoubleStoreError") throw error;
+      if (error.name === "StoreError") throw error;
       fail("WRITE_FAILED", "The Compare record was not replaced. Retry the exact original request.", { fsCode: error.code || "UNKNOWN" });
     } finally {
       if (handle) await handle.close().catch(() => {});
@@ -304,12 +366,19 @@ export class CompareStore {
     const fields = normalizeCreate(body);
     const requestSha256 = hash(canonical(body));
     return this.run(async () => {
-      for (const doc of await this.#sessions()) {
+      const docs = await this.#sessions();
+      for (const doc of docs) {
         if (doc.createAction.actionId === body.actionId) {
           receipt(doc.createAction, requestSha256);
           await this.#confirm(this.#sessionDir(doc.sessionId), this.#sessionsDir());
           return { result: { sessionId: doc.sessionId, replay: true }, view: view(doc) };
         }
+      }
+      // A linked session is one more round of an earlier session that has its result. The earlier record stays unchanged.
+      if (fields.previous) fields.round = nextRoundOf(fields.previous, docs);
+      // Round 20 is the last round: a suggestion there could not start, because round 21 is refused.
+      if (fields.nextRounds && (fields.round ?? 1) >= LIMITS.rounds) {
+        fail("INVALID_REQUEST", `Round ${LIMITS.rounds} is the last round of a chain, so a session of round ${LIMITS.rounds} takes no nextRounds.`);
       }
       await this.#ensureRoot(true);
       await this.#privateDir(this.#sessionsDir());
@@ -341,10 +410,10 @@ export class CompareStore {
     return view((await this.run(() => this.#load(sessionId))).doc);
   }
 
-  /** Owner: the pick, the comments and the note. The first submitted result is final. */
+  /** Owner: the pick, the comments, the note and the next round that the owner asked for. The first submitted result is final. */
   submit(sessionId, input) {
     const body = capture(input);
-    shape(body, ["actionId", "pick"], ["comments", "note"]);
+    shape(body, ["actionId", "pick"], ["comments", "note", "nextRound"]);
     shortId(body.actionId, "actionId");
     const requestSha256 = hash(canonical(body));
     return this.#mutate(sessionId, (doc) => {
@@ -353,8 +422,15 @@ export class CompareStore {
       if (doc.result) return { replay: true, value: { outcome: "already-submitted", replay: true, result: doc.result } };
       const known = new Set(doc.options.map((option) => option.optionId));
       if (body.pick !== null && !known.has(body.pick)) fail("INVALID_REQUEST", "pick names an option of this session, or null for no option.");
+      // The field absent ends the comparison. FEEDBACK_ROUND asks for one more round in each session below the last
+      // round; a roundId names a suggestion of this session.
+      if (body.nextRound !== undefined) {
+        if ((doc.round ?? 1) >= LIMITS.rounds) fail("INVALID_REQUEST", `Round ${LIMITS.rounds} is the last round of a chain, so its submit takes no nextRound.`);
+        if (body.nextRound !== FEEDBACK_ROUND && (typeof body.nextRound !== "string" || !doc.nextRounds?.some((item) => item.roundId === body.nextRound))) {
+          fail("INVALID_REQUEST", `nextRound is ${FEEDBACK_ROUND} for a round from the pick, the comments and the note, or a roundId of the nextRounds of this session. Leave it out to end the comparison.`);
+        }
+      }
       const note = text(body.note, "Note", { optional: true, empty: true });
-      if (body.pick === null && !note?.trim()) fail("INVALID_REQUEST", "Write a note that says what is missing when no option fits.");
       const comments = Object.create(null);
       if (body.comments !== undefined) {
         shape(body.comments, [], [...known]);
@@ -363,7 +439,14 @@ export class CompareStore {
           if (comment?.trim()) comments[option.optionId] = comment;
         }
       }
-      doc.result = { actionId: body.actionId, requestSha256, pick: body.pick, comments: { ...comments }, ...(note?.trim() ? { note } : {}), submittedAt: now() };
+      // No option fits needs feedback: a note or a comment, or a chosen suggestion. A feedback round without any of them has no input.
+      if (body.pick === null && !note?.trim() && !Object.keys(comments).length && (body.nextRound === undefined || body.nextRound === FEEDBACK_ROUND)) {
+        fail("INVALID_REQUEST", "When no option fits, write a note or a comment that says what is missing, or choose a suggestion for the next round.");
+      }
+      doc.result = {
+        actionId: body.actionId, requestSha256, pick: body.pick, comments: { ...comments }, ...(note?.trim() ? { note } : {}),
+        ...(body.nextRound !== undefined ? { nextRound: body.nextRound } : {}), submittedAt: now(),
+      };
       doc.status = "submitted";
       return { value: { outcome: "submitted", replay: false, result: doc.result } };
     });
@@ -375,6 +458,19 @@ export class CompareStore {
       if (doc.seenAt) return { replay: true, value: { seenAt: doc.seenAt, replay: true } };
       doc.seenAt = now();
       return { value: { seenAt: doc.seenAt, replay: false } };
+    });
+  }
+
+  /**
+   * Agent: it has read the submitted result. Only the first time is saved; a later call answers with that time.
+   * The page then shows that the agent received the result.
+   */
+  markReceived(sessionId) {
+    return this.#mutate(sessionId, (doc) => {
+      if (!doc.result) fail("INVALID_TRANSITION", "A receipt follows the submitted result of the owner.");
+      if (doc.receivedAt) return { replay: true, value: { receivedAt: doc.receivedAt, replay: true } };
+      doc.receivedAt = now();
+      return { value: { receivedAt: doc.receivedAt, replay: false } };
     });
   }
 
@@ -420,7 +516,9 @@ function summary(doc) {
   return {
     sessionId: doc.sessionId, workflow: doc.workflow, title: doc.title, status: doc.status, createdAt: doc.createdAt, updatedAt: doc.updatedAt,
     options: doc.options.length, pick: doc.result ? doc.result.pick : undefined, ...(picked ? { pickLabel: picked.label } : {}),
-    rating: current(doc)?.value ?? null, hasOutcome: Boolean(doc.outcome), isNew: !doc.seenAt,
+    rating: current(doc)?.value ?? null, hasOutcome: Boolean(doc.outcome), isNew: !doc.seenAt, ...(doc.round > 1 ? { round: doc.round } : {}),
+    // The page finds the later rounds of a session in the rows: each row that names it here.
+    ...(doc.previous ? { previousSessionId: doc.previous.sessionId } : {}),
   };
 }
 

@@ -1,0 +1,54 @@
+{
+  "sources": [
+    {
+      "id": "openviking-agent-a",
+      "type": "openviking",
+      "name": "OpenViking agent A",
+      "mode": "live",
+      "baseUrl": "https://openviking.example.invalid",
+      "apiKeyFile": "/home/me/.config/tenant-artifacts/memory-secrets/openviking-agent-a",
+      "roots": [{ "uri": "viking://user/agent-a/memories/", "label": "Agent A" }]
+    },
+    {
+      "id": "openviking-agent-b",
+      "type": "openviking",
+      "name": "OpenViking agent B",
+      "mode": "live",
+      "baseUrl": "https://openviking.example.invalid",
+      "apiKeyFile": "/home/me/.config/tenant-artifacts/memory-secrets/openviking-agent-b",
+      "roots": [{ "uri": "viking://user/agent-b/memories/", "label": "Agent B" }]
+    },
+    {
+      "id": "okknow",
+      "type": "okknow",
+      "mode": "live",
+      "access": "http",
+      "origin": "https://knowledge.example.invalid",
+      "credentialFile": "/home/me/.config/tenant-artifacts/memory-secrets/okknow-auth"
+    },
+    {
+      "id": "llmwiki",
+      "type": "llmwiki",
+      "mode": "live",
+      "path": "/home/me/.llm-wiki",
+      "includeRaw": false
+    },
+    {
+      "id": "hermes",
+      "type": "hermes",
+      "mode": "live",
+      "path": "/home/me/hermes-memory",
+      "projectsPath": "/home/me/hermes-projects"
+    },
+    {
+      "id": "agentcore-dev",
+      "type": "agentcore",
+      "name": "AgentCore dev",
+      "mode": "live",
+      "region": "us-east-1",
+      "memoryId": "REPLACE_WITH_DEV_MEMORY_ID",
+      "profile": "memory-dev",
+      "namespaces": [{ "namespace": "/dev/example/", "label": "Dev example" }]
+    }
+  ]
+}

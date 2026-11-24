@@ -136,23 +136,6 @@ class KitTuiTests(unittest.TestCase):
             self.assertEqual(['install', 'install'],
                              [model.plan(items[name]) for name in ('artifacts', 'artifacts-prompt')])
 
-    def test_an_installed_item_that_a_kit_step_turns_on_gets_install(self):
-        # The real inventory of a profile whose plain filter list predates the kit step of herdr-idle-cleanup.
-        with tempfile.TemporaryDirectory() as home:
-            profile = Path(home) / '.pi/profiles/demo'
-            profile.mkdir(parents=True)
-            entry = {'source': str(ROOT / 'packages/tenantext'), 'extensions': ['extensions/tenantext/index.ts'],
-                     'skills': [], 'prompts': []}
-            (profile / 'settings.json').write_text(json.dumps({'packages': [entry]}))
-            planner = ['env', 'HOME=' + home, sys.executable, '-B', str(ROOT / 'scripts/kit_inventory.py'),
-                       '--kit', str(ROOT), '--profile', str(profile), '--name', 'demo', '--json']
-            inventory = json.loads(subprocess.run(planner, capture_output=True, check=True, timeout=60).stdout)
-            # The choices of install.sh: handoffs is no choice, so its row keeps the plan of the inventory.
-            choices = {'wiki', 'hermes', 'mcp', 'computer-use', 'okknow', 'artifacts', 'walkr', 'mcp-codemode'}
-            model = kit_tui.Model(inventory, json.loads((ROOT / 'config/catalog.json').read_text()), choices)
-            handoffs = next(item for item in model.items if item.name == 'handoffs')
-            self.assertEqual((False, 'install'), (handoffs.on, model.plan(handoffs)))
-
     def test_a_failed_planner_leaves_no_plan_to_confirm(self):
         # Enter in the plan view returns the selection only when `confirmable`; a failed planner gives an estimate.
         model = kit_tui.Model(json.loads((FIXTURES / 'inventory.json').read_text()),

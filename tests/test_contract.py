@@ -53,6 +53,11 @@ class ContractTests(unittest.TestCase):
             data = kit_manifest()
             change(data)
             self.check_error(data, "unknown_fields")
+        # Only the own installer script of a tree component links rule files; no reader of another source kind does.
+        data = kit_manifest()
+        other = next(c for c in data["components"].values() if c["source"]["kind"] != "tree")
+        other["resources"]["rules"] = ["x"]
+        self.check_error(data, "unknown_fields")
 
     def test_load_names_each_cause_and_the_place_of_a_syntax_error(self):
         broken = b'{\n  "canary": "CANARY_SECRET"\n  "next": 1\n}\n'
@@ -215,7 +220,7 @@ class ContractTests(unittest.TestCase):
             kit = json.load(handle)["components"]
         expected = [(cid, c["source"]["path"], kind, tuple(c["resources"][kind]))
                     for cid, c in kit.items() if c["source"]["kind"] == "tree"
-                    for kind in ("extensions", "skills", "prompts", "themes") if c["resources"][kind]]
+                    for kind in ("extensions", "skills", "prompts", "themes", "rules") if c["resources"].get(kind)]
         self.assertEqual(expected, [(cid, path, kind, tuple(tree_items(item)))
                                     for cid, (path, kind, item) in TREE_COMPONENTS.items()])
         self.assertEqual(len(expected), len({cid for cid, *_ in expected}))
@@ -305,10 +310,11 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(items, component["resources"][kind])
             # Only a skill component of several skills names more than one resource. Walkr installs its
             # six skills and its six prompts as one set, through its own setup. The artifacts module installs
-            # its skill and the /artifacts-server command skill of Claude Code as one set.
+            # its skill and the /artifacts-server command skill of Claude Code as one set. scripts/kit_agy.py links
+            # the rule files of agy as one set.
             self.assertTrue(len(items) == 1 or (kind == "skills" and cid in ("coordinator-skills", "knowledge-skills", "walkr",
                                                                              "artifacts"))
-                            or (kind == "prompts" and cid == "walkr-prompts"), cid)
+                            or (kind == "prompts" and cid == "walkr-prompts") or (kind == "rules" and cid == "agy"), cid)
         self.assertEqual(["TENANTEXT_LITELLM_BASE_URL", "TENANTEXT_LITELLM_API_KEY"], data["components"]["codex-accounts"]["env"])
 
     def test_an_absent_tree_folder_is_no_finding_and_a_partial_folder_is(self):

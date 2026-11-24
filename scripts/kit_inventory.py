@@ -48,15 +48,10 @@ The JSON form, the contract of the installer TUI (scripts/kit_tui.py):
   for example ~/.config/tenant-pi/overlay.json, is outside this contract and is not read: Pi reads settings.json.
 - `plan` is the result of an install.sh run with the selection. The run repairs and updates parts and leaves
   each own switch as it is. install: the item is absent and the run adds it. upgrade: the run changes an
-  installed item (a new pin, a moved or missing package entry, a missing part, a stale generated file, a kit
-  step). An item that is off can get upgrade: the run repairs it, and it stays off (`active: false`). One
-  exception is install for an installed item that is off: the kit step of the run adds it once to a filter
-  list of the profile that predates it, and the settings after the step load it for the selected runtime by the
-  rules of `active`. A `!` pattern, a disabled link of the profile or the Pi-Bolt list can keep it off; then
-  the plan stays upgrade. keep: the
+  installed item (a new pin, a moved or missing package entry, a missing part, a stale generated file). An
+  item that is off can get upgrade: the run repairs it, and it stays off (`active: false`). keep: the
   item is installed, active (or has no on/off state) and the run leaves it as it is. skip: the run leaves the
   item absent or off; an installed item whose switch is off and that the run does not change is skip, not keep.
-  install for an installed item is valid only with `active: false` (the kit step above).
   remove: the run takes the item out: mcp, when mcp-codemode is selected; an AWS row (a component with a git
   source) that the kit installed and that the selection leaves out; claude-aws-plugins with --claude-aws and no
   AWS row. A removal takes out only the parts that the kit wrote (scripts/kit_aws.py).
@@ -72,7 +67,6 @@ import sys
 sys.dont_write_bytecode = True
 
 import argparse  # noqa: E402
-import copy  # noqa: E402
 import json  # noqa: E402
 import os  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -87,40 +81,38 @@ from urllib.parse import unquote  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from scripts import check_runtime, kit_aws  # noqa: E402
+from scripts import check_runtime, kit_agy, kit_aws, mcp_to_native  # noqa: E402
 from scripts.validate import Invalid, load, manifest as checked_manifest, npm_parts  # noqa: E402
 
 PLANS = ("install", "upgrade", "keep", "remove", "skip")
 # The --with names of install.sh. questions is in the core install; its old --with name stays valid.
 MODULES = ("wiki", "hermes", "mcp", "mcp-codemode", "computer-use", "computer-use-macos", "okknow", "artifacts",
-           "walkr", "walkr-proxy", "questions", "aws-core", "aws-agents", "aws-data-analytics", "aws-agents-for-devsecops",
+           "walkr", "memory", "questions", "agy", "aws-core", "aws-agents", "aws-data-analytics", "aws-agents-for-devsecops",
            "aws-startup-advisor", "aws-emulator")
 # Catalog items that one --with name selects.
 MODULE_ITEMS = {"artifacts": ("artifacts", "artifacts-prompt"), "walkr": ("walkr", "walkr-prompts")}
 # Catalog items that are not manifest components.
-EXTRA_ITEMS = ("mcp-codemode", "walkr-proxy", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc",
+EXTRA_ITEMS = ("mcp-codemode", "memory", "claude-code-plugin", "claude-aws-plugins", "dummies", "shell-rc",
                "launcher")
 # install.sh does not install these two; a run keeps them as they are.
 MANUAL = ("openviking", "agentcore")
 PLUGIN = "computer-use-linux@computer-use-linux"
-# The kit steps of install.sh (KIT_STEPS there): an upgrade adds these items once to the filter lists of
-# the Tenantext entry; kit-steps.json of the profile records each step that ran. A test compares this copy
-# and add_kit_items with install.sh.
-KIT_STEPS = {
-    "herdr-idle-cleanup": {"skills": ["skills/herdr-idle-cleanup"], "extensions": ["extensions/handoffs/index.ts"],
-                           "prompts": ["prompts/herdr-idle-cleanup.md"]},
-}
 # The Walkr commands that install.sh links into ~/.local/bin, with their files in packages/walkr/src.
-WALKR_LINKS = (("walkr", "cli.js"), ("walkr-core", "walkr-core.js"), ("walkr-double", "walkr-double.js"),
-               ("walkr-coinflip", "walkr-coinflip.js"), ("walkr-trainer", "walkr-trainer.js"),
-               ("walkr-compare", "walkr-compare.js"))
-# The roots of the Walkr setup (installSkills of packages/walkr/src/setup.js with global: true) and the
-# packages that install.sh imports to check the dependencies of packages/walkr.
+WALKR_LINKS = (("walkr", "cli.js"), ("walkr-compare", "walkr-compare.js"))
+# The Herdr skill command that install.sh links into ~/.local/bin, with its file in packages/tenantext.
+HERDR_LINK = ("herdr-role-set", "skills/herdr/scripts/role_set.py")
+# The commands of the retired Walkr modes (packages/walkr/CHANGELOG.md). An earlier install linked them and wrote one
+# skill for each; install.sh removes its own links, and the Walkr setup removes its own unchanged skills.
+WALKR_RETIRED = (("walkr-core", "walkr-core.js"), ("walkr-double", "walkr-double.js"),
+                 ("walkr-coinflip", "walkr-coinflip.js"), ("walkr-trainer", "walkr-trainer.js"))
+# The memory viewer of the local artifacts server, and the packages that install.sh imports to check its
+# dependencies.
+MEMORY_PACKAGE = "packages/memory"
+MEMORY_DEPENDENCIES = ("@aws-sdk/client-bedrock-agentcore", "@aws-sdk/credential-provider-ini")
+# The roots of the Walkr setup (installSkills of packages/walkr/src/setup.js with global: true).
 WALKR_ROOTS = (".claude", ".codex", ".agents")
-WALKR_DEPENDENCIES = ("css-tree", "marked", "parse5")
 # The placeholders that the Walkr setup replaces in a skill file, in its order: (placeholder, file in src).
-WALKR_COMMANDS = (("{{LOCAL_DOUBLE_COMMAND}}", "walkr-double.js"), ("{{LOCAL_COINFLIP_COMMAND}}", "walkr-coinflip.js"),
-                  ("{{LOCAL_TRAINER_COMMAND}}", "walkr-trainer.js"), ("{{LOCAL_COMPARE_COMMAND}}", "walkr-compare.js"))
+WALKR_COMMANDS = (("{{LOCAL_COMPARE_COMMAND}}", "walkr-compare.js"),)
 # The instruction files that Pi loads from the profile, in the order of the DUMMIES state script.
 PI_CONTEXT_FILES = ("AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD")
 DUMMIES_BEGIN, DUMMIES_END = "<!-- dummies-autostart:begin -->", "<!-- dummies-autostart:end -->"
@@ -705,22 +697,6 @@ class PiView:
             row["real"] in wanted or any(row["posix"].endswith(one) or row["real_posix"].endswith(one) for one in suffixes))]
 
 
-def add_kit_items(entry, key, items):
-    """The list that the kit step of install.sh (add_kit_items there) leaves, or None when the run keeps the entry."""
-    current = entry.get(key)
-    delta = entry.get("autoload") is False
-    if current is None and delta:
-        current = []
-    if not isinstance(current, list):
-        return None
-    if not delta and not any(isinstance(one, str) and one[:1] not in ("!", "+", "-") for one in current):
-        return None
-    named = {one.lstrip("!+-") for one in current if isinstance(one, str)}
-    added = [item for item in items if item not in named]
-    # install.sh also writes `[]` for a missing key of a delta entry when it adds nothing.
-    return current + added if added or key not in entry else None
-
-
 def resource_files(component):
     """(kind, path in the package) of each Pi resource that the manifest declares; a skill gives its SKILL.md."""
     for kind in PI_TYPES:
@@ -762,7 +738,6 @@ class Inventory:
             raise Refusal(f"{self.settings_path}: packages must be a list")
         self.shared = packages
         self.claude = home / ".claude"
-        self.stepped = {}
 
     def resolve(self, pi_bolt):
         """Read the resources for the selected runtime. With Pi-Bolt, piBolt.packages changes the package list."""
@@ -771,37 +746,6 @@ class Inventory:
         # The entries that a runtime reads first, then the shared entries that Pi-Bolt leaves out.
         self.registered = self.packages + [entry for entry in self.shared if not any(entry is one for one in self.packages)]
         self.pi = PiView(str(self.profile), str(self.home), self.settings, self.packages)
-
-    def after_steps(self, steps):
-        """This inventory with the settings that the kit steps `steps` of a run leave, read for the same runtime.
-
-        As the settings writer of install.sh: each shared Tenantext entry gets the source of this clone, and an
-        object entry gets the items of each step in its filter lists. piBolt.packages stays as it is.
-        """
-        key = tuple(steps)
-        if key not in self.stepped:
-            settings = copy.deepcopy(self.settings)
-            packages = settings.setdefault("packages", [])
-            desired = str(self.kit / "packages/tenantext")
-            for index, entry in enumerate(packages):
-                source = source_of(entry)
-                if source is None or not (source == desired or (self.profile / source).resolve() == Path(desired).resolve()
-                                          or source.rstrip("/").endswith("/packages/tenantext")):
-                    continue
-                if not isinstance(entry, dict):
-                    packages[index] = desired
-                    continue
-                entry["source"] = desired
-                for step in steps:
-                    for kind, items in KIT_STEPS[step].items():
-                        after = add_kit_items(entry, kind, items)
-                        if after is not None:
-                            entry[kind] = after
-            stepped = copy.copy(self)
-            stepped.settings, stepped.shared, stepped.stepped = settings, packages, {}
-            stepped.resolve(self.pi_bolt)
-            self.stepped[key] = stepped
-        return self.stepped[key]
 
     def excluded(self, entry):
         """True for a shared package entry that the Pi-Bolt list leaves out."""
@@ -896,15 +840,12 @@ class Inventory:
         return value != off
 
 
-def state(installed, active=None, version_installed=None, version_pinned=None, sources=(), change=False, installs=True,
-          turns_on=False):
+def state(installed, active=None, version_installed=None, version_pinned=None, sources=(), change=False, installs=True):
     """The facts of one item. change: the run changes the installed item. installs: the run of a selected, absent
-    item makes it present and on; false when the run leaves it absent (mcp-codemode, and the guide row walkr-proxy). turns_on: the kit step of
-    the run adds the installed item that is off to a filter list of the profile, and the settings after the step load
-    it for the selected runtime, so the item is on after the run."""
+    item makes it present and on; false when the run leaves it absent (mcp-codemode)."""
     return {"installed": installed, "active": active, "version_installed": version_installed,
             "version_pinned": version_pinned, "state_source": [str(path) for path in dict.fromkeys(sources)],
-            "change": change, "installs": installs, "turns_on": turns_on}
+            "change": change, "installs": installs}
 
 
 def tree_part(inv, component):
@@ -955,39 +896,32 @@ def tenantext_state(inv, cid, component):
     entry = part["entry"]
     pinned = version_of(inv.kit / "packages/tenantext")
     links = inv.claude_links([inv.kit / "packages/tenantext" / item for item in component["resources"]["skills"]])
-    sources = part["sources"] + links["linked"]
-    steps_path = inv.profile / "kit-steps.json"
-    steps = read_json(steps_path)
-    done = steps.get("added", []) if isinstance(steps, dict) and isinstance(steps.get("added"), list) else []
-    step_pending = False
-    declared = {(kind, one) for kind in PI_TYPES for one in component["resources"].get(kind, [])}
-    for step, keys in KIT_STEPS.items():
-        mine = {key: [item for item in items if (key, item) in declared] for key, items in keys.items()}
-        if not any(mine.values()):
-            continue
-        if steps_path.is_file():
-            sources.append(steps_path)
-        if step not in done and isinstance(entry, dict):
-            step_pending |= any(add_kit_items(entry, key, items) is not None for key, items in mine.items() if items)
+    sources = list(part["sources"]) + links["linked"]
+    cli_ok = cli_missing = False
+    if cid == "herdr":
+        cmd_name, cmd_rel = HERDR_LINK
+        cmd_link = inv.home / ".local/bin" / cmd_name
+        cmd_ok = resolves_to(cmd_link, inv.kit / "packages/tenantext" / cmd_rel)
+        cmd_in_kit = False
+        if cmd_link.is_symlink():
+            try:
+                cmd_in_kit = cmd_link.resolve().is_relative_to(inv.kit.resolve())
+            except (OSError, RuntimeError):
+                cmd_in_kit = False
+        # As herdr_role_set_link_state of install.sh: keep a command or foreign link (also dangling).
+        cmd_kept = (cmd_link.exists() or cmd_link.is_symlink()) and not cmd_ok and not cmd_in_kit
+        if cmd_link.exists() or cmd_link.is_symlink():
+            sources.append(cmd_link)
+        cli_ok = cmd_ok
+        cli_missing = not (cmd_ok or cmd_kept)
     if part["installed"] is False:
-        return state("partial" if links["linked"] else False, None, None, pinned, sources, change=True)
+        return state("partial" if (links["linked"] or cli_ok) else False, None, None, pinned, sources, change=True)
     on = inv.switch_on(cid, sources)
-    if cid == "handoffs":
-        path = inv.config_dir() / "herdr-idle-cleanup/settings.json"
-        data = read_json(path)
-        if isinstance(data, dict):
-            sources.append(path)
-            on = on and data.get("startup_assessment") != "off"
     active = part["active"] and on
-    installed = "partial" if links["missing"] else part["installed"]
+    installed = "partial" if (links["missing"] or cli_missing) else part["installed"]
     # The run writes the package entry of this clone: a missing entry or another clone is a change.
-    change = entry is None or not part["here"] or installed == "partial" or step_pending
-    # The kit step adds a resource of the item to a filter list that predates it. The item is on after the run only
-    # when the settings after the step load it for this runtime: a `!` pattern, a disabled link of higher precedence
-    # or the Pi-Bolt list can keep it off. The own switches are files outside settings.json, so `on` stays.
-    turns_on = bool(step_pending and not part["active"] and on
-                    and tree_part(inv.after_steps([step for step in KIT_STEPS if step not in done]), component)["active"])
-    return state(installed, active, part["version"], pinned, sources, change=change, turns_on=turns_on)
+    change = entry is None or not part["here"] or installed == "partial"
+    return state(installed, active, part["version"], pinned, sources, change=change)
 
 
 def npm_state(inv, cid, component):
@@ -1054,6 +988,32 @@ def kit_package_state(inv, cid, component):
         installed = False
     return state(installed, part["active"], part["version"], pinned, sources,
                  change=installed == "partial" or (installed is not False and moved))
+
+
+def agy_state(inv):
+    """agy (scripts/kit_agy.py): installed and active when the kit rule links and the hooks.json key tenant-kit of this
+    kit are in ~/.gemini/config. Without that folder agy never ran, so the run installs nothing."""
+    config = inv.home / ".gemini/config"
+    pinned = version_of(inv.kit / "packages/agy")
+    if not config.is_dir():
+        return state(False, None, None, pinned, installs=False)
+    kit = inv.kit.resolve()
+    links = [config / "rules" / name for name in kit_agy.RULES]
+    found = [link for link in links
+             if link.is_symlink() and Path(kit_agy.first_hop(link)) == kit / "packages/agy/rules" / link.name]
+    hooks = config / "hooks.json"
+    data = read_json(hooks)
+    commands = kit_agy.commands_of(data.get("tenant-kit")) if isinstance(data, dict) else None
+    try:
+        words = [shlex.split(command) for command in commands or []]
+    except ValueError:
+        words = []
+    kit_key = bool(words) and all(len(one) == 2 and one[0] == "node" and Path(one[1]).is_relative_to(kit)
+                                  for one in words)
+    installed = parts(len(found) + kit_key, len(links) + 1)
+    return state(installed, True if installed is True else (False if installed else None),
+                 pinned if installed else None, pinned, found + ([hooks] if kit_key else []),
+                 change=installed == "partial")
 
 
 def env_path(env, name, home):
@@ -1290,6 +1250,8 @@ def walkr_state(inv, cid, component):
             files = receipt.get("files") if isinstance(receipt, dict) and receipt.get("version") == 1 else None
             if isinstance(files, dict):
                 receipts.append(inv.home / root / ".walkr-setup.json")
+                # A record that still names a skill of a retired mode: the next setup removes that file.
+                stale |= any(f"skills/{command}/SKILL.md" in files for command, _ in WALKR_RETIRED)
             for name in names:
                 path = inv.home / root / "skills" / name / "SKILL.md"
                 text = read_text(path)
@@ -1298,11 +1260,9 @@ def walkr_state(inv, cid, component):
                 present.append(path)
                 # A file that the setup did not record, or a text for another clone, is stale.
                 stale |= text != skills.get(name) or not isinstance(files, dict) or f"skills/{name}/SKILL.md" not in files
-        deps = all((inv.kit / component["source"]["path"] / "node_modules" / one / "package.json").is_file()
-                   for one in WALKR_DEPENDENCIES)
+        # A link of this kit for a retired command: the next run of install.sh removes it.
+        stale |= any(resolves_to(inv.home / ".local/bin" / command, src / file) for command, file in WALKR_RETIRED)
         installed = parts(len(links) + len(present), len(WALKR_LINKS) + len(names) * len(WALKR_ROOTS))
-        if installed is True and not deps:
-            installed = "partial"
         rows = [row for name in names for row in inv.pi.find("skills", [inv.home / ".agents/skills" / name / "SKILL.md"])]
         active = any(row["enabled"] for row in rows) if rows else (False if installed is not False else None)
         version = version_of(links[0].resolve().parent.parent) if links else None
@@ -1317,6 +1277,18 @@ def walkr_state(inv, cid, component):
     record = inv.profile / ".walkr-setup.json"
     return state(installed, active, None, None, files + ([record] if record.is_file() else []),
                  change=installed == "partial" or stale)
+
+
+def memory_state(inv):
+    """The memory viewer (packages/memory): installed when its dependencies are in the package folder, as install.sh
+    --with memory leaves them. The local server of the artifacts module starts it; it has no switch of its own.
+    The package holds no Pi resource, so it is a catalog item and no manifest component."""
+    package = inv.kit / MEMORY_PACKAGE
+    present = [package / "node_modules" / one / "package.json" for one in MEMORY_DEPENDENCIES]
+    found = [path for path in present if path.is_file()]
+    installed = parts(len(found), len(present))
+    return state(installed, True if installed is True else (False if installed else None), version_of(package),
+                 version_of(package), [package] if found else [], change=installed == "partial")
 
 
 def aws_state(inv, cid, component):
@@ -1468,7 +1440,8 @@ def codemode_state(inv):
 
     The plan compares the state now with the state after the mcp-codemode step of install.sh. That step adds
     `+codemode` (or `codemode` to a list of plain names) only when the list has no `+codemode` and no `codemode`
-    entry, so a later `-codemode` stays, and the item stays off.
+    entry, so a later `-codemode` stays, and the item stays off. With mcp-adapter.json, while the adapter is selected
+    or no mcp.json exists, the step also converts the adapter servers (scripts/mcp_to_native.py --profile).
     """
     tools = inv.settings.get("defaultTools")
     extensions = strings(inv.settings.get("extensions")) or []
@@ -1482,11 +1455,21 @@ def codemode_state(inv):
     elif isinstance(tools, list) and not {"+codemode", "codemode"} & {one for one in tools if isinstance(one, str)}:
         additive = tools and all(isinstance(one, str) and one[:1] in ("+", "-") for one in tools)
         after_tools = tools + ["+codemode" if additive else "codemode"]
-    after = codemode_of(after_tools, after_extensions, config, str(inv.profile))
     adapter = inv.npm_entry(npm_parts(inv.components["mcp"]["source"]["spec"])[0])[0] is not None
+    adapter_file = inv.profile / "mcp-adapter.json"
+    convert = adapter_file.is_file() and (adapter or not native.exists())
+    after_config = config
+    if convert:
+        try:
+            after_config = mcp_to_native.convert(read_json(adapter_file))[0]
+        except ValueError:
+            pass
+    after = codemode_of(after_tools, after_extensions, after_config, str(inv.profile))
     sources = ([inv.settings_path] if tools is not None or extensions else []) + ([native] if native.is_file() else [])
+    sources += [adapter_file] if convert else []
     return state(installed, active, sources=sources,
-                 change=after_tools != tools or after_extensions != extensions or adapter, installs=after[1] is True)
+                 change=after_tools != tools or after_extensions != extensions or adapter or convert,
+                 installs=after[1] is True)
 
 
 def plugin_state(inv):
@@ -1578,6 +1561,7 @@ def runtime_path(choice, explicit):
             raise Refusal(f"runtime must be an executable file: {path}")
         return None
     # As install.sh: the Pi-Bolt installer links pi-bolt to a release file named pi, and the launcher starts that file.
+    # A link to the start script of the default Linux x86-64 build of Pi-Bolt 1.3.0 stays a link.
     if (choice == "pi-bolt" or path.name == "pi-bolt") and path.resolve().name == "pi":
         path = path.resolve()
     return path
@@ -1623,7 +1607,7 @@ def modules_of(text, rows=None):
     desktop = "computer-use-macos" if platform.system() == "Darwin" else "computer-use"
     names = [one for one in text.split(",")]
     if names == ["all"]:
-        return ["wiki", "hermes", "mcp", desktop, "okknow", "artifacts", "walkr"]
+        return ["wiki", "hermes", "mcp", desktop, "okknow", "artifacts", "walkr", "memory"]
     if "all" in names:
         raise Refusal("all stands alone")
     if names == ["none"]:
@@ -1649,8 +1633,6 @@ def plan_of(found, selected, removed):
         return "remove"
     if selected and installed is False:
         return "install" if found["installs"] else "skip"
-    if selected and found["turns_on"]:
-        return "install"
     if selected and (found["change"] or installed == "partial"):
         return "upgrade"
     if installed is False or active is False:
@@ -1695,11 +1677,12 @@ def inventory(kit, profile, home, name, env, modules=None, shell=None, dummies=F
             states[cid] = manual_state(inv, cid, component)
         elif cid in ("walkr", "walkr-prompts"):
             states[cid] = walkr_state(inv, cid, component)
+        elif cid == "memory":
+            states[cid] = memory_state(inv)
+        elif cid == "agy":
+            states[cid] = agy_state(inv)
         elif cid == "mcp-codemode":
             states[cid] = codemode_state(inv)
-        elif cid == "walkr-proxy":
-            # A guide row: install.sh prints the hosted-mode guide and writes nothing, so the row is never installed.
-            states[cid] = state(False, installs=False)
         elif cid == "claude-code-plugin":
             states[cid] = plugin_state(inv)
         elif cid == "dummies":

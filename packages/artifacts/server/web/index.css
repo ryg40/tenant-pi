@@ -1,121 +1,201 @@
-/* The index page and the viewer page of the local artifacts server. System fonts, light and dark, no external
-   request. */
+/* The pages of the local artifacts server in the Torch design of Walkr: the root page, the index, the viewer and
+   the text pages. The colors and the fonts are the tokens of theme.css; this file names no color of its own but the
+   white paper of a frame. No external request. The parts have the look of the same parts of the Walkr pages: the
+   navy band, the yellow mark of the page, the teal action, the chips, the fields and the focus ring. */
 :root {
-  color-scheme: light dark;
-  --bg: #fbfbfa;
-  --fg: #1d1f21;
-  --muted: #5f6368;
-  --line: #e2e3e1;
-  --head: #f1f2f0;
-  --row-hover: #f4f6f8;
-  --accent: #1f5fbf;
-  --thumb-bg: #ffffff;
-  --thumb-w: 168px;
-  --thumb-h: 105px;
-  --thumb-scale: 0.14;
-  --card-scale: 0.25;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17191c;
-    --fg: #e4e6e8;
-    --muted: #9aa0a6;
-    --line: #2d3136;
-    --head: #1f2226;
-    --row-hover: #1d2127;
-    --accent: #8ab4f8;
-    --thumb-bg: #0f1113;
-  }
+  /* A live preview is a frame of 1200px by 750px (16:10), scaled down: the card of the gallery and the peek of the
+     table. */
+  --card-scale: 0.28;
+  --peek-w: 384px;
+  --peek-h: 240px;
+  --peek-scale: 0.32;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--canvas);
+  color: var(--txt);
+  font: 14px/1.45 var(--sans);
 }
 
-.top {
+[hidden] { display: none !important; }
+
+/* The focus ring of each control: 2px in the focus color of the theme, outside the control. On the band it has the
+   focus color of the band. */
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.band :focus-visible { outline-color: var(--band-focus); }
+
+a { color: var(--accent); }
+
+code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--txt);
+  font: 0.92em var(--mono);
+  overflow-wrap: anywhere;
+}
+
+/* The band: the top bar of each page. */
+.band {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 1.25rem;
-  padding: 1.25rem 1.5rem 0.5rem;
+  align-items: center;
+  gap: 6px 12px;
+  min-height: 46px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--band-line);
+  background: var(--band);
+  color: var(--band-txt);
 }
 
-h1 {
+.band .mark {
   margin: 0;
-  font-size: 1.4rem;
-  font-weight: 650;
+  color: var(--band-txt);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.band a.mark:hover { text-decoration: underline; }
+/* The links to the sections of the web app (section_links in artifacts_server.py). The same small block is in the
+   style of the Walkr Compare page and of the memory viewer of the kit, with the same token names. */
+.app-nav { display: flex; gap: 2px; align-items: center; }
+.app-nav a { padding: 4px 10px; border-radius: 6px; color: var(--band-mute); font-size: 13px; font-weight: 600; text-decoration: none; }
+.app-nav a:hover { background: var(--band-soft); color: var(--band-txt); }
+.app-nav a[aria-current="page"] { color: var(--band-txt); box-shadow: inset 0 -2px 0 var(--brand); }
+
+/* The yellow mark of the page: its name, or the type of the artifact in the viewer. */
+.band .page-name {
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--brand);
+  color: var(--brand-ink);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.band .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--band-txt);
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .facts {
   display: flex;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 2px 14px;
   margin: 0;
-  color: var(--muted);
+  color: var(--band-mute);
+  font-size: 12.5px;
 }
 
-main { padding: 0 1.5rem 2rem; }
+.facts a { color: var(--band-txt); }
+
+.band-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.theme-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--band-mute);
+  font-size: 12px;
+}
+
+/* A field: the filter, the sort list and the Theme list. The border has a contrast of 3 to 1 or more. */
+.filter, select {
+  padding: 5px 9px;
+  border: 1px solid var(--strong-border);
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--txt);
+  font: inherit;
+}
+
+.filter::placeholder { color: var(--faint); opacity: 1; }
+.theme-control select { padding: 3px 6px; font-size: 12px; }
+
+main { padding: 12px 16px 32px; }
+
+/* The root page and the text pages. */
+main.plain { max-width: 60rem; padding-top: 20px; }
+main.plain p { margin: 0 0 10px; }
+
+.modules {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.modules li {
+  display: grid;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--card-border);
+  border-top: 4px solid var(--brand);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--mute);
+}
+
+.modules a { font-size: 17px; font-weight: 700; }
 
 /* The tools row: the filter, the view switch and, in the gallery, the sort list. */
 .tools {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem 1rem;
-  margin: 0.5rem 0 1rem;
-}
-
-.filter, .sorter select {
-  padding: 0.45rem 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
+  gap: 8px 14px;
+  margin: 0 0 12px;
 }
 
 .filter { width: min(28rem, 100%); }
 
-.filter:focus-visible, .sorter select:focus-visible, .views button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
+/* The view switch: two buttons in one frame; the chosen one has the action color. */
 .views {
   display: inline-flex;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  overflow: hidden;
+  border: 1px solid var(--strong-border);
+  border-radius: 7px;
 }
 
 .views button {
-  padding: 0.4rem 0.8rem;
+  padding: 5px 12px;
   border: 0;
-  background: var(--bg);
-  color: var(--muted);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--txt);
   font: inherit;
   cursor: pointer;
 }
 
-.views button + button { border-left: 1px solid var(--line); }
-.views button[aria-pressed="true"] { background: var(--head); color: var(--fg); font-weight: 600; }
+.views button:hover { background: var(--accent-soft); }
+.views button[aria-pressed="true"] { background: var(--btn-bg); color: var(--btn-fg); font-weight: 700; }
 
-.sorter { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--muted); }
+.sorter { display: inline-flex; align-items: center; gap: 6px; color: var(--mute); font-size: 12.5px; }
 main:not([data-view="gallery"]) .sorter { display: none; }
 
-.empty { color: var(--muted); }
-
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  font-size: 0.92em;
-}
-
-[hidden] { display: none !important; }
+.empty { color: var(--mute); }
 
 table {
   width: 100%;
@@ -123,8 +203,8 @@ table {
 }
 
 th, td {
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--line);
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--hair);
   text-align: left;
   vertical-align: middle;
 }
@@ -133,10 +213,11 @@ thead th {
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--head);
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--muted);
+  border-bottom-color: var(--card-border);
+  background: var(--rail);
+  color: var(--mute);
+  font-size: 12px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -144,17 +225,18 @@ thead button {
   all: unset;
   cursor: pointer;
   display: inline-flex;
-  gap: 0.35rem;
+  gap: 5px;
   align-items: center;
+  border-radius: 4px;
 }
 
-thead button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+thead button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 th[aria-sort="ascending"] .dir::after { content: "\25B2"; font-size: 0.7em; }
 th[aria-sort="descending"] .dir::after { content: "\25BC"; font-size: 0.7em; }
-th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--fg); }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--strong-txt); }
 
-tbody tr:hover { background: var(--row-hover); }
+tbody tr:hover { background: var(--accent-soft); }
 
 .hidden-label {
   position: absolute;
@@ -165,71 +247,149 @@ tbody tr:hover { background: var(--row-hover); }
   white-space: nowrap;
 }
 
-td.thumb, th.thumb { width: calc(var(--thumb-w) + 1.5rem); }
+/* The preview cell. The table shows a small static tile with the type: a row has no frame, so the table costs no
+   page load for each row. index.js shows a live preview on demand: the peek of the table, the cards of the gallery. */
+td.thumb, th.thumb { width: 4.4rem; padding-right: 0; }
 
 td.thumb a {
   display: block;
   position: relative;
-  width: var(--thumb-w);
-  height: var(--thumb-h);
+  width: 3.4rem;
+  height: 2.2rem;
   overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  background: var(--thumb-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 5px;
+  background: var(--rail);
+  text-decoration: none;
 }
 
-/* A live view of the artifact, scaled down. The link around it takes the click. */
-td.thumb iframe {
-  width: calc(var(--thumb-w) / var(--thumb-scale));
-  height: calc(var(--thumb-h) / var(--thumb-scale));
+.tile {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--mute);
+  font: 700 10.5px/1.3 var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* A live view of the artifact, scaled down, over the tile. It shows when its page is loaded. The link around it
+   takes the click. The white of the frame is the paper of a page that sets no background, as in a browser tab. */
+td.thumb iframe, .peek iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
   border: 0;
-  transform: scale(var(--thumb-scale));
   transform-origin: 0 0;
   pointer-events: none;
-  background: var(--thumb-bg);
+  background: white;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+td.thumb iframe.ready, .peek iframe.ready { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  td.thumb iframe, .peek iframe { transition: none; }
+}
+
+/* The peek of the table view: one live preview in a card near the row. index.js sets its place. */
+.peek {
+  position: fixed;
+  z-index: 5;
+  top: 0;
+  left: 0;
+  width: var(--peek-w);
+  height: var(--peek-h);
+  overflow: hidden;
+  border: 1px solid var(--strong-border);
+  border-radius: 9px;
+  background: var(--rail);
+  box-shadow: 0 8px 28px var(--shadow);
+  pointer-events: none;
+}
+
+.peek iframe {
+  width: calc(var(--peek-w) / var(--peek-scale));
+  height: calc(var(--peek-h) / var(--peek-scale));
+  transform: scale(var(--peek-scale));
 }
 
 a.title {
-  color: var(--accent);
-  font-weight: 600;
+  font-weight: 700;
   text-decoration: none;
 }
 
 a.title:hover { text-decoration: underline; }
 
+.name .title { display: block; }
+.file:empty { display: none; }
+
 .file {
-  display: block;
-  color: var(--muted);
-  font-size: 0.85rem;
+  margin-right: 10px;
+  color: var(--mute);
+  font-size: 12.5px;
   overflow-wrap: anywhere;
 }
 
 /* The download link of a row: the look of the title link, in the size of the file name. */
 a.download {
-  color: var(--accent);
-  font-size: 0.85rem;
+  font-size: 12.5px;
   text-decoration: none;
 }
 
 a.download:hover { text-decoration: underline; }
 
-.none { color: var(--muted); }
+table:not(.actions-ready) .row-action { display: none; }
+.row-action {
+  padding: 2px 8px;
+  border: 1px solid var(--strong-border);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--txt);
+  font: 12px/1.45 var(--sans);
+  cursor: pointer;
+}
+.row-action:hover { background: var(--accent-soft); }
 
-/* A repo name: a click filters by it. */
+.none { color: var(--mute); }
+
+/* The type of an artifact: a chip, as the type chip of a Walkr session. */
+.type {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid var(--strong-border);
+  border-radius: 999px;
+  font: 11.5px/1.5 var(--mono);
+  white-space: nowrap;
+}
+
+/* A repo name: a click filters by it. The chip color differs from the color of a row under the pointer, so the
+   chip keeps its shape there. */
 button.repo {
   all: unset;
   cursor: pointer;
-  color: var(--fg);
-  border-bottom: 1px dotted var(--muted);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--chip);
+  color: var(--txt);
+  font: 11.5px/1.5 var(--mono);
+  white-space: nowrap;
 }
 
-button.repo:hover { color: var(--accent); border-bottom-color: var(--accent); }
-button.repo:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+button.repo:hover { box-shadow: inset 0 0 0 1px var(--strong-border); color: var(--strong-txt); }
+button.repo:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 .updated {
   display: block;
-  color: var(--muted);
-  font-size: 0.8rem;
+  color: var(--mute);
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -237,15 +397,16 @@ td.size { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* The gallery view: the same table, each row a card in a grid, with a larger live thumbnail. A narrow window
-   gives one column. The sort list takes the place of the column heads. */
+/* The gallery view: the same table, each row a card in a grid. The preview box of a card shows the static tile,
+   and a live preview while the card is in view. A narrow window gives one column. The sort list takes the place of
+   the column heads. */
 [data-view="gallery"] table, [data-view="gallery"] td { display: block; }
 [data-view="gallery"] thead, [data-view="gallery"] .file, [data-view="gallery"] td.size { display: none; }
 
 [data-view="gallery"] tbody {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
+  gap: 14px;
 }
 
 [data-view="gallery"] tr {
@@ -253,17 +414,19 @@ time { white-space: nowrap; font-variant-numeric: tabular-nums; }
   display: flex;
   flex-wrap: wrap;
   align-content: flex-start;
-  align-items: baseline;
-  gap: 0.2rem 0.8rem;
-  padding: 0.6rem 0.7rem 0.7rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px 11px 11px;
+  border: 1px solid var(--card-border);
+  border-radius: 9px;
+  background: var(--card);
 }
 
+[data-view="gallery"] tbody tr:hover { border-color: var(--strong-border); background: var(--card); }
 [data-view="gallery"] td { padding: 0; border: 0; }
-[data-view="gallery"] td.thumb, [data-view="gallery"] td.name { flex-basis: 100%; width: auto; }
-[data-view="gallery"] td.thumb { margin-bottom: 0.4rem; }
-[data-view="gallery"] td.name ~ td { color: var(--muted); font-size: 0.85rem; }
+[data-view="gallery"] td.thumb, [data-view="gallery"] td.name { flex-basis: 100%; width: auto; padding-right: 0; }
+[data-view="gallery"] td.thumb { margin-bottom: 6px; }
+[data-view="gallery"] td.name ~ td { color: var(--mute); font-size: 12.5px; }
 
 /* A 16:10 box from the top padding (62.5% of the width), because the web view of Sheprd ignores aspect-ratio. */
 [data-view="gallery"] td.thumb a {
@@ -271,12 +434,20 @@ time { white-space: nowrap; font-variant-numeric: tabular-nums; }
   width: auto;
   height: 0;
   padding-top: 62.5%;
+  border-radius: 6px;
+}
+
+[data-view="gallery"] .tile { flex-direction: column; gap: 6px; padding: 0 16px; font-size: 13px; text-align: center; }
+
+/* A large page gets its live preview only on demand (index.js): the tile of its card says how. */
+[data-view="gallery"] tr.large .tile::after {
+  content: "Large page, " attr(data-size) ". Point at the card to load the preview.";
+  font: 400 12px/1.4 var(--sans);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 [data-view="gallery"] td.thumb iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
   width: calc(100% / var(--card-scale));
   height: calc(100% / var(--card-scale));
   transform: scale(var(--card-scale));
@@ -284,10 +455,13 @@ time { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* A click on a card opens the viewer: the title link covers the card. The repo button and the download link stay
    above it. */
-[data-view="gallery"] a.title::after { content: ""; position: absolute; inset: 0; }
-[data-view="gallery"] button.repo, [data-view="gallery"] a.download { position: relative; z-index: 1; }
+[data-view="gallery"] a.title::after { content: ""; position: absolute; top: 0; right: 0; bottom: 0; left: 0; }
+[data-view="gallery"] .row-action, [data-view="gallery"] button.repo, [data-view="gallery"] a.download { position: relative; z-index: 1; }
+/* The ring of a card with the focus on its title: around the card, not only around the text. */
+[data-view="gallery"] a.title:focus-visible { outline: 0; }
+[data-view="gallery"] a.title:focus-visible::after { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 9px; }
 
-/* The viewer page: a slim bar, and the artifact in a frame that fills the rest of the window. */
+/* The viewer page: the band, and the artifact in a frame that fills the rest of the window. */
 body.viewer {
   display: flex;
   flex-direction: column;
@@ -295,58 +469,57 @@ body.viewer {
   overflow: hidden;
 }
 
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.2rem 1rem;
-  padding: 0.45rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: var(--head);
-  font-size: 0.85rem;
+.band .nav { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.band .nav + .band-end { margin-left: 0; }
+
+/* A button of the band: the links of the viewer and the Reload button. */
+.band .nav a, .note button {
+  padding: 3px 11px;
+  border: 1px solid var(--band-mute);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--band-txt);
+  font: 600 12px/1.5 var(--sans);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
 }
 
-.bar a { color: var(--accent); text-decoration: none; }
-.bar a:hover { text-decoration: underline; }
-.bar .home { font-weight: 650; }
+.band .nav a:hover, .note button:hover { border-color: var(--brand); background: var(--band-soft); }
 
-.bar .name {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.bar .facts { flex-wrap: wrap; gap: 0.2rem 0.9rem; }
-.bar .nav { display: flex; gap: 0.9rem; margin-left: auto; }
-
+/* The status line of the viewer: a new version, or an artifact that is gone. */
 .note {
   flex-basis: 100%;
   display: flex;
-  align-items: baseline;
-  gap: 0.75rem;
+  align-items: center;
+  gap: 10px;
   margin: 0;
+  color: var(--band-txt);
+  font-size: 12.5px;
 }
 
-.note button {
-  font: inherit;
-  padding: 0.1rem 0.6rem;
-  border: 1px solid var(--accent);
-  border-radius: 4px;
-  background: var(--bg);
-  color: var(--accent);
-  cursor: pointer;
+.note::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand);
 }
+
+/* Without script, the noscript element takes the space below the band for its frame. */
+.viewer noscript { flex: 1; min-height: 0; }
+.viewer noscript .frame { display: block; height: 100%; }
 
 .frame {
   flex: 1;
   width: 100%;
   border: 0;
-  background: var(--thumb-bg);
+  background: white;
 }
 
 @media (max-width: 700px) {
-  .top, main { padding-left: 0.75rem; padding-right: 0.75rem; }
-  th, td { padding: 0.4rem 0.5rem; }
-  :root { --thumb-w: 112px; --thumb-h: 70px; --thumb-scale: 0.0933; }
+  .band { padding-left: 10px; padding-right: 10px; }
+  main { padding-left: 10px; padding-right: 10px; }
+  th, td { padding: 6px 8px; }
 }

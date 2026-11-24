@@ -1,7 +1,7 @@
 {
   "name": "artifacts",
   "version": "0.1.0",
-  "description": "The artifacts skill, CLI and /artifacts-server command: store an HTML or Markdown file in the local artifact store, give the view link, and run the local read-only artifacts server on 127.0.0.1.",
+  "description": "The artifacts skill, CLI and /artifacts-server command: store an HTML or Markdown file in the local artifact store, give the view link, and run the local artifacts server on 127.0.0.1.",
   "license": "MIT",
   "private": true,
   "keywords": [

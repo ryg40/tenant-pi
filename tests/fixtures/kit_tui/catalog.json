@@ -281,7 +281,7 @@
       "group": "walkr",
       "title": "Walkr review tool",
       "description": "The agent prepares a review, you look at it in a browser page, and the agent reads your notes, pick and rating.",
-      "when_on": "The installer links six walkr commands into ~/.local/bin, writes the skills to ~/.claude, ~/.codex and ~/.agents, and downloads missing dependencies. In use, it starts a local web server of your account and keeps sessions and reports on disk. The page URL holds a secret; a bind-all override sends plain HTTP over your network.",
+      "when_on": "The installer links the two commands walkr and walkr-compare into ~/.local/bin and writes the skills to ~/.claude, ~/.codex and ~/.agents. It removes its own links and skills of the retired Walkr modes. In use, it starts a local web server of your account and keeps sessions and reports on disk. The page URL holds a secret; a bind-all override sends plain HTTP over your network.",
       "when_off": "Reviews happen in the chat only. Old records stay, and a running server does not stop.",
       "default": "ask",
       "needs": ["consent", "node24"],
@@ -291,12 +291,23 @@
       "name": "walkr-prompts",
       "group": "walkr",
       "title": "Walkr commands",
-      "description": "One Pi prompt for each Walkr mode, for example /walkr and /walkr-compare. They come with walkr.",
+      "description": "The Pi prompts /walkr and /walkr-compare. They come with walkr.",
       "when_on": "The Walkr setup writes the prompts into the profile.",
       "when_off": "No Walkr prompts in Pi. The Walkr commands, skills and sessions stay.",
       "default": "ask",
       "needs": ["consent"],
       "docs": "docs/guides/modules.md#walkr"
+    },
+    {
+      "name": "memory",
+      "group": "memory",
+      "title": "Memory viewer",
+      "description": "A read-only web page for the memories of your agent memory systems: OpenViking, OpenKnowledge, llm-wiki, hermes-memory and AgentCore. It is the section /memory/ of the local artifacts server.",
+      "when_on": "The installer downloads the dependencies of packages/memory (the AWS SDK for the AgentCore source) with npm. artifacts start then also starts the viewer on 127.0.0.1. Without the settings file ~/.config/tenant-artifacts/memory-sources.json it shows synthetic sample data. With that file it reads your private memory and shows it on the page, which needs no login: each program of your user that reaches the local server can read it. Nothing that it reads leaves the computer.",
+      "when_off": "The local server has no Memory section; its page says that the viewer is not installed. The memory systems do not change.",
+      "default": "ask",
+      "needs": ["consent", "node24"],
+      "docs": "docs/guides/modules.md#memory"
     },
     {
       "name": "herdr",
@@ -305,17 +316,6 @@
       "description": "The skill that starts and drives other agent panes in Herdr. It does not install the Herdr application.",
       "when_on": "It needs Herdr, Python and its scripts. The agents that it starts get your access and can make paid model calls.",
       "when_off": "No Herdr guidance for the agent. The Herdr application stays, and agents can still start in other ways. The other Herdr items need this skill.",
-      "default": "on",
-      "needs": [],
-      "docs": "docs/herdr-setup.md"
-    },
-    {
-      "name": "herdr-relay",
-      "group": "herdr",
-      "title": "Herdr relay",
-      "description": "Runs a blocked shell command through a standing worker pane in Herdr.",
-      "when_on": "It needs the herdr skill, or HERDR_SKILL_HOME, and Python. The command runs with the access of the worker pane; this is not a security sandbox. It does nothing until it is used.",
-      "when_off": "The relay is not offered. This does not stop a command from running in another way.",
       "default": "on",
       "needs": [],
       "docs": "docs/herdr-setup.md"
@@ -330,39 +330,6 @@
       "default": "on",
       "needs": [],
       "docs": "packages/tenantext/docs/herdr-watch.md"
-    },
-    {
-      "name": "herdr-idle-cleanup",
-      "group": "herdr",
-      "title": "Idle pane cleanup",
-      "description": "A skill that scans each Herdr workspace, keeps the reports of idle panes and closes them after your yes.",
-      "when_on": "A scan writes scan.json, and the reports go to handoff files under ~/.local/share/tenant-pi/handoffs. publish --upload sends report text with a configured token.",
-      "when_off": "No scan from the skill. Its scripts and old handoff files stay. The handoff check and its command need this skill.",
-      "default": "on",
-      "needs": [],
-      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
-    },
-    {
-      "name": "handoffs",
-      "group": "herdr",
-      "title": "Handoff check at start",
-      "description": "The startup check of the idle pane cleanup, with /handoffs and /herdr-idle.",
-      "when_on": "At the start of a new interactive session, it claims the open handoff entries of the repository and writes their state. A claimed entry can start one assessment model turn, which can cost money. Task sessions and reloads claim nothing. /herdr-idle shows the state; /herdr-idle off turns the check off.",
-      "when_off": "No check at session start and no assessment turn.",
-      "default": "on",
-      "needs": [],
-      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
-    },
-    {
-      "name": "herdr-idle-cleanup-prompt",
-      "group": "herdr",
-      "title": "/herdr-idle-cleanup command",
-      "description": "A Pi prompt that loads the idle pane cleanup skill and runs its default run.",
-      "when_on": "/herdr-idle-cleanup is a command in Pi.",
-      "when_off": "Only this shortcut goes. The skill and its scripts still work; ask for the skill in plain words.",
-      "default": "on",
-      "needs": [],
-      "docs": "packages/tenantext/skills/herdr-idle-cleanup/SKILL.md"
     },
     {
       "name": "questions",

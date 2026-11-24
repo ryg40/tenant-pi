@@ -1,0 +1,115 @@
+{
+ "description": "Synthetic OpenKnowledge pages. Not live memory.",
+ "facetDepth": 1,
+ "docs": [
+  {
+   "id": "sample-ok-projects-gateway-brief",
+   "folder": [
+    "projects",
+    "gateway"
+   ],
+   "title": "Gateway brief",
+   "kind": "brief",
+   "date": "2026-11-06T10:00:00Z",
+   "dateLabel": "updated",
+   "tags": [
+    "gateway"
+   ],
+   "body": "# Gateway brief\n\n## State\nThe gateway serves eleven routes. Two routes wait for a certificate.\n\n## Next\n1. Renew the certificate of the test route.\n2. Remove the retired route after the owner's word.",
+   "meta": [
+    [
+     "Document",
+     "projects/gateway/brief"
+    ],
+    [
+     "type",
+     "brief"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ok-projects-gateway-handoffs",
+   "folder": [
+    "projects",
+    "gateway"
+   ],
+   "title": "Gateway handoffs",
+   "kind": "log",
+   "date": "2026-11-04T18:22:00Z",
+   "dateLabel": "updated",
+   "body": "# Handoffs\n\n- 2026-11-04: the reload test passed; the rollback file is in the backup folder.\n- 2026-10-30: the new route uses the internal network only.",
+   "meta": [
+    [
+     "Document",
+     "projects/gateway/handoffs"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ok-inbox-triage",
+   "folder": [
+    "inbox",
+    "triage"
+   ],
+   "title": "Triage queue",
+   "kind": "index",
+   "date": "2026-11-07T08:00:00Z",
+   "dateLabel": "updated",
+   "body": "# Triage queue\n\n- A request to compare two backup tools.\n- A note about a slow disk on the storage node.",
+   "meta": [
+    [
+     "Document",
+     "inbox/triage/index"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ok-research-sqlite",
+   "folder": [
+    "research",
+    "storage"
+   ],
+   "title": "SQLite in WAL mode on a read-only mount",
+   "kind": "research",
+   "date": "2026-10-25T13:40:00Z",
+   "dateLabel": "updated",
+   "tags": [
+    "sqlite",
+    "docker"
+   ],
+   "body": "# SQLite in WAL mode on a read-only mount\n\nA reader cannot create the `-shm` file on a read-only mount. Open the file with `immutable=1`. An immutable reader does not see changes that are still in the WAL file.",
+   "meta": [
+    [
+     "Document",
+     "research/storage/sqlite-wal-read-only"
+    ],
+    [
+     "type",
+     "research"
+    ]
+   ]
+  },
+  {
+   "id": "sample-ok-wiki-backups",
+   "folder": [
+    "wiki",
+    "concepts"
+   ],
+   "title": "Backups",
+   "kind": "concept",
+   "date": "2026-10-02T09:10:00Z",
+   "dateLabel": "updated",
+   "body": "# Backups\n\nA backup is valid only after a restore drill. Keep one copy outside the host.",
+   "meta": [
+    [
+     "Document",
+     "wiki/concepts/backups"
+    ],
+    [
+     "type",
+     "concept"
+    ]
+   ]
+  }
+ ]
+}

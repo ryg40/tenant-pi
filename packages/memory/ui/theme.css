@@ -1,0 +1,50 @@
+/* The Torch tokens of the memory viewer.
+
+   The values are a copy of the blocks :root[data-theme="torch-light"] and :root[data-theme="torch-dark"], and of
+   --sans and --mono, of packages/walkr/src/theme.css of the kit. That file is the source of the values. This package
+   loads no file of another package, so it has its own copy, as the artifacts pages have
+   (packages/artifacts/server/web/theme.css); a test of the kit compares the copies when the files exist.
+
+   Torch Light is the theme of a page with no data-theme, so the page shows it also with no script. theme.js sets
+   data-theme="torch-dark" on the root element when the reader chose a dark theme. */
+:root {
+  --sans: "Avenir Next", "Nunito Sans", "Nunito", "Lato", "Trebuchet MS", "Ubuntu", "Cantarell", sans-serif;
+  --mono: "JetBrains Mono", "Cascadia Mono", "SF Mono", "Menlo", "Consolas", monospace;
+}
+:root, :root[data-theme="torch-light"] {
+  color-scheme: light;
+  --canvas: #ffffff; --rail: #f2fcfc; --card: #ffffff;
+  --card-border: #c2d6d9; --hair: #d9e8ea; --hair-2: #e8f5f6;
+  --dash: #8f9ca0; --strong-border: #5f7f86;
+  --txt: #343741; --strong-txt: #1a1446; --mute: #4d515c;
+  --mute-2: #4d515c; --faint: #565a65; --faint-2: #565a65;
+  --soft: #f5f5f5; --chip: #d9e8ea; --input-bg: #ffffff;
+  --focus: #1a1446; --danger: #a01f35; --danger-soft: #fef0f2;
+  --amber: #6b5300; --green: #05606f;
+  --btn-bg: #06748c; --btn-fg: #ffffff;
+  --accent: #055a6d; --accent-soft: #e3f3f5; --shadow: #1a14462e;
+  --brand: #ffd000; --brand-ink: #1a1446;
+  --band: #1a1446; --band-txt: #ffffff; --band-mute: #d9e8ea; --band-line: #1a1446;
+  --band-soft: #2f2866; --band-danger: #ffadb7; --band-ok: #8fe0c8; --band-focus: #ffd000;
+  --stage: #eef5f6;
+}
+/* Torch Dark names no text color for the band and no stage: the last six lines give the values that Walkr takes
+   from its base palette for them (the strong text, the muted text, the danger, the green, the focus, the canvas). */
+:root[data-theme="torch-dark"] {
+  color-scheme: dark;
+  --canvas: #100c2e; --rail: #151039; --card: #1a1446;
+  --card-border: #3b3478; --hair: #3b3478; --hair-2: #2a2460;
+  --dash: #7a7fa0; --strong-border: #7a7fa0;
+  --txt: #f2fcfc; --strong-txt: #ffffff; --mute: #d9e8ea;
+  --mute-2: #d9e8ea; --faint: #b4c0d2; --faint-2: #b4c0d2;
+  --soft: #221b55; --chip: #2c2566; --input-bg: #0c0924;
+  --focus: #ffd000; --danger: #ffadb7; --danger-soft: #4a1f3c;
+  --amber: #ffd000; --green: #8fe0c8;
+  --btn-bg: #06748c; --btn-fg: #ffffff;
+  --accent: #7fd6ea; --accent-soft: #123a55; --shadow: #000a;
+  --brand: #ffd000; --brand-ink: #1a1446;
+  --band: #1a1446; --band-line: #3b3478; --band-soft: #2f2866;
+  --band-txt: var(--strong-txt); --band-mute: var(--mute-2);
+  --band-danger: var(--danger); --band-ok: var(--green); --band-focus: var(--focus);
+  --stage: var(--canvas);
+}

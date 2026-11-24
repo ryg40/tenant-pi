@@ -1,3 +1,4 @@
+import "./no-outer-config.js"; // First: no test reads the artifacts config of the outer user.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { AGENTS_BLOCK, SKILL_NAMES, installSkills, invocation, isTransientBin, mergeAgentsBlock } from "../src/setup.js";
+import { AGENTS_BLOCK, RETIRED_SKILL_NAMES, SKILL_NAMES, installSkills, mergeAgentsBlock } from "../src/setup.js";
 import { tmpRoot } from "./tmp-root.js";
 
 const legacySkill = fs.readFileSync(new URL("./fixtures/mode-skills/legacy-skill.txt", import.meta.url), "utf8");
@@ -36,7 +37,7 @@ test("setup help changes no files for any Walkr command", (t) => {
   Object.assign(env, { HOME: home, USERPROFILE: home, HUMAN_REVIEW_STATE_DIR: path.join(home, "state") });
   const before = snapshot(root);
   for (const [name, source] of Object.entries(JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8")).bin)) {
-    const supportsSetup = name === "walkr" || name === "walkr-core";
+    const supportsSetup = name === "walkr";
     for (const options of [[], ["--global"]]) {
       const result = spawnSync(process.execPath, [fileURLToPath(new URL(`../${source}`, import.meta.url)), "setup", ...options, "--help"], {
         cwd, env, encoding: "utf8", timeout: 10000,
@@ -48,7 +49,7 @@ test("setup help changes no files for any Walkr command", (t) => {
   }
 });
 
-test("global setup installs six skills for Claude, Codex, and shared agents without ambient Pi writes", (t) => {
+test("global setup installs the two skills for Claude, Codex, and shared agents without ambient Pi writes", (t) => {
   const home = fixture(t);
   const result = installSkills(home, { global: true, home });
   for (const root of [".claude", ".codex", ".agents"]) {
@@ -83,7 +84,7 @@ test("project setup installs Claude/shared skills and Pi aliases, and repeats wi
   const home = fixture(t);
   installSkills(cwd, { home });
   assert.equal(fs.existsSync(path.join(cwd, ".pi", "prompts", "walkr.md")), true);
-  assert.equal(fs.existsSync(path.join(cwd, ".agents", "skills", "walkr-core", "SKILL.md")), true);
+  assert.equal(fs.existsSync(path.join(cwd, ".agents", "skills", "walkr-compare", "SKILL.md")), true);
   assert.deepEqual(fs.readdirSync(home), []);
   const before = snapshot(cwd);
   const file = path.join(cwd, ".agents", "skills", "walkr", "SKILL.md");
@@ -158,7 +159,7 @@ test("profile-local legacy guidance also retires only when exactly recognized", 
   assert.equal(fs.existsSync(path.join(piAgentDir, ".walkr-setup-backups")), true);
 });
 
-for (const relative of [".agents/skills/walkr/SKILL.md", ".agents/skills/human-review/SKILL.md", ".claude/skills/walkr/notes.txt", "active/prompts/walkr-trainer.md", "active/skills/walkr/SKILL.md", ".agents/skills/walkr.md", ".agents/skills/human-review.md"]) {
+for (const relative of [".agents/skills/walkr/SKILL.md", ".agents/skills/human-review/SKILL.md", ".claude/skills/walkr/notes.txt", "active/prompts/walkr-compare.md", "active/skills/walkr/SKILL.md", ".agents/skills/walkr.md", ".agents/skills/human-review.md"]) {
   test(`name conflict leaves all targets unchanged: ${relative}`, (t) => {
     const home = fixture(t);
     put(path.join(home, relative), "Owner customization\n");
@@ -277,12 +278,12 @@ test("linked unrelated skills, link cycles and a linked Markdown skill install w
 for (const [label, target] of [["a linked root Markdown file", "walkr.md"], ["a broken link", "missing"]]) {
   test(`discovery refuses ${label} without writes`, (t) => {
     const home = fixture(t), external = fixture(t);
-    put(path.join(external, "walkr.md"), "---\nname: walkr-core\ndescription: External\n---\n");
+    put(path.join(external, "walkr.md"), "---\nname: walkr-compare\ndescription: External\n---\n");
     const link = path.join(home, ".agents/skills/other.md");
     fs.mkdirSync(path.dirname(link), { recursive: true });
     fs.symlinkSync(path.join(external, target), link);
     const before = snapshot(home);
-    assert.throws(() => installSkills(home, { global: true, home }), target === "missing" ? /unresolvable symlinks \(ENOENT\)/ : /walkr-core collides/);
+    assert.throws(() => installSkills(home, { global: true, home }), target === "missing" ? /unresolvable symlinks \(ENOENT\)/ : /walkr-compare collides/);
     assert.deepEqual(snapshot(home), before);
   });
 }
@@ -331,7 +332,7 @@ test("plain descriptions with mapping or comment syntax refuse without writes", 
   }
 });
 
-for (const linkName of ["walkr-core", "human-review"]) {
+for (const linkName of ["walkr-compare", "human-review"]) {
   test(`a nameless linked skill takes the name of its link path: ${linkName}`, (t) => {
     const home = fixture(t), external = fixture(t);
     put(path.join(external, "foo/SKILL.md"), "---\ndescription: Nameless\n---\n");
@@ -447,20 +448,43 @@ test("AGENTS symlink conflict blocks the whole project installation", (t) => {
   assert.equal(fs.readFileSync(backing, "utf8"), "Owner rules\n");
 });
 
-test("transient bins are not durable installs", () => {
-  for (const file of ["/Users/x/.npm/_npx/a/node_modules/.bin/human-review", "C:\\Users\\x\\node_modules\\.bin\\human-review.cmd", "/Users/x/project/node_modules/.bin/human-review"]) assert.equal(isTransientBin(file), true);
-  for (const file of ["/usr/local/bin/human-review", "/Users/x/.volta/bin/human-review", "/Users/x/my_npx_tools/bin/human-review", "/Users/x/node_modules_backup/bin/human-review"]) assert.equal(isTransientBin(file), false);
-});
+test("setup removes its own unchanged files of the retired modes and nothing else", (t) => {
+  const home = fixture(t);
+  const piAgentDir = path.join(home, "active");
+  installSkills(home, { global: true, home, piAgentDir });
+  // The state of an install from before the retirement: one skill and one prompt for each retired mode, each named
+  // in the record of its root with its hash.
+  const sha = (text) => createHash("sha256").update(text).digest("hex");
+  const roots = [".claude", ".codex", ".agents"].map((name) => path.join(home, name));
+  for (const base of [...roots, piAgentDir]) {
+    const record = JSON.parse(fs.readFileSync(path.join(base, ".walkr-setup.json"), "utf8"));
+    for (const name of RETIRED_SKILL_NAMES) {
+      const relative = base === piAgentDir ? `prompts/${name}.md` : `skills/${name}/SKILL.md`;
+      const text = `---\nname: ${name}\ndescription: Retired mode\n---\n`;
+      put(path.join(base, relative), text);
+      record.files[relative] = sha(text);
+    }
+    fs.writeFileSync(path.join(base, ".walkr-setup.json"), `${JSON.stringify(record, null, 2)}\n`);
+  }
+  // The user changed one retired skill, and keeps a skill of another tool and a retired name that no record names.
+  const changed = path.join(home, ".claude/skills/walkr-double/SKILL.md");
+  fs.writeFileSync(changed, "---\nname: walkr-double\ndescription: My own notes\n---\n");
+  const other = path.join(home, ".claude/skills/other-tool/SKILL.md");
+  put(other, "---\nname: other-tool\ndescription: Unrelated\n---\n");
+  const foreign = path.join(home, ".codex/skills/walkr-core-notes/SKILL.md");
+  put(foreign, "---\nname: walkr-core-notes\ndescription: Not from setup\n---\n");
 
-test("existing runtime invocation remains private and hides its lookup window", () => {
-  const probe = (bin) => (_probe, _args, options) => {
-    assert.equal(options.windowsHide, true);
-    return { status: bin ? 0 : 1, stdout: bin ? `${bin}\n` : "" };
-  };
-  const local = invocation(probe(""));
-  assert.match(local, /cli\.js/);
-  assert.ok(local.includes(process.execPath));
-  assert.doesNotMatch(local, /npx/);
-  assert.equal(invocation(probe("/Users/x/project/node_modules/.bin/human-review")), local);
-  assert.equal(invocation(probe("/Users/x/.local/bin/human-review")), "human-review");
+  const lines = installSkills(home, { global: true, home, piAgentDir });
+
+  for (const base of roots) {
+    for (const name of RETIRED_SKILL_NAMES) {
+      const kept = base.endsWith(".claude") && name === "walkr-double";
+      assert.equal(fs.existsSync(path.join(base, "skills", name)), kept, `${base} ${name}`);
+    }
+  }
+  assert.deepEqual(fs.readdirSync(path.join(piAgentDir, "prompts")).sort(), SKILL_NAMES.map((name) => `${name}.md`).sort());
+  assert.equal(fs.readFileSync(changed, "utf8").includes("My own notes"), true);
+  assert.ok(lines.some((line) => line.includes(changed)));
+  assert.equal(fs.existsSync(other), true);
+  assert.equal(fs.existsSync(foreign), true);
 });

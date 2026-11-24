@@ -306,8 +306,12 @@ for (const phase of ['initialize', 'tools/call', 'document']) {
         }
         return true;
       } });
-      const a = s.adapter({ timeoutMs: 100 });
+      // The limit holds for each request, also for the quick phases before the stalled one and for the TLS connect:
+      // 1000 ms, as in each other test, so a slow host reaches the stalled phase.
+      const a = s.adapter({ timeoutMs: 1000 });
       await assert.rejects(phase === 'document' ? a.get(docName(samples[0])) : a.status(), { code: 'timeout', status: 504 });
+      assert.ok(s.requests.some((req) => (phase === 'document' ? req.method === 'GET' : req.msg?.method === phase)),
+        'the stalled phase was reached');
       if (phase === 'tools/call' || (phase === 'initialize' && stalled === 'body')) assert.equal(s.requests.at(-1).method, 'DELETE');
     });
   }

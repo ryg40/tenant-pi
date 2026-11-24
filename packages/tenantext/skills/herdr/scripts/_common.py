@@ -96,8 +96,9 @@ def parent_pid(pid):
             return None  # the process is gone
     except (OSError, ValueError, IndexError):
         return None
-    # No /proc (macOS): ask ps.
-    code, _, raw = _run_json(["ps", "-o", "ppid=", "-p", str(pid)], 5)
+    # No /proc (macOS): ask ps. /bin/ps first, so a PATH with no system folder still finds it.
+    ps = "/bin/ps" if os.path.isfile("/bin/ps") and os.access("/bin/ps", os.X_OK) else "ps"
+    code, _, raw = _run_json([ps, "-o", "ppid=", "-p", str(pid)], 5)
     try:
         return int(raw.strip()) if code == 0 else None
     except ValueError:

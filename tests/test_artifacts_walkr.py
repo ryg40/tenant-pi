@@ -1014,6 +1014,7 @@ class StaleRecordTests(unittest.TestCase):
                       listen('127.0.0.2', 3)])
         self.assertEqual({'1', '2'}, server.local_sockets.listener_inodes(port, old))
 
+    @unittest.skipUnless(Path('/proc/self/fd').is_dir(), 'the descriptor folder of Linux')
     def test_a_limit_inside_the_listening_rows_refuses_and_many_connections_do_not(self):
         server, walkr_front = server_modules()
         own = socket.create_server(('127.0.0.1', 0))

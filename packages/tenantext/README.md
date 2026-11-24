@@ -671,6 +671,8 @@ The `herdr` skill in [`skills/herdr/`](skills/herdr/SKILL.md) lets an agent cont
 
 In Pi, use the tools of the `herdr-watch` extension in place of the blocking `ask.py`: `herdr_spawn` starts a new agent and sends its task, and `herdr_watch_start` prompts a pane that exists. Both return at once and deliver the reply later as a task notification, so the session stays interactive. In Claude Code, run `ask.py` in a `Bash` call with `run_in_background: true`. See [docs/herdr-watch.md](docs/herdr-watch.md).
 
+The helper `herdr-role-set` starts the agents of a role set: one harness, model and thinking level for each role of a Herdr space. See [docs/role-set.md](docs/role-set.md).
+
 | Role | Focus | Usual file access | Session |
 | --- | --- | --- | --- |
 | `coordinator` | Plans, delegates, checks results | write | primary |

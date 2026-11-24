@@ -189,15 +189,30 @@ def expiry(meta, days):
         return 'never'
 
 
+def artifact_dir(store, slug):
+    """The path of the directory of an artifact in the store, or None for a slug that is not valid.
+
+    A valid slug is a full match of SLUG: no `/`, no `.`. The prefix check of the normalized path repeats that rule
+    in the form that a path scanner reads as a guard."""
+    if not isinstance(slug, str) or not SLUG.fullmatch(slug):
+        return None
+    base = os.path.join(os.path.normpath(store), '')
+    path = os.path.normpath(os.path.join(base, slug))
+    if not path.startswith(base):
+        return None
+    return path
+
+
 def read_member(store, slug, name, limit=MAX_BYTES):
     """The bytes of one regular file of an artifact directory, or None.
 
     No symlink is followed: not at the artifact directory and not at the file. A slug that is not valid reads
     nothing."""
-    if not SLUG.fullmatch(slug or ''):
+    path = artifact_dir(store, slug)
+    if path is None:
         return None
     try:
-        folder = os.open(os.path.join(store, slug), NOFOLLOW | os.O_DIRECTORY)
+        folder = os.open(path, NOFOLLOW | os.O_DIRECTORY)
         try:
             fd = os.open(name, NOFOLLOW, dir_fd=folder)
         finally:
@@ -264,10 +279,11 @@ def state(items, retention=''):
 def artifact_meta(store, slug):
     """The facts of one artifact, or None. An artifact is a directory directly inside the store, not a symlink,
     whose name is a valid slug and whose `meta.json` can be read and names that slug."""
-    if not SLUG.fullmatch(slug or ''):
+    path = artifact_dir(store, slug)
+    if path is None:
         return None
     try:
-        if not stat.S_ISDIR(os.lstat(os.path.join(store, slug)).st_mode):
+        if not stat.S_ISDIR(os.lstat(path).st_mode):
             return None
     except OSError:
         return None
@@ -389,9 +405,10 @@ def stage(folder, data, mode=0o600):
 
 
 def set_archived(store, slug, target):
-    if artifact_meta(store, slug) is None:
+    path = artifact_dir(store, slug)
+    if path is None or artifact_meta(store, slug) is None:
         raise NotAnArtifact(slug)
-    folder = os.open(os.path.join(store, slug), NOFOLLOW | os.O_DIRECTORY)
+    folder = os.open(path, NOFOLLOW | os.O_DIRECTORY)
     try:
         fcntl.flock(folder, fcntl.LOCK_EX)
         meta = read_meta(store, slug)

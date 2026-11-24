@@ -288,6 +288,9 @@ with no whitespace and no control characters, passed to `hc` as one argument
 without a shell; a well-formed space ID with no live local terminals exits `0`
 with zero actions.
 
+An overview for people, with a picture of the Herdr app, is in
+[`docs/role-set.md`](../../docs/role-set.md).
+
 - Empty shell terminals in role tabs (`LAYOUT.md`, with `researcher` covering
   `scout`) get the configured harness, model and thinking through the same
   command builder as `spawn.py`. A terminal is treated as empty only when it is

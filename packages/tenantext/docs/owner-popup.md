@@ -2,6 +2,10 @@
 
 When a Claude Code coordinator in a Herdr terminal ends a turn with a dummies report that has `Owner` or `Owner decides` actions, the owner-task producer streams those tasks as one A2UI v1.0 surface for each coordinator terminal (`owner-tasks:<address>`, for example `owner-tasks:t11y`) over a local WebSocket. The old shared surface ID `owner-tasks` is not sent. Each surface holds only the cards of its coordinator, with its own header naming the coordinator, its own focused card, its own status line, its own `Send answers` button, and its own `Close` button. The Herdr app draws each task as a native card in one row: compact cards sit beside one focused card that grows in place (`weight`) to show three answers, an "Other answer" field, and a "Confirm" button for risky rows. The focused card puts the label, tags, and state inline with the task text, and the surface has no footer note. When the owner clicks "Send answers", the producer sends one `[Owner popup]` line back to that coordinator terminal at once.
 
+![The owner-task rail of the Herdr app with four cards of one example report. The focused card B asks "How the footer shows the quota: as a percent, or as a bar." and shows the answers "As a percent", "As a bar" and "Not now: ask me again later" and the field "Other answer". The compact cards C and D have the mark "risk", card E has the mark "owner step", and each has a Focus button. The header shows "Owner tasks", the coordinator name, "no decider", "0 of 4 answered", Send answers and Close.](images/owner-rail-suggestion.png)
+
+The picture is from the Herdr app, with the demo report of the kit (`owner-popup/fixtures/mockup-report.md`) and no decider in reach. It shows the cards of one report: the focused card B with its answers and the "Other answer" field, and the compact cards C, D and E with their marks. The header holds the count of answered rows, `Send answers` and `Close`.
+
 ## When a card shows
 
 A card shows only when two rules hold:

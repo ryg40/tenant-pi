@@ -18,7 +18,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (CONTRACT, ROLES, core_coordinator_record, core_project, core_role, core_role_tab,  # noqa: E402
-                     core_terminals, ensure_layout, hc, herdr_app_pane, require_backend, require_herdr_env, tabs, write_record)
+                     core_terminals, ensure_layout, hc, herdr_app_pane, require_backend, require_herdr_env, say_name, tabs,
+                     write_record)
 
 
 def name_role(name):
@@ -64,7 +65,8 @@ def init_core(found):
                 print(f"warning: could not set the label skill.role on {address}: {raw[:200]}", file=sys.stderr)
             role, claimed = "coordinator", True
     out = {"backend": "herdr-core", "workspace_id": space, "workspace": core_project(me), "tab_id": labels["herdr.tab"],
-           "pane_id": address, "name": me.get("name"), "role": role, "claimed": claimed,
+           "pane_id": address, "name": me.get("name"), "say": say_name(me.get("name"), labels.get("where")), "role": role,
+           "claimed": claimed,
            "role_tabs": {r: core_role_tab(labels, r) for r in ROLES if r != "coordinator" or role == "coordinator"}}
     if claimed:
         print(f"herdr: first use in space '{out['workspace']}'. You are its coordinator; your tab is the "
@@ -80,6 +82,7 @@ def main():
     me = ensure_layout(quiet=False)
     if not me:
         sys.exit("error: could not read your pane from Herdr")
+    me["say"] = say_name(me.get("name"))
     me["role_tabs"] = {t["label"]: t["tab_id"] for t in tabs(me["workspace_id"]) if t.get("label") in ROLES}
     print(json.dumps(me))
 

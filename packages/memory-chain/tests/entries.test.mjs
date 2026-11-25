@@ -45,8 +45,12 @@ for (const mode of ["shadow", "off"]) {
 	test(`Pi entry, mode ${mode}: the prompt and the system prompt stay as they are`, async (t) => {
 		const { env, project, state, server } = await box(t, mode);
 		const handlers = {};
-		registerMemoryChain({ on: (name, handler) => { handlers[name] = handler; } }, { env, cwd: () => project });
+		const tools = [];
+		registerMemoryChain({ on: (name, handler) => { handlers[name] = handler; }, registerTool: (tool) => tools.push(tool.name) },
+			{ env, cwd: () => project });
 		assert.equal(typeof handlers.before_agent_start, "function");
+		assert.equal(tools.includes("memory_find"), true);
+		assert.equal(tools.includes("memory_rank"), false);
 		const event = { messageType: "user", prompt: PROMPT, systemPrompt: "SYSTEM", images: [] };
 		const before = structuredClone(event);
 		assert.equal(handlers.before_agent_start(event, {}), undefined);

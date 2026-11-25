@@ -1014,6 +1014,29 @@ def make_name(label, role, agents):
     return f"{stem}{max(used) + 1}"
 
 
+def say_name(name, where=None):
+    """The name of a pane for the owner (`say`), or None. The one place of this rule.
+
+    A name `<project>-<role>-<n>` gives `<project>/<role><n>`; a coordinator gives `<project>/coordinator`
+    with no number. Else a herdr-core `where` label `<space> / <tab>` gives `<space>/<tab>`.
+    """
+    match = re.fullmatch(r"(.+)-(%s)-([0-9]+)" % "|".join(ROLES), name) if isinstance(name, str) else None
+    if match:
+        project, role, number = match.groups()
+        return f"{project}/{role}" if role == "coordinator" else f"{project}/{role}{number}"
+    if isinstance(where, str) and " / " in where:
+        space, tab = (part.strip() for part in where.split(" / ", 1))
+        if space and tab:
+            return f"{space}/{tab}"
+    return None
+
+
+def pane_shown(address, name=None, where=None):
+    """An address with its `say` name for a status line: `t17m (tenant-pi/worker1)`, else the address alone."""
+    say = say_name(name, where)
+    return f"{address} ({say})" if say else address
+
+
 def pane_label(name, harness=None, model=None, thinking=None):
     """The first word is the agent name. The second word is for the human reader."""
     if not harness:

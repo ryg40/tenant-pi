@@ -115,7 +115,7 @@ class CoreCase(unittest.TestCase):
         with mock.patch.multiple(spawn, app_wait=lambda a, s: "idle", system_prompt=lambda r, cfg=None: "prompt",
                                  resolve_pi_model=lambda m: m, pi_executable=lambda: "/opt/fake-bin/pi-launcher"), \
                 mock.patch.object(spawn, "herdr") as herdr:
-            code, _ = self.run_main(spawn, core, me, argv)
+            code, self.spawn_out = self.run_main(spawn, core, me, argv)
         herdr.assert_not_called()
         runs = core.did("run")
         return code, (runs[0] if runs else None)
@@ -123,6 +123,22 @@ class CoreCase(unittest.TestCase):
 
 def label(run, key):
     return next(a.split("=", 1)[1] for a in run if a.startswith(key + "="))
+
+
+class SayName(CoreCase):
+    def test_the_owner_name_of_a_pane(self):
+        cases = [(("tenant-pi-worker-1", None), "tenant-pi/worker1"),
+                 (("tenant-pi-reviewer-2", None), "tenant-pi/reviewer2"),
+                 (("tenant-pi-coordinator-2", None), "tenant-pi/coordinator"),
+                 ((None, "tenant-pi / coordinator"), "tenant-pi/coordinator"),
+                 ((None, "sample-space / 1"), "sample-space/1"),
+                 (("shell", None), None)]
+        self.assertEqual([_common.say_name(*args) for args, _ in cases], [want for _, want in cases])
+
+    def test_the_spawn_json_of_a_worker_holds_its_owner_name(self):
+        code, _ = self.spawn_run(terminal("t1"), "worker")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(self.spawn_out)["say"], "proj/worker1")
 
 
 class RoleTabs(CoreCase):

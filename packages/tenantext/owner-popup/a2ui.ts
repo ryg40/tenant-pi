@@ -1,25 +1,40 @@
 import { A2UI_BASIC_CATALOG, A2UI_VERSION } from "../../walkr/src/a2ui.js";
-import { COMPACT_TASK_CHARS, shortSubject, truncateTask, type OwnerRow, type RowOption } from "./rows.ts";
+import { shortSubject, truncateTask, type OwnerRow, type RowOption } from "./rows.ts";
 
 /**
- * Pure A2UI v1.0 surface builder for Layout B (compact cards in one row, focused card grows).
+ * Pure A2UI v1.0 surface builder for the two-column owner-task rail (the layout contract with the owner-rail mod of the Herdr app; see `docs/owner-popup.md`).
  * Builds one independent surface per coordinator terminal (`owner-tasks:<address>`).
- * Uses only components drawn by the Herdr app panel (`Text`, `Row`, `Column`, `Card`, `Button`,
- * `ChoicePicker`, `TextField`). Uses `weight` (never `width`, `flex`, or `distribution`).
- * Binds only data-model paths shown by controls in the current draw.
+ * The `root` Column carries `owner_rail_layout: "two-column"`; its children are `header`, optional lines, and `body`
+ * (a Row of `left`, all open rows stacked with their answers, and `right`, one Row with a check box for each answered row).
+ * Uses only standard components (`Text`, `Row`, `Column`, `Button`, `TextField`), so a mod that does not know the
+ * contract draws the surface stacked. Binds only `/rows/<label>/other`, one path for each "Other answer" field drawn.
  */
 
 export const SURFACE_ID_PREFIX = "owner-tasks:";
-export const FOCUSED_CARD_WEIGHT = 42;
-export const COMPACT_CARD_WEIGHT = 16;
+export const CHIP_CHARS = 60;
 
 export type DeciderStatusWord = "decider ..." | "decider" | "no decider";
 
 export interface RowViewState {
 	row: OwnerRow;
 	selectedOptionId: string | null;
+	/** The text that is the answer of the row (from "Use text"); a non-empty text wins over `selectedOptionId`. */
 	customText: string;
+	/** The text in the "Other answer" field of the row that is not used yet. It is no answer; it only survives redraws. */
+	draft: string;
 	confirmed: boolean;
+	/** The check box of the row: only a checked row with a valid answer goes into the send line. */
+	checked: boolean;
+	/**
+	 * The version of the answer of the row. It changes when the answer is set, replaced or cleared. The Confirm Button
+	 * carries it as the literal `answerVersion`, so a Confirm approves only the answer that its surface showed.
+	 */
+	answerVersion?: number;
+	/**
+	 * The row took over an answer from a row that was risky in the old report (by words or by the decider). It needs a
+	 * Confirm as a risky row does, until its Confirm or until the risk result of the new report.
+	 */
+	riskHold?: boolean;
 }
 
 export interface CoordinatorGroup {
@@ -29,17 +44,36 @@ export interface CoordinatorGroup {
 	name?: string;
 	excerpt: string;
 	rows: RowViewState[];
-	focusedLabel: string | null;
 	deciderStatus: DeciderStatusWord;
 	statusMessage: string;
+	/** A press of Send was accepted and its send runs: the surface shows only the small pending form, with no button. */
+	receiptPending?: boolean;
+	/**
+	 * The coordinator works (a delivered send or a turn-start): the surface has no Send button and refuses `send`
+	 * until the next report; the other actions still work.
+	 */
+	locked?: boolean;
+	/** After a delivered send with rows left: the labels of the sent rows, shown as "Receipt pending" until the turn-start. */
+	sentPending?: string[];
+}
+
+export type ButtonActionName = "choose" | "other" | "toggle" | "confirm" | "send" | "close";
+export const BUTTON_ACTIONS: ReadonlySet<string> = new Set<ButtonActionName>(["choose", "other", "toggle", "confirm", "send", "close"]);
+
+/** The context key of a Button that carries the draft of row `<label>`: `other_<label>`, bound to `/rows/<label>/other`. */
+export const DRAFT_KEY_PREFIX = "other_";
+export const DRAFT_KEY_RE = /^other_[A-Za-z]+$/;
+
+export function draftKey(label: string): string {
+	return `${DRAFT_KEY_PREFIX}${label}`;
 }
 
 export interface RenderedButtonSpec {
 	id: string;
-	name: "focus" | "confirm" | "send" | "close";
+	name: ButtonActionName;
 	literals: Record<string, string>;
-	bindsPick: boolean;
-	bindsOther: boolean;
+	/** The labels of the rows whose draft this Button context binds (`other_<label>`). */
+	drafts: ReadonlySet<string>;
 }
 
 export interface SurfaceState {
@@ -63,7 +97,6 @@ export interface SurfaceSpec {
 	dataModel: Record<string, unknown>;
 }
 
-/** Build the A2UI surface ID for one coordinator terminal address. */
 export function surfaceIdFor(address: string): string {
 	return `${SURFACE_ID_PREFIX}${address}`;
 }
@@ -110,33 +143,49 @@ export function effectiveAnswer(item: RowViewState): EffectiveAnswer | null {
 	return null;
 }
 
+/** True when the answer of a row needs a Confirm press: the row is risky, or it holds the risk of the old report. */
+export function needsConfirm(item: RowViewState): boolean {
+	return item.row.risky || Boolean(item.riskHold);
+}
+
 /** True only when a row has an answer and, if risky, has been explicitly confirmed. */
 export function isRowConfirmed(item: RowViewState): boolean {
 	if (!effectiveAnswer(item)) return false;
-	return !item.row.risky || item.confirmed;
+	return !needsConfirm(item) || item.confirmed;
 }
 
 /** True when a risky row has a picked option or typed custom text that still needs `confirm`. */
 export function isRowPendingConfirm(item: RowViewState): boolean {
-	return item.row.risky && !item.confirmed && effectiveAnswer(item) !== null;
+	return needsConfirm(item) && !item.confirmed && effectiveAnswer(item) !== null;
+}
+
+/**
+ * True when a row is answered: checked, with a valid answer, and confirmed when risky. An answered row is drawn in
+ * `right` and goes into the send line; every other row is open and drawn in `left`.
+ */
+export function isRowAnswered(item: RowViewState): boolean {
+	if (!item.checked || !isRowConfirmed(item)) return false;
+	const ans = effectiveAnswer(item);
+	return Boolean(ans && sanitizeSendField(item.row.label) && sanitizeSendField(ans.text));
+}
+
+/** The rows that go into the send line, in report order: the answered rows. */
+export function sendableRows(group: CoordinatorGroup): RowViewState[] {
+	return group.rows.filter(isRowAnswered);
 }
 
 /**
  * Format the single `[Owner popup]` line sent back to one coordinator (without any receipt suffix).
  * Cleans control/format characters and line breaks in every field and replaces `;`, `[`, `]` with `,`, `(`, `)`.
- * Only confirmed rows go in: a risky row needs its Confirm press.
+ * Only the rows of `sendableRows` go in: a row needs its check box, and a risky row needs its Confirm press.
  */
 export function formatSendLine(group: CoordinatorGroup): string | null {
 	const parts: string[] = [];
-	for (const item of group.rows) {
-		const ans = effectiveAnswer(item);
-		if (!ans) continue;
-		if (!isRowConfirmed(item)) continue;
+	for (const item of sendableRows(group)) {
+		const ans = effectiveAnswer(item) as EffectiveAnswer;
 		const label = sanitizeSendField(item.row.label);
 		const subject = sanitizeSendField(shortSubject(item.row.text));
-		const answer = sanitizeSendField(ans.text);
-		if (!label || !answer) continue;
-		parts.push(`[${label}] ${subject}: ${answer}`);
+		parts.push(`[${label}] ${subject}: ${sanitizeSendField(ans.text)}`);
 	}
 	if (parts.length === 0) return null;
 	return `[Owner popup] ${parts.join("; ")}`;
@@ -160,7 +209,7 @@ export function formatOptionLabel(option: RowOption, row: OwnerRow): string {
 
 export function rowTags(item: RowViewState): string[] {
 	if (item.row.writing) return ["writing..."];
-	if (item.row.risky) {
+	if (needsConfirm(item)) {
 		return isRowPendingConfirm(item) ? ["risk", "confirm"] : ["risk"];
 	}
 	if (item.row.kind === "owner_step") return ["owner step"];
@@ -168,284 +217,150 @@ export function rowTags(item: RowViewState): string[] {
 	return [];
 }
 
-function compactAnswerSummary(item: RowViewState): string {
-	if (item.row.writing) return "writing answers ...";
-	const ans = effectiveAnswer(item);
-	if (!ans) return "open";
-	if (item.row.risky && !item.confirmed) {
-		return `needs confirm: ${truncateTask(ans.text, 52)}`;
-	}
-	const prefix = item.row.risky ? "confirmed" : "answered";
-	return `${prefix}: ${truncateTask(ans.text, 60)}`;
+/** The count of the header and of the Send button: the rows that a press of Send sends now. */
+export function sendCount(group: CoordinatorGroup): number {
+	return sendableRows(group).length;
 }
 
-function headerProgressText(rows: readonly RowViewState[]): string {
-	const total = rows.length;
-	const answered = rows.filter(isRowConfirmed).length;
-	const pendingRisk = rows.filter(isRowPendingConfirm);
-	const openRows = rows.filter((item) => !isRowConfirmed(item) && !isRowPendingConfirm(item));
-
-	if (pendingRisk.length > 0) {
-		const labels = pendingRisk.map((item) => `[${item.row.label}]`).join(", ");
-		return `${answered} answered · ${labels} needs confirm`;
-	}
-	if (answered > 0 && openRows.length > 0 && openRows.length <= 2) {
-		const labels = openRows.map((item) => `[${item.row.label}]`).join(", ");
-		return `${answered} of ${total} answered · ${labels} open`;
-	}
-	return `${answered} of ${total} answered`;
+/** The status line of a locked surface: the coordinator works, so Send waits for its next report. */
+export function lockedText(group: Pick<CoordinatorGroup, "address" | "name">): string {
+	return `${coordinatorHeading(group)} works now. Send is possible again after its next report; you can prepare answers.`;
 }
 
-/** Resolve which row is currently focused on one coordinator surface; defaults to its first row when unset or stale. */
-export function resolveFocused(group: CoordinatorGroup): RowViewState | null {
-	if (group.focusedLabel) {
-		const item = group.rows.find((r) => r.row.label === group.focusedLabel);
-		if (item) return item;
-	}
-	return group.rows[0] ?? null;
+function ext(extensions: Record<string, unknown>): Record<string, unknown> {
+	return { "@metadata": { extensions } };
+}
+
+/** The text of the one line of an empty `left`: every row of the surface has an answer. */
+/** The label prefix of the chosen option of an open row that waits for Confirm: a plain marker, no check mark. */
+export const PENDING_PICK_PREFIX = "Chosen: ";
+
+export function allAnsweredText(group: Pick<CoordinatorGroup, "locked">): string {
+	return group.locked ? "All rows have an answer." : "All rows have an answer. Press Send.";
 }
 
 /**
- * Build the A2UI v1.0 component list and data model for one coordinator's surface.
- * Only paths shown by controls in this drawing (`/focused/pick`, `/focused/other`) are bound in buttons.
+ * Build the A2UI v1.0 component list and data model for one coordinator's two-column surface.
+ * `left` holds the open rows stacked in report order, flat: for each row its text, its answers, the Confirm row of a
+ * risky row with an answer, and the Row of its "Other answer" field and "Use text" button. `right` holds the answered
+ * rows. Every Button context binds the draft of each field drawn (`other_<label>` to `/rows/<label>/other`), so a press
+ * carries all drafts and a redraw keeps them.
  */
 export function buildSurfaceSpec(group: CoordinatorGroup): SurfaceSpec {
 	const components: A2uiComponent[] = [];
-	const focusedItem = resolveFocused(group);
+	const pending = Boolean(group.receiptPending);
+	const openRows = pending ? [] : group.rows.filter((item) => !isRowAnswered(item));
+	const answeredRows = pending ? [] : group.rows.filter(isRowAnswered);
+	const fieldRows = openRows.filter((item) => !item.row.writing);
 
-	const hasPicker = Boolean(focusedItem && !focusedItem.row.writing && focusedItem.row.options.length > 0);
-	const hasOther = Boolean(focusedItem && !focusedItem.row.writing);
-
-	const buttonContext = (extra: Record<string, unknown> = {}): Record<string, unknown> => {
-		const ctx: Record<string, unknown> = { ...extra };
-		if (focusedItem) {
-			ctx.focusedCoordinator = group.address;
-			ctx.focusedLabel = focusedItem.row.label;
-			ctx.focusedRevision = group.revision;
-			if (hasPicker) ctx.focusedPick = { "@path": "/focused/pick" };
-			if (hasOther) ctx.focusedOther = { "@path": "/focused/other" };
-		}
-		return ctx;
+	const draftBindings: Record<string, unknown> = {};
+	for (const item of fieldRows) draftBindings[draftKey(item.row.label)] = { "@path": `/rows/${item.row.label}/other` };
+	const surfaceContext = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+		targetCoordinator: group.address,
+		targetRevision: group.revision,
+		...extra,
+		...draftBindings,
+	});
+	// Close binds no draft: it works at any draft size.
+	const closeContext = { targetCoordinator: group.address, targetRevision: group.revision };
+	const rowContext = (label: string, extra: Record<string, unknown> = {}) => surfaceContext({ targetLabel: label, ...extra });
+	const button = (id: string, name: ButtonActionName, label: string, variant: string, context: Record<string, unknown>, more: Record<string, unknown> = {}) => {
+		components.push({ id: `${id}_lbl`, component: "Text", text: label });
+		components.push({ id, component: "Button", child: `${id}_lbl`, variant, ...more, action: { event: { name, context } } });
 	};
 
-	const anyActionable = group.rows.some(isRowConfirmed);
-	const rootChildren: string[] = ["hdr"];
-
-	// Header row
+	// Header: title, coordinator, decider word, count, Send (not while locked or pending), Close (not while pending).
+	const count = sendCount(group);
+	const headerChildren = ["hdr_title", "hdr_coord", "hdr_status", "hdr_count"];
 	components.push({ id: "hdr_title", component: "Text", text: "Owner tasks", variant: "h4" });
-	components.push({
-		id: "hdr_coord",
-		component: "Text",
-		text: coordinatorHeading(group),
-		variant: "caption",
-	});
+	components.push({ id: "hdr_coord", component: "Text", text: coordinatorHeading(group), variant: "caption" });
 	components.push({ id: "hdr_status", component: "Text", text: group.deciderStatus, variant: "caption" });
-	components.push({
-		id: "hdr_left",
-		component: "Row",
-		align: "center",
-		children: ["hdr_title", "hdr_coord", "hdr_status"],
-	});
+	components.push({ id: "hdr_count", component: "Text", text: `${count} of ${group.rows.length} answered`, variant: "caption" });
+	if (!pending && !group.locked) {
+		headerChildren.push("btn_send");
+		button("btn_send", "send", count === 1 ? "Send 1 answer" : `Send ${count} answers`, count > 0 ? "primary" : "default", surfaceContext());
+	}
+	if (!pending) {
+		headerChildren.push("btn_close");
+		button("btn_close", "close", "Close", "default", closeContext);
+	}
+	components.push({ id: "header", component: "Row", justify: "spaceBetween", align: "center", children: headerChildren });
 
-	components.push({
-		id: "hdr_count",
-		component: "Text",
-		text: headerProgressText(group.rows),
-		variant: "caption",
-	});
-	// A surface exists only while its coordinator sits at its prompt, so the primary button is always "Send answers".
-	components.push({ id: "btn_send_lbl", component: "Text", text: "Send answers" });
-	components.push({
-		id: "btn_send",
-		component: "Button",
-		child: "btn_send_lbl",
-		variant: anyActionable ? "primary" : "default",
-		action: {
-			event: {
-				name: "send",
-				context: buttonContext({ targetCoordinator: group.address, targetRevision: group.revision }),
-			},
-		},
-	});
-	components.push({ id: "btn_close_lbl", component: "Text", text: "Close" });
-	components.push({
-		id: "btn_close",
-		component: "Button",
-		child: "btn_close_lbl",
-		variant: "default",
-		action: {
-			event: {
-				name: "close",
-				context: buttonContext({ targetCoordinator: group.address, targetRevision: group.revision }),
-			},
-		},
-	});
-	components.push({
-		id: "hdr_right",
-		component: "Row",
-		align: "center",
-		children: ["hdr_count", "btn_send", "btn_close"],
-	});
-	components.push({
-		id: "hdr",
-		component: "Row",
-		justify: "spaceBetween",
-		align: "center",
-		children: ["hdr_left", "hdr_right"],
-	});
-
-	if (group.statusMessage) {
+	const rootChildren: string[] = ["header"];
+	const status = [!pending && group.locked ? lockedText(group) : "", group.statusMessage].filter(Boolean).join(" ");
+	if (status) {
 		rootChildren.push("status_line");
-		components.push({ id: "status_line", component: "Text", text: group.statusMessage, variant: "caption" });
+		components.push({ id: "status_line", component: "Text", text: status, variant: "caption" });
 	}
 
-	// One Row of Cards for this coordinator's open tasks
-	const rowId = "coord_row_0";
-	const cardIds: string[] = [];
-
-	group.rows.forEach((item, ri) => {
-		const prefix = `c_0_${ri}`;
-		const isFocused = Boolean(focusedItem && focusedItem.row.label === item.row.label);
+	// Left: the pending line, then each open row flat: text, answers side by side, Confirm row, Other answer + Use text.
+	const leftChildren: string[] = [];
+	if (pending || (group.sentPending && group.sentPending.length > 0)) {
+		const sent = pending ? "" : `: ${(group.sentPending ?? []).map((label) => `[${label}]`).join(", ")}`;
+		leftChildren.push("pending_text");
+		components.push({ id: "pending_text", component: "Text", text: `Receipt pending for ${coordinatorHeading(group)}${sent}`, variant: "caption" });
+	}
+	for (const item of openRows) {
+		const label = item.row.label;
 		const tags = rowTags(item);
-		const headText = tags.length > 0 ? `[${item.row.label}] · ${tags.join(" · ")}` : `[${item.row.label}]`;
-
-		const colChildren: string[] = [];
-
-		if (isFocused) {
-			const focusedHead = item.row.writing ? `[${item.row.label}] · writing answers ...` : headText;
-			const focusedText =
-				item.row.writing || tags.length > 0 ? `${focusedHead} — ${item.row.text}` : `${focusedHead} ${item.row.text}`;
-			colChildren.push(`${prefix}_q`);
-			components.push({ id: `${prefix}_q`, component: "Text", text: focusedText, variant: "body" });
-
-			if (!item.row.writing) {
-				if (hasPicker) {
-					colChildren.push("focused_picker");
-					components.push({
-						id: "focused_picker",
-						component: "ChoicePicker",
-						label: "Answers",
-						variant: "mutuallyExclusive",
-						value: { "@path": "/focused/pick" },
-						options: item.row.options.slice(0, 3).map((opt) => ({
-							value: opt.id,
-							label: formatOptionLabel(opt, item.row),
-						})),
-					});
-				}
-				if (item.row.risky) {
-					colChildren.push("focused_confirm_row");
-					components.push({
-						id: "focused_confirm_msg",
-						component: "Text",
-						text: item.confirmed ? "risk: confirmed" : "risk: confirm this answer",
-						variant: "caption",
-					});
-					components.push({ id: "focused_confirm_lbl", component: "Text", text: "Confirm" });
-					components.push({
-						id: "focused_confirm_btn",
-						component: "Button",
-						child: "focused_confirm_lbl",
-						variant: "primary",
-						action: {
-							event: {
-								name: "confirm",
-								context: buttonContext({
-									targetCoordinator: group.address,
-									targetLabel: item.row.label,
-									targetRevision: group.revision,
-								}),
-							},
-						},
-					});
-					components.push({
-						id: "focused_confirm_row",
-						component: "Row",
-						justify: "spaceBetween",
-						align: "center",
-						children: ["focused_confirm_msg", "focused_confirm_btn"],
-					});
-				}
-				if (hasOther) {
-					colChildren.push("focused_other");
-					components.push({
-						id: "focused_other",
-						component: "TextField",
-						label: "Other answer",
-						placeholder: "Other answer",
-						variant: "shortText",
-						value: { "@path": "/focused/other" },
-					});
-				}
+		const head = item.row.writing ? `[${label}] · writing answers ...` : tags.length > 0 ? `[${label}] · ${tags.join(" · ")}` : `[${label}]`;
+		const sep = item.row.writing || tags.length > 0 ? " — " : " ";
+		leftChildren.push(`open_text_${label}`);
+		components.push({ id: `open_text_${label}`, component: "Text", text: `${head}${sep}${item.row.text}`, variant: "body" });
+		if (item.row.writing) continue;
+		const options = item.row.options.slice(0, 3);
+		if (options.length > 0) {
+			const answerIds: string[] = [];
+			for (const opt of options) {
+				const id = `answer_${label}_${opt.id}`;
+				// A row in `left` has no answer that counts yet: a chosen option of a risky row waits for Confirm. It gets
+				// the Button variant "primary" and the prefix "Chosen: ", never a check mark.
+				const chosen = item.checked && item.selectedOptionId === opt.id && singleLineText(item.customText).length === 0;
+				answerIds.push(id);
+				button(id, "choose", `${chosen ? PENDING_PICK_PREFIX : ""}${formatOptionLabel(opt, item.row)}`, chosen ? "primary" : "default", rowContext(label, { optionId: opt.id }));
 			}
-		} else {
-			colChildren.push(`${prefix}_head`, `${prefix}_q`, `${prefix}_ans`, `${prefix}_btn`);
-			components.push({ id: `${prefix}_head`, component: "Text", text: headText, variant: "h5" });
-			components.push({
-				id: `${prefix}_q`,
-				component: "Text",
-				text: truncateTask(item.row.text, COMPACT_TASK_CHARS),
-				variant: "body",
-			});
-			components.push({
-				id: `${prefix}_ans`,
-				component: "Text",
-				text: compactAnswerSummary(item),
-				variant: "caption",
-			});
-			components.push({ id: `${prefix}_btn_lbl`, component: "Text", text: `Focus [${item.row.label}]` });
-			components.push({
-				id: `${prefix}_btn`,
-				component: "Button",
-				child: `${prefix}_btn_lbl`,
-				variant: "borderless",
-				action: {
-					event: {
-						name: "focus",
-						context: buttonContext({
-							targetCoordinator: group.address,
-							targetLabel: item.row.label,
-							targetRevision: group.revision,
-						}),
-					},
-				},
-			});
+			leftChildren.push(`answers_${label}`);
+			components.push({ id: `answers_${label}`, component: "Row", align: "center", children: answerIds });
 		}
-
-		components.push({ id: `${prefix}_col`, component: "Column", children: colChildren });
-		components.push({
-			id: prefix,
-			component: "Card",
-			child: `${prefix}_col`,
-			weight: isFocused ? FOCUSED_CARD_WEIGHT : COMPACT_CARD_WEIGHT,
-		});
-		cardIds.push(prefix);
-	});
-
-	if (cardIds.length > 0) {
-		rootChildren.push(rowId);
-		components.push({ id: rowId, component: "Row", align: "stretch", children: cardIds });
+		if (item.checked && isRowPendingConfirm(item)) {
+			const ans = effectiveAnswer(item) as EffectiveAnswer;
+			leftChildren.push(`confirm_row_${label}`);
+			// The whole stored answer, not a prefix: the owner confirms the text that they can read. The Text wraps.
+			components.push({ id: `confirm_msg_${label}`, component: "Text", text: `risk: confirm the answer "${ans.text}"`, variant: "caption", weight: 1 });
+			button(`confirm_${label}`, "confirm", "Confirm", "primary", rowContext(label, { answerVersion: String(item.answerVersion ?? 0) }));
+			components.push({ id: `confirm_row_${label}`, component: "Row", justify: "spaceBetween", align: "center", children: [`confirm_msg_${label}`, `confirm_${label}`] });
+		}
+		leftChildren.push(`other_row_${label}`);
+		components.push({ id: `other_${label}`, component: "TextField", label: "Other answer", placeholder: "Other answer", variant: "shortText", value: { "@path": `/rows/${label}/other` }, weight: 1 });
+		button(`use_text_${label}`, "other", "Use text", "default", rowContext(label));
+		components.push({ id: `other_row_${label}`, component: "Row", align: "center", children: [`other_${label}`, `use_text_${label}`] });
 	}
-
-	// Send-line preview when at least one row for this coordinator is ready to send
-	const preview = formatSendLine(group);
-	if (preview) {
-		rootChildren.push("preview_line");
-		components.push({ id: "preview_line", component: "Text", text: `Send line: ${preview}`, variant: "caption" });
+	if (!pending && openRows.length === 0) {
+		leftChildren.push("all_answered_text");
+		components.push({ id: "all_answered_text", component: "Text", text: allAnsweredText(group), variant: "caption" });
 	}
+	components.push({ id: "left", component: "Column", children: leftChildren });
 
-	components.unshift({ id: "root", component: "Column", children: rootChildren });
-
-	const focusedModel: Record<string, unknown> = {};
-	if (hasPicker && focusedItem) {
-		focusedModel.pick = focusedItem.selectedOptionId ? [focusedItem.selectedOptionId] : [];
+	// Right: one Row for each answered row in report order: check box, row text, chosen answer.
+	const rightChildren: string[] = [];
+	for (const item of answeredRows) {
+		const label = item.row.label;
+		button(`toggle_${label}`, "toggle", "[x]", "default", rowContext(label), ext({ owner_rail_role: "check", owner_rail_checked: true }));
+		components.push({ id: `focus_${label}`, component: "Text", text: `[${label}] ${item.row.text}`, variant: "body", ...ext({ owner_rail_role: "row-text" }) });
+		const ans = effectiveAnswer(item);
+		components.push({ id: `chip_${label}`, component: "Text", text: ans ? truncateTask(ans.text, CHIP_CHARS) : "", variant: "caption" });
+		components.push({ id: `row_${label}`, component: "Row", align: "center", children: [`toggle_${label}`, `focus_${label}`, `chip_${label}`] });
+		rightChildren.push(`row_${label}`);
 	}
-	if (hasOther && focusedItem) {
-		focusedModel.other = focusedItem.customText;
-	}
+	components.push({ id: "right", component: "Column", children: rightChildren });
+	components.push({ id: "body", component: "Row", align: "start", children: ["left", "right"] });
+	rootChildren.push("body");
 
-	const dataModel: Record<string, unknown> = { focused: focusedModel };
-	return { components, dataModel };
+	components.unshift({ id: "root", component: "Column", children: rootChildren, ...ext({ owner_rail_layout: "two-column" }) });
+
+	const rowsModel: Record<string, unknown> = {};
+	for (const item of fieldRows) rowsModel[item.row.label] = { other: item.draft };
+	return { components, dataModel: { rows: rowsModel } };
 }
 
 /** Map of all currently rendered Button components on one coordinator surface and their bound literal/path contexts. */
@@ -457,22 +372,20 @@ export function renderedButtonSpecs(group: CoordinatorGroup): Map<string, Render
 		const event = (comp.action as { event?: { name?: unknown; context?: unknown } } | undefined)?.event;
 		if (!event) continue;
 		const name = event.name;
-		if (name !== "focus" && name !== "confirm" && name !== "send" && name !== "close") continue;
+		if (typeof name !== "string" || !BUTTON_ACTIONS.has(name)) continue;
 		const ctx = event.context && typeof event.context === "object" && !Array.isArray(event.context)
 			? (event.context as Record<string, unknown>)
 			: {};
 		const literals: Record<string, string> = {};
-		let bindsPick = false;
-		let bindsOther = false;
+		const drafts = new Set<string>();
 		for (const [key, val] of Object.entries(ctx)) {
 			if (typeof val === "string") {
 				literals[key] = val;
-			} else if (val && typeof val === "object" && "@path" in val) {
-				if (key === "focusedPick") bindsPick = true;
-				if (key === "focusedOther") bindsOther = true;
+			} else if (val && typeof val === "object" && "@path" in val && DRAFT_KEY_RE.test(key)) {
+				drafts.add(key.slice(DRAFT_KEY_PREFIX.length));
 			}
 		}
-		map.set(comp.id, { id: comp.id, name, literals, bindsPick, bindsOther });
+		map.set(comp.id, { id: comp.id, name: name as ButtonActionName, literals, drafts });
 	}
 	return map;
 }
@@ -516,7 +429,7 @@ export function toReplaceSurfaceMessages(group: CoordinatorGroup): unknown[] {
 	];
 }
 
-/** Build `[updateComponents, updateDataModel]` for in-place focus, confirm, rank, status, and writer updates. */
+/** Build `[updateComponents, updateDataModel]` for in-place choose, other, toggle, confirm, rank, status, and writer updates. */
 export function toUpdateSurfaceMessages(group: CoordinatorGroup): unknown[] {
 	const surfaceId = surfaceIdFor(group.address);
 	const { components, dataModel } = buildSurfaceSpec(group);

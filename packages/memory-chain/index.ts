@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerMemoryChain } from "./runtime.mjs";
 
-// Shadow only: the handler measures the chain and injects nothing.
+// The handler measures the chain in shadow and injects nothing. The tool `memory_find` is on demand.
 export default function (pi: ExtensionAPI) {
   registerMemoryChain(pi);
 }

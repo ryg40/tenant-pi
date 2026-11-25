@@ -92,11 +92,11 @@ def fixture(root):
     return os.path.join(scripts, "handoff.py"), handoff, env
 
 
-def run(script, handoff, env, **fake):
+def run(script, handoff, env, *extra, **fake):
     env = dict(env, **fake)
     with open(os.path.join(os.path.dirname(env["FAKE_LOG"]), "ask-calls"), "w", encoding="utf-8") as f:
         f.write("0")  # each run starts with the start prompt
-    p = subprocess.run([sys.executable, script, "--file", handoff, "--timeout", "5"], env=env,
+    p = subprocess.run([sys.executable, script, "--file", handoff, "--timeout", "5", *extra], env=env,
                        capture_output=True, text=True, timeout=120)
     try:
         with open(env["FAKE_LOG"], encoding="utf-8") as f:
@@ -128,6 +128,25 @@ class Handoff(unittest.TestCase):
                 code, out, closes = run(self.script, self.handoff, self.env, **fake)
                 self.assertEqual(code, expected, out)
                 self.assertEqual(closes, [])
+
+    def test_a_bad_roles_value_refuses_with_usage_and_starts_no_pane(self):
+        code, out, closes = run(self.script, self.handoff, self.env, "--roles", "worker:codex:astra")
+        # The fake herdr logs each call: no log file means that no herdr call and no spawn ran.
+        self.assertEqual((code, closes, os.path.exists(self.env["FAKE_LOG"])),
+                         (CONTRACT["handoff"]["exit"]["usage"]["code"], [], False), out)
+
+    def test_the_roles_section_is_written_one_time_beside_the_open_panes(self):
+        sys.path.insert(0, os.path.dirname(self.script))
+        self.addCleanup(sys.path.remove, os.path.dirname(self.script))
+        import handoff
+        role_models = handoff.parse_roles("researcher:claude:claude-sonnet-5-5:high,reviewer:pi:astra:low")
+        for _ in range(2):
+            with open(self.handoff, encoding="utf-8") as f:
+                handoff.append_panes(self.handoff, f.read(), ["- `w:task` proj-worker-1"], role_models)
+        with open(self.handoff, encoding="utf-8") as f:
+            text = f.read()
+        self.assertEqual((text.count(handoff.ROLES_SECTION), text.count(handoff.SECTION), text.count("w:task")), (1, 1, 1))
+        self.assertEqual(text.count("- reviewer: `--harness pi --model astra --thinking low`"), 1)
 
 
 if __name__ == "__main__":

@@ -11,9 +11,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (ROLES, core_harness, core_project, core_role, core_role_tab, core_terminals,  # noqa: E402
-                     ensure_layout, error_code, herdr, herdr_app_pane, require_backend, require_herdr_env, tabs)
+                     ensure_layout, error_code, herdr, herdr_app_pane, require_backend, require_herdr_env, say_name, tabs)
 
-HEADER = "PANE\tTAB\tNAME\tHARNESS\tSTATUS\tWORKSPACE\tCWD\tLABEL"
+HEADER = "PANE\tSAY\tTAB\tNAME\tHARNESS\tSTATUS\tWORKSPACE\tCWD\tLABEL"
 
 
 def scope_arg(args):
@@ -68,6 +68,7 @@ def panes_core(found):
             tab = "coordinator"
         print("\t".join([
             t["address"] + (" (you)" if t["address"] == mine else ""),
+            say_name(t.get("name"), labels.get("where")) or "-",
             tab,
             t.get("name") or "-",
             core_harness(t) or "shell",
@@ -123,6 +124,7 @@ def main():
         pid = p["pane_id"]
         print("\t".join([
             pid + (" (you)" if pid == me else ""),
+            say_name(names.get(pid)) or "-",
             tab_labels.get(p.get("tab_id"), p.get("tab_id", "")),
             names.get(pid, "") or "-",
             p.get("agent") or "shell",

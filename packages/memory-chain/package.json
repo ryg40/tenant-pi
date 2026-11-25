@@ -1,9 +1,10 @@
 {
   "name": "tenant-pi-memory-chain",
   "version": "0.1.0",
-  "description": "One scoped, read-only memory search before each prompt, for Pi and Claude Code; shadow mode only",
+  "description": "Memory search for Pi and Claude Code: a scoped shadow search before each prompt, and the on-demand tool memory_find for Pi with the memory-search command and skill for Claude Code",
   "private": true,
   "type": "module",
   "engines": {"node": ">=24.0.0 <25"},
-  "scripts": {"test": "node --test"}
+  "scripts": {"test": "node --test"},
+  "pi": {"extensions": ["./index.ts"], "skills": ["./pi-skills"]}
 }

@@ -228,6 +228,51 @@ function isShortTermEnumAfterColon(body: string): boolean {
 }
 
 /**
+ * Returns `text` with the inside of balanced `( )`, `[ ]` and backtick code spans replaced by `_`,
+ * at the same length, so split tests and cut positions ignore them. An unbalanced bracket or
+ * backtick protects nothing from that point on.
+ */
+function maskProtectedSpans(text: string): string {
+	const out = text.split("");
+	const stack: { close: string; start: number }[] = [];
+	const mask = (from: number, to: number) => {
+		for (let k = from; k < to; k++) out[k] = "_";
+	};
+	let i = 0;
+	while (i < text.length) {
+		const ch = text[i];
+		if (ch === "`") {
+			const end = text.indexOf("`", i + 1);
+			if (end >= 0) {
+				if (stack.length === 0) mask(i + 1, end);
+				i = end + 1;
+				continue;
+			}
+		} else if (ch === "(" || ch === "[") {
+			stack.push({ close: ch === "(" ? ")" : "]", start: i });
+		} else if ((ch === ")" || ch === "]") && stack.length > 0 && stack[stack.length - 1].close === ch) {
+			const open = stack.pop();
+			if (open && stack.length === 0) mask(open.start + 1, i);
+		}
+		i++;
+	}
+	return out.join("");
+}
+
+/** Splits `text` at the matches of `separator` in `masked` (same length), keeping the original text of each part. */
+function splitAtMasked(text: string, masked: string, separator: RegExp): string[] {
+	const parts: string[] = [];
+	const re = new RegExp(separator.source, separator.flags.includes("g") ? separator.flags : `${separator.flags}g`);
+	let last = 0;
+	for (const match of masked.matchAll(re)) {
+		parts.push(text.slice(last, match.index));
+		last = match.index + match[0].length;
+	}
+	parts.push(text.slice(last));
+	return parts;
+}
+
+/**
  * Strict choice splitter (PLAN-2 section 2.1):
  * reads the first sentence, takes text after the last `: ` when present,
  * splits on `, or `, ` or `, and `, `, and accepts 2 to 4 distinct parts of 2 to 120 characters.
@@ -239,6 +284,8 @@ function isShortTermEnumAfterColon(body: string): boolean {
  *   explicit 3- or 4-term uniform-case single-word lists after `: ` (e.g. `JSON, YAML or TOML`,
  *   `debug, info or warn`);
  * - duplicate parts, parts outside 2 to 120 characters, or fragments with no standalone verb or noun.
+ *
+ * A comma or `or` inside balanced `( )`, `[ ]` or a backtick code span is not a split point and does not count in the tests.
  */
 export function splitChoices(text: string): string[] | null {
 	const sentence = firstSentence(text);
@@ -248,18 +295,19 @@ export function splitChoices(text: string): string[] | null {
 	const body = hasColon ? sentence.slice(colonIndex + 2).trim() : sentence;
 	if (!body) return null;
 
-	const hasCommaOr = /,\s+or\s+/i.test(body);
-	const hasBareOr = /(?<!,)\s+or\s+/i.test(body);
+	const masked = maskProtectedSpans(body);
+	const hasCommaOr = /,\s+or\s+/i.test(masked);
+	const hasBareOr = /(?<!,)\s+or\s+/i.test(masked);
 	const hasOr = hasCommaOr || hasBareOr;
-	const hasPlainComma = /,\s+(?!or\s+)/i.test(body);
+	const hasPlainComma = /,\s+(?!or\s+)/i.test(masked);
 
 	// Without `: `, require an explicit `or` alternative so ordinary comma clauses do not split.
 	if (!hasColon && !hasOr) return null;
 	// A plain comma mixed with a bare `or` is ambiguous (e.g. `Paris, France or London`),
 	// except an explicit 3- or 4-term uniform-case single-word list after `: ` (e.g. `JSON, YAML or TOML`).
-	if (hasPlainComma && hasBareOr && !(hasColon && isShortTermEnumAfterColon(body))) return null;
+	if (hasPlainComma && hasBareOr && !(hasColon && isShortTermEnumAfterColon(masked))) return null;
 
-	const rawParts = body.split(/,\s+or\s+|\s+or\s+|,\s+/i).map((p) => p.trim());
+	const rawParts = splitAtMasked(body, masked, /,\s+or\s+|\s+or\s+|,\s+/i).map((p) => p.trim());
 	if (rawParts.length < 2 || rawParts.length > 4) return null;
 	// Two comma-separated parts after `: ` with no `or` are often an appositive or date (`Paris, France`).
 	if (!hasOr && rawParts.length === 2) return null;

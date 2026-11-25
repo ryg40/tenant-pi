@@ -31,17 +31,17 @@ fail 1
 
 ## Next
 
-- **[A]** Agent: Read the log of the failed macOS check and find the cause.
-- **[B]** Agent, after the cause is known: Fix the test and run the macOS check again.
-- **[C]** Owner: Start the protected macOS runner again.
-- **[D]** Owner decides: Make the release entry now, or hold the release.
-- **[E]** Owner decides: How the footer fits a narrow terminal: wrap it, cut the reset date, or hide the meters. This needs a grilling round (`/grill-me`).
+- **[A]** Owner decides: Make the release entry now, or hold the release.
+- **[B]** Owner: Start the protected macOS runner again.
+- **[C]** Owner decides: How the footer fits a narrow terminal: wrap it, cut the reset date, or hide the meters. This needs a grilling round (`/grill-me`).
+- **[D]** Agent: Read the log of the failed macOS check and find the cause.
+- **[E]** Agent, after the cause is known: Fix the test and run the macOS check again.
 ````
 
-Then, in the same turn, the agent asks decision D in the question tool:
+Then, in the same turn, the agent asks decision A in the question tool:
 
 ```text
-[D] The tag of the footer fix is public, but its macOS check failed. Make the release entry now?
+[A] The tag of the footer fix is public, but its macOS check failed. Make the release entry now?
   1. Hold the release until the check passes (Recommended)
   2. Make the release entry now
 ```
@@ -53,10 +53,10 @@ The owner chose to hold the release: the tag gets no release entry until its mac
 
 ## Next
 
-- **[A]** Agent: Read the log of the failed macOS check and find the cause.
-- **[B]** Agent, after the cause is known: Fix the test and run the macOS check again.
-- **[C]** Owner: Start the protected macOS runner again.
-- **[D]** Owner decides: How the footer fits a narrow terminal: wrap it, cut the reset date, or hide the meters. This needs a grilling round (`/grill-me`).
+- **[A]** Owner: Start the protected macOS runner again.
+- **[B]** Owner decides: How the footer fits a narrow terminal: wrap it, cut the reset date, or hide the meters. This needs a grilling round (`/grill-me`).
+- **[C]** Agent: Read the log of the failed macOS check and find the cause.
+- **[D]** Agent, after the cause is known: Fix the test and run the macOS check again.
 ````
 
 1. The first paragraph is the result: one to three sentences that say what is true now, with the proof inside the sentence (a commit, a count, a size with its limit). No label, heading or state word comes before it. It answers the question of the user, when there is one. After grouped turns (`REPORT.md` section 4), it names the count of the turns. Write nothing before it. Only an outcome can have a line above it: the `added:` line of section 2.
@@ -68,8 +68,8 @@ The owner chose to hold the release: the tag gets no release entry until its mac
 7. `## Not verified`: each line names one thing that is not proven and says why. Leave the part out only when everything is proven.
 8. `## Next` is the last part, in each report. Each line is `- **[A]** <actor>[, <condition>]: <action>`.
    - Labels: `A` to `Z`, then `AA` to `AZ`, `BA` to `ZZ`, then `AAA`: bijective base-26. Restart at `A` in each report.
-   - Actors: `Agent` acts. `Owner` acts, for example with a command that only the owner can run. `Owner decides`: the owner decides, and the action text gives the choices. Each `Agent` line comes before each `Owner` and `Owner decides` line. In each group, the recommended action is first.
-   - A condition holds no colon. It can name another label: "after your answer to D".
+   - Actors: `Agent` acts. `Owner` acts, for example with a command that only the owner can run. `Owner decides`: the owner decides, and the action text gives the choices. Each `Owner` and `Owner decides` line comes before each `Agent` line, so the owner rows have the first labels with no gap. In each group, the recommended action is first. The labels run in one sequence over all lines.
+   - A condition holds no colon. It can name another label: "after your answer to A".
    - A row with a condition gets no card in the owner-task rail, so write an `Owner` or `Owner decides` row with no condition when you are ready for the answer.
    - With no action: the line `None. <reason>` below the heading. The reason says if no safe next action exists or if no work is left.
    - The actions are proposals, not authorization.
@@ -84,6 +84,7 @@ The owner chose to hold the release: the tag gets no release entry until its mac
    - At the end of the work, the page entry and its `added:` line belong to the last report of the turn, after the dialog. Section 2 gives the order.
 10. Colors: the terminal colors the Markdown elements, so use them with purpose: a `##` heading for each part, inline code for each identifier (a commit, a branch, a path, a command, a port), a fenced code block for command output, and bold only for the labels and `**Warning:**`. No table, except for five or more like items with two or more values each. No emoji.
 11. URLs: each URL in full as plain text at the end of its line, with no Markdown link, no short form and no line break.
+   - Panes: Name a pane as `<repo>/<role><n>` (`tenant-pi/worker1`, `tenant-pi/coordinator`): copy the `say` field of the Herdr scripts. With no such field, build it from the pane name `<repo>-<role>-<n>`. Write an address such as `t17m` only in a command.
 12. Teach a junior developer: short full sentences in the language rules of the session, with each article and each verb. Give a new term its meaning.
 
 ## 2. The outcome
@@ -103,14 +104,14 @@ The new service profile is ready but not live: the owner chose eight slots, and 
 
 ## Next
 
-- **[A]** Agent, after your answer to B: Change the profile and run the health check.
-- **[B]** Owner decides: Approve the new profile, or ask for changes.
+- **[A]** Owner decides: Approve the new profile, or ask for changes.
+- **[B]** Agent, after your answer to A: Change the profile and run the health check.
 ````
 
-Then, in the same turn, the agent asks decision B in the question tool:
+Then, in the same turn, the agent asks decision A in the question tool:
 
 ```text
-[B] The new service profile with eight slots is ready but not live. Its health check can run only after the change. Approve it?
+[A] The new service profile with eight slots is ready but not live. Its health check can run only after the change. Approve it?
   1. Approve the new profile (Recommended)
   2. Ask for changes
 ```
@@ -144,7 +145,7 @@ warning  ^\*\*Warning:\*\*
 - A detailed message is ambiguous when it has more than one `next` line, or when a readable line holds a hidden character: a control character other than the tab, a format character (Unicode category `Cf`), U+2028 or U+2029. A carriage return that is not before a line feed is such a control character. A detailed message whose last `heading` line is not its `next` line is missing.
 - Headline: the first non-empty line, or the next one after an `added` line. A headline that starts with `#` is ambiguous: no result paragraph.
 - Next block: the `next` line, at most one empty line, then one or more `action` lines or one `none` line. It ends at the first empty line after its last line, or at the end of the message. The text after it gives no action. An empty line holds nothing or spaces only.
-- Ambiguous: a label out of the order of rule 8, an `Agent` action after an `Owner` or `Owner decides` action, an unknown line in the block, or no `action` line and no `none` line.
+- Ambiguous: a label out of the base-26 order of rule 8, an unknown line in the block, or no `action` line and no `none` line. The order of the actors in rule 8 is a rule for the writer: a program accepts the `Agent` lines before or after the `Owner` and `Owner decides` lines.
 - A `warning` line anywhere in the message is a warning: before the block, in a part, or after the block, also with a wrong end.
 - The form has no items, no state words and no outcome mark.
 

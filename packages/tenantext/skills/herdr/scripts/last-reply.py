@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (CONTRACT, DISK_NOTE, PI_AGENTS, agent_info, assistant_texts, clip, core_get,  # noqa: E402
-                     core_info, core_screen, herdr_app_pane, pi_disk_session, require_backend, require_herdr_env,
+                     core_info, core_screen, herdr_app_pane, pi_disk_session, require_backend, require_herdr_env, say_name,
                      saved_pi_session, screen_tail, session_file)
 
 
@@ -75,7 +75,9 @@ def main():
 
         def screen(lines):
             return screen_tail(target, lines)
-    print(f"pane={info['pane_id']} agent={info.get('agent')} status={info.get('agent_status')} cwd={info.get('cwd')}")
+    say = say_name(info.get("name"))
+    print(f"pane={info['pane_id']}{f' say={say}' if say else ''} agent={info.get('agent')} "
+          f"status={info.get('agent_status')} cwd={info.get('cwd')}")
     texts = assistant_texts(path) if path else []
     if texts:
         print(f"source=transcript {path}")

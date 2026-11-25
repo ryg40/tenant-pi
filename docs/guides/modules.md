@@ -512,7 +512,7 @@ The Claude Code form has these gaps today:
 
 - `ops-footer`, `context-meter`, `codex-accounts`, `copilot-usage` and `anthropic-usage` have no Claude Code form in the kit. A Claude Code status line could show them.
 - `agentcore` is not in the marketplace file. Its plugin `packages/agentcore-claude` loads in place with `claude --plugin-dir`.
-- The memory chain `packages/memory-chain` is not a component yet. Its plugin loads in place with `claude --plugin-dir`; see [in-tree packages](../packages.md#memory-chain-packagesmemory-chain).
+- The memory chain `packages/memory-chain` is not a component yet. Its plugin loads in place with `claude --plugin-dir`. Its on-demand search has a Pi form (the tool `memory_find`, which calls the native store tools of OpenViking and Hermes and reads the personal wiki `~/.llm-wiki` itself, with `wiki_recall` and its layered vault only as the fallback, and the skill `memory-search`) and a Claude Code form (the command `scripts/search.mjs` and the plugin skill `memory-search`); see [in-tree packages](../packages.md#memory-chain-packagesmemory-chain).
 
 The other components have no Claude Code form in the kit:
 

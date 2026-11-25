@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (CONTRACT, agent_info, core_error_kind, core_get, core_local, core_record,  # noqa: E402
-                     ensure_layout, error_code, hc, herdr, herdr_app_pane, read_record, remove_record,
+                     ensure_layout, error_code, hc, herdr, herdr_app_pane, pane_shown, read_record, remove_record,
                      require_backend, require_herdr_env)
 
 
@@ -37,14 +37,18 @@ def close_core(found):
         state, terminal = core_get(target)
         if state == "not_found":
             # Already closed. Only a record of a task terminal that spawn.py started in this space goes away.
-            if core_local(target) and spawned_here(read_record(target), space):
+            rec = read_record(target)
+            if core_local(target) and spawned_here(rec, space):
                 remove_record(target)
-                print(f"{target}: already closed")
+                print(f"{pane_shown(target, rec.get('name'))}: already closed")
             else:
                 print(f"{target}: no terminal has this name or address. Give the address.")
                 failed = 1
             continue
         address = (terminal or {}).get("address") if isinstance(terminal, dict) else target
+        # The owner name only of a local terminal: a terminal of another machine keeps its address alone.
+        local = terminal if state == "ok" and isinstance(terminal, dict) else {}
+        shown = pane_shown(address, local.get("name"), (local.get("labels") or {}).get("where"))
         why = None
         if state == "remote":
             why = "the terminal belongs to another machine"
@@ -63,14 +67,14 @@ def close_core(found):
             elif rec.get("session") == "primary" or rec.get("role") == "coordinator":
                 why = "the pane is a coordinator or an interactive session"
         if why:
-            print(f"{address}: REFUSED, {why}. Close it only when the user tells you to: hc kill {address}")
+            print(f"{shown}: REFUSED, {why}. Close it only when the user tells you to: hc kill {address}")
             failed = 1
             continue
         code, data, raw = hc("kill", address, "--json", timeout=30)
         kind = core_error_kind(data)
         if (code == 0 and not kind) or kind == "not_found":
             remove_record(address)
-            print(f"{address}: closed" if not kind else f"{address}: already closed")
+            print(f"{shown}: closed" if not kind else f"{shown}: already closed")
         else:
             print(f"{address}: close failed: {raw[:200]}")
             failed = 1
@@ -108,14 +112,16 @@ def main():
         elif pane == me.get("pane_id"):
             why = "the pane is your own pane"
         if why:
-            print(f"{pane}: REFUSED, {why}. Close it only when the user tells you to: herdr pane close {pane}")
+            print(f"{pane_shown(pane, (rec or {}).get('name'))}: REFUSED, {why}. Close it only when the user tells you "
+                  f"to: herdr pane close {pane}")
             failed = 1
             continue
         code, data, raw = herdr("pane", "close", pane)
         err = error_code(data)
         if (code == 0 and not err) or err == "pane_not_found":
             remove_record(pane)
-            print(f"{pane}: closed" if not err else f"{pane}: already closed")
+            shown = pane_shown(pane, rec.get("name"))
+            print(f"{shown}: closed" if not err else f"{shown}: already closed")
         else:
             print(f"{pane}: close failed: {raw[:200]}")
             failed = 1

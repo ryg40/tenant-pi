@@ -115,3 +115,54 @@ export function sandbox(t, { base = "", mode = "shadow", approved = null, cli = 
 	if (approved) writeFileSync(join(config, "approved-facts.json"), JSON.stringify({ facts: approved }));
 	return { env, home, project, state: join(env.XDG_STATE_HOME, "tenant-pi", "memory-chain") };
 }
+
+/**
+ * A fake decider on `host` (loopback by default). `/health` answers 200. `/v1/systemone` waits `delayMs`, then answers
+ * `reply(body)` as `{status, json}`. It records each question body; no request data goes into a
+ * response header.
+ */
+export async function fakeDecider(t, { delayMs = 0, reply, host = "127.0.0.1" } = {}) {
+	const requests = [];
+	const timers = new Set();
+	let count = 0;
+	const server = createServer((request, response) => {
+		count += 1;
+		const chunks = [];
+		request.on("data", (chunk) => chunks.push(chunk));
+		request.on("end", () => {
+			if (request.url === "/health") {
+				response.writeHead(200, { "Content-Type": "application/json" });
+				response.end("{}");
+				return;
+			}
+			const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+			requests.push(body);
+			const timer = setTimeout(() => {
+				timers.delete(timer);
+				if (response.destroyed) return;
+				const answer = reply ? reply(body) : { status: 200, json: {} };
+				response.writeHead(answer.status, { "Content-Type": "application/json" });
+				response.end(JSON.stringify(answer.json ?? {}));
+			}, delayMs);
+			timers.add(timer);
+		});
+	});
+	await new Promise((resolve) => server.listen(0, host, resolve));
+	t.after(() => new Promise((resolve) => {
+		for (const timer of timers) clearTimeout(timer);
+		server.closeAllConnections();
+		server.close(resolve);
+	}));
+	const { port } = server.address();
+	// `count` holds every request, the health check included; `requests` holds the question bodies.
+	return { base: `http://127.0.0.1:${port}`, port, requests, count: () => count };
+}
+
+/** A loopback base URL with no listener: a request gets connection refused. */
+export async function closedPort() {
+	const server = createServer();
+	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+	const { port } = server.address();
+	await new Promise((resolve) => server.close(resolve));
+	return `http://127.0.0.1:${port}`;
+}

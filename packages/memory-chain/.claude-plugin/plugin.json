@@ -1,8 +1,8 @@
 {
   "name": "tenant-pi-memory-chain",
   "version": "0.1.0",
-  "description": "One scoped, read-only memory search before each prompt, in shadow: a UserPromptSubmit hook that measures the chain and adds nothing to the prompt.",
+  "description": "Memory search that changes no memory data: a scoped UserPromptSubmit hook in shadow that measures the chain and adds nothing to the prompt, and the on-demand skill memory-search that searches OpenViking, Hermes and the personal LLM Wiki for one question, ranked by the local decision model. It works only in place from the clone: it imports ../openviking-pi/shared/.",
   "author": { "name": "The tenant-pi authors" },
   "license": "MIT",
-  "keywords": ["memory", "openviking", "shadow"]
+  "keywords": ["memory", "openviking", "shadow", "search"]
 }

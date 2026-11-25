@@ -7,10 +7,10 @@ import { homedir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { buildOvHeaders } from "../../openviking-pi/shared/ov-http.mjs";
 
-const HERMES_DELIMITER = "\n§\n";
+export const HERMES_DELIMITER = "\n§\n";
 const WIKI_DIRS = [".llm-wiki", ".wiki"];
 const MAX_WIKI_FILES = 300;
-const MAX_FILE_BYTES = 128 * 1024;
+export const MAX_FILE_BYTES = 128 * 1024;
 const MAX_HITS_PER_STORE = 8;
 const STOP = new Set(["the", "and", "for", "with", "that", "this", "what", "how", "does", "from", "are", "was", "you", "not"]);
 
@@ -100,10 +100,10 @@ export function fsProjectKey(root) {
 }
 
 export const TOO_LARGE = "file over 128 KB";
-const BIG = Symbol("too large");
+export const BIG = Symbol("too large");
 
 /** The text of a small file; null for a missing file or a link; BIG for a file over MAX_FILE_BYTES. */
-async function readSmall(path) {
+export async function readSmall(path) {
 	const info = await lstat(path).catch(() => null);
 	if (!info || !info.isFile()) return null;
 	if (info.size > MAX_FILE_BYTES) return BIG;

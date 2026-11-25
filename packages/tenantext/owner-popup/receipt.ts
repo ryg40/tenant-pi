@@ -146,11 +146,31 @@ export function writeReceipt(options: {
 	return { id, path: finalPath, record };
 }
 
-export function removeReceipt(filePath: string): void {
+/**
+ * End one receipt file and say how: `removed` when this call removed it, `already-gone` when it did not exist
+ * (a verify consumed it, or a sweep removed it after it expired), `failed` when it stays in place.
+ */
+export function endReceipt(filePath: string): "removed" | "already-gone" | "failed" {
 	try {
 		unlinkSync(filePath);
-	} catch {
-		// ignore missing or already-consumed receipt
+		return "removed";
+	} catch (err) {
+		return (err as NodeJS.ErrnoException)?.code === "ENOENT" ? "already-gone" : "failed";
+	}
+}
+
+/** Remove one receipt file. True when the file is gone after the call: removed, or it did not exist. */
+export function removeReceipt(filePath: string): boolean {
+	return endReceipt(filePath) !== "failed";
+}
+
+/** True only when the receipt file does not exist; any other read error counts as a receipt that stays. */
+export function receiptIsGone(filePath: string): boolean {
+	try {
+		lstatSync(filePath);
+		return false;
+	} catch (err) {
+		return (err as NodeJS.ErrnoException)?.code === "ENOENT";
 	}
 }
 

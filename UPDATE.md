@@ -55,10 +55,10 @@ One Pi-Bolt release carries one Pi version. `pi_update.py pin` does not change `
 
 When plain Pi moves ahead of Pi-Bolt's embedded Pi, supply `pin --range` with a reviewed range that includes both Pi versions.
 
-The current pins are Pi 1.6.0 and Pi-Bolt 1.3.0, which carries Pi 1.6.0. The reviewed range stays `>=1.5.0 <1.7`. The embedded Pi matches the tested pin, so `check_runtime.py` reports Pi-Bolt 1.3.0 as `match`. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
+The current pins are Pi 1.6.0 and Pi-Bolt 1.3.1, which carries Pi 1.6.0. The reviewed range stays `>=1.5.0 <1.7`. The embedded Pi matches the tested pin, so `check_runtime.py` reports Pi-Bolt 1.3.1 as `match`. When only Pi-Bolt changes, edit `runtime.piBoltVersion` directly and qualify the unchanged Pi pin. Review Pi-Bolt separately: plain Pi qualification does not execute the compiled runtime. When a Pi-Bolt release carries a new Pi pin:
 
 1. Find the Pi-Bolt release that carries the new pin. Its `--version` line starts with the pin. The Pi-Bolt releases on GitHub and the npm package `pi-bolt` list the releases.
-2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.3.0`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
+2. Install that release. The Pi-Bolt installer reads a release tag from `PIBOLT_VERSION`, for example `bolt-v1.3.1`. After an update, run `pi-bolt compile` again if the host uses compiled-in extensions. `pi-bolt update` installs the latest release, which can carry another Pi version.
 3. Set `runtime.piBoltVersion` in `config/manifest.json` to that release, in the same commit as the pin.
 4. Check the runtime of the profile. The report shows the Pi version and the Pi-Bolt release.
 
@@ -96,6 +96,14 @@ The [Pi-Bolt 1.3.0 release notes](https://github.com/opensec-git/Pi-Bolt/release
 - `pi-bolt --herdr-pi` is new: in a Herdr pane, Pi-Bolt reports as the Pi integration of Herdr. The kit does not use the option.
 
 Observed on Linux x86-64 with a kit profile: Pi-Bolt 1.3.0 starts in RPC mode, lists the kit commands and keeps the default model and thinking level of the profile. No kit installer, settings, extension or skill migration is identified. Not verified: the interactive screen, a live model reply, remote control, `pi-bolt compile`, macOS and Windows.
+
+The [Pi-Bolt 1.3.1 release notes](https://github.com/opensec-git/Pi-Bolt/releases/tag/bolt-v1.3.1) add these effects. The embedded Pi stays 1.6.0, and the engine is that of 1.3.0.
+
+- Two defaults now follow Pi 1.6.0: GPT-6.2 Sol is the default model of the `openai`, `azure` and `openai-codex` providers, and Anthropic message threads are on for each provider whose `baseUrl` is on `api.anthropic.com`. A profile that sets its own default model keeps it. `cacheWarming` stays `"streaming"`, and remote control stays off.
+- The fixes: a `grep` pattern that can backtrack for a long time goes to ripgrep; a session file with a damaged line keeps its history; extensions that draw tool rows get the members of Pi 1.6.0 again; each module of an extension gets the packages of Pi-Bolt; the Herdr reporter asks again after 10 minutes when Herdr refuses its session.
+- The installer can add Pi-Bolt as a Paseo provider. `PIBOLT_PASEO=no` skips the step. The installer still links `pi-bolt` to the start script on the default Linux x86-64 build.
+
+Observed on Linux x86-64 with a kit profile: Pi-Bolt 1.3.1 starts in RPC mode, lists the kit commands and keeps the default model and thinking level of the profile. No kit installer, settings, extension or skill migration is identified. Not verified: the interactive screen, a live model reply, remote control, `pi-bolt compile`, macOS and Windows.
 
 ## The module versions
 

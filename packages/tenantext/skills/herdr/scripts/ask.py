@@ -30,7 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (AGY_NOTE, CONTRACT, DISK_NOTE, PI_AGENTS, agent_info, agy_texts, assistant_texts,  # noqa: E402
                      claude_core_session, clip, find_agy_transcript, core_error_kind, core_get, core_info, core_screen, ensure_layout, error_code, exit_codes,
                      find_pi_session, hc, herdr, herdr_app_pane, line_count, pi_disk_session, pi_turn_done,
-                     read_record, require_backend, require_herdr_env, save_pi_session, saved_pi_session, screen_tail,
+                     read_record, require_backend, require_herdr_env, save_pi_session, say_name, saved_pi_session, screen_tail,
                      session_file)
 
 EXIT = exit_codes("ask")
@@ -204,8 +204,9 @@ def clip_line(text, max_chars=200):
 
 
 def report(info, elapsed, note):
-    print(f"pane={info['pane_id']} agent={info.get('agent')} status={info.get('agent_status')} "
-          f"cwd={info.get('cwd')} elapsed={int(elapsed)}s {note}".rstrip())
+    say = say_name(info.get("name"))
+    print(f"pane={info['pane_id']}{f' say={say}' if say else ''} agent={info.get('agent')} "
+          f"status={info.get('agent_status')} cwd={info.get('cwd')} elapsed={int(elapsed)}s {note}".rstrip())
 
 
 def print_reply(pane_id, reply, max_chars):

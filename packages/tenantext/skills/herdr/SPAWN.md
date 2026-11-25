@@ -306,9 +306,13 @@ An overview for people, with a picture of the Herdr app, is in
 - When the coordinator role is set and the live coordinator terminal's
   input-side transcript context size is above 200000 tokens (from the
   transcript lookup of `ask.py`), `herdr-role-set` sends the handoff command
-  (`/tenantext:handoff_coordinator <harness> <model> [<thinking>]` for Claude
-  Code, `/handoff_coordinator <harness> <model> [<thinking>]` for Pi) without
-  waiting. When the token count is above 200000 (so the threshold would
+  (`/tenantext:handoff_coordinator <harness> <model> [<thinking>] [roles=...]`
+  for Claude Code, `/handoff_coordinator <harness> <model> [<thinking>]
+  [roles=...]` for Pi) without waiting. When one or more task roles are set,
+  the last argument is `roles=<role>:<harness>:<model>[:<thinking>],...`: the
+  `spawn.py` inputs of researcher, worker and reviewer, in this order, for each
+  role that is not on Any. A value with a space, a comma or a colon refuses the
+  run before any launch. When the token count is above 200000 (so the threshold would
   otherwise allow a handoff), a coordinator choice with the `agy` harness cannot
   hand off (`handoff.py` refuses `agy`): `herdr-role-set` sets `handoff` to
   `false`, sends nothing, and gives the reason in dry-run output or on stderr;
@@ -332,6 +336,29 @@ An overview for people, with a picture of the Herdr app, is in
   the end of the turn and press Start again). Never `--force`, no retry. A
   tool detail that itself ends in ` still running` while a background task
   runs looks like the prompt; then the command arrives in the turn.
+- A real run that sends no handoff (for each reason above, or with no
+  coordinator choice) sends the live coordinator one line, the role models
+  notice, when one or more task roles are set. The line starts with
+  `[Herdr app Start]` and gives the `spawn.py` inputs of researcher (also
+  scout), worker and reviewer, and the rule that they come before the local
+  models file. The checks before the send are the final `hc get`, the same
+  metadata check as for the handoff (space, tab, harness, PIDs) and the prompt
+  state; no transcript or token check. A coordinator that is not at its prompt
+  or that changed gets nothing: a skip line on stderr, exit `0`. The send uses
+  the background terminal of the handoff, with the files
+  `<state>/role-set/notice-send-<run id>.json` and `notice-job-<run id>.json`
+  (the child removes the job file when it reads it; result files older than
+  7 days go at a later send), `--if idle` for `idle` and never `--force`. In the
+  fallback in the run, a send that fails is a skip line and exit `0`. The line
+  is `{"version":1,"action":"role_models","terminal":"<address>","ok":true,"pending":true,"result":"<path>"}`
+  (no `pending` and `result` in the fallback), it does not count in `done`, and
+  `times` has `notice`. After the start of the background send or a delivered
+  send, the record `<state>/role-set/notice-last.json` (mode 600) keeps the
+  address, the roles value, the coordinator program PID and the terminal PID;
+  a later Start with the same four values sends no notice. Entries older than
+  7 days go; a record that cannot be read or written never fails the run. A
+  dry run has `role_models`: `true` when these conditions hold at plan time
+  (the prompt state is not part of it).
 - Delivery is best effort by the owner's decision (the owner presses Start and
   watches the terminals). The pre-send checks lower the risk of acting on an
   occupied or changed terminal, but are no proof (for example, a shell waiting
@@ -339,8 +366,8 @@ An overview for people, with a picture of the Herdr app, is in
   out), and `herdr-core` performs no prompt-readiness, session-identity or
   `done`-state check at delivery time. Each `hc send` waits for the smaller of
   90 seconds and the remaining 10-minute run deadline; on timeout, the helper
-  reports an unknown delivery outcome and never sends again; for the handoff
-  the line says to look at the coordinator terminal before the next Start.
+  reports an unknown delivery outcome and never sends again; the background
+  handoff send waits 90 seconds and writes that outcome to its result file.
   `herdr-core` holds a send up to 60 seconds after a person's last key in the
   terminal, so a draft near the end of the run can give that unknown outcome.
 - An `agy` pane gets the role prompt file and the first message of
@@ -360,11 +387,26 @@ An overview for people, with a picture of the Herdr app, is in
   `first_message` before a task goes to the pane: for `"not sent"`, read
   the terminal and send the first message by hand if it is needed.
 - Dry run prints one preview JSON line on stdout (including `launch` and
-  `skip`). A real run writes only finished `launch`/`handoff` action lines
+  `skip`). A real run writes only finished `launch`/`handoff`/`role_models` action lines
   (`ok: true`) and the final summary line on stdout, with one plain line on
   stderr for each skipped terminal (both plan-time and delivery-time skips,
   combining reasons, excluding a coordinator that receives a handoff, and
   replacing line breaks and control characters in dynamic fields with spaces).
+  The final summary line of a real run, `ok` true or false, has `times`: the
+  whole milliseconds of each step that ran (`total`, `discover`, `plan`,
+  `launch`, and for a handoff `context`, `get`, `send`), with
+  `coordinator_status` (the status read before the send).
+  The handoff `hc send` runs in a background terminal of `herdr-core`
+  (`hc run --bg --no-parent --rm --no-notify`, with no space or tab label),
+  because `hc exec` ends each process that the helper starts when the helper
+  ends. So the run does not wait for a send that `herdr-core` holds: `send` is
+  the time to start the terminal, and `times` has `send_detached: true`. The handoff line has `pending: true`
+  and `result`, the path of the file
+  `<state>/role-set/handoff-send-<run id>.json` where the child writes `ok`,
+  `outcome`, `error`, `send_ms` and `send_result` (the JSON object of
+  `hc send --json`) when the send ends. When the background terminal does not
+  start, the helper sends in the run itself, with `send_result` and
+  `send_fallback: true` in `times` and no `pending`.
   Exit codes are in `contract.json` (`role_set`: `0` ok, `1` action or internal
   error, `2` bad input).
 - The fixed model keys are `claude/<alias>`, `codex/<name>` and `agy/neon`.
@@ -439,18 +481,20 @@ An overview for people, with a picture of the Herdr app, is in
 To hand your work to the next coordinator session, write the handoff file (state of the work, open items, files, decisions) at a path agreed with the user, then run one command:
 
 ```bash
-python3 $S/handoff.py --file <handoff.md> [--harness claude|pi] [--model m] [--thinking t] [--timeout 900]
+python3 $S/handoff.py --file <handoff.md> [--harness claude|pi] [--model m] [--thinking t] [--timeout 900] [--roles <value>]
 ```
+
+`--roles` takes the value of the `roles=` argument of the handoff command unchanged: `<role>:<harness>:<model>[:<thinking>]`, joined by commas. The roles are researcher, scout, worker and reviewer; the harness is `pi`, `claude` or `agy`. A bad value exits 2 and starts nothing.
 
 In Claude Code, run it with `run_in_background: true`, because the wait can pass the 10-minute limit of a foreground call. In Pi, run it in `bash`.
 
 | Step | What `handoff.py` does |
 | --- | --- |
 | Checks | Inside Herdr, your pane is a coordinator, the file exists and is not empty. A failed check starts nothing. |
-| Panes | It appends the section "Open panes at the handoff" to the file: each open task pane of the workspace. A rerun replaces the section. |
+| Panes | It appends the section "Open panes at the handoff" to the file: each open task pane of the workspace. A rerun replaces the section. With `--roles` it also writes the section "Role models of the owner": the `spawn.py` inputs of each role, which the new coordinator uses for each pane of these roles. Without `--roles` it removes that section. |
 | Start | `spawn.py --role coordinator` with your inputs, else `models.json`. The harness defaults to yours. The new pane appears below yours with the next number. |
 | Confirm | `ask.py` sends the start prompt and waits for a reply line that starts with `HANDOFF-ACCEPTED` (the marker of `contract.json`). |
-| Success | It appends the record to `handoffs.jsonl` beside the file (`"status": "recorded"`), sends the second prompt with `ask.py --timeout 45`, prints one result line, and closes your pane by its ID. The second send succeeds on `ask.py` exit 124 (the turn still works) or exit 0 with a new reply. Exit 0 with the line `note: reply was an API error` before the reply is a failure. |
+| Success | It appends the record to `handoffs.jsonl` beside the file (`"status": "recorded"`, and `"roles"` with the raw `--roles` value when given), sends the second prompt with `ask.py --timeout 45`, prints one result line, and closes your pane by its ID. The second send succeeds on `ask.py` exit 124 (the turn still works) or exit 0 with a new reply. Exit 0 with the line `note: reply was an API error` before the reply is a failure. |
 | Failure | It closes nothing, leaves both panes open, and prints the cause with the pane ID and the name of the new pane. A failed second send appends one more line for the same handoff with `"status": "failed"` and the cause. |
 
 On herdr-core (a pane of the Herdr app) the steps and the exits are the same, with these points:

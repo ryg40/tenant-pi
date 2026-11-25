@@ -66,14 +66,18 @@ function clip(text, max) {
 	return `${text.slice(0, max - 1)}…`;
 }
 
-/** Merge hits of the same source: keep the highest score and its text. */
+/** Merge hits of the same source: keep the highest score and its text (and its title, when the store gives one). */
 function mergeCandidates(hits) {
 	const bySource = new Map();
 	for (const hit of hits) {
 		const score = Number.isFinite(Number(hit.score)) ? Number(hit.score) : 0;
 		const text = typeof hit.text === "string" ? hit.text.trim() : "";
 		const prior = bySource.get(hit.source);
-		if (!prior || score > prior.score) bySource.set(hit.source, { store: hit.store, source: hit.source, text, score });
+		if (!prior || score > prior.score) {
+			const merged = { store: hit.store, source: hit.source, text, score };
+			if (typeof hit.title === "string" && hit.title) merged.title = hit.title;
+			bySource.set(hit.source, merged);
+		}
 	}
 	return [...bySource.values()].map((candidate, index) => ({ id: `c${index + 1}`, ...candidate }));
 }
@@ -138,6 +142,10 @@ export function buildLinksBlock(items, omission) {
  *   a ranker with no valid `reserveMs` counts as failed: the run gives links
  * @param {typeof realClock} [options.clock]
  * @param {number} [options.startedAt] the prompt arrival on `clock`
+ * @param {number} [options.budgetMs] the whole budget; BUDGET_MS by default
+ * @param {"project"|"on-demand"} [options.scope] "project" (the default) applies the scope rule `permitted`.
+ *   "on-demand" is for a search that a person or an agent starts on request: every hit with a source passes.
+ *   The automatic runs (`runPrompt`) never set it.
  */
 export async function runChain(options) {
 	const clock = options.clock ?? realClock;
@@ -204,7 +212,9 @@ export async function runChain(options) {
 		}
 		return finish("timeout", { block: TIMEOUT_LINE, items: [] }, "none", null);
 	}
-	const candidates = mergeCandidates(states.flatMap((state) => state.hits).filter((hit) => permitted(hit, scope)));
+	const onDemand = options.scope === "on-demand";
+	const pass = (hit) => (onDemand ? Boolean(hit) && typeof hit.source === "string" && hit.source !== "" : permitted(hit, scope));
+	const candidates = mergeCandidates(states.flatMap((state) => state.hits).filter(pass));
 	const omission = omissionLine(allOmitted);
 	if (!candidates.length) {
 		// `empty` only when every store answered: a late or failed store makes the result partial.
@@ -218,7 +228,7 @@ export async function runChain(options) {
 	}
 	const rankStart = clock.now();
 	const rankController = new AbortController();
-	const view = candidates.map(({ id, store, source, text, score }) => ({ id, store, source, text, score }));
+	const view = candidates.map(({ id, store, source, text, score, title }) => ({ id, store, source, text, score, ...(title ? { title } : {}) }));
 	const answer = await until(Promise.resolve().then(() => rank(view, { signal: rankController.signal })).catch(() => FAILED), end, clock);
 	rankController.abort();
 	const rankMs = clock.now() - rankStart;

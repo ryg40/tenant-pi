@@ -115,7 +115,6 @@ function parseDetailed(lines: readonly string[]): Report {
   if (lines[first].startsWith("#")) return { status: "ambiguous", detail: "no result paragraph before the first heading" };
   const actions: Action[] = [];
   let label = "A";
-  let owner = false;
   let none = false;
   let end = next + 1;
   if (end < lines.length && EMPTY.test(lines[end])) end++;
@@ -127,8 +126,6 @@ function parseDetailed(lines: readonly string[]): Report {
     if (!match) return { status: "ambiguous", detail: "line in the Next block matches no pattern" };
     const [, found, actor, condition, action] = match;
     if (found !== label) return { status: "ambiguous", detail: "action labels must restart at A and follow base-26 order" };
-    if (owner && actor === "Agent") return { status: "ambiguous", detail: "Agent action after an Owner action" };
-    owner ||= actor !== "Agent";
     actions.push({ label, actor: actor as Action["actor"], ...(condition ? { condition } : {}), text: action });
     label = nextActionLabel(label, "A");
   }

@@ -43,7 +43,8 @@ context or deeper intent analysis is useful.
 1. Decide whether the request is an executable task. Retrieve Experience for
    planning, tool use, environment changes, multi-step workflows, or recovery
    from a failed attempt. Skip retrieval for casual conversation and simple
-   knowledge answers.
+   knowledge answers. One search at the session's first executable task is
+   enough to learn whether this user has any Experience.
 2. Build one concise query containing the task goal, domain object, intended
    operation, and important constraints. After a failure, include the failed
    operation and stable error signature.
@@ -57,6 +58,13 @@ context or deeper intent analysis is useful.
    OpenClaw `ov_search`, set `uri` to this root. Never hardcode `default`,
    `test`, or another user ID. If the server rejects the URI, resolve the root
    as described in *Servers Without the Home Alias* and retry once.
+
+   If the first Experience search of the session, with its one retry after a
+   rejection, returns no hits ("No matching context found.") or a not-found
+   error, this user has no Experience yet: make no other Experience search in
+   this session, neither for a later task nor as the follow-up of step 8. An
+   error that the server is busy or that its circuit breaker is open also ends
+   Experience retrieval for the session; do not retry it.
 4. Start with `limit=5` and the tool's normal score threshold. Judge results by
    task, environment, preconditions, and likely effect; title similarity alone
    is insufficient. If no result is relevant, continue without Experience and
@@ -70,15 +78,17 @@ context or deeper intent analysis is useful.
 7. Apply relevant steps and checks while executing the task. Do not repeat the
    Experience verbatim to the user unless its content is directly needed in the
    answer.
-8. If execution fails for a materially new reason, perform at most one focused
-   follow-up search using the failure evidence, then read only newly relevant
+8. If execution fails for a materially new reason and step 3 has not ended
+   Experience retrieval for the session, perform at most one focused follow-up
+   search using the failure evidence, then read only newly relevant
    Experience files.
 
 ## Servers Without the Home Alias
 
 `viking://~` is the home alias for the caller's own space. A server released
 before the alias (OpenViking v0.4.16) does not resolve it and rejects the
-request with `INVALID_URI` (HTTP 400) instead of searching. Retry once against
+request with `INVALID_URI` (HTTP 400) instead of searching. An empty result
+or a not-found error is not a rejection; step 3 covers it. Retry once against
 the caller's explicit root, resolved from evidence rather than guessed:
 
 - If a canonical `viking://user/<user_id>/...` URI is already visible in this

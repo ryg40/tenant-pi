@@ -1514,10 +1514,10 @@ def shell_state(inv, shell):
                  change=shell in files and blocks.get(shell) != expected)
 
 
-def launcher_state(inv, runtime):
+def launcher_state(inv, runtime, shell=None):
     """The launcher works when its file and its runtime are executable and it binds this profile.
 
-    The run rewrites it when a line that install.sh writes for this profile and runtime is missing.
+    The run rewrites it when a line that install.sh writes for this profile, runtime and shell is missing.
     """
     path, marked, recorded, text = inv.launcher()
     if not marked:
@@ -1526,13 +1526,19 @@ def launcher_state(inv, runtime):
     bound = "export PI_CODING_AGENT_DIR=" + shlex.quote(str(inv.profile)) in lines
     works = (os.access(path, os.X_OK) and bound and recorded is not None and os.path.isfile(recorded)
              and os.access(recorded, os.X_OK))
+    # The setup line names the installer of this kit, the profile and the shell of the install; a launcher from
+    # before --setup, or from before the shell pass, lacks it. The shell is the one of the run, which rewrites the
+    # launcher with it. A run without bash or zsh writes no launcher and selects no launcher row: either value matches.
+    setup = "    exec /bin/sh " + shlex.quote(str(inv.kit / "install.sh")) + " --upgrade " + inv.name + " --shell "
+    setups = [setup + one + ' "$@" ;;' for one in ((shell,) if shell in ("bash", "zsh") else ("bash", "zsh"))]
     expected = ["unset PI_CODING_AGENT_SESSION_DIR"]
     if runtime is not None:
         credsync = shlex.quote(str(inv.kit / "packages/tenantext/skills/herdr/scripts/credsync-launch.sh"))
         expected += ["export PATH=" + shlex.quote(str(runtime.parent)) + ':"$PATH"',
                      "  exec /bin/sh " + credsync + " " + shlex.quote(str(runtime)) + ' "$@"',
                      "exec " + shlex.quote(str(runtime)) + ' "$@"']
-    return state(True, works, sources=[path], change=not works or any(line not in lines for line in expected))
+    return state(True, works, sources=[path], change=not works or any(line not in lines for line in expected)
+                 or not any(line in lines for line in setups))
 
 
 # ---------------------------------------------------------------------------
@@ -1690,7 +1696,7 @@ def inventory(kit, profile, home, name, env, modules=None, shell=None, dummies=F
         elif cid == "shell-rc":
             states[cid] = shell_state(inv, shell)
         elif cid == "launcher":
-            states[cid] = launcher_state(inv, run_path)
+            states[cid] = launcher_state(inv, run_path, shell)
         else:
             raise Refusal(f"no state rule for the catalog item {cid}")
     explicit = modules is not None

@@ -67,6 +67,7 @@ herdr pane neighbor --pane "$HERDR_PANE_ID" --direction right | jq -r .result.ne
 - The result `null` means that no pane exists in that direction. Ask the user which pane they mean.
 - Always pass `--pane "$HERDR_PANE_ID"`. `--current` can resolve to the pane that has the UI focus.
 - Tell the user in one line: pane ID, harness, status, working directory.
+- In text for the owner, name a pane by its `say` name (`tenant-pi/worker1`) from the output of the scripts (`panes.py` column `SAY`, the `say` field of `spawn.py` and `init.py`). Write the address (`t17m`) only in a command, a task file and the notes.
 
 ### A2. Send a prompt and collect the reply
 

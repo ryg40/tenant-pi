@@ -410,10 +410,26 @@ try:
         or walkr_link.is_symlink() and walkr_link.resolve() == (kit / 'packages/walkr/src/walkr-compare.js').resolve()
         or herdr_role_set_script.is_file() and herdr_role_set_link.is_symlink()
         and herdr_role_set_link.resolve() == herdr_role_set_script.resolve()) else []
+    # Only the first argument is an option of the launcher. --setup opens the installer of this kit for this profile;
+    # the upgrade reads the runtime from the launcher. Without a later --shell, it passes the shell of this run, so the
+    # screen opens with no shell question. --help or -h prints the kit part, and the help of the runtime follows.
+    # scripts/kit_inventory.py (launcher_state) expects the setup line, so an older launcher gets an upgrade.
+    installer = shlex.quote(str(kit / 'install.sh'))
+    launcher_case = ['case ${1-} in',
+        '  --setup)',
+        '    shift',
+        '    [ -r ' + installer + ' ] || { echo ' + shlex.quote(name + ': cannot read the installer ' + str(kit / 'install.sh')) + ' >&2; exit 1; }',
+        '    for arg in "$@"; do [ "$arg" = --shell ] && exec /bin/sh ' + installer + ' --upgrade ' + name + ' "$@"; done',
+        '    exec /bin/sh ' + installer + ' --upgrade ' + name + ' --shell ' + shell + ' "$@" ;;',
+        '  --help | -h)',
+        '    printf \'%s\\n\' ' + ' '.join(shlex.quote(line) for line in (
+            'tenant-pi profile: ' + name, '  kit:      ' + str(kit), '  runtime:  ' + choice,
+            '  --setup   open the installer screen and', '            change the settings of this profile', '')) + ' ;;',
+        'esac']
     launch_text = '\n'.join(['#!/bin/sh', launcher_mark, '# tenant-pi runtime: ' + choice,
         'export PI_CODING_AGENT_DIR=' + shlex.quote(str(profile)),
         'unset PI_CODING_AGENT_SESSION_DIR',
-        'export PATH=' + shlex.quote(str(runtime.parent)) + ':"$PATH"', *okknow_path,
+        'export PATH=' + shlex.quote(str(runtime.parent)) + ':"$PATH"', *okknow_path, *launcher_case,
         'if [ -r ' + shlex.quote(str(kit / 'packages/tenantext/skills/herdr/scripts/credsync-launch.sh')) + ' ] && { [ -e .credsync.json ] || [ "${TENANT_CREDSYNC_PID-}" = "$$" ]; }; then',
         '  exec /bin/sh ' + shlex.quote(str(kit / 'packages/tenantext/skills/herdr/scripts/credsync-launch.sh')) + ' ' + shlex.quote(str(runtime)) + ' "$@"',
         'fi',

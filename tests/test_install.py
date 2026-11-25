@@ -9,6 +9,7 @@ import shlex
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -289,6 +290,67 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
         self.assertEqual(['x'], call['args'])
         self.success(self.run_install('--upgrade', 'demo', '--shell', 'bash', '--with', 'none', '--yes', '--runtime', str(other)))
         self.assertTrue(launched().get('own'))
+
+    def launch(self, *args):
+        cwd = self.base / 'launch-cwd'
+        cwd.mkdir(exist_ok=True)
+        return subprocess.run([str(self.home / '.local/bin/demo'), *args], cwd=cwd, env=self.env,
+                              stdin=subprocess.DEVNULL, text=True, capture_output=True, timeout=20)
+
+    def test_launcher_help_prints_the_kit_part_and_then_the_help_of_the_runtime(self):
+        self.success(self.install())
+        result = self.launch('--help')
+        self.success(result)
+        self.assertEqual('tenant-pi profile: demo\n  kit:      ' + str(ROOT) + '\n  runtime:  pi\n'
+                         '  --setup   open the installer screen and\n'
+                         '            change the settings of this profile\n\n', result.stdout)
+        call = json.loads((self.profile / 'calls.jsonl').read_text().splitlines()[-1])
+        self.assertEqual(['--help'], call['args'])
+
+    def test_launcher_setup_runs_an_upgrade_of_the_profile_and_starts_no_runtime(self):
+        self.success(self.install())
+        before = self.snapshot()
+        result = self.launch('--setup', '--shell', 'zsh', '--with', 'none', '--dry-run')
+        self.success(result)
+        # Only an upgrade lists the known profiles; a dry run writes nothing, and no runtime call reaches the profile.
+        self.assertTrue(result.stdout.startswith('Known profiles:\n  demo: '), result.stdout)
+        self.assertIn('dry run: no file was written', result.stdout)
+        # The --shell of the user wins over the shell of the install.
+        self.assertIn('startup: ' + str(self.home / '.zshrc'), result.stdout.splitlines())
+        self.assertEqual(before, self.snapshot())
+
+    def test_launcher_setup_passes_the_shell_of_the_install_without_a_terminal(self):
+        self.success(self.install())
+        result = self.launch('--setup', '--with', 'none', '--dry-run')
+        self.success(result)
+        self.assertTrue(result.stdout.startswith('Known profiles:\n  demo: '), result.stdout)
+        self.assertIn('startup: ' + str(self.home / '.bashrc'), result.stdout.splitlines())
+        self.assertIn('dry run: no file was written', result.stdout)
+
+    def test_an_upgrade_rewrites_a_launcher_from_before_the_launcher_options(self):
+        launcher = self.home / '.local/bin/demo'
+
+        def plan():
+            done = subprocess.run([sys.executable, str(ROOT / 'scripts/kit_inventory.py'), '--kit', str(ROOT),
+                                   '--profile', str(self.profile), '--name', 'demo', '--shell', 'bash', '--json'],
+                                  env=self.env, text=True, capture_output=True, timeout=60)
+            self.assertEqual(0, done.returncode, done.stderr)
+            return next(item['plan'] for item in json.loads(done.stdout)['items'] if item['name'] == 'launcher')
+
+        self.success(self.install())
+        self.assertEqual('keep', plan())
+        lines = launcher.read_text().splitlines(keepends=True)
+        start = lines.index('case ${1-} in\n')
+        launcher.write_text(''.join(lines[:start] + lines[lines.index('esac\n') + 1:]))
+        self.assertEqual('upgrade', plan())
+        # The launcher of the first --setup form passes no shell.
+        older = [line.replace(' --shell bash "$@" ;;', ' "$@" ;;') for line in lines if not line.startswith('    for arg ')]
+        self.assertNotEqual(lines, older)
+        launcher.write_text(''.join(older))
+        self.assertEqual('upgrade', plan())
+        self.success(self.install(mode='upgrade'))
+        self.assertEqual(lines, launcher.read_text().splitlines(keepends=True))
+        self.assertEqual('keep', plan())
 
     def test_zsh_and_zdotdir(self):
         for directory in (self.home, self.home / "zsh ' space"):

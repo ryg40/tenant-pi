@@ -45,7 +45,7 @@ def role_tab(space, role):
 
 
 FAKE_HC = '''#!{python}
-import json, os, sys
+import json, os, sys, time
 {parse_opts_src}
 args = sys.argv[1:]
 with open(os.environ["FAKE_HC_LOG"], "a", encoding="utf-8") as f:
@@ -61,6 +61,12 @@ if sub == "ls":
     want = [p.split("=", 1) for p in fl.get("--label", []) if "=" in p]
     reply({{"terminals": [{{"address": a}} for a, r in terms.items()
             if r.get("state") == "live" and all((r.get("labels") or {{}}).get(k) == v for k, v in want)]}})
+if sub == "run":
+    if state.get("run_fails"): reply({{"error": {{"kind": "failed"}}}}, 1)
+    import subprocess
+    subprocess.Popen(args[args.index("--") + 1:], env=dict(os.environ, HC_TERMINAL_ID="t90"), start_new_session=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    reply({{"address": "t90", "state": "live"}})
 fl, pos = parse_opts(args[1:], {{"--if", "--timeout"}} if sub == "send" else set())
 rec = terms.get(pos[0] if pos else "")
 if sub in ("get", "send") and rec is None: reply({{"error": {{"kind": "not_found"}}}}, 3)
@@ -72,6 +78,7 @@ if sub == "get":
         with open(sp, "w", encoding="utf-8") as f: json.dump(state, f)
     reply(snap)
 if sub == "send":
+    time.sleep(state.get("send_delay", 0))
     if pos[0] in state.get("send_errors", {{}}):
         err = state["send_errors"][pos[0]]
         reply({{"error": {{"kind": err[0]}}}}, err[1])
@@ -155,9 +162,24 @@ class RoleSetTests(unittest.TestCase):
         with open(self.pi_listing, "w", encoding="utf-8") as f:
             f.write(PI_HEADER + "".join(f"{p}  {m}  200K  32K  yes  no\n" for p, m in rows))
 
-    def write_state(self, terminals, *, mutations=None, send_errors=None):
+    def write_state(self, terminals, *, mutations=None, send_errors=None, send_delay=0, run_fails=False):
         with open(self.state_path, "w", encoding="utf-8") as f:
-            json.dump({"terminals": terminals, "mutations": mutations or {}, "send_errors": send_errors or {}}, f)
+            json.dump({"terminals": terminals, "mutations": mutations or {}, "send_errors": send_errors or {},
+                       "send_delay": send_delay, "run_fails": run_fails}, f)
+
+    def wait_result(self, path, limit=30):
+        """The JSON of the result file of a detached handoff send, polled until it appears (at most `limit` s)."""
+        end = time.monotonic() + limit
+        while not os.path.exists(path):
+            self.assertLess(time.monotonic(), end, f"no result file after {limit} s")
+            time.sleep(0.05)
+        with open(path, encoding="utf-8") as f: return json.load(f)
+
+    def handoff_result(self, stdout_text):
+        """Wait for the result file named by the handoff line of a real run and return its JSON."""
+        line = next(json.loads(l) for l in stdout_text.splitlines() if json.loads(l).get("action") == "handoff")
+        self.assertTrue(line.get("pending") is True and os.path.dirname(line["result"]) == os.path.join(self.state_dir, "role-set"), line)
+        return self.wait_result(line["result"])
 
     def calls(self):
         with open(self.log_path, encoding="utf-8") as f: return [json.loads(line) for line in f if line.strip()]
@@ -202,8 +224,14 @@ class RoleSetTests(unittest.TestCase):
         self.assertTrue(lines, stdout_text)
         for line in lines[:-1]:
             self.assertTrue((line.get("version"), line.get("ok")) == (1, True)
-                            and line.get("action") in ("launch", "handoff") and isinstance(line.get("terminal"), str) and line["terminal"])
-        return lines[:-1], lines[-1]
+                            and line.get("action") in ("launch", "handoff", "role_models") and isinstance(line.get("terminal"), str) and line["terminal"])
+        # The final line of a real run has `times`: whole milliseconds per step, plus the handoff status and reply.
+        last = dict(lines[-1])
+        times = last.pop("times", None)
+        self.assertIsInstance(times, dict, stdout_text)
+        self.assertTrue(all(type(v) is int and v >= 0 for k, v in times.items() if k not in ("coordinator_status", "send_detached", "send_fallback", "send_result"))
+                        and type(times.get("total")) is int, times)
+        return lines[:-1], last
 
     def assert_action_fail(self, code, stdout_text, done):
         self.assertEqual(code, 1, stdout_text)
@@ -589,7 +617,6 @@ class RoleSetTests(unittest.TestCase):
         for label, st, muts, send_errs, want_sends in (
             ("blocked refuses", "blocked", None, None, 0), ("missing refuses", None, None, None, 0), ("unrecognized refuses", "error", None, None, 0),
             ("idle to working refuses", "idle", {"t33": [{"status": {"app": "claude-code", "state": "working"}}]}, None, 0),
-            ("hc send exit 10", "idle", None, {"t33": ["status_mismatch", 10]}, 1),
         ):
             with self.subTest(case=label):
                 self.write_state({"t33": coord("t33", "claude-code", st, 5104)}, mutations=muts, send_errors=send_errs)
@@ -627,6 +654,8 @@ class RoleSetTests(unittest.TestCase):
             with self.subTest(case=label):
                 self.write_state({"t33": dict(turn, records=records, status=dict(turn["status"], msg=msg))})
                 real = self.run_helper(payload)
+                if want_sends:
+                    self.handoff_result(real.stdout)
                 sends = self.sends()
                 self.assertEqual((real.returncode, len(sends)), (0 if want_sends else 1, want_sends), real.stdout + real.stderr)
                 if want_sends:
@@ -638,12 +667,123 @@ class RoleSetTests(unittest.TestCase):
             with self.subTest(case=f"above 200000 {st} delivers handoff"):
                 self.write_state({"t33": coord("t33", "claude-code", st, 5104)})
                 real = self.run_helper(payload)
-                self.assertEqual((real.returncode, self.assert_real_stdout(real.stdout)),
-                                 (0, ([{"version": 1, "action": "handoff", "terminal": "t33", "ok": True}], {"version": 1, "ok": True, "done": 1})))
+                self.assertEqual(self.handoff_result(real.stdout)["ok"], True)
+                actions, last = self.assert_real_stdout(real.stdout)
+                self.assertEqual((real.returncode, [dict(a, result=None) for a in actions], last),
+                                 (0, [{"version": 1, "action": "handoff", "terminal": "t33", "ok": True, "pending": True, "result": None}],
+                                  {"version": 1, "ok": True, "done": 1}))
                 self.assertEqual(real.stderr.strip(), "")
                 sends = self.sends()
                 self.assertTrue(len(sends) == 1 and sends[0][1] == "t33" and sends[0][0].get("--if") == want_if and "--force" not in sends[0][0])
                 self.assertEqual(sends[0][2].split(), ["/tenantext:handoff_coordinator", "claude", "claude-opus-5-5", "max"])
+
+    def test_real_handoff_run_reports_step_times(self):
+        payload = {"version": 1, "space": "sp-demo", "roles": {"coordinator": {"model": "claude/opus", "thinking": "max"}}}
+        self.write_claude_transcript(5104, "sess-5104", 100001, 100000, 0)
+        self.write_state({"t33": self.term("t33", "tb-coord", app="claude-code", status_state="done", role="coordinator", pid=5104, fg_name="claude")})
+        real = self.run_helper(payload)
+        times = json.loads(real.stdout.strip().splitlines()[-1])["times"]
+        self.assertEqual((real.returncode, times.get("coordinator_status"), times.get("send_detached"), "send_result" in times),
+                         (0, "done", True, False), real.stdout + real.stderr)
+        self.assertTrue(all(type(times.get(k)) is int for k in ("total", "discover", "plan", "context", "get", "send")), times)
+        self.assertNotIn("launch", times)
+        self.assertEqual(self.handoff_result(real.stdout)["send_result"], {"started": True, "terminal": "t33"})
+
+    def test_handoff_command_carries_the_task_role_choices_last(self):
+        roles = {"coordinator": {"model": "claude/fable", "thinking": "medium"},
+                 "reviewer": {"model": "codex/astra", "thinking": "low"},
+                 "worker": {"model": "claude/opus", "thinking": "medium"},
+                 "researcher": {"model": "claude/sonnet", "thinking": "high"}}
+        self.write_claude_transcript(5104, "sess-5104", 100001, 100000, 0)
+        self.write_state({"t33": self.term("t33", "tb-coord", app="claude-code", status_state="done", role="coordinator", pid=5104, fg_name="claude")})
+        real = self.run_helper({"version": 1, "space": "sp-demo", "roles": roles})
+        self.assertEqual(real.returncode, 0, real.stdout + real.stderr)
+        self.handoff_result(real.stdout)
+        self.assertEqual(len(self.sends()), 1)  # a run with a handoff sends no role models notice
+        self.assertEqual(self.sends()[0][2].split(), [
+            "/tenantext:handoff_coordinator", "claude", "claude-fable-5-2", "medium",
+            "roles=researcher:claude:claude-sonnet-5-5:high,worker:claude:claude-opus-5-5:medium,reviewer:pi:astra:low"])
+
+    def test_detached_handoff_send_ends_the_run_before_a_slow_send(self):
+        payload = {"version": 1, "space": "sp-demo", "roles": {"coordinator": {"model": "claude/opus", "thinking": "max"}}}
+        self.write_claude_transcript(5104, "sess-5104", 100001, 100000, 0)
+        self.write_state({"t33": self.term("t33", "tb-coord", app="claude-code", status_state="done", role="coordinator", pid=5104, fg_name="claude")},
+                         send_delay=3)
+        real = self.run_helper(payload)
+        actions, last = self.assert_real_stdout(real.stdout)
+        self.assertEqual((real.returncode, last["ok"], last["done"]), (0, True, 1), real.stdout + real.stderr)
+        # The run ended while the fake send still sleeps: the child has written no result yet.
+        self.assertFalse(os.path.exists(actions[0]["result"]))
+        result = self.wait_result(actions[0]["result"])
+        self.assertEqual((result["ok"], result["outcome"], result["terminal"]), (True, "ok", "t33"))
+        self.assertGreaterEqual(result["send_ms"], 2500)
+
+    def test_detached_handoff_send_failure_is_in_the_result_file(self):
+        payload = {"version": 1, "space": "sp-demo", "roles": {"coordinator": {"model": "claude/opus", "thinking": "max"}}}
+        self.write_claude_transcript(5104, "sess-5104", 100001, 100000, 0)
+        self.write_state({"t33": self.term("t33", "tb-coord", app="claude-code", status_state="done", role="coordinator", pid=5104, fg_name="claude")},
+                         send_errors={"t33": ["blocked", 9]})
+        real = self.run_helper(payload)
+        self.assertEqual(real.returncode, 0, real.stdout + real.stderr)
+        result = self.handoff_result(real.stdout)
+        self.assertEqual((result["ok"], result["outcome"], bool(result.get("error"))), (False, "not_delivered", True))
+
+    def test_handoff_is_sent_in_the_run_when_the_background_terminal_fails(self):
+        payload = {"version": 1, "space": "sp-demo", "roles": {"coordinator": {"model": "claude/opus", "thinking": "max"}}}
+        self.write_claude_transcript(5104, "sess-5104", 100001, 100000, 0)
+        self.write_state({"t33": self.term("t33", "tb-coord", app="claude-code", status_state="done", role="coordinator", pid=5104, fg_name="claude")},
+                         run_fails=True)
+        real = self.run_helper(payload)
+        actions, last = self.assert_real_stdout(real.stdout)
+        self.assertEqual((real.returncode, len(self.sends()), actions, last["ok"]),
+                         (0, 1, [{"version": 1, "action": "handoff", "terminal": "t33", "ok": True}], True), real.stdout + real.stderr)
+        times = json.loads(real.stdout.strip().splitlines()[-1])["times"]
+        self.assertEqual((times.get("send_fallback"), "send_detached" in times), (True, False))
+        self.assertEqual(os.listdir(os.path.join(self.state_dir, "role-set")), [])
+
+    NOTICE_ROLES = {"coordinator": {"model": "claude/fable", "thinking": "medium"},
+                    "reviewer": {"model": "codex/astra", "thinking": "low"},
+                    "worker": {"model": "claude/opus", "thinking": "medium"},
+                    "researcher": {"model": "claude/sonnet", "thinking": "high"}}
+    NOTICE_TEXT = ('[Herdr app Start] The owner chose these role models in the window "Role models": '
+                   "researcher (also scout): --harness claude --model claude-sonnet-5-5 --thinking high; "
+                   "worker: --harness claude --model claude-opus-5-5 --thinking medium; "
+                   "reviewer: --harness pi --model astra --thinking low. Start each pane of these roles with these "
+                   "inputs. They come before the local models file and before your memory of earlier defaults. A later "
+                   "word of the owner for one task or one role comes before them. A role that this line does not name "
+                   "uses the request or the local models file. No reply is needed; continue your work.")
+
+    def notice_coordinator(self, state, msg=None):
+        coord = self.term("t33", "tb-coord", app="claude-code", status_state=state, role="coordinator", pid=5101, fg_name="claude")
+        if msg is not None:
+            coord["status"]["msg"] = msg
+        self.write_state({"t33": coord})
+
+    def test_start_with_no_handoff_tells_the_coordinator_the_role_models_once(self):
+        self.write_claude_transcript(5101, "sess-5101", 50000, 0, 0)
+        self.notice_coordinator("idle")
+        payload = {"version": 1, "space": "sp-demo", "roles": self.NOTICE_ROLES}
+        real = self.run_helper(payload)
+        actions, last = self.assert_real_stdout(real.stdout)
+        self.assertEqual((real.returncode, [a["action"] for a in actions], last["ok"]), (0, ["role_models"], True), real.stdout + real.stderr)
+        self.assertTrue(self.wait_result(actions[0]["result"])["ok"])
+        sends = self.sends()
+        self.assertEqual([(s[1], s[0].get("--if"), s[2]) for s in sends], [("t33", ["idle"], self.NOTICE_TEXT)])
+        again = self.run_helper(payload)
+        self.assertEqual((again.returncode, self.assert_real_stdout(again.stdout)[0], self.sends()), (0, [], []), again.stdout + again.stderr)
+
+    def test_role_models_notice_waits_for_the_end_of_a_turn(self):
+        self.write_claude_transcript(5101, "sess-5101", 50000, 0, 0)
+        self.notice_coordinator("working", msg="Run the tests")
+        payload = {"version": 1, "space": "sp-demo", "roles": self.NOTICE_ROLES}
+        real = self.run_helper(payload)
+        self.assertEqual((real.returncode, self.assert_real_stdout(real.stdout)[0], self.sends()), (0, [], []), real.stdout + real.stderr)
+        self.assertIn("t33", real.stderr)
+        self.notice_coordinator("idle")
+        later = self.run_helper(payload)
+        actions, _ = self.assert_real_stdout(later.stdout)
+        self.assertTrue(self.wait_result(actions[0]["result"])["ok"])
+        self.assertEqual([(s[1], s[2]) for s in self.sends()], [("t33", self.NOTICE_TEXT)])
 
 
 if __name__ == "__main__":

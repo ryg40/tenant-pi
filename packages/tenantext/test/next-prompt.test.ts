@@ -163,7 +163,7 @@ test("detailed report syntax 1 gives the first Agent action only when no restric
     ["agent action with a condition", detailed("[A]** Agent:", "[A]** Agent, after your answer to B:"), "conditional"],
     ["warning line after the result", detailed("0 fail).\n", "0 fail).\n\n**Warning:** The tag is public.\n"), "unlinked"],
     ["no action", detailed(action, "None. The owner must choose the release."), "no-next"],
-    ["agent action after an owner action", detailed(action, `- **[A]** Owner: Run the privileged check.\n- **[B]** Agent: Read the log.`), "ambiguous"],
+    ["agent action after an owner action", detailed(action, `- **[A]** Owner: Run the privileged check.\n- **[B]** Agent: Read the log.`), "owner"],
     ["labels must start at A", detailed("[A]** Agent", "[B]** Agent"), "ambiguous"],
     ["lowercase label", detailed("[A]** Agent", "[a]** Agent"), "ambiguous"],
     ["unknown line in the block", detailed(action, `${action}\nThen stop.`), "ambiguous"],

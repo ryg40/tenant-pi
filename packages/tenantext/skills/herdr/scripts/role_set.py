@@ -10,7 +10,17 @@ Takes the space only from --set JSON. --models prints the Copilot models of the 
 (read-only: no pane, no file, no hc call). --coordinator makes <tab> the coordinator tab of <space>:
 its newest agent terminal gets the coordinator label and record, and each other coordinator of the space
 loses them (see SPAWN.md, "Role set launch"). Prints single-line JSON on stdout; real-run skip
-reasons go to stderr as one plain line per skipped target.
+reasons go to stderr as one plain line per skipped target. The final line of a real --set run, `ok` true or
+false, has `times`: whole milliseconds of each step that ran (`total`, `discover`, `plan`, `launch`, and for a
+handoff `context`, `get`, `send`), with the coordinator status read before the send. The handoff send runs in a
+background terminal of herdr-core (`hc exec` ends each process that this script starts), so `send` is the time to
+start it and `times` has `send_detached`: true. The handoff line has `pending` true and `result`, the path of the
+JSON file where the child writes the outcome of `hc send`. When that terminal does not start, the send runs in the
+run itself, with `send_result` and `send_fallback`: true in `times` and no `pending`.
+
+A real --set run that sends no handoff to a live coordinator sends it one line with the task-role choices (the role
+models notice) when the coordinator is at its prompt and the record `notice-last.json` shows no equal send to the same
+coordinator session. The notice line has `action` "role_models"; `times` has `notice`. A dry run has `role_models`.
 
 Delivery is best effort by the owner's decision: pre-send checks lower the risk of acting on
 an occupied or changed terminal, but are not proof, and herdr-core performs no shell-prompt,
@@ -28,12 +38,14 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 import unicodedata
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import _common  # noqa: E402
 from _common import (CLOCK_SLACK, CORE_APP_HARNESS, PI_AGENTS, ROLES, core_coordinator_record,  # noqa: E402
                      core_error_kind, core_info, core_local, core_project, core_record, core_role,
                      core_role_tab, exit_codes, hc, make_name, read_record, remove_record, skill_json,
@@ -57,6 +69,11 @@ HC_STATUS_MISMATCH_EXIT = 10
 AGY_READY_SECONDS = 90
 AGY_POLL_SECONDS = 1
 HC_BLOCKED_EXIT = 9
+# The handoff send runs in a background terminal of herdr-core (this script in a hidden mode) that writes its outcome to a result file.
+SEND_HANDOFF_FLAG = "--send-handoff"
+RESULT_FOLDER = "role-set"
+RESULT_KEEP_SECONDS = 7 * 86400
+NOTICE_RECORD = "notice-last.json"
 
 # Fixed model labels per role button (researcher covers scout).
 ROLE_MODELS = {
@@ -145,10 +162,50 @@ def flush_agy_entry(entry):
     _agy_pending.remove(entry)
 
 
+# Step times of a real --set run (None in every other mode): closed steps in ms, open steps by start time.
+_times = None
+_open_steps = {}
+_run_start = 0.0
+
+
+def start_step(step):
+    if _times is not None:
+        _open_steps[step] = time.monotonic()
+
+
+def end_step(step):
+    """Add the whole milliseconds since start_step(step) to `_times[step]`; a no-op for a step not started."""
+    start = _open_steps.pop(step, None)
+    if start is not None:
+        _times[step] = _times.get(step, 0) + round((time.monotonic() - start) * 1000)
+
+
+@contextlib.contextmanager
+def timed(step):
+    """Time the block as `step` in a real run; a no-op in other modes."""
+    start_step(step)
+    try:
+        yield
+    finally:
+        end_step(step)
+
+
+def with_times(obj):
+    """Return obj with `times` (steps that ran, open steps up to now, and `total`) in a real run."""
+    if _times is None:
+        return obj
+    now = time.monotonic()
+    times = dict(_times)
+    for step, start in _open_steps.items():
+        times[step] = times.get(step, 0) + round((now - start) * 1000)
+    times["total"] = round((now - _run_start) * 1000)
+    return dict(obj, times=times)
+
+
 def fail_run(message, done):
     while _agy_pending:
         flush_agy_entry(_agy_pending[0])
-    emit({"version": VERSION, "ok": False, "done": done, "error": message})
+    emit(with_times({"version": VERSION, "ok": False, "done": done, "error": message}))
     sys.exit(EXIT["failed"])
 
 
@@ -964,8 +1021,28 @@ def build_shell_launch(terminal, item, cfg, seen_terminals, deadline):
     return shlex.join(argv)
 
 
-def handoff_command(coord_harness, coord_spec):
-    """Build the slash command matching handoff_coordinator.md: <prefix> <harness> <model> [<thinking>]."""
+HANDOFF_TASK_ROLES = ("researcher", "worker", "reviewer")
+
+
+def handoff_roles_value(roles):
+    """Return `<role>:<harness>:<model>[:<thinking>],...` for the task roles of the payload, or None."""
+    parts = []
+    for role in HANDOFF_TASK_ROLES:
+        spec = (roles or {}).get(role)
+        if spec is None:
+            continue
+        fields = [role, *(f for f in map_label(spec["model"], spec.get("thinking")) if f)]
+        for field in fields:
+            if not field or any(ch in field for ch in " ,:\t\n"):
+                raise _ValidationError(f"cannot pass the {role} choice to the handoff: bad value {field!r}")
+        parts.append(":".join(fields))
+    return ",".join(parts) or None
+
+
+def handoff_command(coord_harness, coord_spec, roles=None):
+    """Build the slash command matching handoff_coordinator.md: <prefix> <harness> <model> [<thinking>] [roles=...].
+
+    `roles` is the validated payload roles; the task-role choices go into one `roles=` argument."""
     if coord_harness == "claude":
         prefix = "/tenantext:handoff_coordinator"
     elif coord_harness in PI_AGENTS:
@@ -978,7 +1055,85 @@ def handoff_command(coord_harness, coord_spec):
     parts = [prefix, target_harness, target_model]
     if target_thinking:
         parts.append(target_thinking)
+    roles_value = handoff_roles_value(roles)
+    if roles_value:
+        parts.append(f"roles={roles_value}")
     return " ".join(parts)
+
+
+NOTICE_RULES = ("Start each pane of these roles with these inputs. They come before the local models file and before your "
+                "memory of earlier defaults. A later word of the owner for one task or one role comes before them. A role "
+                "that this line does not name uses the request or the local models file. No reply is needed; continue "
+                "your work.")
+
+
+def role_models_notice(roles):
+    """The one-line role models notice for the task roles of the payload, or None with no task role."""
+    parts = []
+    for role in HANDOFF_TASK_ROLES:
+        spec = (roles or {}).get(role)
+        if spec is None:
+            continue
+        harness, model, thinking = map_label(spec["model"], spec.get("thinking"))
+        inputs = f"--harness {harness} --model {model}" + (f" --thinking {thinking}" if thinking else "")
+        parts.append(f"{'researcher (also scout)' if role == 'researcher' else role}: {inputs}")
+    if not parts:
+        return None
+    return ('[Herdr app Start] The owner chose these role models in the window "Role models": '
+            + "; ".join(parts) + ". " + NOTICE_RULES)
+
+
+def _notice_record_path():
+    return os.path.join(_result_folder(), NOTICE_RECORD)
+
+
+def read_notice_record():
+    """The notice record as a map of entries newer than RESULT_KEEP_SECONDS; {} when it cannot be read."""
+    try:
+        with open(_notice_record_path(), encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    cutoff = time.time() - RESULT_KEEP_SECONDS
+    return {k: v for k, v in data.items()
+            if isinstance(v, dict) and isinstance(v.get("time"), (int, float)) and v["time"] >= cutoff}
+
+
+def notice_already_sent(address, value, cpid, tpid):
+    """True when the record holds this value for this address and both PIDs."""
+    entry = read_notice_record().get(address)
+    return (isinstance(entry, dict) and entry.get("value") == value and cpid is not None and tpid is not None
+            and entry.get("pid") == cpid and entry.get("tpid") == tpid)
+
+
+def write_notice_record(address, value, cpid, tpid):
+    """Add the entry of a started or delivered notice; an OSError leaves the record as it was."""
+    with contextlib.suppress(OSError):
+        os.makedirs(_result_folder(), mode=0o700, exist_ok=True)
+        data = read_notice_record()
+        data[address] = {"value": value, "pid": cpid, "tpid": tpid, "time": round(time.time())}
+        _write_private(_notice_record_path(), data)
+
+
+def plan_notice(plan, roles):
+    """The role models notice of a plan: None, {"skip": reason}, or {"value": ..., "text": ...}.
+
+    A notice needs a live coordinator, no handoff, one or more task roles, and no equal entry in the record."""
+    coordinator = plan["coordinator"]
+    if not coordinator or plan["do_handoff"]:
+        return None
+    try:
+        value = handoff_roles_value(roles)
+    except _ValidationError as exc:
+        return {"skip": f"role models notice not sent: {exc}"}
+    if not value:
+        return None
+    ident = plan["coord_identity"]
+    if notice_already_sent(coordinator["address"], value, ident["cpid"], ident["tpid"]):
+        return None
+    return {"value": value, "text": role_models_notice(roles)}
 
 
 def validate_launch_reread(state, fresh, space, orig_tab, orig_fg, role, raw_record):
@@ -1071,8 +1226,10 @@ def coordinator_prompt_state(terminal):
     return False, f"status is {shown}; look at the terminal and press Start again"
 
 
-def run_hc_send(address, text, *, if_idle=False, deadline=None):
+def run_hc_send(address, text, *, if_idle=False, deadline=None, reply=None):
     """Best-effort send via hc send (never --force, no --wait, no retry). Return (outcome, message).
+
+    A dict `reply` gets the keys of the JSON object that `hc send --json` printed; the outcome does not change.
 
     Waits for the smaller of SEND_LIMIT_SECONDS (90 s) and the remaining deadline.
     outcome is "ok", "not_delivered" (exit 10 status_mismatch or exit 9 blocked), or "error".
@@ -1083,6 +1240,8 @@ def run_hc_send(address, text, *, if_idle=False, deadline=None):
     if if_idle:
         args += ["--if", "idle"]
     code, data, raw = hc(*args, "--", address, text, timeout=timeout)
+    if reply is not None and isinstance(data, dict):
+        reply.update(data)
     kind = core_error_kind(data)
     if code == 124 or kind == "timeout":
         if deadline is not None and time.monotonic() >= deadline:
@@ -1096,6 +1255,88 @@ def run_hc_send(address, text, *, if_idle=False, deadline=None):
         detail = raw or kind or f"exit {code}"
         return "error", f"hc send {address} failed: {detail[:200]}"
     return "ok", ""
+
+
+def _result_folder():
+    return os.path.abspath(os.path.join(_common.STATE_DIR, RESULT_FOLDER))
+
+
+def _write_private(path, data):
+    """Write `data` as JSON to `path`, mode 600, atomic: a temp file in the same folder, then os.replace."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, separators=(",", ":"))
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+def start_handoff_send(address, text, *, if_idle, kind="handoff"):
+    """Start the handoff `hc send` in a background terminal of herdr-core; return its result file, or None.
+
+    `kind` is the prefix of the file names: "handoff" (the app reads `handoff-send-*.json`) or "notice".
+
+    `hc exec` ends each process that this script starts when the script ends, so the send runs in a terminal of
+    herdr-core: `hc run --json --bg --no-parent --rm --no-notify -- <python> role_set.py SEND_HANDOFF_FLAG <job>`,
+    with no herdr.space or herdr.tab label, so no space of the app shows it. The job file (mode 600) is deleted by
+    the child. Result files older than RESULT_KEEP_SECONDS are deleted first. When the terminal does not start
+    (an OSError on the job file, non-zero exit, no JSON with an address, a missing CLI, a timeout), the job file
+    is deleted and None returned.
+    """
+    folder = _result_folder()
+    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + f"-{os.getpid()}"
+    result = os.path.join(folder, f"{kind}-send-{run_id}.json")
+    job = os.path.join(folder, f"{kind}-job-{run_id}.json")
+    try:
+        os.makedirs(folder, mode=0o700, exist_ok=True)
+        cutoff = time.time() - RESULT_KEEP_SECONDS
+        for name in os.listdir(folder):
+            if name.startswith(("handoff-send-", "notice-send-")) and name.endswith(".json"):
+                with contextlib.suppress(OSError):
+                    path = os.path.join(folder, name)
+                    if os.path.getmtime(path) < cutoff:
+                        os.unlink(path)
+        _write_private(job, {"terminal": address, "text": text, "if_idle": bool(if_idle), "result": result})
+    except OSError:
+        return None
+    # hc() returns 127 for a missing CLI or an OSError and 124 for a timeout of the call; --bg comes back at once.
+    code, data, _raw = hc("run", "--json", "--bg", "--no-parent", "--rm", "--no-notify", "--",
+                          sys.executable, os.path.abspath(__file__), SEND_HANDOFF_FLAG, job, timeout=15)
+    if code == 0 and isinstance(data, dict) and isinstance(data.get("address"), str) and data["address"]:
+        return result
+    with contextlib.suppress(OSError):
+        os.unlink(job)
+    return None
+
+
+def send_handoff_child(job):
+    """Hidden mode of the background terminal: run the handoff send of `job`, then write its result file.
+
+    main() has removed HC_TERMINAL_ID before this runs, so `hc send` does not wrap the text as a message between
+    agents although the child runs inside a terminal of herdr-core.
+    """
+    if os.path.dirname(os.path.abspath(job)) != _result_folder():
+        sys.exit(EXIT["failed"])
+    with open(job, encoding="utf-8") as f:
+        spec = json.load(f)
+    with contextlib.suppress(OSError):
+        os.unlink(job)
+    start = time.monotonic()
+    reply = {}
+    try:
+        outcome, detail = run_hc_send(spec["terminal"], spec["text"], if_idle=bool(spec.get("if_idle")), reply=reply)
+    except Exception as exc:
+        outcome, detail = "error", f"internal error: {type(exc).__name__}"
+    data = {"version": VERSION, "terminal": spec["terminal"], "ok": outcome == "ok", "outcome": outcome}
+    if outcome != "ok":
+        data["error"] = detail
+    data.update(send_ms=round((time.monotonic() - start) * 1000), send_result=reply,
+                finished=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    _write_private(spec["result"], data)
+    sys.exit(EXIT["ok"] if outcome == "ok" else EXIT["failed"])
 
 
 def agy_ready_state(state, fresh, program):
@@ -1162,14 +1403,54 @@ def send_agy_role_prompts(deadline):
         time.sleep(AGY_POLL_SECONDS)
 
 
+def send_role_models_notice(coord_addr, notice, space, coord_identity, deadline, done):
+    """Send the role models notice to the coordinator at its prompt; a skip goes to stderr and writes no record.
+
+    The same checks as the handoff before the send, but no transcript or token check: the final `hc get`, then
+    validate_coordinator_reread and coordinator_prompt_state. Only an error of that `hc get` fails the run."""
+    remaining_seconds(deadline)
+    raw_record = _read_raw_record(coord_addr)
+    state, fresh = bounded_core_get(coord_addr, deadline)
+    if state == "error":
+        fail_run(f"could not read coordinator terminal {coord_addr}: {str(fresh)[:200]}", done)
+    skip_reason = validate_coordinator_reread(state, fresh, space, coord_identity, raw_record)
+    if skip_reason is None:
+        at_prompt, status_state = coordinator_prompt_state(fresh)
+        if not at_prompt:
+            skip_reason = status_state
+    if skip_reason is not None:
+        log_skip(coord_addr, f"role models notice not sent: {skip_reason}")
+        return
+    pids = (coord_identity["cpid"], coord_identity["tpid"])
+    if_idle = status_state == "idle"
+    result = start_handoff_send(coord_addr, notice["text"], if_idle=if_idle, kind="notice")
+    if result is not None:
+        write_notice_record(coord_addr, notice["value"], *pids)
+        emit({"version": VERSION, "action": "role_models", "terminal": coord_addr, "ok": True,
+              "pending": True, "result": result})
+        return
+    outcome, detail = run_hc_send(coord_addr, notice["text"], if_idle=if_idle, deadline=deadline)
+    if outcome != "ok":
+        log_skip(coord_addr, f"role models notice not sent: {detail}")
+        return
+    write_notice_record(coord_addr, notice["value"], *pids)
+    emit({"version": VERSION, "action": "role_models", "terminal": coord_addr, "ok": True})
+
+
 def main(argv=None):
-    deadline = time.monotonic() + RUN_LIMIT_SECONDS
+    global _times, _run_start
+    _run_start = time.monotonic()
+    deadline = _run_start + RUN_LIMIT_SECONDS
     _agy_pending.clear()
+    _times = None
+    _open_steps.clear()
     # Ensure hc send does not tag commands as agent-to-agent messages if invoked from a core terminal.
     os.environ.pop("HC_TERMINAL_ID", None)
     done = 0
     try:
         argv = sys.argv[1:] if argv is None else argv
+        if len(argv) == 2 and argv[0] == SEND_HANDOFF_FLAG:
+            send_handoff_child(argv[1])
         if "--coordinator" in argv:
             space, tab, dry_run = parse_coordinator_args(argv)
             set_coordinator(space, tab, dry_run, deadline)
@@ -1179,8 +1460,11 @@ def main(argv=None):
             list_models()
             return
         space, roles = validate_payload(raw_set)
+        if not dry_run:
+            _times = {}
 
-        terminals = discover_terminals(space, deadline)
+        with timed("discover"):
+            terminals = discover_terminals(space, deadline)
         if not terminals:
             remaining_seconds(deadline)
             if dry_run:
@@ -1191,14 +1475,16 @@ def main(argv=None):
                     "preview": build_preview([], roles, None, False, empty_space=True),
                     "coordinator_tokens": None,
                     "handoff": False,
+                    "role_models": False,
                     "launch": [],
                     "skip": [],
                 })
             else:
-                emit({"version": VERSION, "ok": True, "done": 0})
+                emit(with_times({"version": VERSION, "ok": True, "done": 0}))
             return
 
-        plan = plan_space(terminals, roles, deadline)
+        with timed("plan"):
+            plan = plan_space(terminals, roles, deadline)
         launch = plan["launch"]
         launch_sources = plan["launch_sources"]
         skip = plan["skip"]
@@ -1208,6 +1494,7 @@ def main(argv=None):
         tokens = plan["tokens"]
         do_handoff = plan["do_handoff"]
         handoff_skip_reason = plan["handoff_skip_reason"]
+        notice = plan_notice(plan, roles)
 
         if dry_run:
             remaining_seconds(deadline)
@@ -1219,6 +1506,7 @@ def main(argv=None):
                                          handoff_skip_reason=handoff_skip_reason),
                 "coordinator_tokens": tokens,
                 "handoff": do_handoff,
+                "role_models": bool(notice and "text" in notice),
                 "launch": launch,
                 "skip": skip,
             })
@@ -1226,6 +1514,8 @@ def main(argv=None):
 
         cfg = load_roles_config()
         seen_terminals = list(terminals)
+        # Build the handoff command before any launch: a choice that cannot go into it refuses the run first.
+        handoff_cmd = handoff_command(coord_identity["harness"], roles["coordinator"], roles) if do_handoff else None
 
         # Report plan-time skips on stderr (one line per skipped terminal, excluding a coordinator
         # scheduled for handoff; a handoff skip reason is already combined into the plan entry).
@@ -1235,6 +1525,8 @@ def main(argv=None):
                 continue
             log_skip(entry["terminal"], entry["reason"])
 
+        if launch:
+            start_step("launch")
         for item in launch:
             remaining_seconds(deadline)
             addr = item["terminal"]
@@ -1263,42 +1555,70 @@ def main(argv=None):
                 _agy_pending.append({"terminal": addr, "name": item["name"], "program": item["program"]})
             else:
                 emit({"version": VERSION, "action": "launch", "terminal": addr, "ok": True})
+        end_step("launch")
 
         if do_handoff:
             remaining_seconds(deadline)
             coord_addr = coordinator["address"]
             # Finish command build, transcript lookup, token count, and pane record read before the final
             # cheap `hc get`. Validation after `hc get` stays strictly in memory and `hc send` follows directly.
-            cmd = handoff_command(coord_identity["harness"], roles["coordinator"])
-            fresh_transcript, fresh_tokens = coordinator_context(coordinator, deadline)
+            cmd = handoff_cmd
+            with timed("context"):
+                fresh_transcript, fresh_tokens = coordinator_context(coordinator, deadline)
             skip_reason = validate_coordinator_transcript(coord_transcript, fresh_transcript, fresh_tokens)
             if skip_reason is not None:
                 log_skip(coord_addr, skip_reason)
             else:
                 coord_raw_record = _read_raw_record(coord_addr)
-                state, fresh = bounded_core_get(coord_addr, deadline)
+                with timed("get"):
+                    state, fresh = bounded_core_get(coord_addr, deadline)
                 if state == "error":
                     fail_run(f"could not read coordinator terminal {coord_addr}: {str(fresh)[:200]}", done)
                 skip_reason = validate_coordinator_reread(state, fresh, space, coord_identity, coord_raw_record)
                 if skip_reason is not None:
                     log_skip(coord_addr, skip_reason)
                 else:
+                    coord_state = (fresh.get("status") or {}).get("state") if isinstance(fresh, dict) else None
+                    if isinstance(coord_state, str):
+                        _times["coordinator_status"] = coord_state
                     at_prompt, status_state = coordinator_prompt_state(fresh)
                     if not at_prompt:
                         fail_run(f"handoff not delivered: coordinator terminal {coord_addr} {status_state}", done)
                     # Best-effort delivery: `--if idle` for idle, no condition for done or for working with only
                     # background work, never `--force` (hc send still refuses a blocked terminal).
-                    outcome, detail = run_hc_send(coord_addr, cmd, if_idle=(status_state == "idle"), deadline=deadline)
-                    if outcome == "not_delivered":
-                        fail_run(f"handoff not delivered: {detail}; press Start again", done)
-                    if outcome != "ok":
-                        fail_run(f"{detail}; look at coordinator terminal {coord_addr} before you press Start again", done)
-                    done += 1
-                    emit({"version": VERSION, "action": "handoff", "terminal": coord_addr, "ok": True})
+                    # The send runs in a background terminal of herdr-core: herdr-core can hold it up to 60 s while
+                    # the terminal has a typed draft, and the app waits for this run. The child writes the outcome to
+                    # `result`. When that terminal does not start, the send runs here, synchronously.
+                    with timed("send"):
+                        result = start_handoff_send(coord_addr, cmd, if_idle=(status_state == "idle"))
+                    if result is not None:
+                        _times["send_detached"] = True
+                        done += 1
+                        emit({"version": VERSION, "action": "handoff", "terminal": coord_addr, "ok": True,
+                              "pending": True, "result": result})
+                    else:
+                        _times["send_fallback"] = True
+                        send_result = _times["send_result"] = {}
+                        with timed("send"):
+                            outcome, detail = run_hc_send(coord_addr, cmd, if_idle=(status_state == "idle"),
+                                                          deadline=deadline, reply=send_result)
+                        if outcome == "not_delivered":
+                            fail_run(f"handoff not delivered: {detail}; press Start again", done)
+                        if outcome != "ok":
+                            fail_run(f"{detail}; look at coordinator terminal {coord_addr} before you press Start "
+                                     "again", done)
+                        done += 1
+                        emit({"version": VERSION, "action": "handoff", "terminal": coord_addr, "ok": True})
+
+        if notice and "skip" in notice:
+            log_skip(coordinator["address"], notice["skip"])
+        elif notice:
+            with timed("notice"):
+                send_role_models_notice(coordinator["address"], notice, space, coord_identity, deadline, done)
 
         send_agy_role_prompts(deadline)
         remaining_seconds(deadline)
-        emit({"version": VERSION, "ok": True, "done": done})
+        emit(with_times({"version": VERSION, "ok": True, "done": done}))
     except _DeadlineExceeded:
         fail_run("run time limit exceeded", done)
     except (_ActionError, _ValidationError) as exc:

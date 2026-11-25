@@ -316,13 +316,13 @@ function runSpawn(script: string, args: string[], cwd: string, limitSeconds: num
 }
 
 /** The facts of a started pane from the JSON line of spawn.py. */
-export interface SpawnFacts { name: string; pane_id: string; model: string | null; model_source: string | null; thinking: string | null; placement: string | null; status: string | null }
+export interface SpawnFacts { name: string; say?: string; pane_id: string; model: string | null; model_source: string | null; thinking: string | null; placement: string | null; status: string | null }
 
 function spawnFacts(line: Record<string, unknown> | undefined): SpawnFacts | undefined {
 	const field = (key: string) => typeof line?.[key] === "string" ? line[key] as string : null;
-	const name = field("name"), pane = field("pane_id");
+	const name = field("name"), pane = field("pane_id"), say = field("say");
 	if (!name || !pane) return undefined;
-	return { name, pane_id: pane, model: field("model"), model_source: field("model_source"), thinking: field("thinking"), placement: field("placement"), status: field("status") };
+	return { name, ...(say ? { say } : {}), pane_id: pane, model: field("model"), model_source: field("model_source"), thinking: field("thinking"), placement: field("placement"), status: field("status") };
 }
 
 interface SpawnParams {
@@ -533,7 +533,7 @@ export default function herdrWatch(pi: ExtensionAPI) {
 		}
 		const model = facts.model ? `${facts.model}${facts.model_source ? ` (${facts.model_source})` : ""}` : "not reported";
 		const body = [
-			`Started pane ${facts.pane_id} (${facts.name}): harness ${params.harness}, role ${params.role}, model ${model}, thinking ${facts.thinking ?? "harness default"}, placement ${facts.placement ?? "unknown"}.`,
+			`Started pane ${facts.pane_id} (${facts.say ? `${facts.name}, say ${facts.say}` : facts.name}): harness ${params.harness}, role ${params.role}, model ${model}, thinking ${facts.thinking ?? "harness default"}, placement ${facts.placement ?? "unknown"}.`,
 			...watchLines(watch, timeout),
 			`After you verify the result, close the pane: ${closeCommand(scripts, facts.pane_id)}`,
 			...fileLines(watch.files),

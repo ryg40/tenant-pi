@@ -42,7 +42,7 @@
     "command": "herdr-role-set",
     "space_id": "opaque non-empty UTF-8 string with no whitespace and no control characters; passed to hc as one argument without a shell",
     "unknown_space": "exit 0 with zero actions: a well-formed ID with no live local terminal is an empty space, not bad input",
-    "handoff_command": "carries the target harness before the model (<prefix> <harness> <model> [<thinking>]); a coordinator choice with the harness agy gives no handoff",
+    "handoff_command": "carries the target harness before the model (<prefix> <harness> <model> [<thinking>] [roles=<role>:<harness>:<model>[:<thinking>],...]); the roles= argument holds the task roles researcher, worker, reviewer of the set, in this order, and is absent with no task role; a coordinator choice with the harness agy gives no handoff",
     "exit": {
       "ok": { "code": 0, "meaning": "dry run printed, empty or unknown space (zero actions), or all actions finished" },
       "failed": { "code": 1, "meaning": "an action, herdr-core call, or internal error failed" },

@@ -63,7 +63,7 @@ def check_block(message, patterns):
     markers = [i for i, line in enumerate(lines) if patterns["report"].match(line) or patterns["outcome"].match(line)]
     if len(markers) != 1:
         raise ValueError(f"{len(markers)} report lines")
-    numbers, actions, stage = [], [], "report"
+    numbers, actions, actors, stage = [], [], [], "report"
     for line in lines[markers[0] + 1:]:
         if not line.strip(" "):
             if stage == "next":
@@ -80,6 +80,7 @@ def check_block(message, patterns):
             numbers.append(match[1])
         elif kind == "action":
             actions.append(match[1])
+            actors.append(match[2])
     if stage not in ("action", "none"):
         raise ValueError("no next action and no none line")
     if not numbers or numbers != [str(i + 1) for i in range(len(numbers))]:
@@ -96,6 +97,7 @@ def check_block(message, patterns):
         while ordinal:
             ordinal, digit = divmod(ordinal - 1, 26)
             expected = chr(ord("a") + digit) + expected
+    check_owner_first(actors)
 
 
 def capital_label(ordinal):
@@ -105,6 +107,13 @@ def capital_label(ordinal):
         ordinal, digit = divmod(ordinal - 1, 26)
         label = chr(ord("A") + digit) + label
     return label
+
+
+def check_owner_first(actors):
+    """Raise ValueError when an Owner or Owner decides action follows an Agent action: the documents are strict."""
+    agent = next((i for i, actor in enumerate(actors) if actor == "Agent"), len(actors))
+    if any(actor != "Agent" for actor in actors[agent:]):
+        raise ValueError("an Owner action after an Agent action")
 
 
 def check_detailed(message, patterns, compact):
@@ -143,9 +152,7 @@ def check_detailed(message, patterns, compact):
         raise ValueError("no action and no None line")
     if labels != [capital_label(i + 1) for i in range(len(labels))]:
         raise ValueError("action labels must start at A and follow base-26 order")
-    owner = next((i for i, actor in enumerate(actors) if actor != "Agent"), len(actors))
-    if "Agent" in actors[owner:]:
-        raise ValueError("an Agent action after an Owner action")
+    check_owner_first(actors)
 
 
 class DummiesContractTests(unittest.TestCase):

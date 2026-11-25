@@ -48,7 +48,7 @@ sys.path.insert(0, HERE)
 import _common  # noqa: E402
 from _common import (STATE_DIR, agent_info, api, catalog_lines, core_local, core_project, core_role, core_role_tab, ensure_layout, error_code, exit_codes, hc, herdr,  # noqa: E402
                      herdr_app_pane, live_agents, load_catalog, load_launch, make_name, mcp_servers, pane_label, panes, place_role_tab,
-                     read_record, remove_record, require_backend, require_herdr_env, tabs, write_record)
+                     read_record, remove_record, require_backend, require_herdr_env, say_name, tabs, write_record)
 
 EXIT = exit_codes("spawn")
 
@@ -616,7 +616,7 @@ def main():
     executable, args, _ = build_command(r, cfg, name, cwd, unattended=opts["unattended"], extra=extra,
                                         write=bool(r["model"] or r["harness"] == "agy") and not opts["dry_run"])
     shown = [x if len(x) < 100 else x[:60].replace("\n", " ") + f"... ({len(x)} chars)" for x in args]
-    summary = dict(r, name=name, pane_label=label, tab=r["role"], cwd=cwd, workspace=me["workspace"],
+    summary = dict(r, name=name, say=say_name(name), pane_label=label, tab=r["role"], cwd=cwd, workspace=me["workspace"],
                    executable=executable, session_env=session_env(r))
     if r["harness"] == "agy":
         summary["first_message"] = agy_first_message(name)
@@ -752,7 +752,8 @@ def spawn_in_app(me, r, cfg, opts, extra, cwd):
     executable, args, _ = build_command(r, cfg, name, cwd, unattended=opts["unattended"], extra=extra,
                                         write=bool(r["model"] or r["harness"] == "agy") and not opts["dry_run"])
     tab, how = app_tab(me, r["role"])
-    summary = dict(r, name=name, pane_label=pane_label(name, r["harness"], r["model"], r["thinking"]), tab=r["role"],
+    summary = dict(r, name=name, say=say_name(name), pane_label=pane_label(name, r["harness"], r["model"], r["thinking"]),
+                   tab=r["role"],
                    cwd=cwd, workspace=project, executable=executable, session_env=session_env(r), backend="herdr-core")
     if r["harness"] == "agy":
         summary["first_message"] = agy_first_message(name)

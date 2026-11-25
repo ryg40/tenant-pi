@@ -198,8 +198,10 @@ Not verified: the plugin with the real core, and every live AWS call.
 
 ## Memory chain (`packages/memory-chain`)
 
-One fixed, read-only memory search before each eligible user prompt, for Pi and Claude Code. It runs in shadow only: it writes one record line for each prompt and adds nothing to the prompt. It is not a kit component: no manifest entry, installer row or profile names it. No hook or extension of the chain is installed on any host.
+One fixed, read-only memory search before each eligible user prompt, for Pi and Claude Code. It runs in shadow only: it writes one record line for each prompt and adds nothing to the prompt. It is not a kit component: no manifest entry, installer row or profile names it. The kit profiles do not load it.
 The package README is `packages/memory-chain/README.md`. It gives the switch file, the stores and their scope, the time budget, the block limits and the shadow record.
+The package also holds an on-demand search for Pi: the tool `memory_find` calls the native store tools `openviking_find` and `memory_search` and reads the personal wiki `~/.llm-wiki` with the reader of the command, in parallel (`wiki_recall` only as the fallback when the vault cannot be used; that fallback searches its layered vault, which can hold a project page), ranks all their hits (the decider takes up to 32 candidates) with one question to the local decision model on loopback, and returns at most 4 excerpts and 6 pointers in at most 3,000 characters. The short skill `memory-search` points the model at the tool. The tool registers in each mode of the switch; the kit profiles do not load the package.
+For Claude Code and any shell, the on-demand command `node <clone>/packages/memory-chain/scripts/search.mjs -- '<query>'` (an absolute clone path from another folder; the query is one single-quoted Bash word) searches all OpenViking memories of the user, all Hermes facts and the personal wiki `~/.llm-wiki`, ranks the hits with the same decider module and prints one block of at most 1,600 characters; the plugin skill `memory-search` names it. The Pi tool reads the same personal wiki, not the layered project vault of `wiki_recall` (only its fallback does), and reads OpenViking and Hermes through the active native store tools, so it sends what they send (the query to the OpenViking server). The wiki reader sends nothing; only the fallback `wiki_recall` can send the query to a remote embedder of the wiki. Both read more than the automatic shadow search; the project scope rule covers only the automatic run.
 The owner command `node packages/memory-chain/scripts/replay.mjs --sample <file> [--out <file>]` shows the chain block beside the current recall for each prompt of a sample file. The current recall there is the vendored OpenViking recall with the Pi peer options and no session id, not the recall of the Claude Code plugin.
 
 | Item | Value |
@@ -207,8 +209,8 @@ The owner command `node packages/memory-chain/scripts/replay.mjs --sample <file>
 | Source | `packages/memory-chain`, own code. |
 | License | The repository MIT license covers this code. |
 | Dependencies | None. It imports the OpenViking helpers of `packages/openviking-pi/shared/` by relative path. |
-| Load | Only in place from the kit clone: the Pi file `packages/memory-chain/index.ts`, or `claude --plugin-dir packages/memory-chain`. |
-| Switch | `${XDG_CONFIG_HOME:-~/.config}/tenant-pi/memory-chain/settings.json` with `mode` `off` or `shadow`. No file means `off`. |
+| Load | Only in place from the kit clone: the Pi file `packages/memory-chain/index.ts` or the package folder (its `pi` key names the extension and the Pi skill folder `pi-skills`), or `claude --plugin-dir packages/memory-chain` (the hook and the skill of `skills`). |
+| Switch | `${XDG_CONFIG_HOME:-~/.config}/tenant-pi/memory-chain/settings.json` with `mode` `off` or `shadow`. No file means `off`. The optional key `agentDir` names the Pi agent folder of the on-demand command. |
 
 The package tests use isolated stores and a fake OpenViking server on loopback:
 

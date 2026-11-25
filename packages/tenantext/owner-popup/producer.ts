@@ -21,11 +21,19 @@ import { WS_LIMITS } from "../../walkr/src/compare-socket.js";
 import { dummiesOn, roleOfName, statePath as dummiesStatePath } from "../extensions/next-prompt/dummies.ts";
 import {
 	addressFromSurfaceId,
+	BUTTON_ACTIONS,
 	effectiveAnswer,
 	formatSendLine,
+	DRAFT_KEY_PREFIX,
+	DRAFT_KEY_RE,
+	draftKey,
+	isRowAnswered,
 	isRowConfirmed,
+	isRowPendingConfirm,
+	needsConfirm,
 	renderedButtonSpecs,
-	resolveFocused,
+	sendableRows,
+	singleLineText,
 	surfaceIdFor,
 	toCreateSurfaceMessages,
 	toDeleteSurfaceMessages,
@@ -45,8 +53,10 @@ import {
 import {
 	appendReceiptSuffix,
 	defaultStateDir,
+	endReceipt,
 	isValidReceiptAddress,
 	RECEIPT_MAX_AGE_MS,
+	receiptIsGone,
 	removeReceipt,
 	removeReceiptsForAddress,
 	sha256Hex,
@@ -54,18 +64,19 @@ import {
 	writeReceipt,
 	type CreatedReceipt,
 } from "./receipt.ts";
-import { extractOwnerRows, FIXED_DECISION_OPTIONS, isRiskyByWords, makeOptions } from "./rows.ts";
+import { extractOwnerRows, FIXED_DECISION_OPTIONS, isRiskyByWords, makeOptions, type OwnerRow } from "./rows.ts";
 import { runWriter, type WriterConfig } from "./suggest.ts";
 import { createLocalWsServer, type LocalWsClient, type LocalWsServer } from "./ws.ts";
 
 /**
  * Local A2UI producer for the owner-task rail.
- * Listens on 127.0.0.1 (default port 18766, path /a2ui), owns surface state and focus,
+ * Listens on 127.0.0.1 (default port 18766, path /a2ui), owns surface state and the drafts of the fields,
  * fills split/decider/writer updates in series, validates every client action completely
  * against rendered buttons and report revisions before mutating state, and delivers one
  * `[Owner popup]` line per coordinator via `hc get` + `hc send` with a single-use receipt.
- * A coordinator has cards only between its Stop event and its next turn-start event: then it sits at its prompt,
- * so a press sends at once, whatever status `hc get` reports.
+ * A coordinator can send only between its Stop event and its next turn-start event: then it sits at its prompt,
+ * so a press sends at once, whatever status `hc get` reports. A delivered send or a turn-start locks the surface:
+ * the rows that were not sent stay, Send is refused, and the next Stop report replaces the rows.
  */
 
 export const DEFAULT_PRODUCER_PORT = 18766;
@@ -79,9 +90,17 @@ const CUSTOM_TEXT_MAX = 1000;
 /**
  * The limit of one `hc send`. herdr-core holds a send while a person's draft sits unsent in the terminal, up to
  * 60 seconds after the last key (`draft_wait`), and for a quiet pause of a few seconds after a key. The limit is
- * above that hold, so a normal hold does not end as an unknown result.
+ * above that hold, so a normal hold does not end as an unknown result. A press of Send skips the hold on a core whose
+ * `terminal.send` has the `no_draft_wait` parameter (`hc send --no-draft-wait`): text left in the prompt is then
+ * submitted together with the answer. An older core keeps the hold.
  */
 export const HC_SEND_TIMEOUT_MS = 75_000;
+/** The limit of one `hc get` or `hc schema`. */
+const HC_QUERY_TIMEOUT_MS = 10_000;
+/** A read of a kept `hc schema` answer older than this starts a background refresh: a core restart can change it. */
+const HC_SCHEMA_MAX_AGE_MS = 60_000;
+/** After a good send with no turn-start of the address (a session without the hook), the pending form ends then. */
+export const RECEIPT_PENDING_FALLBACK_MS = 20_000;
 // Event file name forms (shared between owner-popup-hook.mjs and producer.ts):
 // - Stop event: `stop-<16-digit ms>-<8 lowercase hex>.json`
 // - Turn-start event: `turn-start-<address>.json` (address uses only `[A-Za-z0-9._-]`, never starts with `-`, not `.` or `..`)
@@ -89,17 +108,18 @@ export const HC_SEND_TIMEOUT_MS = 75_000;
 const FINISHED_EVENT_RE = /^(?:stop-[0-9]{16}-[0-9a-f]{8}|turn-start-(?!\.{1,2}\.json$)[A-Za-z0-9._][A-Za-z0-9._-]*)\.json$/;
 const TAKEN_EVENT_RE = /^reading-[0-9]+-[0-9a-f]{12}\.json$/;
 const ALLOWED_ACTION_KEYS = new Set(["name", "surfaceId", "sourceComponentId", "timestamp", "context", "userMessage"]);
+/** The fixed context keys; a Button context also binds one `other_<label>` key for each "Other answer" field drawn. */
 const ALLOWED_CONTEXT_KEYS = new Set([
-	"focusedCoordinator",
-	"focusedLabel",
-	"focusedRevision",
-	"focusedPick",
-	"focusedOther",
 	"targetCoordinator",
 	"targetLabel",
 	"targetRevision",
+	"optionId",
+	"answerVersion",
 ]);
-const TARGET_LITERAL_KEYS = ["targetCoordinator", "targetLabel", "targetRevision"] as const;
+const TARGET_LITERAL_KEYS = ["targetCoordinator", "targetLabel", "targetRevision", "optionId", "answerVersion"] as const;
+/** How many replaced revisions of one address a press can still name to get the current view again. */
+const PAST_REVISIONS_KEPT = 8;
+const STALE_VIEW_TEXT = "The view changed. Check the rows and press again.";
 
 const HC_ENV_KEYS = [
 	"PATH",
@@ -139,12 +159,47 @@ export interface HcSendResult {
 	unknown?: boolean;
 	/** The producer aborted the send (a new report of the address came): the line counts as not sent. */
 	aborted?: boolean;
+	/** The `hc` client refused `--no-draft-wait` (exit 2, usage error), and this result is of the plain send after it. */
+	plainAfterUsage?: boolean;
+	/** The `hc` client refused `--no-draft-wait`, and the check before the plain send failed: nothing was sent. */
+	withheld?: boolean;
+}
+
+/** The check before the plain send after a usage refusal: `drain` can wait, `canGo` decides with no wait. */
+export interface PlainSendCheck {
+	drain(): Promise<void>;
+	canGo(): boolean;
 }
 
 export interface HcClient {
 	get(address: string): Promise<TerminalRecord | null>;
-	/** An abort of `signal` ends the client process; a client that ends during the draft hold types nothing. */
-	send(address: string, text: string, signal?: AbortSignal): Promise<HcSendResult>;
+	/**
+	 * An abort of `signal` ends the client process; a client that ends during the draft hold types nothing.
+	 * With `noDraftWait`, the send adds `--no-draft-wait`; a usage refusal of the flag sends one time again without it.
+	 * Both attempts share one limit of `HC_SEND_TIMEOUT_MS`. Before that plain send, `beforePlain.drain` runs and then
+	 * `beforePlain.canGo`, with no wait between `canGo` and the start of the child: when `canGo` gives false (or one of
+	 * them throws), the plain send does not start, and the result has `withheld`.
+	 */
+	send(
+		address: string,
+		text: string,
+		signal?: AbortSignal,
+		noDraftWait?: boolean,
+		beforePlain?: PlainSendCheck,
+	): Promise<HcSendResult>;
+	/**
+	 * The kept answer: true when the running core has `hc send --no-draft-wait`. It never waits: with no answer yet it
+	 * is false. When no answer exists or the kept answer is older than about 60 seconds, it starts a background refresh
+	 * and still gives the kept answer at once. A failed check is false.
+	 */
+	noDraftWait?(): boolean;
+	/** Start a background `hc schema` check (or join the one in flight). It never rejects. */
+	refreshNoDraftWait?(): Promise<boolean>;
+	/**
+	 * True only when herdr-core says that the terminal does not exist (`hc get` gives an error of the kind
+	 * `not_found`). A failed or slow `hc get`, or any other answer, is false. It never rejects.
+	 */
+	gone?(address: string): Promise<boolean>;
 }
 
 export interface ProducerOptions {
@@ -175,14 +230,18 @@ interface DeliveryOutcome {
 	reason?: string;
 }
 
-/** A send whose `hc send` gave no result: a later press of the same cards sends this same line again. */
+/**
+ * A send whose `hc send` gave no result: a later press whose checked rows give the same line sends this line again
+ * with its receipt.
+ */
 interface UnknownSend {
-	/** Generation of the address at the first try; a new report, a turn-start or a Close bumps it. */
+	/** Generation of the address at the first try; a new report or a Close bumps it, and a turn-start ends the retry. */
 	gen: number;
-	/** The line of the first try with its receipt suffix. */
+	/** The line of the first try without its receipt suffix, and with it. */
+	baseLine: string;
 	wireLine: string;
-	/** A frozen copy of the cards at the first try, for the pick log; later edits of the cards do not change it. */
-	group: CoordinatorGroup;
+	/** The labels of the rows in that line. */
+	labels: readonly string[];
 	/** The receipt file of the first try and its creation time. */
 	receiptPath: string;
 	receiptCreatedAtMs: number;
@@ -249,14 +308,142 @@ export function roleOfTerminal(labels: Record<string, unknown>, name: string | u
 	return tab === "coordinator" || tab === "1" ? "coordinator" : undefined;
 }
 
-/** Run `hc get <address> --json` and `hc send` (never `--force` or `--if`, minimal child environment). */
+/**
+ * True when the JSON of `hc schema` has the method `terminal.send` with the parameter `no_draft_wait`.
+ * Text that is not that JSON gives false.
+ */
+export function schemaHasNoDraftWait(schemaJson: string): boolean {
+	try {
+		const data = JSON.parse(schemaJson) as unknown;
+		if (!isPlainObject(data) || !Array.isArray(data.methods)) return false;
+		const method = data.methods.find((m) => isPlainObject(m) && m.name === "terminal.send");
+		if (!isPlainObject(method) || !Array.isArray(method.params)) return false;
+		return method.params.some((param) => isPlainObject(param) && param.name === "no_draft_wait");
+	} catch {
+		return false;
+	}
+}
+
+/** True when a failed `hc` run printed a JSON error of the kind `usage` (an old client refused a flag). */
+function isUsageError(stderr: string): boolean {
+	try {
+		const data = JSON.parse(stderr.trim()) as unknown;
+		return isPlainObject(data) && isPlainObject(data.error) && data.error.kind === "usage";
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Run `hc get <address> --json`, `hc schema` and `hc send` (never `--force` or `--if`, minimal child environment).
+ */
 export function createHcClient(hcBin = "hc", env: NodeJS.ProcessEnv = process.env): HcClient {
+	let schemaAnswer: { value: boolean; atMs: number } | undefined;
+	let schemaCheck: Promise<boolean> | undefined;
+	/** Counts the usage refusals of the flag: a schema check that started before a refusal must not undo it. */
+	let usageRefusals = 0;
+	const refreshNoDraftWait = (): Promise<boolean> => {
+		if (schemaCheck) return schemaCheck;
+		const refusalsAtStart = usageRefusals;
+		const check = new Promise<boolean>((resolveDone) => {
+			const settle = (found: boolean): void => {
+				// The client refused the flag while this check ran: the refusal stands until a later check.
+				const value = found && usageRefusals === refusalsAtStart;
+				// A monotonic clock: a step of the wall clock must not change the age of the answer.
+				schemaAnswer = { value, atMs: performance.now() };
+				resolveDone(value);
+			};
+			try {
+				const childEnv = buildHcEnv(env);
+				execFile(hcBin, ["schema"], { timeout: HC_QUERY_TIMEOUT_MS, env: childEnv, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
+					settle(!error && schemaHasNoDraftWait(stdout));
+				});
+			} catch {
+				// A synchronous launch failure counts as a failed check.
+				settle(false);
+			}
+		});
+		schemaCheck = check;
+		// Clear the in-flight slot when the check ends, so a later refresh runs again.
+		void check.finally(() => {
+			if (schemaCheck === check) schemaCheck = undefined;
+		});
+		return check;
+	};
+	const runSend = (
+		args: string[],
+		signal: AbortSignal | undefined,
+		timeoutMs: number,
+	): Promise<HcSendResult & { stderr: string }> => {
+		// Start no child for a send that is already aborted.
+		if (signal?.aborted) return Promise.resolve({ ok: false, code: 1, aborted: true, detail: "aborted", stderr: "" });
+		const childEnv = buildHcEnv(env);
+		return new Promise((resolveDone) => {
+			execFile(hcBin, args, { timeout: timeoutMs, env: childEnv, signal }, (error, stdout, stderr) => {
+				if (!error) {
+					resolveDone({ ok: true, code: 0, detail: stdout.trim(), stderr });
+					return;
+				}
+				if (signal?.aborted) {
+					resolveDone({ ok: false, code: 1, aborted: true, detail: "aborted", stderr });
+					return;
+				}
+				const execErr = error as NodeJS.ErrnoException & {
+					code?: number | string | null;
+					killed?: boolean;
+					signal?: string | null;
+				};
+				const hasExitCode = typeof execErr.code === "number" && execErr.code !== 0;
+				const unknown = Boolean(execErr.killed || execErr.signal || !hasExitCode);
+				const code = hasExitCode ? Number(execErr.code) : 1;
+				resolveDone({
+					ok: false,
+					code,
+					unknown,
+					detail: (stderr || stdout || error.message).trim().slice(0, 200),
+					stderr,
+				});
+			});
+		});
+	};
 	return {
+		noDraftWait(): boolean {
+			if (!schemaAnswer || performance.now() - schemaAnswer.atMs >= HC_SCHEMA_MAX_AGE_MS) void refreshNoDraftWait();
+			return schemaAnswer?.value ?? false;
+		},
+		refreshNoDraftWait,
+		gone(address: string): Promise<boolean> {
+			if (!isValidReceiptAddress(address)) return Promise.resolve(false);
+			const childEnv = buildHcEnv(env);
+			return new Promise((resolveDone) => {
+				try {
+					execFile(hcBin, ["get", address, "--json"], { timeout: HC_QUERY_TIMEOUT_MS, env: childEnv }, (error, stdout, stderr) => {
+						const execErr = error as (NodeJS.ErrnoException & { killed?: boolean; signal?: string | null }) | null;
+						// Success, a timeout or a kill says nothing about a closed terminal.
+						if (!execErr || execErr.killed || execErr.signal) {
+							resolveDone(false);
+							return;
+						}
+						const kindOf = (text: string): unknown => {
+							try {
+								const data = JSON.parse(text.trim()) as unknown;
+								return isPlainObject(data) && isPlainObject(data.error) ? data.error.kind : undefined;
+							} catch {
+								return undefined;
+							}
+						};
+						resolveDone(kindOf(stderr) === "not_found" || kindOf(stdout) === "not_found");
+					});
+				} catch {
+					resolveDone(false);
+				}
+			});
+		},
 		get(address: string): Promise<TerminalRecord | null> {
 			if (!isValidReceiptAddress(address)) return Promise.resolve(null);
 			const childEnv = buildHcEnv(env);
 			return new Promise((resolveDone) => {
-				execFile(hcBin, ["get", address, "--json"], { timeout: 10_000, env: childEnv }, (error, stdout) => {
+				execFile(hcBin, ["get", address, "--json"], { timeout: HC_QUERY_TIMEOUT_MS, env: childEnv }, (error, stdout) => {
 					if (error) {
 						resolveDone(null);
 						return;
@@ -290,51 +477,65 @@ export function createHcClient(hcBin = "hc", env: NodeJS.ProcessEnv = process.en
 				});
 			});
 		},
-		send(address: string, text: string, signal?: AbortSignal): Promise<HcSendResult> {
-			if (!isValidReceiptAddress(address)) return Promise.resolve({ ok: false, code: 2, detail: "invalid address" });
-			if (signal?.aborted) return Promise.resolve({ ok: false, code: 1, aborted: true, detail: "aborted" });
+		async send(
+			address: string,
+			text: string,
+			signal?: AbortSignal,
+			noDraftWait = false,
+			beforePlain?: PlainSendCheck,
+		): Promise<HcSendResult> {
+			if (!isValidReceiptAddress(address)) return { ok: false, code: 2, detail: "invalid address" };
+			if (signal?.aborted) return { ok: false, code: 1, aborted: true, detail: "aborted" };
 			// No `--if`: a coordinator at its prompt reports `idle`, `done`, or `working` while it holds background
 			// waits, and `--if idle` refuses `done` and `working`. The hook events decide that it sits at its prompt.
-			const args = ["send", address, text];
-			const childEnv = buildHcEnv(env);
-			return new Promise((resolveDone) => {
-				execFile(hcBin, args, { timeout: HC_SEND_TIMEOUT_MS, env: childEnv, signal }, (error, stdout, stderr) => {
-					if (!error) {
-						resolveDone({ ok: true, code: 0, detail: stdout.trim() });
-						return;
-					}
-					if (signal?.aborted) {
-						resolveDone({ ok: false, code: 1, aborted: true, detail: "aborted" });
-						return;
-					}
-					const execErr = error as NodeJS.ErrnoException & {
-						code?: number | string | null;
-						killed?: boolean;
-						signal?: string | null;
-					};
-					const hasExitCode = typeof execErr.code === "number" && execErr.code !== 0;
-					const unknown = Boolean(execErr.killed || execErr.signal || !hasExitCode);
-					const code = hasExitCode ? Number(execErr.code) : 1;
-					resolveDone({
-						ok: false,
-						code,
-						unknown,
-						detail: (stderr || stdout || error.message).trim().slice(0, 200),
-					});
-				});
-			});
+			// `--no-draft-wait` is not `--force`: herdr-core still refuses a blocked terminal.
+			const plainArgs = ["send", address, text];
+			// One limit for the press: the plain attempt after a usage refusal gets only the time that is left.
+			// A monotonic clock: a backward step of the wall clock must not give the plain attempt more time.
+			const deadlineMs = performance.now() + HC_SEND_TIMEOUT_MS;
+			if (noDraftWait) {
+				const { stderr, ...first } = await runSend([...plainArgs, "--no-draft-wait"], signal, HC_SEND_TIMEOUT_MS);
+				// An old client refuses the flag before it sends anything: send one time again without it.
+				if (first.ok || first.unknown || first.aborted || first.code !== 2 || !isUsageError(stderr)) return first;
+				// This client does not know the flag: the answer is "no option" until the next schema refresh.
+				usageRefusals += 1;
+				if (schemaAnswer) schemaAnswer = { value: false, atMs: schemaAnswer.atMs };
+				// The flagged child ran for a while: the producer checks again that the plain line can still go out.
+				const withheld: HcSendResult = { ok: false, code: first.code, withheld: true, detail: "plain send withheld" };
+				try {
+					await beforePlain?.drain();
+				} catch {
+					return withheld;
+				}
+				const leftMs = Math.min(HC_SEND_TIMEOUT_MS, Math.floor(deadlineMs - performance.now()));
+				// No time left: the refusal stands, and nothing was sent.
+				if (leftMs <= 0) return first;
+				// No wait between this check and the start of the child: a decider answer cannot come between them.
+				try {
+					if (beforePlain && !beforePlain.canGo()) return withheld;
+				} catch {
+					return withheld;
+				}
+				const { stderr: _plainStderr, ...plain } = await runSend(plainArgs, signal, leftMs);
+				return { ...plain, plainAfterUsage: true };
+			}
+			const { stderr: _stderr, ...result } = await runSend(plainArgs, signal, HC_SEND_TIMEOUT_MS);
+			return result;
 		},
 	};
 }
 
-/** Write one privacy-safe JSON line to the pick log (mode 0600, no report or answer text). */
-function recordPickLog(pickLogPath: string | undefined, group: CoordinatorGroup): void {
+/**
+ * Write one privacy-safe JSON line to the pick log (mode 0600, no report or answer text): for a send the sent rows,
+ * for a Close all rows.
+ */
+function recordPickLog(pickLogPath: string | undefined, rows: readonly RowViewState[]): void {
 	if (!pickLogPath) return;
 	const entry = {
 		at: new Date().toISOString(),
-		count: group.rows.length,
-		rows: group.rows.map((item) => {
-			const confirmed = isRowConfirmed(item);
+		count: rows.length,
+		rows: rows.map((item) => {
+			const confirmed = item.checked && isRowConfirmed(item);
 			const ans = confirmed ? effectiveAnswer(item) : null;
 			return {
 				kind: item.row.kind,
@@ -356,6 +557,25 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 	const hc = options.hc ?? createHcClient(options.hcBin ?? "hc");
 	const printOnly = options.printOnly ?? false;
 	const demoMode = options.demoMode ?? false;
+	// Learn in the background whether the running core can skip the draft hold on a send (`hc schema`): at start and
+	// when a report arrives. A press reads the kept answer and never waits for this check.
+	const refreshNoDraftWait = (): void => {
+		if (printOnly) return;
+		try {
+			void Promise.resolve(hc.refreshNoDraftWait?.()).catch(() => false);
+		} catch {
+			// An injected client that throws counts as no option.
+		}
+	};
+	/** The kept answer, with no wait. A throw from an injected client gives false. */
+	const readNoDraftWait = (): boolean => {
+		try {
+			return hc.noDraftWait?.() === true;
+		} catch {
+			return false;
+		}
+	};
+	refreshNoDraftWait();
 	const onPrint = options.onPrint ?? ((line: string) => process.stdout.write(`${line}\n`));
 	const pickLogPath = options.pickLogPath;
 	const dummiesFile = options.dummiesFile ?? dummiesStatePath();
@@ -390,15 +610,56 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 	const lastEventTimes = new Map<string, number>();
 	/** Addresses whose final send step runs: from the last check before the receipt to the end of `hc send`. */
 	const inFlightSend = new Set<string>();
+	/** For each address, the labels of the rows in the line of the `hc send` in flight. */
+	const sendingLabels = new Map<string, readonly string[]>();
 	/** For each address, the send whose `hc send` gave no result; memory only, one per address. */
 	const unknownSends = new Map<string, UnknownSend>();
+	/**
+	 * For each address, the labels of the rows in the line of each unknown send: the line can have reached the
+	 * coordinator. Apart from the retry record, a turn-start does not end it; the next report reads it and ends it, and
+	 * a Close, a delivered send of the address (see `endMaybeSent`) or the end of its group ends it too.
+	 */
+	const maybeSentLabels = new Map<string, Set<string>>();
+	/**
+	 * For each address, the labels of the rows of an unknown first line whose old receipt was already gone at a later
+	 * press (`firstLineUnknown`): the rows stay unchecked, and their answer can have arrived. Their possibly-sent mark
+	 * stays also after a delivered send of other rows; a delivered send of the row itself, the next report, a Close or
+	 * the end of the group ends it.
+	 */
+	const unresolvedLabels = new Map<string, Set<string>>();
+	/**
+	 * End the possibly-sent marks of an address after a line arrived, except the marks of unresolved rows that were
+	 * not in that line.
+	 */
+	const endMaybeSent = (address: string, arrivedLabels: readonly string[]): void => {
+		maybeSentLabels.delete(address);
+		const held = unresolvedLabels.get(address);
+		if (!held) return;
+		for (const label of arrivedLabels) held.delete(label);
+		if (held.size === 0) unresolvedLabels.delete(address);
+		else maybeSentLabels.set(address, new Set(held));
+	};
 	/** For each address, the abort handle of the `hc send` in flight; a new Stop report of the address aborts it. */
 	const sendAborts = new Map<string, AbortController>();
 	/** For each known coordinator address, the count of client actions that named it, raised at arrival. */
 	const actionArrivals = new Map<string, number>();
+	/**
+	 * Pending forms that stay on the clients after a good send of the last rows left the state, with their fallback
+	 * timer: until the turn-start of the address, or the fallback time.
+	 */
+	const heldForms = new Map<string, NodeJS.Timeout | null>();
+	/** For each locked surface with rows left after a delivered send, the fallback timer of its "Receipt pending" line. */
+	const sentNoteTimers = new Map<string, NodeJS.Timeout>();
 	const pendingJobs = new Set<Promise<unknown>>();
 	const pendingActionsByClient = new Map<number, number>();
 	let nextRevision = 0;
+	/** The source of each new `answerVersion`: one number for all rows, so a version never comes back. */
+	let nextAnswerVersion = 0;
+	/**
+	 * The replaced revisions of each address, the newest last: a press of one gets the current view again. The list
+	 * lives only across successful replacements of an active surface: each removal of the cards ends it.
+	 */
+	const pastRevisions = new Map<string, string[]>();
 	let lastActivityAt = Date.now();
 	let actionQueue: Promise<unknown> = Promise.resolve();
 	let pollChain: Promise<void> = Promise.resolve();
@@ -424,12 +685,10 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		state.coordinators.find((c) => c.address === address) ?? null;
 
 	const withdrawnText = (address: string): string =>
-		`Answers for ${address} not sent: an action on its cards came after the send request. The cards stay; check them and press Send answers again.`;
-	const sendingText = (address: string): string =>
-		`Sending the answer to ${address} ... An unsent draft in that terminal can hold it for up to 60 seconds.`;
+		`Answers for ${address} not sent: an action on its surface came after the send request. The rows stay; check them and press Send again.`;
 	const reuseMinutes = Math.floor((RECEIPT_MAX_AGE_MS - HC_SEND_TIMEOUT_MS) / 60_000);
 	const unknownText = (address: string): string =>
-		`Send status unknown for ${address}: hc send gave no result in ${HC_SEND_TIMEOUT_MS / 1000} seconds. The answer can still arrive; check the terminal. The cards stay. For ${reuseMinutes} minutes, a new press of Send answers sends the same answer with the same receipt, so ${address} accepts it only one time. After that, a press sends the answers that the cards show, with a new receipt.`;
+		`Send status unknown for ${address}: hc send gave no result in ${HC_SEND_TIMEOUT_MS / 1000} seconds. The answer can still arrive; check the terminal. The rows stay. For ${reuseMinutes} minutes, a press of Send with the same checked answers sends the same line with the same receipt, so ${address} accepts it only one time. When the checked answers differ, or after that time, the press ends the old receipt and sends the checked answers with a new receipt.`;
 	/** A refusal text; after an unknown send of the same cards, the unknown text stays in front of it. */
 	const withUnknownNote = (address: string, gen: number, text: string): string =>
 		unknownSends.get(address)?.gen === gen ? `${unknownText(address)} ${text}` : text;
@@ -438,13 +697,7 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		lastActivityAt = Date.now();
 	};
 
-	const ensureGroupFocusValid = (group: CoordinatorGroup) => {
-		const resolved = resolveFocused(group);
-		group.focusedLabel = resolved ? resolved.row.label : null;
-	};
-
 	const broadcastSurfaceCreate = (group: CoordinatorGroup) => {
-		ensureGroupFocusValid(group);
 		const sid = surfaceIdFor(group.address);
 		const createMsgs = toCreateSurfaceMessages(group);
 		const replaceMsgs = toReplaceSurfaceMessages(group);
@@ -458,7 +711,6 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 	};
 
 	const broadcastSurfaceUpdate = (group: CoordinatorGroup) => {
-		ensureGroupFocusValid(group);
 		const sid = surfaceIdFor(group.address);
 		const updateMsgs = toUpdateSurfaceMessages(group);
 		const createMsgs = toCreateSurfaceMessages(group);
@@ -484,28 +736,76 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		}
 	};
 
+	/** End the held pending form of an address: stop its fallback timer and, with `broadcast`, delete its surface. */
+	const dropHeldForm = (address: string, broadcast: boolean): boolean => {
+		if (!heldForms.has(address)) return false;
+		const timer = heldForms.get(address);
+		if (timer) clearTimeout(timer);
+		heldForms.delete(address);
+		if (broadcast) broadcastSurfaceDelete(address);
+		return true;
+	};
+
+	/** Bring the cards back in place of the pending form, with one status line; the picks stay as they are. */
+	const showCards = (group: CoordinatorGroup, text: string) => {
+		group.receiptPending = false;
+		group.statusMessage = text;
+		broadcastSurfaceCreate(group);
+	};
+
+	/** End the "Receipt pending" line of a locked surface; with `broadcast`, draw the surface again. */
+	const dropSentNote = (address: string, broadcast: boolean): void => {
+		const timer = sentNoteTimers.get(address);
+		if (timer) clearTimeout(timer);
+		sentNoteTimers.delete(address);
+		const group = findGroup(address);
+		if (!group?.sentPending) return;
+		group.sentPending = undefined;
+		if (broadcast) broadcastSurfaceUpdate(group);
+	};
+
 	const clearAddressCards = (address: string): number => {
 		const gen = bumpGeneration(address);
 		unknownSends.delete(address);
+		pastRevisions.delete(address);
+		dropSentNote(address, false);
 		const before = state.coordinators.length;
 		state.coordinators = state.coordinators.filter((c) => c.address !== address);
-		if (state.coordinators.length !== before) {
+		const held = dropHeldForm(address, false);
+		if (state.coordinators.length !== before || held) {
 			broadcastSurfaceDelete(address);
 		}
 		return gen;
 	};
 
+	/**
+	 * True for a press of a Button of a replaced view: it names an action of a Button, the coordinator of an active
+	 * surface, and a revision that this surface had before (not the current one).
+	 */
+	const isStaleViewPress = (address: string, actionName: unknown, context: Record<string, unknown>): boolean => {
+		const group = findGroup(address);
+		const pressed = context.targetRevision;
+		return (
+			Boolean(group && group.rows.length > 0) &&
+			typeof actionName === "string" &&
+			BUTTON_ACTIONS.has(actionName) &&
+			context.targetCoordinator === address &&
+			typeof pressed === "string" &&
+			pressed !== group?.revision &&
+			(pastRevisions.get(address) ?? []).includes(pressed)
+		);
+	};
+
 	const sendFullToClient = (client: LocalWsClient) => {
 		for (const group of state.coordinators) {
 			if (group.rows.length === 0) continue;
-			ensureGroupFocusValid(group);
 			client.sendMessages(toCreateSurfaceMessages(group));
 		}
 	};
 
 	/**
 	 * Count one client action at its arrival, before it waits in the action queue: raise the arrival count of
-	 * each known coordinator that it names (`focusedCoordinator`, `targetCoordinator`, or its `surfaceId`),
+	 * each known coordinator that it names (`targetCoordinator` or its `surfaceId`),
 	 * valid or refused. A Close names its coordinator, so it withdraws only the press of that coordinator.
 	 * When the `surfaceId` names a known coordinator, only that address counts, so a frame with a mismatched
 	 * context cannot withdraw the press of another coordinator.
@@ -524,7 +824,7 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		}
 		if (isPlainObject(action)) {
 			const context: Record<string, unknown> = isPlainObject(action.context) ? action.context : {};
-			const keys = ["focusedCoordinator", "targetCoordinator"];
+			const keys = ["targetCoordinator"];
 			const surfaceAddr = typeof action.surfaceId === "string" ? addressFromSurfaceId(action.surfaceId) : null;
 			const isKnown = (address: string): boolean => state.coordinators.some((c) => c.address === address);
 			const hasNamedCoord = surfaceAddr !== null || keys.some((key) => typeof context[key] === "string");
@@ -542,7 +842,8 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 				}
 			}
 			for (const address of candidates) {
-				if (isKnown(address)) named.add(address);
+				// A press of a replaced view changes nothing, so it withdraws no press of its coordinator.
+				if (isKnown(address) && !isStaleViewPress(address, action.name, context)) named.add(address);
 			}
 		}
 		const counts = new Map<string, number>();
@@ -558,13 +859,13 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 	 * The one send path for a press: `hc get`, events poll, then the final step. A coordinator with cards sits at
 	 * its prompt (its Stop event came, its next turn-start did not), so the status of `hc get` does not hold the
 	 * answer. The final step checks synchronously, with no `await` before the receipt: the generation, the arrival
-	 * count of the address against the count of the press, and the terminal `live` in this lookup. Then one
-	 * receipt, `hc send` (never `--force`), pick log, card removal. `inFlightSend` covers only the final step.
+	 * count of the address against the count of the press, and the terminal `live` in this lookup. Then one frozen
+	 * list of the rows to send, one receipt, `hc send` (never `--force`), pick log, card removal. `inFlightSend` covers
+	 * only the final step.
 	 */
 	async function deliverAnswers(
 		destination: string,
 		gen: number,
-		baseLine: string | null,
 		group: CoordinatorGroup,
 		pressArrivals: number,
 	): Promise<DeliveryOutcome> {
@@ -574,23 +875,28 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			return { handled: false, reason: "stale-after-get" };
 		}
 		const liveGroup = findGroup(destination) ?? group;
+		if (liveGroup.locked) {
+			// A turn-start came before the final step: the coordinator works, so nothing is sent.
+			showCards(liveGroup, "");
+			return { handled: false, reason: "locked" };
+		}
 		if ((actionArrivals.get(destination) ?? 0) !== pressArrivals) {
-			liveGroup.statusMessage = withUnknownNote(destination, gen, withdrawnText(destination));
-			broadcastSurfaceUpdate(liveGroup);
+			showCards(liveGroup, withUnknownNote(destination, gen, withdrawnText(destination)));
 			return { handled: false, reason: "press-withdrawn" };
 		}
 		if (term === null) {
-			liveGroup.statusMessage = withUnknownNote(
-				destination,
-				gen,
-				`Send refused: hc get found no terminal ${destination}. The cards stay; press Send answers again.`,
+			showCards(
+				liveGroup,
+				withUnknownNote(
+					destination,
+					gen,
+					`Send refused: hc get found no terminal ${destination}. The rows stay; press Send again.`,
+				),
 			);
-			broadcastSurfaceUpdate(liveGroup);
 			return { handled: false, reason: "hc-get-failed" };
 		}
 		if (term.state !== undefined && term.state !== "live") {
-			liveGroup.statusMessage = withUnknownNote(destination, gen, `Send refused: the terminal ${destination} is gone (${term.state}).`);
-			broadcastSurfaceUpdate(liveGroup);
+			showCards(liveGroup, withUnknownNote(destination, gen, `Send refused: the terminal ${destination} is gone (${term.state}).`));
 			return { handled: false, reason: "terminal-gone" };
 		}
 		if (inFlightSend.has(destination)) {
@@ -598,41 +904,128 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		}
 		inFlightSend.add(destination);
 		try {
-			return await finishDelivery(destination, gen, baseLine, group, liveGroup);
+			return await finishDelivery(destination, gen, liveGroup);
 		} finally {
 			inFlightSend.delete(destination);
 		}
 	}
 
-	async function finishDelivery(
-		destination: string,
-		gen: number,
-		baseLine: string | null,
-		pressGroup: CoordinatorGroup,
-		liveGroup: CoordinatorGroup,
-	): Promise<DeliveryOutcome> {
-		// After an unknown result, a new press of the same cards sends the line of the first try with its receipt:
-		// when both arrive, the receipt verifies one time, so the coordinator applies the answer once. A receipt
-		// that can expire before the line arrives is removed instead, and the press is a new send with a new
-		// receipt: a late first copy then cannot verify, so there is one answer.
+	async function finishDelivery(destination: string, gen: number, liveGroup: CoordinatorGroup): Promise<DeliveryOutcome> {
+		// The last synchronous step before the launch: ONE frozen list of the rows to send, from the live rows now
+		// (checked, a valid answer, and a Confirm for a risky row). The line, the receipt, the pick log and the removal
+		// after the delivery all use this list. A row that the decider marked risky during the lookup is not in it.
+		const rows = sendableRows(liveGroup).map((item) => structuredClone(item));
+		const labels = rows.map((item) => item.row.label);
+		const baseLine = formatSendLine({ ...liveGroup, rows });
+		const digest = liveGroup.reportDigest ?? sha256Hex("");
+		// After an unknown result, a press whose list gives the same line sends the line of the first try with its
+		// receipt: when both arrive, the receipt verifies one time, so the coordinator applies the answer once. A
+		// receipt that can expire before the line arrives, or a different line, ends the first try: this press removes
+		// its receipt, so a late first copy cannot verify, and the press is a new send with a new receipt. A receipt that
+		// is gone before this press sends nothing: a young one was consumed by a first copy that verified
+		// (`firstLineArrived`); an old one can also have expired, so its rows wait for the owner (`firstLineUnknown`).
 		const retry = unknownSends.get(destination);
 		let reuse: UnknownSend | undefined;
-		if (retry && retry.gen === gen) {
-			if (canReuseUnknownSend(retry)) {
-				reuse = retry;
-			} else {
-				removeReceipt(retry.receiptPath);
-				unknownSends.delete(destination);
-				logEvent("receipt", destination, retry.group.reportDigest ?? sha256Hex(""), "removed-too-old-to-reuse");
+		let tooOld = false;
+		/**
+		 * The receipt of the first try was gone before this press, while it was still too young for a sweep (the reuse
+		 * and line-changed branches: `canReuseUnknownSend` holds): only a verify removes it then, so the coordinator
+		 * verified the first line. Nothing is sent in this press, so no second copy of these answers goes out; the rows
+		 * of the first line leave the surface as after a delivered send. The verify proves that the line reached the
+		 * prompt and started a turn, as a turn-start does, so the surface locks with no "Receipt pending" line until the
+		 * next report. The rows of the first line are not kept with the unknown record, so no pick log entry is written
+		 * for them.
+		 */
+		const firstLineArrived = (kept: UnknownSend, why: string): DeliveryOutcome => {
+			unknownSends.delete(destination);
+			endMaybeSent(destination, kept.labels);
+			logEvent("receipt", destination, digest, `first-line-consumed-${why}`);
+			if (isCurrentGen(destination, gen)) {
+				const firstRows = kept.labels.map((label) => `[${label}]`).join(", ");
+				removeSentRows(
+					liveGroup,
+					kept.labels,
+					"turn-started",
+					`The first answer for ${firstRows} reached ${destination}, so these rows are removed. Nothing was sent now.`,
+				);
 			}
+			return { handled: false, reason: "first-line-consumed" };
+		};
+		/**
+		 * The receipt of a first try that is too old to reuse was already gone before this press: a verify consumed it
+		 * (the line arrived), or it expired and a sweep of another send removed it (the line never arrived, or too late
+		 * to verify). The file does not tell the two apart, so the owner decides. Nothing is sent in this press, and the
+		 * first try ends, so the next press is a new send with a new receipt. The rows of the first line stay with their
+		 * answers and typed text, but unchecked: the next Send holds them only when the owner chooses an answer of the
+		 * row again, which gives a new answer version, so a risky row needs its Confirm again. The surface does not lock.
+		 * The rows keep their possibly-sent mark until the next report (`unresolvedLabels`), because their answer can
+		 * have arrived.
+		 */
+		const firstLineUnknown = (kept: UnknownSend): DeliveryOutcome => {
+			unknownSends.delete(destination);
+			logEvent("receipt", destination, digest, "old-receipt-gone-unresolved");
+			if (!isCurrentGen(destination, gen)) return { handled: false, reason: "first-line-unknown" };
+			const first = new Set(kept.labels);
+			const maybe = maybeSentLabels.get(destination) ?? new Set<string>();
+			const held = unresolvedLabels.get(destination) ?? new Set<string>();
+			for (const label of kept.labels) {
+				maybe.add(label);
+				held.add(label);
+			}
+			maybeSentLabels.set(destination, maybe);
+			unresolvedLabels.set(destination, held);
+			for (const item of liveGroup.rows) {
+				if (!first.has(item.row.label)) continue;
+				item.checked = false;
+				item.confirmed = false;
+			}
+			const firstRows = kept.labels.map((label) => `[${label}]`).join(", ");
+			showCards(
+				liveGroup,
+				`The first try for ${firstRows} to ${destination} is old, and its result is not known: it may have arrived; check the terminal. Nothing was sent now, and these rows are no longer checked. To send the answer of such a row again, choose it again (or press Use text), then press Send.`,
+			);
+			return { handled: false, reason: "first-line-unknown" };
+		};
+		// A new line goes out only when this press removed the old receipt: else the old line and the new line can both
+		// verify. On a failed removal nothing is sent, and the retry record stays for the next press.
+		const oldReceiptEnd = (kept: UnknownSend, why: string): "removed" | "already-gone" | "failed" => {
+			const ended = endReceipt(kept.receiptPath);
+			if (ended !== "failed") return ended;
+			logEvent("receipt", destination, digest, `remove-failed-${why}`);
+			showCards(liveGroup, `The old receipt for ${destination} could not be ended, so nothing was sent. Press Send again.`);
+			return ended;
+		};
+		if (retry && retry.gen === gen && !canReuseUnknownSend(retry)) {
+			const ended = oldReceiptEnd(retry, "too-old");
+			if (ended === "failed") return { handled: false, reason: "receipt-remove-failed" };
+			if (ended === "already-gone") return firstLineUnknown(retry);
+			unknownSends.delete(destination);
+			logEvent("receipt", destination, digest, "removed-too-old-to-reuse");
+			tooOld = true;
 		}
-		if (!reuse && !baseLine) {
-			liveGroup.statusMessage = `The first try for ${destination} is too old to send again. Pick the answers and press Send answers.`;
-			broadcastSurfaceUpdate(liveGroup);
+		if (!baseLine) {
+			showCards(
+				liveGroup,
+				tooOld
+					? `The first try for ${destination} is too old to send again. Check the answers and press Send.`
+					: withUnknownNote(destination, gen, "No checked answer to send. Check a row with an answer, and confirm a risky answer."),
+			);
 			return { handled: false, reason: "no-confirmed-answers" };
 		}
-		const deliveryGroup: CoordinatorGroup = reuse ? reuse.group : structuredClone(pressGroup);
-		const digest = deliveryGroup.reportDigest ?? sha256Hex("");
+		const kept = unknownSends.get(destination);
+		if (kept && kept.gen === gen) {
+			if (kept.baseLine === baseLine) {
+				// The same line again only while its receipt can verify: a gone receipt was consumed by the first copy.
+				if (receiptIsGone(kept.receiptPath)) return firstLineArrived(kept, "reuse");
+				reuse = kept;
+			} else {
+				const ended = oldReceiptEnd(kept, "line-changed");
+				if (ended === "failed") return { handled: false, reason: "receipt-remove-failed" };
+				if (ended === "already-gone") return firstLineArrived(kept, "line-changed");
+				unknownSends.delete(destination);
+				logEvent("receipt", destination, digest, "removed-line-changed");
+			}
+		}
 		let wireLine: string;
 		let receiptPath: string;
 		let receiptCreatedAtMs: number;
@@ -646,35 +1039,58 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 				const receipt: CreatedReceipt = writeReceipt({
 					stateDir: receiptStateDir,
 					address: destination,
-					baseLine: baseLine as string,
+					baseLine,
 					reportDigest: digest,
 				});
 				receiptPath = receipt.path;
 				receiptCreatedAtMs = Date.parse(receipt.record.createdAt);
-				wireLine = appendReceiptSuffix(baseLine as string, receipt.id);
+				wireLine = appendReceiptSuffix(baseLine, receipt.id);
 			} catch {
 				logEvent("receipt", destination, digest, "write-failed");
 				if (isCurrentGen(destination, gen)) {
-					liveGroup.statusMessage = `Send failed for ${destination} (receipt write error). Try Send answers again.`;
-					broadcastSurfaceUpdate(liveGroup);
+					showCards(liveGroup, `Send failed for ${destination} (receipt write error). Try Send again.`);
 				}
 				return { handled: false, reason: "receipt-write-failed" };
 			}
 			logEvent("receipt", destination, digest, "written");
 		}
 
+		/**
+		 * Before the plain send after a usage refusal of the flag: drain the events, then the same report and no lock,
+		 * and each frozen row is still sendable in the live group with the same answer (the decider can mark a row risky
+		 * while the flagged child runs).
+		 */
+		let withheldBy = "locked" as "locked" | "rows-changed";
+		const plainCanGo = (): boolean => {
+			const live = findGroup(destination);
+			if (!isCurrentGen(destination, gen) || live?.locked) return false;
+			const liveSendable = live ? sendableRows(live) : [];
+			const same = rows.every((frozen) => {
+				const now = liveSendable.find((item) => item.row.label === frozen.row.label);
+				const a = now ? effectiveAnswer(now) : null;
+				const b = effectiveAnswer(frozen);
+				return Boolean(a && b && a.text === b.text && a.picked === b.picked);
+			});
+			if (!same) withheldBy = "rows-changed";
+			return same;
+		};
 		let result: HcSendResult;
 		const abort = new AbortController();
 		sendAborts.set(destination, abort);
+		sendingLabels.set(destination, labels);
 		try {
-			logEvent("send", destination, digest, reuse ? "retry" : "first");
-			result = await hc.send(destination, wireLine, abort.signal);
+			// No wait between the last checks and the launch of `hc send`: the press uses the answer known now.
+			const noDraftWait = readNoDraftWait();
+			logEvent("send", destination, digest, `${reuse ? "retry" : "first"}${noDraftWait ? "-no-draft-wait" : ""}`);
+			result = await hc.send(destination, wireLine, abort.signal, noDraftWait, { drain: pollEventsNow, canGo: plainCanGo });
+			if (result.plainAfterUsage) logEvent("send", destination, digest, "plain-after-usage");
 		} catch {
 			result = abort.signal.aborted
 				? { ok: false, code: 1, aborted: true, detail: "aborted" }
 				: { ok: false, code: 1, unknown: true, detail: "hc send threw" };
 		} finally {
 			if (sendAborts.get(destination) === abort) sendAborts.delete(destination);
+			if (sendingLabels.get(destination) === labels) sendingLabels.delete(destination);
 		}
 
 		if (!result.ok && (result.aborted || abort.signal.aborted)) {
@@ -684,45 +1100,131 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			logEvent("delivery", destination, digest, "aborted-new-report");
 			return { handled: false, reason: "hc-send-aborted" };
 		}
+		if (!result.ok && result.withheld) {
+			// The check before the plain send failed: nothing was sent. The reused receipt of a first try that can still
+			// arrive stays.
+			if (!reuse) removeReceipt(receiptPath);
+			if (withheldBy === "rows-changed") {
+				// A checked answer changed or needs Confirm now: the surface comes back with Send, not locked.
+				logEvent("delivery", destination, digest, "withheld-rows-changed");
+				if (isCurrentGen(destination, gen)) {
+					showCards(
+						liveGroup,
+						withUnknownNote(
+							destination,
+							gen,
+							`Answers for ${destination} not sent: a checked answer changed or needs Confirm. Check the rows and press Send again.`,
+						),
+					);
+				}
+				return { handled: false, reason: "rows-changed" };
+			}
+			// A turn-start came during the refused flagged send, as for a press on a locked surface.
+			logEvent("delivery", destination, digest, "withheld-locked");
+			if (isCurrentGen(destination, gen)) showCards(liveGroup, "");
+			return { handled: false, reason: "locked" };
+		}
 		logEvent("delivery", destination, digest, result.ok ? "ok" : result.unknown ? "hc-send-unknown" : `hc-send-failed-${result.code}`);
+		// A turn-start during `hc send` locked the surface: the pending form ends at this result.
+		const turnStarted = Boolean(findGroup(destination)?.locked);
 		if (!result.ok) {
 			if (result.unknown) {
-				// Keep the receipt: a line that did arrive can still verify. A new press sends the same line.
+				// Keep the receipt: a line that did arrive can still verify. A press with the same line sends it again.
+				// On a locked surface no press can send, so no retry is kept.
 				if (isCurrentGen(destination, gen)) {
-					unknownSends.set(destination, { gen, wireLine, group: deliveryGroup, receiptPath, receiptCreatedAtMs });
-					liveGroup.statusMessage = unknownText(destination);
-					broadcastSurfaceUpdate(liveGroup);
+					// Also on a locked surface: the next report gives nothing from these rows.
+					const maybe = maybeSentLabels.get(destination) ?? new Set<string>();
+					for (const label of labels) maybe.add(label);
+					maybeSentLabels.set(destination, maybe);
+					if (turnStarted) {
+						showCards(liveGroup, `Send status unknown for ${destination}: hc send gave no result in ${HC_SEND_TIMEOUT_MS / 1000} seconds. The answer can still arrive; check the terminal.`);
+					} else {
+						unknownSends.set(destination, { gen, baseLine, wireLine, labels, receiptPath, receiptCreatedAtMs });
+						showCards(liveGroup, unknownText(destination));
+					}
 				}
 				return { handled: false, reason: "hc-send-unknown" };
 			}
 			// A definite refusal: remove the receipt, except the reused receipt of a first try that can still arrive.
 			if (!reuse) removeReceipt(receiptPath);
 			if (isCurrentGen(destination, gen)) {
-				liveGroup.statusMessage = reuse
-					? `Send failed for ${destination} (exit ${result.code}). The first try can still arrive; check the terminal. A new press of Send answers sends the same answer with the same receipt.`
-					: `Send failed for ${destination} (exit ${result.code}). Try Send answers again.`;
-				broadcastSurfaceUpdate(liveGroup);
+				showCards(
+					liveGroup,
+					reuse
+						? `Send failed for ${destination} (exit ${result.code}). The first try can still arrive; check the terminal. A new press of Send with the same checked answers sends the same line with the same receipt.`
+						: `Send failed for ${destination} (exit ${result.code}). Try Send again.`,
+				);
 			}
 			return { handled: false, reason: "hc-send-failed" };
 		}
 
 		unknownSends.delete(destination);
-		recordPickLog(pickLogPath, deliveryGroup);
-		if (isCurrentGen(destination, gen)) {
-			bumpGeneration(destination);
-			state.coordinators = state.coordinators.filter((c) => c.address !== destination);
-			broadcastSurfaceDelete(destination);
-		}
+		endMaybeSent(destination, labels);
+		recordPickLog(pickLogPath, rows);
+		if (isCurrentGen(destination, gen)) removeSentRows(liveGroup, labels, turnStarted ? "turn-started" : "await-turn");
 		return { handled: true };
 	}
 
 	/**
-	 * Validate a client action completely against rendered buttons, surface ID, report revisions, focus, and options
+	 * After a delivered send: remove only the sent rows. With no row left, the cards end, and the pending form stays
+	 * until the turn-start of the address or the fallback time. With rows left, the surface stays locked and shows the
+	 * "Receipt pending" line for the sent rows until the same moment. With `turn-started` the turn-start came during the
+	 * send. In `print` mode no turn follows: the rows left stay usable, with Send, and no line shows. With rows left,
+	 * `statusText` is the status line of the cards.
+	 */
+	function removeSentRows(
+		group: CoordinatorGroup,
+		sentLabels: readonly string[],
+		mode: "await-turn" | "turn-started" | "print",
+		statusText = "",
+	): void {
+		const awaitTurn = mode === "await-turn";
+		const address = group.address;
+		const sent = new Set(sentLabels);
+		group.rows = group.rows.filter((item) => !sent.has(item.row.label));
+		group.receiptPending = false;
+		if (group.rows.length === 0) {
+			bumpGeneration(address);
+			pastRevisions.delete(address);
+			state.coordinators = state.coordinators.filter((c) => c !== group);
+			if (!awaitTurn) {
+				dropHeldForm(address, false);
+				broadcastSurfaceDelete(address);
+				return;
+			}
+			const timer = setTimeout(() => {
+				if (heldForms.get(address) === timer) dropHeldForm(address, true);
+			}, RECEIPT_PENDING_FALLBACK_MS);
+			timer.unref();
+			heldForms.set(address, timer);
+			return;
+		}
+		group.statusMessage = statusText;
+		dropSentNote(address, false);
+		if (mode === "print") {
+			broadcastSurfaceCreate(group);
+			return;
+		}
+		group.locked = true;
+		if (awaitTurn) {
+			group.sentPending = [...sentLabels];
+			const timer = setTimeout(() => {
+				if (sentNoteTimers.get(address) === timer) dropSentNote(address, true);
+			}, RECEIPT_PENDING_FALLBACK_MS);
+			timer.unref();
+			sentNoteTimers.set(address, timer);
+		}
+		broadcastSurfaceCreate(group);
+	}
+
+	/**
+	 * Validate a client action completely against rendered buttons, surface ID, report revisions, target rows, drafts, and options
 	 * BEFORE mutating any state.
 	 */
 	async function processAction(
 		rawText: string,
 		arrived: ReadonlyMap<string, number>,
+		client?: LocalWsClient,
 	): Promise<{ handled: boolean; reason?: string }> {
 		touch();
 		let parsed: unknown;
@@ -767,17 +1269,26 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		}
 
 		const context = action.context;
-		if (Object.keys(context).some((k) => !ALLOWED_CONTEXT_KEYS.has(k))) {
+		if (Object.keys(context).some((k) => !ALLOWED_CONTEXT_KEYS.has(k) && !DRAFT_KEY_RE.test(k))) {
 			return { handled: false, reason: "invalid-context-keys" };
 		}
-		if (
-			(context.targetCoordinator !== undefined && context.targetCoordinator !== surfaceAddress) ||
-			(context.focusedCoordinator !== undefined && context.focusedCoordinator !== surfaceAddress)
-		) {
+		if (context.targetCoordinator !== undefined && context.targetCoordinator !== surfaceAddress) {
 			return { handled: false, reason: "surface-coordinator-mismatch" };
 		}
 
-		// Match sourceComponentId, action name, and every bound literal (target + focused + revision) to a rendered Button.
+		// A press of a Button of a replaced view: the client that pressed gets the current surface again with a status
+		// line. No answer, no draft and no delivery changes. A forged or unknown revision stays silent.
+		if (isStaleViewPress(group.address, action.name, context)) {
+			if (client && !client.closed) {
+				const sid = surfaceIdFor(group.address);
+				const view: CoordinatorGroup = { ...group, statusMessage: withUnknownNote(group.address, generations.get(group.address) ?? 0, STALE_VIEW_TEXT) };
+				if (!client.live.has(sid)) client.sendMessages(toCreateSurfaceMessages(view));
+				else if (!client.sendMessages(toUpdateSurfaceMessages(view))) client.sendMessages(toReplaceSurfaceMessages(view));
+			}
+			return { handled: false, reason: "stale-view" };
+		}
+
+		// Match sourceComponentId, action name, and every bound literal (coordinator, row, revision, option) to a rendered Button.
 		const buttons = renderedButtonSpecs(group);
 		const button = buttons.get(action.sourceComponentId);
 		if (!button) {
@@ -786,8 +1297,14 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		if (button.name !== action.name) {
 			return { handled: false, reason: "action-mismatch" };
 		}
+		// A Confirm whose answer version is not the current one approves an answer that its surface no longer shows.
+		let answerChanged = false;
 		for (const [key, expected] of Object.entries(button.literals)) {
 			if (context[key] !== expected) {
+				if (key === "answerVersion" && button.name === "confirm" && typeof context[key] === "string") {
+					answerChanged = true;
+					continue;
+				}
 				return { handled: false, reason: `mismatch-${key}` };
 			}
 		}
@@ -796,165 +1313,155 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 				return { handled: false, reason: "unexpected-target" };
 			}
 		}
-
-		// Purely validate focused card context values (no state mutation yet).
-		ensureGroupFocusValid(group);
-		const focusedAddr = button.literals.focusedCoordinator;
-		const focusedLbl = button.literals.focusedLabel;
-		const focusedRev = button.literals.focusedRevision;
-		if (
-			!focusedAddr ||
-			!focusedLbl ||
-			!focusedRev ||
-			focusedAddr !== group.address ||
-			group.focusedLabel !== focusedLbl
-		) {
-			return { handled: false, reason: "stale-focus" };
-		}
-		const focusedItem = group.rows.find((r) => r.row.label === focusedLbl);
-		if (!focusedItem || group.revision !== focusedRev) {
+		// Every rendered Button names the coordinator and the revision of the surface.
+		if (button.literals.targetCoordinator !== group.address || button.literals.targetRevision !== group.revision) {
 			return { handled: false, reason: "stale-revision" };
 		}
 
-		let plannedPick = focusedItem.selectedOptionId;
-		let plannedOther = focusedItem.customText;
-
-		if (Object.hasOwn(context, "focusedPick") && context.focusedPick !== null && context.focusedPick !== undefined) {
-			if (!button.bindsPick) return { handled: false, reason: "unrendered-pick" };
-			if (!Array.isArray(context.focusedPick) || context.focusedPick.length > 1) {
-				return { handled: false, reason: "invalid-pick" };
-			}
-			if (context.focusedPick.length === 0) {
-				plannedPick = null;
-			} else {
-				const chosen = context.focusedPick[0];
-				if (typeof chosen !== "string") return { handled: false, reason: "invalid-pick" };
-				const valid =
-					focusedItem.row.options.some((opt) => opt.id === chosen) ||
-					focusedItem.row.candidates.some((opt) => opt.id === chosen);
-				if (!valid) return { handled: false, reason: "unknown-option" };
-				plannedPick = chosen;
-			}
+		// A drawn Confirm with another string `answerVersion` gets the visible refusal before the draft checks: a draft key
+		// of a field that is no longer drawn (another row was answered after this Button was drawn) does not hide it.
+		// No draft is applied and nothing changes: the surface shows the current answer and its current Confirm. After an
+		// unknown send, the unknown note stays in front of the status.
+		if (answerChanged) {
+			const label = button.literals.targetLabel;
+			group.statusMessage = withUnknownNote(group.address, generations.get(group.address) ?? 0, `[${label}] The answer changed. Check it and press Confirm again.`);
+			broadcastSurfaceUpdate(group);
+			return { handled: false, reason: "answer-changed" };
 		}
 
-		if (Object.hasOwn(context, "focusedOther") && context.focusedOther !== null && context.focusedOther !== undefined) {
-			if (!button.bindsOther) return { handled: false, reason: "unrendered-other" };
-			if (typeof context.focusedOther !== "string") return { handled: false, reason: "invalid-other" };
-			plannedOther = context.focusedOther.slice(0, CUSTOM_TEXT_MAX);
+		// The drafts of the "Other answer" fields arrive with each press, one `other_<label>` key for each field drawn.
+		// A draft is no answer: it is kept only so that a redraw does not erase it. A key that the Button does not bind
+		// refuses the press; a missing key keeps the draft that the producer has.
+		// The membership comes first: a key of a field that is not drawn refuses the press also with a null value.
+		const arrivedDrafts = new Map<string, string>();
+		for (const [key, value] of Object.entries(context)) {
+			if (!DRAFT_KEY_RE.test(key)) continue;
+			const label = key.slice(DRAFT_KEY_PREFIX.length);
+			if (!button.drafts.has(label)) return { handled: false, reason: "unrendered-other" };
+			if (value === null || value === undefined) continue;
+			if (typeof value !== "string") return { handled: false, reason: "invalid-other" };
+			arrivedDrafts.set(label, value.slice(0, CUSTOM_TEXT_MAX));
 		}
-
-		const plannedConfirmed =
-			focusedItem.row.risky &&
-			(plannedPick !== focusedItem.selectedOptionId || plannedOther !== focusedItem.customText)
-				? false
-				: focusedItem.confirmed;
-
-		const previewFocusedItem: RowViewState = {
-			...focusedItem,
-			selectedOptionId: plannedPick,
-			customText: plannedOther,
-			confirmed: plannedConfirmed,
+		const applyDrafts = () => {
+			for (const item of group.rows) {
+				const draft = arrivedDrafts.get(item.row.label);
+				if (draft !== undefined) item.draft = draft;
+			}
 		};
-
-		const applyPlannedFocus = () => {
-			focusedItem.selectedOptionId = plannedPick;
-			focusedItem.customText = plannedOther;
-			focusedItem.confirmed = plannedConfirmed;
+		/**
+		 * Write the planned answer state into the live row. A new, replaced or cleared answer gets a new answer version
+		 * and no Confirm: a Confirm of the old surface no longer matches.
+		 */
+		const commit = (item: RowViewState, planned: Pick<RowViewState, "selectedOptionId" | "customText" | "draft" | "confirmed" | "checked">, newAnswer: boolean) => {
+			item.selectedOptionId = planned.selectedOptionId;
+			item.customText = planned.customText;
+			item.draft = planned.draft;
+			item.confirmed = newAnswer ? false : planned.confirmed;
+			item.checked = planned.checked;
+			if (newAnswer) item.answerVersion = ++nextAnswerVersion;
 		};
+		const targetLbl = button.literals.targetLabel;
+		const targetItem = targetLbl ? group.rows.find((r) => r.row.label === targetLbl) : undefined;
+		/** The target row is drawn in `left`: open, not writing (so its answers and its field show). */
+		const targetOpen = Boolean(targetItem && !targetItem.row.writing && !isRowAnswered(targetItem));
 
 		// The status text of an unknown send stays until the cards end: it says what a new press sends.
 		const keepStatus = unknownSends.has(group.address);
+		const redraw = (status = "") => {
+			if (status || !keepStatus) group.statusMessage = status;
+			broadcastSurfaceUpdate(group);
+		};
 
 		// Action-specific preconditions before any mutation.
 		switch (button.name) {
-			case "focus": {
-				const targetAddr = button.literals.targetCoordinator;
-				const targetLbl = button.literals.targetLabel;
-				const targetRev = button.literals.targetRevision;
-				const targetItem =
-					targetAddr === group.address && targetLbl ? group.rows.find((r) => r.row.label === targetLbl) : null;
-				if (!targetItem || group.revision !== targetRev) {
-					return { handled: false, reason: "unknown-row" };
+			case "choose": {
+				const optionId = button.literals.optionId;
+				if (!targetItem || !targetOpen || typeof optionId !== "string" || !targetItem.row.options.slice(0, 3).some((opt) => opt.id === optionId)) {
+					return { handled: false, reason: "unknown-option" };
 				}
-				applyPlannedFocus();
-				group.focusedLabel = targetItem.row.label;
-				if (!keepStatus) group.statusMessage = "";
-				broadcastSurfaceUpdate(group);
+				// The pressed answer wins over a used text: the custom text of the row ends. A risky row waits for Confirm.
+				applyDrafts();
+				commit(targetItem, { ...targetItem, selectedOptionId: optionId, customText: "", checked: true }, true);
+				redraw();
+				return { handled: true };
+			}
+			case "other": {
+				if (!targetItem || !targetOpen) return { handled: false, reason: "unknown-row" };
+				const text = arrivedDrafts.get(targetItem.row.label) ?? targetItem.draft;
+				applyDrafts();
+				if (singleLineText(text).length === 0) {
+					// An empty field: no answer changes, and one status line says why.
+					redraw(`[${targetItem.row.label}] has no text to use. Type an answer in its field, then press Use text.`);
+					return { handled: false, reason: "no-text-to-use" };
+				}
+				// The typed text is the answer of the row and checks it, as an answer button does. A risky row waits for Confirm.
+				commit(targetItem, { ...targetItem, selectedOptionId: null, customText: text, draft: text, checked: true }, true);
+				redraw();
+				return { handled: true };
+			}
+			case "toggle": {
+				// A check box is drawn only in `right`, for an answered row: a press clears the answer and the typed text.
+				if (!targetItem || !isRowAnswered(targetItem)) return { handled: false, reason: "unknown-row" };
+				applyDrafts();
+				commit(targetItem, { selectedOptionId: null, customText: "", draft: "", confirmed: false, checked: false }, true);
+				redraw();
 				return { handled: true };
 			}
 			case "confirm": {
-				const targetAddr = button.literals.targetCoordinator;
-				const targetLbl = button.literals.targetLabel;
-				const targetRev = button.literals.targetRevision;
-				if (
-					targetAddr !== focusedAddr ||
-					targetLbl !== focusedLbl ||
-					targetRev !== focusedRev ||
-					!focusedItem.row.risky
-				) {
-					return { handled: false, reason: "not-focused-risky-row" };
+				if (!targetItem || !targetOpen || !needsConfirm(targetItem)) {
+					return { handled: false, reason: "not-open-risky-row" };
 				}
-				if (!effectiveAnswer(previewFocusedItem)) {
+				if (!targetItem.checked || !isRowPendingConfirm(targetItem)) {
 					return { handled: false, reason: "no-answer-to-confirm" };
 				}
-				applyPlannedFocus();
-				focusedItem.confirmed = true;
-				if (!keepStatus) group.statusMessage = "";
-				broadcastSurfaceUpdate(group);
+				applyDrafts();
+				commit(targetItem, { ...targetItem, confirmed: true, checked: true }, false);
+				redraw();
 				return { handled: true };
 			}
 			case "send": {
-				const targetAddr = button.literals.targetCoordinator;
-				const targetRev = button.literals.targetRevision;
-				if (targetAddr !== group.address || group.revision !== targetRev || group.rows.length === 0) {
+				if (group.rows.length === 0) {
 					return { handled: false, reason: "unknown-coordinator" };
 				}
+				if (group.locked) return { handled: false, reason: "locked" };
 				if (inFlightSend.has(group.address)) {
 					return { handled: false, reason: "send-in-flight" };
 				}
 
-				const previewGroup: CoordinatorGroup = {
-					...group,
-					rows: group.rows.map((item) => (item === focusedItem ? previewFocusedItem : item)),
-				};
 				const destination = group.address;
 				const gen = generations.get(destination) ?? 0;
-				// A valid retry of an unknown send goes to its saved line, whatever the cards show now.
-				const retry = unknownSends.get(destination);
-				const retryReady = !printOnly && retry !== undefined && retry.gen === gen && canReuseUnknownSend(retry);
-				const baseLine = formatSendLine(previewGroup);
-				if (!baseLine && !retryReady) {
+				applyDrafts();
+				// The final list is built again just before the launch; this early check refuses an empty press at once.
+				if (sendableRows(group).length === 0) {
+					redraw("No checked answer to send. Choose an answer, and confirm a risky answer.");
 					return { handled: false, reason: "no-confirmed-answers" };
 				}
 
-				// All validation passed; now apply the focused card changes.
-				applyPlannedFocus();
-
-				if (printOnly && baseLine) {
-					onPrint(baseLine);
-					recordPickLog(pickLogPath, group);
-					bumpGeneration(destination);
-					state.coordinators = state.coordinators.filter((c) => c.address !== destination);
-					broadcastSurfaceDelete(destination);
+				if (printOnly) {
+					// One list for the line, the pick log and the removal, as in a real send.
+					const sentRows = sendableRows(group).map((item) => structuredClone(item));
+					onPrint(formatSendLine({ ...group, rows: sentRows }) as string);
+					recordPickLog(pickLogPath, sentRows);
+					// Print mode has no receipt and no turn of a coordinator: the rows left stay usable.
+					removeSentRows(group, sentRows.map((item) => item.row.label), "print");
 					return { handled: true };
 				}
 
-				// Show the accepted press at once: `hc send` can wait for an unsent draft in the terminal.
-				group.statusMessage = sendingText(destination);
-				broadcastSurfaceUpdate(group);
+				// Show the accepted press at once as the small pending form: `hc send` can wait for an unsent draft in
+				// the terminal. The form has no button, so no second press can send while it shows.
+				group.receiptPending = true;
+				broadcastSurfaceCreate(group);
 				const pressArrivals = arrived.get(destination) ?? actionArrivals.get(destination) ?? 0;
-				return deliverAnswers(destination, gen, baseLine, group, pressArrivals);
+				return deliverAnswers(destination, gen, group, pressArrivals);
 			}
 			case "close": {
-				const targetAddr = button.literals.targetCoordinator;
-				const targetRev = button.literals.targetRevision;
-				if (targetAddr !== group.address || group.revision !== targetRev) {
-					return { handled: false, reason: "unknown-coordinator" };
-				}
-				applyPlannedFocus();
-				recordPickLog(pickLogPath, group);
+				recordPickLog(pickLogPath, group.rows);
 				bumpGeneration(group.address);
 				unknownSends.delete(group.address);
+				maybeSentLabels.delete(group.address);
+				unresolvedLabels.delete(group.address);
+				pastRevisions.delete(group.address);
+				dropSentNote(group.address, false);
 				state.coordinators = state.coordinators.filter((c) => c.address !== group.address);
 				broadcastSurfaceDelete(group.address);
 				return { handled: true };
@@ -1000,7 +1507,9 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 				if (!isCurrentGen(address, gen)) return;
 				if (!score) continue;
 				anyAnswered = true;
+				// The risk result of this report replaces the risk that a taken-over answer held from the old report.
 				item.row = applyDeciderScore(item.row, score, thresholds);
+				item.riskHold = false;
 				broadcastSurfaceUpdate(group);
 			}
 
@@ -1020,6 +1529,7 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			const score = await scoreRowWithDecider(deciderCfg, group.excerpt, item.row);
 			if (!isCurrentGen(address, gen) || !score) return;
 			item.row = applyDeciderScore(item.row, score, thresholds);
+			item.riskHold = false;
 			broadcastSurfaceUpdate(group);
 		};
 
@@ -1077,11 +1587,23 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			return { accepted: false, reason: "older-event" };
 		}
 		lastEventTimes.set(input.address, input.eventTimeMs ?? performance.timeOrigin + performance.now());
+		refreshNoDraftWait();
+		// The rows in the line of a send in flight, or in the line of an unknown send since the last report (also one
+		// before a turn-start), may have reached the coordinator: they give nothing to a new row.
+		const maybeSent = new Set([...(sendingLabels.get(input.address) ?? []), ...(maybeSentLabels.get(input.address) ?? [])]);
+		maybeSentLabels.delete(input.address);
+		unresolvedLabels.delete(input.address);
 		removeReceiptsForAddress(receiptStateDir, input.address);
 		logEvent("receipts-removed", input.address, sha256Hex(input.reportText), "new-report");
 		// A new report means a new prompt: a held send of the old line must not reach it. A turn-start does not abort,
 		// because the delivered line itself starts a turn.
 		sendAborts.get(input.address)?.abort();
+		// The rows of the old report, for the take-over of picks by rows with the same text.
+		const oldGroup = findGroup(input.address);
+		const keptRows = oldGroup?.rows ?? [];
+		// The history of the address goes on only when this report replaces an active surface; `clearAddressCards` ends
+		// it, and only a successful replacement below sets it again.
+		const past = oldGroup ? [...(pastRevisions.get(input.address) ?? []), oldGroup.revision].slice(-PAST_REVISIONS_KEPT) : [];
 		const gen = clearAddressCards(input.address);
 		let coordName = input.name;
 		if (!input.skipRoleCheck) {
@@ -1111,12 +1633,7 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 
 		const revision = String(++nextRevision);
 		const reportDigest = sha256Hex(input.reportText);
-		const rows: RowViewState[] = rowsWithCard.map((row) => ({
-			row,
-			selectedOptionId: null,
-			customText: "",
-			confirmed: false,
-		}));
+		const rows: RowViewState[] = takeOverRows(rowsWithCard, keptRows, maybeSent);
 		const nextGroup: CoordinatorGroup = {
 			address: input.address,
 			revision,
@@ -1124,16 +1641,55 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			...(coordName ? { name: coordName } : {}),
 			excerpt: extracted.excerpt,
 			rows,
-			focusedLabel: rows[0].row.label,
 			deciderStatus: options.decider === false ? "no decider" : "decider ...",
 			statusMessage: "",
 		};
 
+		if (past.length > 0) pastRevisions.set(input.address, past);
 		state.coordinators.push(nextGroup);
 		broadcastSurfaceCreate(nextGroup);
 
 		void trackJob(fillCoordinatorAsync(input.address, gen));
 		return { accepted: true };
+	}
+
+	/**
+	 * Build the rows of a new report. A new row whose text (the whole text after the actor) equals the text of a kept
+	 * row takes over its pick, custom text and checked state, but only when that text occurs one time among the kept
+	 * rows and one time among the new rows; else the new row starts fresh. A kept row in `maybeSent` gives nothing.
+	 * A pick whose option the new row does not have with the same text becomes the custom text, so the answer stays
+	 * the same. A risky row is never confirmed after the take-over: the revision is new. A taken-over answer of a row
+	 * that was risky in the old report (by words or by the decider, or by its own risk hold) keeps a risk hold: it needs
+	 * a Confirm in the new revision, unless the risk result of the new report says that the row is not risky.
+	 */
+	function takeOverRows(newRows: readonly OwnerRow[], kept: readonly RowViewState[], maybeSent: ReadonlySet<string>): RowViewState[] {
+		const countOf = (texts: readonly string[]) => {
+			const counts = new Map<string, number>();
+			for (const text of texts) counts.set(text, (counts.get(text) ?? 0) + 1);
+			return counts;
+		};
+		const keptCounts = countOf(kept.map((item) => item.row.text));
+		const newCounts = countOf(newRows.map((row) => row.text));
+		return newRows.map((row) => {
+			const fresh: RowViewState = { row, selectedOptionId: null, customText: "", draft: "", confirmed: false, checked: false };
+			if (keptCounts.get(row.text) !== 1 || newCounts.get(row.text) !== 1) return fresh;
+			const old = kept.find((item) => item.row.text === row.text);
+			if (!old || maybeSent.has(old.row.label)) return fresh;
+			fresh.customText = old.customText;
+			fresh.draft = old.draft;
+			fresh.checked = old.checked;
+			if (old.selectedOptionId) {
+				const oldOption = [...old.row.options, ...old.row.candidates].find((opt) => opt.id === old.selectedOptionId);
+				const sameOption = [...row.options, ...row.candidates].find(
+					(opt) => opt.id === old.selectedOptionId && opt.text === oldOption?.text,
+				);
+				if (sameOption) fresh.selectedOptionId = sameOption.id;
+				else if (oldOption && !fresh.customText) fresh.customText = oldOption.text;
+			}
+			if (!effectiveAnswer(fresh)) fresh.checked = false;
+			else if (needsConfirm(old)) fresh.riskHold = true;
+			return fresh;
+		});
 	}
 
 	function handleTurnStart(address: string, eventTimeMs?: number): void {
@@ -1144,7 +1700,20 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			return;
 		}
 		lastEventTimes.set(address, eventTimeMs ?? performance.timeOrigin + performance.now());
-		clearAddressCards(address);
+		// After a delivered send with no row left, the pending form ends now.
+		dropHeldForm(address, true);
+		const group = findGroup(address);
+		if (!group) return;
+		// The coordinator works: the surface stays, LOCKED, until its next report. No retry of an unknown send is kept,
+		// because no press can send while the surface is locked. The labels of a possibly sent line stay for that report.
+		unknownSends.delete(address);
+		group.locked = true;
+		dropSentNote(address, false);
+		// The delivered line can start its turn before `hc send` returns: the pending form stays until the send result.
+		if (group.receiptPending && inFlightSend.has(address)) return;
+		// A press in its lookup brings the surface back itself when it sees the lock.
+		if (group.receiptPending) return;
+		broadcastSurfaceUpdate(group);
 	}
 
 	async function drainEventsOnce(): Promise<void> {
@@ -1285,7 +1854,7 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			const queued = pendingActionsByClient.get(client.id) ?? 0;
 			if (queued >= maxPendingActionsPerClient) return;
 			pendingActionsByClient.set(client.id, queued + 1);
-			const job = actionQueue.then(() => processAction(text, arrived)).finally(() => {
+			const job = actionQueue.then(() => processAction(text, arrived, client)).finally(() => {
 				const cur = pendingActionsByClient.get(client.id) ?? 0;
 				if (cur <= 1) pendingActionsByClient.delete(client.id);
 				else pendingActionsByClient.set(client.id, cur - 1);
@@ -1306,9 +1875,45 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		void trackJob(pollEventsNow());
 	}
 
+	/** Addresses whose check for a closed terminal runs. */
+	const goneChecks = new Set<string>();
+	/**
+	 * A locked group of a coordinator whose terminal no longer exists would stay for ever and hold the idle shutdown:
+	 * when herdr-core says that the terminal does not exist, the group ends and its surface is deleted. A failed or slow
+	 * check removes nothing.
+	 */
+	const dropClosedTerminals = (): void => {
+		if (printOnly || !hc.gone) return;
+		for (const group of state.coordinators) {
+			const address = group.address;
+			if (!group.locked || group.receiptPending || inFlightSend.has(address) || goneChecks.has(address)) continue;
+			const gen = generations.get(address) ?? 0;
+			goneChecks.add(address);
+			const check = Promise.resolve()
+				.then(() => hc.gone?.(address) ?? false)
+				.catch(() => false)
+				.then((gone) => {
+					if (!gone || !isCurrentGen(address, gen) || findGroup(address) !== group || !group.locked) return;
+					if (group.receiptPending || inFlightSend.has(address)) return;
+					bumpGeneration(address);
+					unknownSends.delete(address);
+					maybeSentLabels.delete(address);
+					unresolvedLabels.delete(address);
+					pastRevisions.delete(address);
+					dropSentNote(address, false);
+					state.coordinators = state.coordinators.filter((c) => c !== group);
+					logEvent("terminal-gone", address, group.reportDigest, "surface-removed");
+					broadcastSurfaceDelete(address);
+				})
+				.finally(() => goneChecks.delete(address));
+			void trackJob(check);
+		}
+	};
+
 	if (idleShutdownMs > 0) {
 		idleTimer = setInterval(() => {
 			if (closed) return;
+			dropClosedTerminals();
 			if (state.coordinators.length === 0 && ws.openSockets() === 0 && Date.now() - lastActivityAt >= idleShutdownMs) {
 				void pollEventsNow().then(() => {
 					if (closed) return;
@@ -1332,6 +1937,10 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 			clearInterval(idleTimer);
 			idleTimer = null;
 		}
+		for (const timer of heldForms.values()) if (timer) clearTimeout(timer);
+		heldForms.clear();
+		for (const timer of sentNoteTimers.values()) clearTimeout(timer);
+		sentNoteTimers.clear();
 		await ws.close();
 	}
 
@@ -1437,6 +2046,7 @@ async function runDemoClient(argv: readonly string[]): Promise<number> {
 					if (btn.name !== actionName) return false;
 					if (targetCoordinator && btn.context.targetCoordinator !== targetCoordinator) return false;
 					if (targetRow && btn.context.targetLabel !== targetRow) return false;
+					if (pick !== undefined && btn.name === "choose" && btn.context.optionId !== pick) return false;
 					return true;
 				}) ?? null
 			);
@@ -1463,11 +2073,10 @@ async function runDemoClient(argv: readonly string[]): Promise<number> {
 				for (const [k, v] of Object.entries(matched.context)) {
 					if (typeof v === "string") context[k] = v;
 				}
-				if (pick !== undefined && Object.hasOwn(matched.context, "focusedPick")) {
-					context.focusedPick = pick === "" ? [] : [pick];
-				}
-				if (other !== undefined && Object.hasOwn(matched.context, "focusedOther")) {
-					context.focusedOther = other;
+				// `--other` is the text in the "Other answer" field of the target row; the other fields send no draft.
+				const otherKey = targetRow ? draftKey(targetRow) : null;
+				if (other !== undefined && otherKey && Object.hasOwn(matched.context, otherKey)) {
+					context[otherKey] = other;
 				}
 
 				const payload = {
@@ -1505,7 +2114,7 @@ async function main(argv: readonly string[]): Promise<number> {
 				"Usage:",
 				"  Demo producer: node packages/tenantext/owner-popup/producer.ts --demo <fixture> --parent <address> [--name <name>] [--port <port>] [--print] [--no-decider] [--no-writer]",
 				"  Event daemon:  node packages/tenantext/owner-popup/producer.ts --events-dir <dir> [--state-dir <dir>] [--port <port>]",
-				"  Demo client:   node packages/tenantext/owner-popup/producer.ts --client [--port <port>] [--action focus|confirm|send|close] [--coordinator <addr>] [--row <label>] [--pick <optionId>] [--other <text>] [--listen]",
+				"  Demo client:   node packages/tenantext/owner-popup/producer.ts --client [--port <port>] [--action choose|other|toggle|confirm|send|close] [--coordinator <addr>] [--row <label>] [--pick <optionId>] [--other <text>] [--listen]",
 			].join("\n") + "\n",
 		);
 		return 0;

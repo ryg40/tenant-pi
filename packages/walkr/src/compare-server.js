@@ -17,6 +17,8 @@ const STATIC = {
   "/_walkr/compare/a2ui.js": ["a2ui.js", SCRIPT],
   "/_walkr/compare/a2ui.css": ["a2ui.css", "text/css; charset=utf-8"],
   "/_walkr/compare/compare-stars.js": ["compare-stars.js", SCRIPT],
+  "/_walkr/compare/feedback.js": ["feedback.js", SCRIPT],
+  "/_walkr/compare/feedback.css": ["feedback.css", "text/css; charset=utf-8"],
   "/_walkr/compare/frame-zoom.js": ["frame-zoom.js", SCRIPT],
   "/_walkr/compare/compare.css": ["compare.css", "text/css; charset=utf-8"],
 };
@@ -43,9 +45,10 @@ const fail = (code, message) => { throw new StoreError(code, message); };
 const secret = () => randomBytes(32).toString("hex");
 // The sections of the local web app, for a page that a local front passes (the artifacts server of the kit): the same
 // three links as in the band of each section there. On the own port of the Walkr server these paths do not exist, so
-// the page has the links only through a front.
+// the page has the links only through a front. The last link ends the login session of the artifacts server.
 const SECTIONS = '<nav class="app-nav" aria-label="Sections"><a href="/artifacts">Artifacts</a>' +
-  '<a href="/walkr" aria-current="page">Walkr</a><a href="/memory/">Memory</a></nav>';
+  '<a href="/walkr" aria-current="page">Walkr</a><a href="/memory/">Memory</a>' +
+  '<a class="logout" href="/logout">Log out</a></nav>';
 const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 
 /** How to start a Compare session, as static HTML: the page shows it while no session exists. */
@@ -97,23 +100,27 @@ function sameOrigin(origin, host) {
  * The page lists the Compare sessions of the root, newest first. `mirror` marks the read-only mirror: the start
  * guidance then says that this page cannot take a pick.
  */
-export function createCompareHandler({ token, root, hosted, platform = process.platform, mirror = false, onSocketActivity = null, socketPoll = null }) {
+export function createCompareHandler({ token, root, hosted, platform = process.platform, mirror = false, onSocketActivity = null, socketPoll = null, page: sharedPage = null, extraHistoryRows = null }) {
   let store;
   const opened = () => store ??= new CompareStore({ root, platform });
   // One shared submit function for the private page HTTP route and the local A2UI WebSocket route.
   const submitSession = (sessionId, body) => opened().submit(sessionName(sessionId), body);
   const sockets = createCompareSocketHub({ getStore: opened, submitSession, onActivity: onSocketActivity, errorHeaders: HEADERS, poll: socketPoll });
   const guide = `<template data-guide="compare">${guidance(mirror)}</template>`;
-  const page = { shell: secret(), token: secret() };
+  const page = sharedPage ?? { shell: secret(), token: secret() };
   const SESSION_TIME = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z/;
   const sessionTime = (id) => { const m = SESSION_TIME.exec(id ?? ""); return m ? `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}.000Z` : ""; };
   async function rows() {
-    let found;
-    try { found = await store.history(); }
-    catch (error) { return [{ ref: "unreadable", type: "compare", title: "The Compare root is not readable", time: null, state: `Not readable: ${error.code || "UNREADABLE"}`, error: error.code || "UNREADABLE" }]; }
-    const list = found.map((entry) => entry.error
-      ? { ref: entry.sessionId, type: "compare", title: entry.sessionId, time: null, state: `Not readable: ${entry.error}`, error: entry.error }
-      : { ...entry, ref: entry.sessionId, type: "compare", time: entry.createdAt });
+    let list;
+    try {
+      const found = await store.history();
+      list = found.map((entry) => entry.error
+        ? { ref: entry.sessionId, type: "compare", title: entry.sessionId, time: null, state: `Not readable: ${entry.error}`, error: entry.error }
+        : { ...entry, ref: entry.sessionId, type: "compare", time: entry.createdAt });
+    } catch (error) {
+      list = [{ ref: "unreadable", type: "compare", title: "The Compare root is not readable", time: null, state: `Not readable: ${error.code || "UNREADABLE"}`, error: error.code || "UNREADABLE" }];
+    }
+    if (extraHistoryRows) list = [...list, ...(await extraHistoryRows())];
     return list.sort((a, b) => String(b.time ?? sessionTime(b.ref)).localeCompare(String(a.time ?? sessionTime(a.ref))));
   }
   const pagePath = (sessionId) => `${PREFIX}g/${page.shell}${sessionId ? `#${sessionId}` : ""}`;
@@ -140,8 +147,8 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
         if (!matches(raw.slice(`${PREFIX}g/`.length), page.shell)) fail("NOT_FOUND", "This private Compare URL is unavailable. Use walkr-compare open for a new one.");
         method("GET");
         const shell = withFoot(await fs.readFile(path.join(here, "compare.html"), "utf8"));
-        const values = { __TOKEN__: page.token, __FRAMES__: `${PREFIX}o/${page.shell}` };
-        send(res, 200, shell.replace(/__TOKEN__|__FRAMES__/g, (name) => escapeHtml(values[name])).replace("<!--walkr-guides-->", guide)
+        const values = { __TOKEN__: page.token, __FRAMES__: `${PREFIX}o/${page.shell}`, __FEEDBACK_FRAMES__: `/_walkr/feedback/o/${page.shell}` };
+        send(res, 200, shell.replace(/__TOKEN__|__FRAMES__|__FEEDBACK_FRAMES__/g, (name) => escapeHtml(values[name])).replace("<!--walkr-guides-->", guide)
           .replace("<!--walkr-sections-->", viaFront ? SECTIONS : ""),
           "text/html; charset=utf-8", { "content-security-policy": SHELL_CSP });
         return true;
@@ -264,6 +271,8 @@ export function createCompareHandler({ token, root, hosted, platform = process.p
   };
   handle.openSockets = () => sockets.openSockets();
   handle.close = () => sockets.close();
+  handle.page = page;
+  handle.pagePath = pagePath;
 
   return handle;
 }

@@ -412,9 +412,9 @@ The proxy has the entry guard (a private-network rule and a login). Walkr adds n
 The Walkr server reads the key at its start. A value that does not fit the rule writes one line to `errors.log`, and the server then behaves as with no key.
 A request with the public host (the name, and the port only when the key names one) and a loopback peer has these rules:
 
-- It reaches only the Compare routes and the theme files. `/health` answers 403.
+- It reaches only the Compare and Feedback routes and the theme files. `/health` answers 403.
 - The agent token is never valid. `api/capabilities`, `api/page`, `POST api/sessions`, `received` and `outcome` answer 401 also with the right agent token, and a view gives no page path.
-- A page write (`seen`, `submit`, `rate`) needs an `Origin` header equal to the public origin. A write with no `Origin` or another origin gets 403.
+- A page write (Compare: `seen`, `submit`, `rate`; Feedback: `seen`, `expand`, `respond`, `rate`) needs an `Origin` header equal to the public origin. A write with no `Origin` or another origin gets 403.
 - The policy of an HTML option names the public origin with `https` in `frame-ancestors`.
 
 A request that comes to the Walkr port directly with the public host gets the same rules.
@@ -422,7 +422,7 @@ A page of the public origin shows all sessions, as the local page does.
 
 ## HTTP interface
 
-All routes sit under `/_walkr/compare/` and refuse query strings. The Host must be loopback or an exact `HUMAN_REVIEW_ALLOWED_HOSTS` entry. A loopback connection peer may send a loopback Host (`127.0.0.1`, `localhost`, `[::1]`) with any port for the Compare routes and the theme files `/theme.css` and `/theme.js`, so a local front such as the artifacts server or a Sheprd tunnel can pass the page with its own Host. The health check `/health` still needs the port of the Walkr server in the Host. Every other path answers 404. A request that only this any-port rule admits has one more rule for the page writes `seen`, `submit` and `rate`: after the credential check, an `Origin` header that is present must be an HTTP origin with the host name and the port of the Host (compared in lower case, with a numeric port), or the write gets 403. A write without `Origin` passes. A request that the own port or an allowed host admits has no Origin check. A request with the host of the public origin has the rules of [A public origin behind a reverse proxy](#a-public-origin-behind-a-reverse-proxy). With the old variable `HUMAN_REVIEW_HOSTED=1`, each Compare route answers 403 `HOSTED_UNSUPPORTED`: hosted mode is retired.
+All Compare routes sit under `/_walkr/compare/` and refuse query strings. The Host must be loopback or an exact `HUMAN_REVIEW_ALLOWED_HOSTS` entry. A loopback connection peer may send a loopback Host (`127.0.0.1`, `localhost`, `[::1]`) with any port for the Compare and Feedback routes and the theme files `/theme.css` and `/theme.js`, so a local front such as the artifacts server or a Sheprd tunnel can pass the page with its own Host. The health check `/health` still needs the port of the Walkr server in the Host. Feedback uses `/_walkr/feedback/`. A request that only this any-port rule admits has one more rule for the page writes `seen`, `submit` and `rate`: after the credential check, an `Origin` header that is present must be an HTTP origin with the host name and the port of the Host (compared in lower case, with a numeric port), or the write gets 403. A write without `Origin` passes. A request that the own port or an allowed host admits has no Origin check. A request with the host of the public origin has the rules of [A public origin behind a reverse proxy](#a-public-origin-behind-a-reverse-proxy). With the old variable `HUMAN_REVIEW_HOSTED=1`, each Compare route answers 403 `HOSTED_UNSUPPORTED`: hosted mode is retired.
 
 | Route | Credential | Purpose |
 | --- | --- | --- |
@@ -470,7 +470,7 @@ The policy also has `frame-ancestors 'self'` and the origin of the request, so o
 | `HUMAN_REVIEW_STATE_DIR` | The state directory. The default is `~/.human-review`. It holds the server record `server.json` and the private error log `errors.log`. |
 | `HUMAN_REVIEW_PORT` | A fixed port for the server. The default is a free port. |
 | `HUMAN_REVIEW_BIND` | The address that the server listens on. The default is `127.0.0.1`. `0.0.0.0` listens on every interface. |
-| `HUMAN_REVIEW_ALLOWED_HOSTS` | Extra `Host` header values that the server accepts, as a comma-separated list of exact `name:port` values. The default is none. Such a host reaches only the Compare page and the theme files. |
+| `HUMAN_REVIEW_ALLOWED_HOSTS` | Extra `Host` header values that the server accepts, as a comma-separated list of exact `name:port` values. The default is none. Such a host reaches the Compare and Feedback routes and the theme files, not `/health`. |
 | `HUMAN_REVIEW_IDLE_MS` | The idle time before the server stops. The default is 45 minutes. A `/health` check does not count as use. An open page keeps the server running: it reads every two seconds. |
 | `HUMAN_REVIEW_SWEEP_MS` | How often the server checks the idle time and its files. The default is 60 seconds. Tests use a short value. |
 
@@ -495,7 +495,7 @@ refused create requests, the frame policy, hosted refusal, and the page with its
 - Rendering of a template or a diagram is the work of the agent. Walkr does not parse CloudFormation and does not check that a diagram matches its template.
 - The background server stops after the idle time of `HUMAN_REVIEW_IDLE_MS` (default 45 minutes) when no page is open. A `/health` check does not count as use. The server also stops when its state directory or its `server-entry.js` file is deleted. The page URL then changes.
 - In remote mode, the page address of a loopback server works on the remote host only. A public address for the LAN is not part of this version.
-- The server listens on `127.0.0.1` only. To open the page from another computer, start the server with `HUMAN_REVIEW_BIND=0.0.0.0` and `HUMAN_REVIEW_PORT`, and name the address in `HUMAN_REVIEW_ALLOWED_HOSTS`, for example `desk.example:4802`. `walkr-compare` then prints the URL with that address. The named address opens the Compare page and its theme files only. The health check requires a loopback Host with the port of the server and a loopback connection peer. The traffic is plain HTTP, and only the secret in the URL protects the page.
+- The server listens on `127.0.0.1` only. To open the page from another computer, start the server with `HUMAN_REVIEW_BIND=0.0.0.0` and `HUMAN_REVIEW_PORT`, and name the address in `HUMAN_REVIEW_ALLOWED_HOSTS`, for example `desk.example:4802`. `walkr-compare` then prints the URL with that address. The named address serves the shared Compare and Feedback page and its files. The health check requires a loopback Host with the port of the server and a loopback connection peer. The traffic is plain HTTP, and only the secret in the URL protects the page.
 - To read the sessions of more than one computer on one persistent page, use the optional [mirror](../mirror/README.md). It is read-only, and no install step starts it.
 - `walkr-compare` stops a server of an older Walkr version that still runs for the same state directory, then start a new one. A record without a protocol counts as older. It stops it only when its `/health` answer has the pid of `server.json`. When the stop fails, the command says so; stop the server by hand, then run the command again. It never stops a server of a newer Walkr version: the command fails and starts no server. Use that newer version, or set another `HUMAN_REVIEW_STATE_DIR`.
 - Not verified: accessibility with assistive technology, and option quality from a real model.

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "runtime": {
-    "piVersion": "1.6.0",
-    "piBoltVersion": "1.3.1",
-    "piAcceptedRange": ">=1.5.0 <1.7",
+    "piVersion": "1.7.0",
+    "piBoltVersion": "1.3.2",
+    "piAcceptedRange": ">=1.7.0 <1.8",
     "nodeRange": ">=24.0.0 <25",
     "pythonRange": ">=3.11"
   },
@@ -11,7 +11,7 @@
     "core": {
       "source": {
         "kind": "npm",
-        "spec": "@earendil-works/pi-coding-agent@1.6.0"
+        "spec": "@earendil-works/pi-coding-agent@1.7.0"
       },
       "status": "tested",
       "requires": [],
@@ -532,6 +532,7 @@
           "skills/coordinator-skills/dummies",
           "skills/coordinator-skills/off-the-rails",
           "skills/coordinator-skills/skill-doctor",
+          "skills/coordinator-skills/tenant-design",
           "skills/coordinator-skills/writing-for-agents"
         ],
         "prompts": [],
@@ -547,7 +548,7 @@
         },
         {
           "code": "host_tool_required",
-          "fact": "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research task, a prototype task and get-status need the herdr skill and the herdr CLI; the wayfinder, research, prototype and get-status skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The dummies skill keeps its log page through the okknow command of OpenKnowledge and reads the role of a pane from the herdr CLI; the kit does not install or check them, and without the okknow command the skill writes no log. The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
+          "fact": "On Pi the grilling skill asks through the ask_user_question tool of the questions component, and in plain text without it; a search, a research task, a prototype task and get-status need the herdr skill and the herdr CLI; the wayfinder, research, prototype and get-status skills name host tools that the kit does not install or check (OpenViking, OpenKnowledge with the okknow skill, the LLM-WIKI tools, the walkr skill, pidesktop, an artifact server). The tenant-design skill reads a folder of design preferences in OpenViking and names the walkr-compare skill; the kit does not install or check them, and without OpenViking the skill uses its own tables. The dummies skill keeps its log page through the okknow command of OpenKnowledge and reads the role of a pane from the herdr CLI; the kit does not install or check them, and without the okknow command the skill writes no log. The to-spec and to-tickets skills need a Gitea issue tracker as the origin remote and a token in GITEA_TOKEN; the kit does not install or check them."
         },
         {
           "code": "kit_test_missing",
@@ -652,7 +653,7 @@
     "questions": {
       "source": {
         "kind": "npm",
-        "spec": "@juicesharp/rpiv-ask-user-question@2.15.0"
+        "spec": "@juicesharp/rpiv-ask-user-question@2.16.0"
       },
       "status": "unverified",
       "requires": [
@@ -676,11 +677,11 @@
         },
         {
           "code": "package_source_unreviewed",
-          "fact": "The registry metadata of version 2.15.0 was read: name, license, the one extension entry and the dependency lists. The source files of that version were not reviewed."
+          "fact": "The verified 2.16.0 tarball keeps the index.ts entry. The question dialog now reports a blocked status to Pi and Herdr without including question or answer text. The review covered the changes from 2.15.0, not the full package."
         },
         {
           "code": "peer_package_unverified",
-          "fact": "Version 2.15.0 lists typebox under peerDependencies with the range * and names the optional peer package @juicesharp/rpiv-i18n; no install of version 2.15.0 with the kit pin was observed."
+          "fact": "Version 2.16.0 lists typebox as a peer with range *, keeps @juicesharp/rpiv-i18n optional and takes @juicesharp/rpiv-config ^2.16.0. The offline qualification checks the declared spec, not a running question dialog."
         },
         {
           "code": "question_ui_unverified",
@@ -815,7 +816,7 @@
     "computer-use": {
       "source": {
         "kind": "npm",
-        "spec": "@agent-sh/computer-use-linux@0.7.59"
+        "spec": "@agent-sh/computer-use-linux@0.7.64"
       },
       "status": "unverified",
       "requires": [
@@ -837,11 +838,11 @@
       "gaps": [
         {
           "code": "platform_linux_only",
-          "fact": "The package.json of version 0.7.59 limits os to linux, cpu to x64 and arm64, and libc to glibc, and its postinstall script stops on another platform. On macOS the kit offers the computer-use-macos component instead."
+          "fact": "The package.json of version 0.7.64 limits os to linux, cpu to x64 and arm64, and libc to glibc, and its postinstall script stops on another platform. On macOS the kit offers the computer-use-macos component instead."
         },
         {
           "code": "package_source_unreviewed",
-          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. File comparisons with the tarballs of versions 0.7.27, 0.7.35 and 0.7.36 found changes only in package.json, the README files, the skill and the extension. Version 0.7.27 adds the read-only tool get_tree_page. Version 0.7.35 removes no tool and adds optional parameters. Version 0.7.36 removes no tool; its generated tool list changes only the press_key description, and it adds the reference selkies-setup.md, which the kit does not use. In both versions the only package.json change is the version. npm/install.js is unchanged, and the README of 0.7.36 still says that the binary ships no telemetry and makes no outbound Internet connections. The README states the new optional routes that the kit does not set: PIXELFLUX_CU with PIXELFLUX_CU_TOKEN (loopback only) and COMPUTER_USE_LINUX_HYPRLAND_BACKGROUND. The registry tarball of 0.7.47 matches its registry SHA-512 integrity. A file comparison with 0.7.36 found changes in package.json, npm/install.js, the npm wrapper, the README files, the skill and the extension. The generated tool list keeps the same tool names and adds or changes descriptions only. package.json adds libc glibc and the peer range >=0.84.4 for the Pi packages. npm/install.js adds a 30-second idle timeout, an atomic rename of each binary and escaped log lines; it still checks each download against its sha256 file. The extension now forwards a fixed list of environment variables to the server, and the README of 0.7.47 still says that the binary ships no telemetry and makes no outbound Internet connections. The registry tarballs of 0.7.47 and 0.7.49 match their registry SHA-512 integrity. Their file comparison changes only package.json, the README files, the generated tool catalog and the skill. The install script and extension loader are unchanged. No tool is removed; snapshot_id is a new optional argument for click, scroll, perform_action, set_value and get_tree_page. The release notes name same-device uinput scrolling and rmcp 3.9.0. The release binaries were not reviewed or run. The registry tarballs of 0.7.50 and 0.7.51 match their registry SHA-512 integrity. Against 0.7.49, package.json changes only its version. The install script, npm wrapper, extension loader and MCP client bundle are unchanged; the generated tool catalog changes only its server version. The release notes and source delta add opt-in HTTP MCP and rustix 1.1.6, and fix AT-SPI application ownership and background-action readback. Between the integrity-checked tarballs of 0.7.51 and 0.7.59, the installer, wrapper and list of default tool names stay unchanged. The extension also forwards UMBRIEL_SOCKET and COMPUTER_USE_LINUX_DEVTOOLS when set. No desktop tool or binary was run for this review."
+          "fact": "The registry tarball of version 0.7.24 was read. The read covered package.json, npm/install.js, the README and the Pi setup reference of the skill. File comparisons with the tarballs of versions 0.7.27, 0.7.35 and 0.7.36 found changes only in package.json, the README files, the skill and the extension. Version 0.7.27 adds the read-only tool get_tree_page. Version 0.7.35 removes no tool and adds optional parameters. Version 0.7.36 removes no tool; its generated tool list changes only the press_key description, and it adds the reference selkies-setup.md, which the kit does not use. In both versions the only package.json change is the version. npm/install.js is unchanged, and the README of 0.7.36 still says that the binary ships no telemetry and makes no outbound Internet connections. The README states the new optional routes that the kit does not set: PIXELFLUX_CU with PIXELFLUX_CU_TOKEN (loopback only) and COMPUTER_USE_LINUX_HYPRLAND_BACKGROUND. The registry tarball of 0.7.47 matches its registry SHA-512 integrity. A file comparison with 0.7.36 found changes in package.json, npm/install.js, the npm wrapper, the README files, the skill and the extension. The generated tool list keeps the same tool names and adds or changes descriptions only. package.json adds libc glibc and the peer range >=0.84.4 for the Pi packages. npm/install.js adds a 30-second idle timeout, an atomic rename of each binary and escaped log lines; it still checks each download against its sha256 file. The extension now forwards a fixed list of environment variables to the server, and the README of 0.7.47 still says that the binary ships no telemetry and makes no outbound Internet connections. The registry tarballs of 0.7.47 and 0.7.49 match their registry SHA-512 integrity. Their file comparison changes only package.json, the README files, the generated tool catalog and the skill. The install script and extension loader are unchanged. No tool is removed; snapshot_id is a new optional argument for click, scroll, perform_action, set_value and get_tree_page. The release notes name same-device uinput scrolling and rmcp 3.9.0. The release binaries were not reviewed or run. The registry tarballs of 0.7.50 and 0.7.51 match their registry SHA-512 integrity. Against 0.7.49, package.json changes only its version. The install script, npm wrapper, extension loader and MCP client bundle are unchanged; the generated tool catalog changes only its server version. The release notes and source delta add opt-in HTTP MCP and rustix 1.1.6, and fix AT-SPI application ownership and background-action readback. Between the integrity-checked tarballs of 0.7.51 and 0.7.59, the installer, wrapper and list of default tool names stay unchanged. The extension also forwards UMBRIEL_SOCKET and COMPUTER_USE_LINUX_DEVTOOLS when set. Against 0.7.62, the verified 0.7.64 tarball keeps the installer, extension loader and tool names. The type_text tool adds paste_fallback for GNOME Wayland, off by default. No desktop tool or binary was run for this review."
         },
         {
           "code": "release_download_required",
@@ -864,7 +865,7 @@
     "computer-use-macos": {
       "source": {
         "kind": "npm",
-        "spec": "@amaster.ai/pi-computer-use@0.1.40"
+        "spec": "@amaster.ai/pi-computer-use@0.1.42"
       },
       "status": "unverified",
       "requires": [
@@ -886,11 +887,11 @@
       "gaps": [
         {
           "code": "platform_macos_only",
-          "fact": "The kit offers this component on macOS only. Version 0.1.40 declares no os field, but its desktop runtime for macOS is the optional dependency @amaster.ai/pi-computer-use-cua-driver-darwin-universal 0.1.4, which limits os to darwin. Its CuaDriver.app is a universal Mach-O binary for x86_64 and arm64 with the bundle ID com.trycua.driver and LSMinimumSystemVersion 13.0 (read from the registry tarball, not run). Linux keeps the computer-use component."
+          "fact": "The kit offers this component on macOS only. Version 0.1.42 declares no os field, but its desktop runtime for macOS is the optional dependency @amaster.ai/pi-computer-use-cua-driver-darwin-universal 0.1.4, which limits os to darwin. Its CuaDriver.app is a universal Mach-O binary for x86_64 and arm64 with the bundle ID com.trycua.driver and LSMinimumSystemVersion 13.0 (read from the registry tarball, not run). Linux keeps the computer-use component."
         },
         {
           "code": "package_source_partly_reviewed",
-          "fact": "The registry tarball of 0.1.32 matches its registry SHA-512 integrity. Its package.json, README, config, launch code and approval code were read; the package and the runtime 0.1.4 have no install script. The registry tarball of 0.1.34 matches its registry SHA-512 integrity. A file comparison with 0.1.32 found a change only in package.json: the version and the exact dependency @amaster.ai/pi-shared 0.1.34. The registry tarball of 0.1.35 matches its registry SHA-512 integrity. A file comparison with 0.1.34 found the new optional toolProfile value lazy, which the kit does not set, a reorder of the optional dependencies, and the version and the exact dependency @amaster.ai/pi-shared 0.1.35; the core profile selects the same tools. The runtime stays 0.1.4 with Cua Driver 0.37.0 (read from its Info.plist). The change of @amaster.ai/pi-shared from 0.1.32 to 0.1.34 was read; it adds async settings and policy readers and abort signals, and no telemetry or download. The change of @amaster.ai/pi-shared from 0.1.34 to 0.1.35 touches no JavaScript file of dist. The registry tarball of 0.1.36 matches its registry SHA-512 integrity. A file comparison with 0.1.35 found the new skill skills/computer-use/SKILL.md, declared in package.json, changed error texts for a failed driver request, more structured result fields, a reorder of the optional dependencies, the dev dependencies on Pi 1.5.0, and the version and the exact dependency @amaster.ai/pi-shared 0.1.36. The runtime stays 0.1.4. The change of @amaster.ai/pi-shared from 0.1.35 to 0.1.36 touches only package.json. The registry tarballs of 0.1.38 and @amaster.ai/pi-shared 0.1.38 match their registry SHA-512 integrity. Their changes from 0.1.36 were read. The extension adds sanitized error categories, refusal recovery hints and vision failure checks. Its config, approval code, skill and runtime pins are unchanged. The shared settings reader now rejects malformed or unreadable settings and null sections instead of using defaults. The shared package adds error classification and preserves DNS failures separately from destination-policy refusals. Runtime 0.1.4 also matches its registry SHA-512 integrity; its Info.plist still names Cua Driver 0.37.0. The integrity-checked 0.1.40 extension now routes vision requests through the model registry when available. The change uses @amaster.ai/pi-shared 0.1.40. The consent code and the exact macOS runtime pin stay unchanged. Not reviewed: the bundled driver binary, unchanged shared-package code outside the prior review, and @modelcontextprotocol/sdk, which the package takes as the range ^1.29.0, so the top-level pin does not freeze every dependency."
+          "fact": "The registry tarball of 0.1.32 matches its registry SHA-512 integrity. Its package.json, README, config, launch code and approval code were read; the package and the runtime 0.1.4 have no install script. The registry tarball of 0.1.34 matches its registry SHA-512 integrity. A file comparison with 0.1.32 found a change only in package.json: the version and the exact dependency @amaster.ai/pi-shared 0.1.34. The registry tarball of 0.1.35 matches its registry SHA-512 integrity. A file comparison with 0.1.34 found the new optional toolProfile value lazy, which the kit does not set, a reorder of the optional dependencies, and the version and the exact dependency @amaster.ai/pi-shared 0.1.35; the core profile selects the same tools. The runtime stays 0.1.4 with Cua Driver 0.37.0 (read from its Info.plist). The change of @amaster.ai/pi-shared from 0.1.32 to 0.1.34 was read; it adds async settings and policy readers and abort signals, and no telemetry or download. The change of @amaster.ai/pi-shared from 0.1.34 to 0.1.35 touches no JavaScript file of dist. The registry tarball of 0.1.36 matches its registry SHA-512 integrity. A file comparison with 0.1.35 found the new skill skills/computer-use/SKILL.md, declared in package.json, changed error texts for a failed driver request, more structured result fields, a reorder of the optional dependencies, the dev dependencies on Pi 1.5.0, and the version and the exact dependency @amaster.ai/pi-shared 0.1.36. The runtime stays 0.1.4. The change of @amaster.ai/pi-shared from 0.1.35 to 0.1.36 touches only package.json. The registry tarballs of 0.1.38 and @amaster.ai/pi-shared 0.1.38 match their registry SHA-512 integrity. Their changes from 0.1.36 were read. The extension adds sanitized error categories, refusal recovery hints and vision failure checks. Its config, approval code, skill and runtime pins are unchanged. The shared settings reader now rejects malformed or unreadable settings and null sections instead of using defaults. The shared package adds error classification and preserves DNS failures separately from destination-policy refusals. Runtime 0.1.4 also matches its registry SHA-512 integrity; its Info.plist still names Cua Driver 0.37.0. The integrity-checked 0.1.40 extension now routes vision requests through the model registry when available. The change uses @amaster.ai/pi-shared 0.1.40. The consent code and the exact macOS runtime pin stay unchanged. The verified 0.1.42 extension distinguishes failed preflight checks from requests with unknown outcomes and returns recovery guidance for driver refusals. The shared package moves to 0.1.42; the skill, approval settings and macOS runtime stay unchanged. Not reviewed: the bundled driver implementation, unchanged shared-package code outside the prior review, and @modelcontextprotocol/sdk, which the package now takes as the range ^1.32.2, so the top-level pin does not freeze every dependency."
         },
         {
           "code": "privacy_grant_required",
@@ -1048,7 +1049,8 @@
         "extensions": [],
         "skills": [
           "skills/walkr",
-          "skills/walkr-compare"
+          "skills/walkr-compare",
+          "skills/walkr-feedback"
         ],
         "prompts": [],
         "themes": []
@@ -1059,7 +1061,8 @@
         "HUMAN_REVIEW_BIND",
         "HUMAN_REVIEW_ALLOWED_HOSTS",
         "HUMAN_REVIEW_IDLE_MS",
-        "HUMAN_REVIEW_COMPARE_ROOT"
+        "HUMAN_REVIEW_COMPARE_ROOT",
+        "HUMAN_REVIEW_FEEDBACK_ROOT"
       ],
       "gaps": [
         {
@@ -1101,7 +1104,8 @@
         "skills": [],
         "prompts": [
           "prompts/walkr.md",
-          "prompts/walkr-compare.md"
+          "prompts/walkr-compare.md",
+          "prompts/walkr-feedback.md"
         ],
         "themes": []
       },
@@ -1143,7 +1147,7 @@
       "gaps": [
         {
           "code": "live_session_unverified",
-          "fact": "Tested with agy 1.5.15 on Linux only, with scratch homes: scripts/kit_agy.py and install.sh --with agy write and remove the rules, the skill links and the JSON keys. No agy session ran with these files: not verified are the kit skills in a session, a command that the kit rules deny, and an OpenViking recall."
+          "fact": "The installer tests ran with agy 1.5.15 on Linux, with scratch homes. A live agy 1.5.18 session on Linux showed the kit skills, a denied command, the OpenViking hooks SessionStart and PreInvocation, the OpenViking MCP tools and the sandbox rules. Not verified: the rows of the statusLine script inside a running agy screen, and the capture of the OpenViking hook Stop."
         },
         {
           "code": "platform_unverified",

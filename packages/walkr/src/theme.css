@@ -70,7 +70,7 @@
   --accent-soft: #2c2a26;
 }
 /* Dark palettes: lighter marks, dark text on a filled mark. */
-:root:is([data-theme="dark"], [data-theme="plum"], [data-theme="night"], [data-theme="statue-dark"], [data-theme="torch-dark"]) {
+:root:is([data-theme="dark"], [data-theme="plum"], [data-theme="night"], [data-theme="statue-dark"], [data-theme="torch-dark"], [data-theme="lavender-dark"]) {
   --keep: #7fdca4; --discard: #ff9a9a; --mark-fg: #10131c;
   --keep-soft: color-mix(in srgb, var(--keep) 14%, var(--card));
   --discard-soft: color-mix(in srgb, var(--discard) 13%, var(--card));
@@ -177,6 +177,41 @@
   --accent: #7fd6ea; --accent-soft: #123a55; --shadow: #000a;
   --brand: #ffd000; --brand-ink: #1a1446;
   --band: #1a1446; --band-line: #3b3478; --band-soft: #2f2866;
+}
+/* Lavender palettes: soft violet surfaces (#F5F1FC / #110D1C), deep plum or pale lilac text, and vivid violet actions. */
+:root[data-theme="lavender-light"] {
+  color-scheme: light;
+  --canvas: #f5f1fc; --rail: #f7f3fd; --card: #ffffff;
+  --card-border: #bfb0db; --hair: #ddd3ee; --hair-2: #ece5f8;
+  --dash: #8d80a3; --strong-border: #7a6c94;
+  --txt: #382c4d; --strong-txt: #221933; --mute: #4c3f63;
+  --mute-2: #4c3f63; --faint: #56496e; --faint-2: #56496e;
+  --soft: #ece5f8; --chip: #e7dff6; --input-bg: #ffffff;
+  --focus: #5d33ad; --danger: #9a2446; --danger-soft: #fbeaf0;
+  --amber: #704b00; --green: #115a48;
+  --btn-bg: #6a3fc8; --btn-fg: #ffffff;
+  --accent: #5d33ad; --accent-soft: #eee8fa; --shadow: #3c285629;
+  --brand: #5d33ad; --brand-ink: #ffffff;
+  --band: #f7f3fd; --band-txt: #221933; --band-mute: #4c3f63; --band-line: #bfb0db;
+  --band-soft: #ece5f8; --band-danger: #9a2446; --band-ok: #115a48; --band-focus: #5d33ad;
+  --stage: #f5f1fc;
+}
+:root[data-theme="lavender-dark"] {
+  color-scheme: dark;
+  --canvas: #110d1c; --rail: #151024; --card: #1f1834;
+  --card-border: #3c3156; --hair: #3c3156; --hair-2: #322946;
+  --dash: #8a7fa3; --strong-border: #8a7fa3;
+  --txt: #eee9fa; --strong-txt: #f7f4ff; --mute: #cbc2e0;
+  --mute-2: #cbc2e0; --faint: #b5abc9; --faint-2: #b5abc9;
+  --soft: #271f3f; --chip: #2d234a; --input-bg: #0f0b1a;
+  --focus: #b9a0ff; --danger: #f9adbd; --danger-soft: #411d2d;
+  --amber: #f4d48e; --green: #95e7c9;
+  --btn-bg: #b49aff; --btn-fg: #160f29;
+  --accent: #c3abff; --accent-soft: #2e224d; --shadow: #000a;
+  --brand: #c3abff; --brand-ink: #160f29;
+  --band: #151024; --band-txt: #f7f4ff; --band-mute: #cbc2e0; --band-line: #3c3156;
+  --band-soft: #261d40; --band-danger: #f9adbd; --band-ok: #95e7c9; --band-focus: #b9a0ff;
+  --stage: #110d1c;
 }
 .theme-control { display: flex; align-items: center; gap: 8px; color: var(--mute-2); font: 12px/1.4 var(--sans); }
 .theme-control select { min-width: 0; max-width: 100%; padding: 6px 9px; border: 1px solid var(--hair); border-radius: 10px; background: var(--card); color: var(--txt); font: inherit; cursor: pointer; }

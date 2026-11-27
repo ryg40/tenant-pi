@@ -1008,10 +1008,10 @@ except (OSError, ValueError, RuntimeError, AttributeError):
 sys.exit(0 if owned else 1)
 PY
     }
-    # The skills call their command by name, so the two commands get links, as in the Walkr installer.
+    # The skills call their command by name, so the three commands get links, as in the Walkr installer.
     if [ "$walkr_failed" = no ]; then
       mkdir -p "$HOME/.local/bin"
-      for pair in walkr:cli.js walkr-compare:walkr-compare.js; do
+      for pair in walkr:cli.js walkr-compare:walkr-compare.js walkr-feedback:walkr-feedback.js; do
         link=$HOME/.local/bin/${pair%%:*} target=$walkr_dir/src/${pair#*:}
         if [ -L "$link" ]; then
           if walkr_owned "$link" "${pair#*:}"; then

@@ -265,6 +265,18 @@ test("standalone installation is opt-in, idempotent and preserves every unrelate
 	f.unchanged();
 });
 
+test("the slot installation keeps an unrelated claude2 and creates no claude1", () => {
+	const f = fixture();
+	const directory = join(f.home, ".local", "bin");
+	mkdirSync(directory, { recursive: true });
+	writeFileSync(join(directory, "claude2"), "unrelated");
+	assert.equal(f.run(installer, ["--slots"]).status, 2);
+	assert.equal(readFileSync(join(directory, "claude2"), "utf8"), "unrelated");
+	assert.equal(existsSync(join(directory, "claude1")), false);
+	assert.throws(() => lstatSync(join(directory, "claude1")), { code: "ENOENT" });
+	f.unchanged();
+});
+
 test("ordinary Claude installation preserves native arguments and unapproved starts", () => {
 	const f = fixture();
 	f.ok(installer, ["--claude"]);

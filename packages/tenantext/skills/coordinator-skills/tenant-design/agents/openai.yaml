@@ -1,0 +1,3 @@
+interface:
+  display_name: "Tenant Design"
+  short_description: "Pick a UI library for React, Svelte or GPUI"

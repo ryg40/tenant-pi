@@ -189,7 +189,14 @@ python3 $S/spawn.py --harness pi --role researcher --model example-model --think
 python3 $S/spawn.py --harness pi --role researcher --model example-model --thinking medium --cwd "$PWD"
 python3 $S/spawn.py --harness claude --role coordinator --model claude-opus-5-5 --thinking medium --cwd "$PWD"
 python3 $S/spawn.py --harness pi --role scout --cwd "$PWD"                                                # model from the local file, else exit 2
+python3 $S/spawn.py --harness claude --account 2 --role worker --model haiku --thinking low --cwd "$PWD"   # "launch claude2 haiku low worker"
 ```
+
+`--account 1` or `2` starts the program `claude1` or `claude2` in place of `claude`, with the login of that
+account slot (`docs/claude-accounts.md`, section "claude1 and claude2"). It applies only to `--harness claude`.
+The flags, the role prompt and the session variables stay the same. The output gets `account`, and the pane label
+shows the program, for example `claude2:haiku/low`. When the program is not on `PATH`, `spawn.py` starts no pane and
+exits with 2; install it with `node packages/tenantext/claude-code/install-launcher.mjs --slots`.
 
 The output is one JSON line with `name`, `model`, `model_source` and `thinking`.
 `model_source` is `request` or `models.json`, including with `--dry-run`.
@@ -303,20 +310,25 @@ An overview for people, with a picture of the Herdr app, is in
   and saved terminal identity in memory only (no disk read between the final
   `hc get` and `hc send`), and `hc send` follows directly. If the space, role
   tab, foreground, or agent state changed, the terminal is skipped.
-- When the coordinator role is set and the live coordinator terminal's
-  input-side transcript context size is above 200000 tokens (from the
-  transcript lookup of `ask.py`), `herdr-role-set` sends the handoff command
+- When the coordinator role is set and a live Claude Code or Pi coordinator's
+  input-side transcript context size (from the transcript lookup of `ask.py`) is
+  above 200000 tokens, `herdr-role-set` sends the handoff command
   (`/tenantext:handoff_coordinator <harness> <model> [<thinking>] [roles=...]`
   for Claude Code, `/handoff_coordinator <harness> <model> [<thinking>]
   [roles=...]` for Pi) without waiting. When one or more task roles are set,
   the last argument is `roles=<role>:<harness>:<model>[:<thinking>],...`: the
   `spawn.py` inputs of researcher, worker and reviewer, in this order, for each
   role that is not on Any. A value with a space, a comma or a colon refuses the
-  run before any launch. When the token count is above 200000 (so the threshold would
-  otherwise allow a handoff), a coordinator choice with the `agy` harness cannot
-  hand off (`handoff.py` refuses `agy`): `herdr-role-set` sets `handoff` to
-  `false`, sends nothing, and gives the reason in dry-run output or on stderr;
-  at or below 200000 tokens (or with unknown tokens), no `agy` reason is shown.
+  run before any launch. A coordinator choice with the `agy` harness hands off
+  to an `agy` coordinator: the command carries `agy` and the slug of the choice,
+  for example `gemini-4-neon-xhigh`, and no thinking level, because the slug
+  holds the effort. A live `agy` coordinator gets a token count (from its single
+  open presence lock on `/proc` on Linux) and no handoff, because `agy` has no
+  slash command: above 200000 tokens, `herdr-role-set` sets `handoff` to `false`
+  and gives the reason in dry-run output or on stderr; that coordinator can
+  still run `handoff.py` itself. The reason line appears only with a known token
+  count above the limit: at or below 200000 tokens (or with unknown tokens), no
+  `agy` reason is shown.
   Unknown tokens give `null` and no handoff. Before delivery, the command build,
   transcript lookup, token count, and pane record read all finish before the
   final cheap `hc get`; after that read, validation checks fresh metadata
@@ -426,6 +438,29 @@ An overview for people, with a picture of the Herdr app, is in
   `"models":[]` and exit `0`. A failed listing (no Pi, a non-zero exit, or no
   result in 20 seconds) prints `{"version":1,"ok":false,"error":"<cause>"}`
   and exits `1`.
+- `herdr-role-set --coordinator-tokens` is read-only. In one call (bounded by a
+  20-second deadline) it lists live local terminals across all spaces, picks
+  each space's coordinator (an explicit coordinator wins; otherwise the newest
+  live agent with no role label, no task role and outside task-role tabs whose
+  `where` label ends in ` / 1` or ` / coordinator`), reads its transcript token
+  count, and prints one JSON line:
+
+  ```json
+  {"version":1,"ok":true,"spaces":{"<space id>":128000,"<other space id>":null}}
+  ```
+
+  It counts Claude Code and Pi via `ask.py`, and on Linux counts `agy` via the
+  single open regular `~/.gemini/antigravity-cli/presence/<id>.lock` descriptor
+  of an `agy` process owned by the terminal PID (`foreground.pid`, else the
+  single `agy` child of the terminal PID) and the last `DONE`
+  `PLANNER_RESPONSE` (`input_tokens` + `cache_read_tokens`) in its transcript.
+  Unverified ownership, unreadable descriptors or child listings, zero or
+  multiple presence locks, a missing transcript, or no `/proc` (such as macOS)
+  gives `null`.
+  `--dry-run` uses the same coordinator fallback rule for `coordinator_tokens`
+  (without enabling handoff or role-models notice for an unlabeled terminal).
+  Extra arguments exit `2`; a core failure or deadline exit `1` with
+  `{"version":1,"ok":false,"error":"<cause>"}`.
 - Each of the four roles also takes a key `copilot/<id>`. For a set with a
   `copilot/` key, the helper lists the models one time and accepts the key
   only when `--models` would show it. The key starts the harness `pi` with the
@@ -481,10 +516,12 @@ An overview for people, with a picture of the Herdr app, is in
 To hand your work to the next coordinator session, write the handoff file (state of the work, open items, files, decisions) at a path agreed with the user, then run one command:
 
 ```bash
-python3 $S/handoff.py --file <handoff.md> [--harness claude|pi] [--model m] [--thinking t] [--timeout 900] [--roles <value>]
+python3 $S/handoff.py --file <handoff.md> [--harness claude|pi|agy] [--account 1|2] [--model m] [--thinking t] [--timeout 900] [--roles <value>]
 ```
 
-`--roles` takes the value of the `roles=` argument of the handoff command unchanged: `<role>:<harness>:<model>[:<thinking>]`, joined by commas. The roles are researcher, scout, worker and reviewer; the harness is `pi`, `claude` or `agy`. A bad value exits 2 and starts nothing.
+`--account 1` or `2` starts the new coordinator with the program `claude1` or `claude2`, as `spawn.py --account` does. The user says `claude1` or `claude2` in place of `claude`, before the model: give `--harness claude --account 1` or `2`. With another harness, `handoff.py` exits 2 and starts nothing.
+
+`--roles` takes the value of the `roles=` argument of the handoff command unchanged: `<role>:<harness>:<model>[:<thinking>]`, joined by commas. The roles are researcher, scout, worker and reviewer; the harness is `pi`, `claude` or `agy`, or `claude1` or `claude2` for an account of `claude`, which the section "Role models of the owner" writes as `--harness claude --account 1` or `2`. A bad value exits 2 and starts nothing.
 
 In Claude Code, run it with `run_in_background: true`, because the wait can pass the 10-minute limit of a foreground call. In Pi, run it in `bash`.
 
@@ -492,9 +529,9 @@ In Claude Code, run it with `run_in_background: true`, because the wait can pass
 | --- | --- |
 | Checks | Inside Herdr, your pane is a coordinator, the file exists and is not empty. A failed check starts nothing. |
 | Panes | It appends the section "Open panes at the handoff" to the file: each open task pane of the workspace. A rerun replaces the section. With `--roles` it also writes the section "Role models of the owner": the `spawn.py` inputs of each role, which the new coordinator uses for each pane of these roles. Without `--roles` it removes that section. |
-| Start | `spawn.py --role coordinator` with your inputs, else `models.json`. The harness defaults to yours. The new pane appears below yours with the next number. |
+| Start | `spawn.py --role coordinator` with your inputs (and `--account` when given), else `models.json`. The harness defaults to yours. The new pane appears below yours with the next number. |
 | Confirm | `ask.py` sends the start prompt and waits for a reply line that starts with `HANDOFF-ACCEPTED` (the marker of `contract.json`). |
-| Success | It appends the record to `handoffs.jsonl` beside the file (`"status": "recorded"`, and `"roles"` with the raw `--roles` value when given), sends the second prompt with `ask.py --timeout 45`, prints one result line, and closes your pane by its ID. The second send succeeds on `ask.py` exit 124 (the turn still works) or exit 0 with a new reply. Exit 0 with the line `note: reply was an API error` before the reply is a failure. |
+| Success | It appends the record to `handoffs.jsonl` beside the file (`"status": "recorded"`, `"roles"` with the raw `--roles` value and `"account"` when given), sends the second prompt with `ask.py --timeout 45`, prints one result line, and closes your pane by its ID. The second send succeeds on `ask.py` exit 124 (the turn still works) or exit 0 with a new reply. Exit 0 with the line `note: reply was an API error` before the reply is a failure. |
 | Failure | It closes nothing, leaves both panes open, and prints the cause with the pane ID and the name of the new pane. A failed second send appends one more line for the same handoff with `"status": "failed"` and the cause. |
 
 On herdr-core (a pane of the Herdr app) the steps and the exits are the same, with these points:
@@ -635,7 +672,9 @@ A task session of `agy` ends its reply with the result block, as the other
 harnesses do, and `ask.py` prints the "no result block" note when it is
 missing. Send the task in the same form as to a `claude` or `pi` pane
 (section 4). `close.py` ends an `agy` pane that `spawn.py` recorded, as for
-the other harnesses. `handoff.py` starts no `agy` coordinator: exit 2.
+the other harnesses. `handoff.py` starts an `agy` coordinator with
+`--harness agy`, or by default from an `agy` coordinator. `--account` with
+`agy` gives exit 2.
 herdr-core puts the sender line `<hc from=...>` around each prompt, so the
 transcript shows that an agent sent it.
 
@@ -665,6 +704,9 @@ transcript shows that an agent sent it.
   give the work folder with `-- --add-dir <folder>`.
 - On Herdr 1, the agent name of an `agy` pane and a transcript path from
   Herdr are not known: expect `NO TRANSCRIPT PATH` and the screen.
+- On herdr-core, a handoff from a `claude` coordinator to an `agy` coordinator and back has a live proof
+  (`agy` 1.5.18, Linux): each new coordinator accepted, and each old pane closed. A handoff with `agy` on Herdr 1
+  and a handoff between `pi` and `agy` are not proven.
 
 ## 4. Give the task and collect the result
 

@@ -140,6 +140,18 @@ def public_origin_of(data):
     return origin
 
 
+KEY_STORE_KEY = 'keyStore'
+KEY_STORES = ('auto', 'keychain', 'bitwarden', 'vault', 'file')
+
+
+def key_store_of(data):
+    """The store of the admin key of the key keyStore: one of KEY_STORES, `auto` when the key is absent."""
+    value = data.get(KEY_STORE_KEY, 'auto')
+    if value not in KEY_STORES:
+        raise ConfigError(f'keyStore in {config_path()} is not one of ' + ', '.join(KEY_STORES))
+    return value
+
+
 def retention_of(data):
     """The retention in days, or None for no retention."""
     days = data.get('retentionDays')

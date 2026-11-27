@@ -28,7 +28,7 @@ import unittest
 from unittest import mock
 import urllib.parse
 
-from tests.test_artifacts import ROOT, Scratch, free_port, health_pid
+from tests.test_artifacts import ROOT, Scratch, free_port, health_pid, signed
 
 SERVER_DIR = ROOT / 'packages/artifacts/server'
 
@@ -40,12 +40,12 @@ def page_values():
 
 class FakeWalkr(http.server.BaseHTTPRequestHandler):
     """A live Walkr server: /health answers with the PID of the test process and the protocol `protocol` of the
-    server (10 when it has none; no protocol key for None). Each other request goes into the list `got` of the server,
+    server (11 when it has none; no protocol key for None). Each other request goes into the list `got` of the server,
     and the answer is a fixed JSON value with a policy header."""
 
     def answer(self):
         if self.path == '/health':
-            protocol = getattr(self.server, 'protocol', 10)
+            protocol = getattr(self.server, 'protocol', 11)
             body = json.dumps({'ok': True, 'pid': os.getpid()}
                               | ({} if protocol is None else {'protocol': protocol})).encode()
         else:
@@ -83,7 +83,7 @@ def fake_walkr(test, scratch):
     token = secrets.token_hex(16)
     record = scratch.home / '.human-review/server.json'
     record.parent.mkdir()
-    record.write_text(json.dumps({'port': live.server_address[1], 'pid': os.getpid(), 'protocol': 10,
+    record.write_text(json.dumps({'port': live.server_address[1], 'pid': os.getpid(), 'protocol': 11,
                                   'token': token}))
     scratch.ok('start')
     return live, token
@@ -93,7 +93,7 @@ def send(port, method, path, headers=None, body=None):
     """(status, body) of one request to the artifacts server."""
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=20)
     try:
-        connection.request(method, path, body=body, headers=headers or {})
+        connection.request(method, path, body=body, headers=signed(port, headers))
         reply = connection.getresponse()
         return reply.status, reply.read()
     finally:
@@ -128,6 +128,44 @@ class PassTests(unittest.TestCase):
             self.assertEqual(404, send(port, 'GET', path)[0], path)
         self.assertEqual(passed + [('POST', f'/_walkr/compare/api/sessions/{sid}/seen')],
                          [(got['method'], got['path']) for got in self.live.got])
+
+    def test_feedback_page_routes_pass_and_agent_routes_stay_refused(self):
+        port, sid = self.scratch.port, self.session
+        headers = {'Origin': self.origin, 'Content-Type': 'application/json', 'X-Human-Review-Token': self.page_token}
+        passed_get = [
+            ('GET', '/_walkr/compare/feedback.js'),
+            ('GET', '/_walkr/compare/feedback.css'),
+            ('GET', f'/_walkr/feedback/o/{self.secret}/{sid}/item-1/preview'),
+            ('GET', f'/_walkr/feedback/o/{self.secret}/{sid}/item-1/opt-1'),
+            ('GET', f'/_walkr/feedback/api/sessions/{sid}'),
+        ]
+        for method, path in passed_get:
+            self.assertEqual(200, send(port, method, path)[0], path)
+        passed_post = [
+            ('POST', f'/_walkr/feedback/api/sessions/{sid}/seen'),
+            ('POST', f'/_walkr/feedback/api/sessions/{sid}/expand'),
+            ('POST', f'/_walkr/feedback/api/sessions/{sid}/respond'),
+            ('POST', f'/_walkr/feedback/api/sessions/{sid}/rate'),
+        ]
+        for method, path in passed_post:
+            self.assertEqual(200, send(port, method, path, headers, '{}')[0], path)
+        for path in (
+            '/_walkr/feedback/api/sessions',
+            f'/_walkr/feedback/api/sessions/{sid}/patch',
+            f'/_walkr/feedback/api/sessions/{sid}/received',
+            f'/_walkr/feedback/api/sessions/{sid}/outcome',
+            f'/_walkr/feedback/api/sessions/{sid}/respond?x=1',
+        ):
+            self.assertEqual(405, send(port, 'POST', path, headers, '{}')[0], path)
+        for path in (
+            '/_walkr/feedback/api/capabilities',
+            '/_walkr/feedback/api/page',
+            f'/_walkr/feedback/api/sessions/{sid}?x=1',
+            f'/_walkr/feedback/o/{self.secret}/{sid}/item-1',
+            f'/_walkr/feedback/o/{self.secret}/{sid}/item-1/opt-1/extra',
+        ):
+            self.assertEqual(404, send(port, 'GET', path)[0], path)
+        self.assertEqual(passed_get + passed_post, [(got['method'], got['path']) for got in self.live.got])
 
     def test_no_route_of_a_retired_walkr_mode_passes(self):
         """Core, Double, Coinflip and Trainer are retired (packages/walkr/CHANGELOG.md). Their routes, also the Core
@@ -181,14 +219,21 @@ class PassTests(unittest.TestCase):
 
 
 WALKR_SRC = ROOT / 'packages/walkr/src'
-# The API calls of compare.js (`call("/...")`) and the requests that each one makes. A new call fails the test below
-# until it is here and its requests are in walkr_front.PASSED.
+# The API calls of compare.js (`call("/...")` and `feedbackCall("/...")`) and the requests that each one makes.
+# A new call fails the test below until it is here and its requests are in walkr_front.PASSED.
 COMPARE_CALLS = {
     '/history': [('GET', '/_walkr/compare/api/history')],
     '/sessions/${wanted}': [('GET', '/_walkr/compare/api/sessions/{session}')],
     '/sessions/${wanted}/seen': [('POST', '/_walkr/compare/api/sessions/{session}/seen')],
     '/sessions/${item.sessionId}/${item.op}': [('POST', '/_walkr/compare/api/sessions/{session}/{op}')],
 }
+FEEDBACK_CALLS = {
+    '/sessions/${wanted}': [('GET', '/_walkr/feedback/api/sessions/{session}')],
+    '/sessions/${wanted}/seen': [('POST', '/_walkr/feedback/api/sessions/{session}/seen')],
+    '/sessions/${item.sessionId}/${item.op}': [('POST', '/_walkr/feedback/api/sessions/{session}/{op}')],
+}
+COMPARE_OPS = {'submit', 'rate'}
+FEEDBACK_OPS = {'expand', 'respond', 'rate'}
 
 
 class PageRefs(html.parser.HTMLParser):
@@ -237,16 +282,26 @@ def compare_page_requests():
             imports = re.findall(r'(?:\bfrom|\bimport\()\s*["\']\./([^"\']+)["\']', (WALKR_SRC / static[path]).read_text())
             todo += [path.rsplit('/', 1)[0] + '/' + name for name in imports]
     requests = [('GET', path) for path in found]
-    requests += [('GET', f'/_walkr/compare/g/{secret}'), ('GET', f'/_walkr/compare/o/{secret}/{session}/option-1')]
+    requests += [
+        ('GET', f'/_walkr/compare/g/{secret}'),
+        ('GET', f'/_walkr/compare/o/{secret}/{session}/option-1'),
+        ('GET', f'/_walkr/feedback/o/{secret}/{session}/item-1/preview'),
+        ('GET', f'/_walkr/feedback/o/{secret}/{session}/item-1/opt-1'),
+    ]
     script = (WALKR_SRC / 'compare.js').read_text()
     calls = set(re.findall(r'\bcall\(\s*[`"](/[^`"]*)[`"]', script))
+    feedback_calls = set(re.findall(r'\bfeedbackCall\(\s*[`"](/[^`"]*)[`"]', script))
     ops = set(re.findall(r'\bop: "([a-z]+)"', script))
     values = {'session': session}
     for call in calls:
         for method, path in COMPARE_CALLS.get(call, []):
-            for op in sorted(ops) if '{op}' in path else ['']:
+            for op in sorted(ops & COMPARE_OPS) if '{op}' in path else ['']:
                 requests.append((method, path.format(op=op, **values)))
-    return found, calls, ops, requests
+    for call in feedback_calls:
+        for method, path in FEEDBACK_CALLS.get(call, []):
+            for op in sorted(ops & FEEDBACK_OPS) if '{op}' in path else ['']:
+                requests.append((method, path.format(op=op, **values)))
+    return found, calls, feedback_calls, ops, requests
 
 
 class CompareRequestsTests(unittest.TestCase):
@@ -258,12 +313,17 @@ class CompareRequestsTests(unittest.TestCase):
 
     def test_each_request_of_the_compare_page_is_in_the_pass_list(self):
         _, walkr_front = server_modules()
-        files, calls, ops, requests = compare_page_requests()
+        files, calls, feedback_calls, ops, requests = compare_page_requests()
         # The reader finds the files of the page and of its scripts, so an empty list cannot pass.
-        self.assertLessEqual({'/_walkr/compare/app.js', '/_walkr/compare/a2ui.js', '/_walkr/compare/a2ui.css'},
-                             set(files))
-        self.assertEqual(set(COMPARE_CALLS), calls, 'a new API call of compare.js: add it to COMPARE_CALLS')
-        self.assertEqual({'submit', 'rate'}, ops, 'a new page write of compare.js: check walkr_front.PASSED')
+        self.assertLessEqual(
+            {'/_walkr/compare/app.js', '/_walkr/compare/a2ui.js', '/_walkr/compare/a2ui.css',
+             '/_walkr/compare/feedback.js', '/_walkr/compare/feedback.css'},
+            set(files),
+        )
+        self.assertEqual(set(COMPARE_CALLS), calls, 'a new Compare API call of compare.js: add it to COMPARE_CALLS')
+        self.assertEqual(set(FEEDBACK_CALLS), feedback_calls,
+                         'a new Feedback API call of compare.js: add it to FEEDBACK_CALLS')
+        self.assertEqual(COMPARE_OPS | FEEDBACK_OPS, ops, 'a new page write of compare.js: check walkr_front.PASSED')
         missing = [(method, path) for method, path in requests if not walkr_front.listed(method, path)]
         self.assertEqual([], missing)
 
@@ -298,6 +358,7 @@ def get(port, path, method='GET', headers=None):
     list of (name, value) pairs; a list can name a header twice. A Host header of `headers` replaces the default one."""
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=40)
     pairs = list(headers.items() if isinstance(headers, dict) else headers or [])
+    pairs += list(signed(port, {}).items())
     try:
         connection.putrequest(method, path, skip_host=any(name.lower() == 'host' for name, _ in pairs))
         for name, value in pairs:
@@ -391,6 +452,7 @@ class WalkrLinkTests(unittest.TestCase):
         while health_pid(scratch.port) != server.pid:
             self.assertLess(time.monotonic(), deadline, 'the server gave no /healthz answer')
             time.sleep(0.1)
+        scratch.remember_token()
         status, headers, _ = get(scratch.port, '/walkr')
         self.assertEqual(303, status)
         self.assertEqual(f'/_walkr/compare/g/{secret}', headers['location'])
@@ -674,7 +736,8 @@ class PeerUidTests(unittest.TestCase):
         handler = self.handler(self.pair(), [('Host', 'localhost')])
         handler.client_address = handler.connection.getpeername()
         handler.command = 'GET'
-        with mock.patch.object(server.local_sockets, 'peer_uid', return_value=os.getuid() + 1):
+        with mock.patch.object(server.local_sockets, 'peer_uid', return_value=os.getuid() + 1), \
+                mock.patch.object(server, 'login_refusal', return_value=None):
             for handler.path in ('/memory/', '/memory/api/sources'):
                 handler.requestline = f'GET {handler.path} HTTP/1.1'
                 self.assertEqual(403, server.Handler.route(handler).status, handler.path)
@@ -1133,17 +1196,17 @@ class StaleRecordTests(unittest.TestCase):
         other = self.pid_of(['sleep', '30'])
         cases = ((None, False),
                  # This process holds the listener.
-                 ((port, os.getpid(), 10), False),
+                 ((port, os.getpid(), 11), False),
                  # The process of the record is gone, or does not hold the listener on its port.
-                 ((port, dead.pid, 10), True), ((port, other, 10), True),
+                 ((port, dead.pid, 11), True), ((port, other, 11), True),
                  # The idle exit of Walkr: no program listens; walkr-compare starts a new server.
-                 ((free_port(), dead.pid, 10), False))
+                 ((free_port(), dead.pid, 11), False))
         with mock.patch.object(server.local_sockets, 'LINUX', True):
             for record, stale in cases:
                 with mock.patch.object(walkr_front, 'read_record', return_value=record):
                     self.assertEqual(stale, server.stale_record(), record)
             # Tables with no answer prove nothing.
-            with mock.patch.object(walkr_front, 'read_record', return_value=(port, os.getpid(), 10)), \
+            with mock.patch.object(walkr_front, 'read_record', return_value=(port, os.getpid(), 11)), \
                     mock.patch.object(server.local_sockets, 'table_rows', side_effect=server.local_sockets.Unknown('test')):
                 self.assertTrue(server.stale_record())
 
@@ -1157,9 +1220,9 @@ class StaleRecordTests(unittest.TestCase):
         port = live.server_address[1]
         with mock.patch.object(server.local_sockets, 'LINUX', False), \
                 mock.patch.object(server.local_sockets, 'table_rows', side_effect=AssertionError('a table was read')):
-            # FakeWalkr answers /health with the PID of this process and protocol 10.
-            for record, stale in (((port, os.getpid(), 10), False), ((port, os.getpid() + 1, 10), True),
-                                  ((free_port(), 4242, 10), False)):
+            # FakeWalkr answers /health with the PID of this process and protocol 11.
+            for record, stale in (((port, os.getpid(), 11), False), ((port, os.getpid() + 1, 11), True),
+                                  ((free_port(), 4242, 11), False)):
                 with mock.patch.object(walkr_front, 'read_record', return_value=record):
                     self.assertEqual(stale, server.stale_record(), record)
 
@@ -1178,7 +1241,7 @@ class StaleRecordTests(unittest.TestCase):
         record = scratch.home / '.human-review/server.json'
         record.parent.mkdir()
         record.write_text(json.dumps({'port': other.server_address[1], 'pid': dead.pid, 'token': token,
-                                      'protocol': 10}))
+                                      'protocol': 11}))
         secret, _ = page_values()
         fake_open(scratch, f'echo "http://127.0.0.1:1/_walkr/compare/g/{secret}"\n')
         scratch.ok('start')

@@ -98,8 +98,8 @@ export function agyCommand(env: NodeJS.ProcessEnv = process.env): string | undef
 const homeOf = (env: NodeJS.ProcessEnv, home?: string): string => home ?? (env.HOME && isAbsolute(env.HOME) ? env.HOME : homedir());
 /** The sign-in file of `agy`. The footer only checks it with `stat`; it never opens it. */
 export const antigravitySignInPath = (home: string): string => join(home, ".gemini", "antigravity-cli", "antigravity-oauth-token");
-/** The modification time of the sign-in file, or `undefined` when it does not exist. */
-const signInTime = (home: string): number | undefined => {
+/** The modification time of the sign-in file, or `undefined` when it does not exist. It calls `statSync` only and never opens the file. */
+export const antigravitySignInMtime = (home: string): number | undefined => {
   try { const s = statSync(antigravitySignInPath(home)); return s.isFile() ? s.mtimeMs : undefined; } catch { return; }
 };
 
@@ -186,7 +186,7 @@ export async function checkAntigravity(track: (stop: () => void) => () => void =
   const env = options.env ?? process.env, clock = options.now ?? Date.now, home = homeOf(env, options.home);
   const command = agyCommand(env);
   if (!command) return { kind: "none", reason: "no-agy" };
-  const signedIn = signInTime(home);
+  const signedIn = antigravitySignInMtime(home);
   if ((options.usage ?? "auto") === "auto" && signedIn === undefined) return { kind: "none", reason: "no-sign-in" };
   const path = antigravityReadingPath(env, home), stored = read(path), now = clock();
   const { backoffAt, backoffUntil } = stored;

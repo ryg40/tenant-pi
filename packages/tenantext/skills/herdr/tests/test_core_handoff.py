@@ -35,6 +35,7 @@ class FakeScripts:
         self.replies = list(replies)  # (exit code, reply text) for each ask.py call
         self.core = core
         self.calls = []
+        self.spawns = []  # the command of each spawn.py call
         self.helpers = []  # each helper that handoff.py started
 
     def Popen(self, cmd, **kwargs):
@@ -48,6 +49,7 @@ class FakeScripts:
         script = os.path.basename(cmd[1])
         self.calls.append(script)
         if script == "spawn.py":
+            self.spawns.append(cmd)
             out = json.dumps({"pane_id": "t9", "name": "proj-coordinator-2"})
             return types.SimpleNamespace(returncode=0, stdout=out + "\n", stderr="")
         code, reply = self.replies.pop(0)
@@ -86,7 +88,7 @@ class CoreHandoff(CoreCase):
         with mock.patch.object(handoff, "subprocess", scripts):
             code, out = self.run_main(handoff, core, core.terminals["t1"],
                                       ["handoff.py", "--file", self.file, "--timeout", "5"])
-        self.helpers = scripts.helpers
+        self.helpers, self.spawns = scripts.helpers, scripts.spawns
         return code, scripts.calls
 
     def removed(self, core, address, space="sp1"):
@@ -141,6 +143,20 @@ class CoreHandoff(CoreCase):
                  terminal("t1", state="finished", role="coordinator"), [("rm", "t1")])):
             with self.subTest(case=case):
                 self.assertEqual(self.removed(FakeCore(t), "t1"), want)
+
+    def test_the_new_coordinator_starts_in_the_start_folder_of_the_terminal_not_in_the_folder_of_the_shell(self):
+        # The shell of the caller is in a subfolder; the terminal started in /work/proj (`cwd` of `hc get`).
+        for cwd, want in (("/work/proj", "/work/proj"),
+                          (None, "/work/proj/packages")):  # no start folder in the record: os.getcwd() stays
+            with self.subTest(cwd=cwd):
+                coordinator_record("t1")
+                me = terminal("t1")
+                me["cwd"] = cwd
+                with mock.patch.object(handoff.os, "getcwd", return_value="/work/proj/packages"):
+                    code, _ = self.handoff(FakeCore(me, terminal("t2")))
+                self.assertEqual(code, EXIT["done"])
+                cmd = self.spawns[-1]
+                self.assertEqual(cmd[cmd.index("--cwd") + 1], want)
 
     def test_a_failed_list_of_the_terminals_starts_nothing(self):
         coordinator_record("t1")

@@ -9,15 +9,15 @@ import { tmpRoot } from "./tmp-root.js";
 const repository = path.resolve(import.meta.dirname, "..");
 const piPackage = process.env.HUMAN_REVIEW_TEST_PI_PACKAGE;
 
-test("two portable skills replace the original source skill", () => {
-  assert.deepEqual(SKILL_NAMES, ["walkr", "walkr-compare"]);
+test("three portable skills replace the original source skill", () => {
+  assert.deepEqual(SKILL_NAMES, ["walkr", "walkr-compare", "walkr-feedback"]);
   // The install skill ships beside the mode skills but setup never installs it.
   const modeSkills = fs.readdirSync(path.join(repository, "skills")).filter((name) => name !== "walkr-install");
   assert.deepEqual(modeSkills.sort(), [...SKILL_NAMES].sort());
   assert.equal(fs.existsSync(path.join(repository, "src", "SKILL.md")), false);
 });
 
-test("the entry skill links to the Compare skill", () => {
+test("the entry skill links to the Compare and Feedback skills", () => {
   const text = readSkill("walkr");
   const links = [...text.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1]);
   assert.deepEqual(links, SKILL_NAMES.slice(1).map((name) => `../${name}/SKILL.md`));

@@ -3,12 +3,13 @@
 
 Each read and each write of the knowledge base goes through the `okknow`
 command. This script reads no credential, and it opens no data directory and
-no port of the knowledge base. With `--file <path>` the log is one local file
-that the user named, and `okknow` is not used.
+no port of the knowledge base. With `--file <path>` the log and its archive
+are local files, and `okknow` is not used.
 
 Usage: page.py heading [options] [--summary TEXT] [--zone ZONE]
        page.py init    [options] [--zone ZONE] [--title TEXT]
        page.py add     [options] --summary TEXT [--body-file FILE] [--again] [--zone ZONE]
+       page.py trim    [--project SLUG] [--page NAME] [--file PATH]
        page.py recent  [options] [--entries N] [--lines N]
        page.py check   [options]
 
@@ -17,7 +18,9 @@ Usage: page.py heading [options] [--summary TEXT] [--zone ZONE]
              pointer line to the `handoffs` page of the project when that page exists
     add      add one entry directly below the entries heading. The body comes from
              standard input or from --body-file. The script makes the heading, reads
-             the page back and proves that each older entry is unchanged
+             the page back and proves that each older entry is unchanged. Then it runs trim
+    trim     when the page has more than 20 entries, keep the 10 newest and archive the rest.
+             Below that limit, only finish an interrupted move
     recent   print the summary input: the newest entry, and the label lines of each
              older one that say what is important, what is open and what is next
     check    check the page against the contract
@@ -65,6 +68,8 @@ from dummies_lib import (HARNESSES, Stop, detect_harness, herdr_agent, home, loc
 
 SKILL_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEMPLATE = os.path.join(SKILL_DIR, "page-template.md")
+TRIM_ABOVE = 20
+KEEP_ENTRIES = 10
 ENTRIES_HEADING = "## Session entries"
 PLACEHOLDER = "No entry yet."
 LABELS = ("Important", "Open", "Next", "Goal")
@@ -163,6 +168,9 @@ class Okknow:
 
     name = "okknow"
 
+    def archive_target(self, page):
+        return self, page + "-archive"
+
     def _run(self, arguments, text=None):
         try:
             done = subprocess.run(["okknow", *arguments], input=text, capture_output=True, encoding="utf-8",
@@ -244,6 +252,11 @@ class LocalFile:
         # The local log of the project: its directory is 0700, the file is 0600, and a new file takes the zone
         # of the system clock.
         self.private = private
+
+    def archive_target(self, page):
+        stem, extension = os.path.splitext(self.path)
+        archive = LocalFile(stem + "-archive" + extension, self.private)
+        return archive, short(archive.path)
 
     def read(self, page):
         try:
@@ -792,6 +805,85 @@ def prove(before, after, heading):
     return kept, max(0, len(new) - kept - headings.count(heading)), problems
 
 
+def archive_head(page):
+    fields = re.sub(r'''(?m)^(title:[ \t]*)(["']?)(.+?)\2[ \t]*$''', r"\1\2\3 archive\2",
+                    page.head[:page.body_start], count=1)
+    body = re.sub(r"(?m)^(# .+)$", r"\1 archive", page.head[page.body_start:], count=1)
+    return fields + body + page.preamble
+
+
+def archive_entries(store, name, page, summary):
+    """Copy overflow entries, prove the archive, then shorten the source. Return the two counts."""
+    if page.headings != 1:
+        raise Stop(8, f"{name} has {page.headings} lines `{ENTRIES_HEADING}`, not one. Run check.")
+    texts = [entry.text for entry in page.entries]
+    kept, moved = texts[:KEEP_ENTRIES], texts[KEEP_ENTRIES:]
+    if not moved:
+        return len(kept), 0
+    archive, target = store.archive_target(name)
+    old = archive.read(target)
+    before = Page(old) if old is not None else None
+    previous = [entry.text for entry in before.entries] if before else []
+    # Entry 11 in both places means a previous copy succeeded but its removal did not.
+    if len(texts) <= TRIM_ABOVE and moved[0] not in previous:
+        return len(texts), 0
+    if isinstance(store, LocalFile):
+        if os.path.islink(archive.path):
+            raise Stop(3, f"the archive file is a symbolic link: {target}")
+        if os.path.realpath(store.path) == os.path.realpath(archive.path):
+            raise Stop(3, "the log file and the archive are the same file")
+    moving = set(moved)
+    if len(moving) != len(moved) or moving.intersection(kept):
+        raise Stop(9, f"{name} has identical entries. The move cannot be proven.")
+
+    if before is None:
+        archive.create(target, archive_head(page) + "\n\n".join(moved) + "\n", summary)
+    else:
+        if before.headings != 1:
+            raise Stop(8, f"{target} has {before.headings} lines `{ENTRIES_HEADING}`, not one. Run check.")
+        present = set(previous)
+        missing = [text for text in moved if text not in present]
+        if missing:
+            archive.edit(target, *place(before, "\n\n".join(missing)), summary)
+    archived = [entry.text for entry in Page(archive.read(target) or "").entries]
+    if [text for text in archived if text in moving] != moved:
+        raise Stop(9, f"{target} does not have each moved entry exactly once in page order")
+    if previous and archived[-len(previous):] != previous:
+        raise Stop(9, f"an older entry changed in {target}")
+
+    def remove(first, end):
+        # Include the separator before the block. Leave the whitespace before the footer (or EOF) intact.
+        preceding, final = page.entries[first - 1], page.entries[end]
+        block = page.text[preceding.start + len(preceding.text):final.start + len(final.text)]
+        if page.text.count(block, page.body_start) != 1:
+            raise Stop(9, f"the block to remove is not unique in {name}")
+        store.edit(name, block, "", None, summary)
+
+    by_entry = False
+    try:
+        remove(KEEP_ENTRIES, len(texts) - 1)
+    except Stop as stop:
+        if stop.code != 3 or len(moved) == 1:
+            raise
+        by_entry = True
+        for index in reversed(range(KEEP_ENTRIES, len(texts))):
+            remove(index, index)
+    after = Page(store.read(name) or "")
+    remaining = [entry.text for entry in after.entries]
+    if (after.headings != 1 or after.head != page.head or after.footer != page.footer or
+            remaining[-KEEP_ENTRIES:] != kept or moving.intersection(remaining)):
+        raise Stop(9, f"the trim of {name} is not proven. Read the page and its archive.")
+    if by_entry:
+        print(f"page.py: the block edit failed. Removed {len(moved)} entries one at a time.", file=sys.stderr)
+    return len(remaining), len(moved)
+
+
+def command_trim(args):
+    store, name, project = target(args)
+    kept, moved = archive_entries(store, name, load_page(store, name), f"page.py/trim {project}: trim DUMMIES"[:80])
+    print(f"trimmed: {name} | kept: {kept} | archived: {moved}")
+
+
 def command_add(args):
     # The switch of the user comes first: with the log off, add needs no knowledge base and no session data.
     if log_state() == "off":
@@ -836,10 +928,18 @@ def command_add(args):
     written = store.read(name)
     if written is None:
         raise Stop(9, f"{name} is absent after the write")
-    kept, others, problems = prove(before, Page(written), heading)
+    after = Page(written)
+    kept, others, problems = prove(before, after, heading)
     if problems:
         raise Stop(9, f"the write to {name} is not proven: " + "; ".join(problems) + ". Read the page and its history.")
     note = f" | new entries of other writers: {others}" if others else ""
+    try:
+        _, moved = archive_entries(store, name, after, write_summary(facts, project, "archive older DUMMIES entries"))
+        if moved:
+            note += f" | archived: {moved}"
+    except Stop as stop:
+        note += " | archive: not done"
+        print(f"page.py: archive: {stop}", file=sys.stderr)
     print(f"added: {name} | {heading[4:].split(' | ')[0]} | Agent: {facts['agent']} | Model: {facts['model']} "
           f"({facts['source']}) | older entries unchanged: {kept}{note}")
 
@@ -863,8 +963,14 @@ def command_recent(args):
                             if line.startswith(("**Important:**", "**Open:**", "**Relevance:**", "**Next:**"))))
     if not page.entries:
         print("\nThe page has no entry.")
-    elif len(page.entries) > args.entries:
-        print(f"\n[older entries on the page: {len(page.entries) - args.entries}]")
+    elif len(page.entries) >= KEEP_ENTRIES or len(page.entries) > args.entries:
+        notes = []
+        if len(page.entries) > args.entries:
+            notes.append(f"older entries on the page: {len(page.entries) - args.entries}")
+        if len(page.entries) >= KEEP_ENTRIES:
+            notes.append(f"above {TRIM_ABOVE} entries the page keeps the newest {KEEP_ENTRIES}; "
+                         f"earlier entries may be in {store.archive_target(name)[1]}")
+        print("\n[" + "; ".join(notes) + "]")
 
 
 def command_check(args):
@@ -903,6 +1009,7 @@ def main(argv=None):
     one.add_argument("--body-file")
     one.add_argument("--again", action="store_true")
     one.add_argument("--zone")
+    commands.add_parser("trim", parents=[shared])
     one = commands.add_parser("recent", parents=[shared])
     one.add_argument("--entries", type=int, default=3)
     one.add_argument("--lines", type=int, default=60)
@@ -911,8 +1018,8 @@ def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="replace")
     try:
-        {"heading": command_heading, "init": command_init, "add": command_add, "recent": command_recent,
-         "check": command_check}[args.command](args)
+        {"heading": command_heading, "init": command_init, "add": command_add, "trim": command_trim,
+         "recent": command_recent, "check": command_check}[args.command](args)
     except Stop as stop:
         print(f"page.py: {stop}", file=sys.stderr)
         return stop.code

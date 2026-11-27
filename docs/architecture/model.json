@@ -1774,7 +1774,7 @@
      "kind": "comp-skills",
      "summary": "Optional: the artifacts skill and CLI. An agent stores an HTML or Markdown file in the local store after a secret scan and gives the view link. install.sh --with artifacts links the CLI and, when ~/.claude exists, the two skills; it asks nothing and writes no configuration.",
      "inputs": "Python 3; no token and no configuration",
-     "consent": "your agreement to pages that each local user can read while the server runs",
+     "consent": "your agreement to local pages behind a login with an admin key in your password system",
      "doc": "docs/guides/modules.md#artifacts",
      "tags": [
       "not a detected installation"
@@ -1786,9 +1786,9 @@
      "group": "g-c-skills",
      "label": "artifacts prompt",
      "kind": "comp-skills",
-     "summary": "Optional: the Pi prompt /artifacts-server with the words start, off, status and walkr. It runs the artifacts CLI: the one local web app on 127.0.0.1, with a root page and the sections Artifacts (/artifacts), Walkr (/walkr) and, with the memory module, Memory (/memory/). It passes the Walkr Compare page to the live Walkr server and the Memory section to the memory viewer, its child process; walkr prints the private address of the Compare page. It has one event channel for a desktop app (/events/v1, with a token file). off stops this server, the memory viewer and the live Walkr server.",
+     "summary": "Optional: the Pi prompt /artifacts-server with the words start, off, status, walkr and rotate. It runs the artifacts CLI: the one local web app on 127.0.0.1, with a root page and the sections Artifacts (/artifacts), Walkr (/walkr) and, with the memory module, Memory (/memory/). It passes the Walkr Compare page to the live Walkr server and the Memory section to the memory viewer, its child process; walkr prints the private address of the Compare page. It has one event channel for a desktop app (/events/v1, with a token file). off stops this server, the memory viewer and the live Walkr server.",
      "inputs": "the artifacts component",
-     "consent": "your agreement to a local web server of your account; each local user can read its pages",
+     "consent": "your agreement to a local web server of your account; its pages need a login with an admin key in your password system",
      "doc": "docs/guides/modules.md#local-server",
      "tags": [
       "not a detected installation"
@@ -1800,7 +1800,7 @@
      "group": "g-c-walkr",
      "label": "walkr",
      "kind": "comp-skills",
-     "summary": "Optional: Walkr Compare with the skills walkr and walkr-compare. The agent prepares 2 or 3 options, you pick one in a browser page, and the agent reads your pick, notes and rating. install.sh --with walkr runs the Walkr setup.",
+     "summary": "Optional: Walkr Compare and Feedback with the skills walkr, walkr-compare and walkr-feedback. Compare shows 2 or 3 options side by side; Feedback renders smaller chunks, decision trees, and grill-me sessions with expandable options. install.sh --with walkr runs the Walkr setup.",
      "inputs": "the node and npm commands; a browser",
      "consent": "your agreement to a local web server of your account and to the files that the Walkr setup writes",
      "doc": "docs/guides/modules.md#walkr",
@@ -1814,7 +1814,7 @@
      "group": "g-c-walkr",
      "label": "walkr prompts",
      "kind": "comp-skills",
-     "summary": "Optional: the Pi prompts /walkr and /walkr-compare. The Walkr setup writes them to the profile.",
+     "summary": "Optional: the Pi prompts /walkr, /walkr-compare and /walkr-feedback. The Walkr setup writes them to the profile.",
      "inputs": "the walkr component",
      "consent": "your agreement to a local web server of your account and to the files that the Walkr setup writes",
      "doc": "docs/guides/modules.md#walkr",
@@ -1870,7 +1870,7 @@
      "group": "g-c-herdr",
      "label": "agy",
      "kind": "comp-herdr",
-     "summary": "Optional: the kit parts for the agy command of Antigravity CLI. install.sh --with agy runs scripts/kit_agy.py: it links the plain style rule, the kit rule and the kit skills into ~/.gemini/config, sets the hooks.json key tenant-kit for the kit command rules and, with the OpenViking Claude Code plugin, the OpenViking hooks, MCP entry and allow rules. --with all leaves it out.",
+     "summary": "Optional: the kit parts for the agy command of Antigravity CLI. install.sh --with agy runs scripts/kit_agy.py: it links the plain style rule, the kit rule and the kit skills into ~/.gemini/config, sets the hooks.json key tenant-kit for the kit command rules, writes the terminal sandbox rules of the skills herdr, dummies and okknow and the statusLine key of the ops-footer status line (with its record tenant-kit-statusline.json) and, with the OpenViking Claude Code plugin, the OpenViking hooks, MCP entry and allow rules. At run time the status line sends the usage requests of the active Pi profile (Codex, Claude, Copilot, agy /usage) and the health GET requests of its healthUrls in a detached background run; see docs/guides/privacy.md. --with all leaves it out.",
      "inputs": "a folder ~/.gemini/config (agy ran one time and the user signed in); node; the OpenViking Claude Code plugin for the memory part",
      "consent": "your agreement to the kit files in the agy user folder and, with the plugin, to the conversation of agy going to your OpenViking server",
      "doc": "docs/guides/modules.md#agy",

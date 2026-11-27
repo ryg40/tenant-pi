@@ -19,7 +19,7 @@ Options:
   --yes              Do not ask. Without --project or --global, use the current directory.
   --help             Show this text.
 
-Commands: walkr, walkr-compare.
+Commands: walkr, walkr-compare, walkr-feedback.
 A link of this clone for a retired command (walkr-core, walkr-double, walkr-coinflip, walkr-trainer) is removed.
 EOF
 }
@@ -133,7 +133,7 @@ bin_dir=$(absdir "${bin_dir:-$home/.local/bin}")
 
 # name:target pairs. Targets come from the bin field of package.json.
 # human-review is not linked: that npm name belongs to the upstream project.
-links="walkr:src/cli.js walkr-compare:src/walkr-compare.js"
+links="walkr:src/cli.js walkr-compare:src/walkr-compare.js walkr-feedback:src/walkr-feedback.js"
 # The commands of the retired modes. An older install linked them; this script removes only a link to this clone.
 retired="walkr-core:src/walkr-core.js walkr-double:src/walkr-double.js walkr-coinflip:src/walkr-coinflip.js walkr-trainer:src/walkr-trainer.js"
 
@@ -191,7 +191,7 @@ if [ -z "$scope" ]; then
   if [ "$yes" = yes ]; then
     scope=project; project=.
   else
-    say "Walkr installs two agent skills for Claude Code, Codex and Pi."
+    say "Walkr installs three agent skills for Claude Code, Codex and Pi."
     ask "Install skills for [p]roject $cwd, [g]lobal (your user), or [s]kip? [p/g/s]:"
     case $answer in
       p|project|'') scope=project; project=. ;;

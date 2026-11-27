@@ -98,7 +98,7 @@ EXTRA_ITEMS = ("mcp-codemode", "memory", "claude-code-plugin", "claude-aws-plugi
 MANUAL = ("openviking", "agentcore")
 PLUGIN = "computer-use-linux@computer-use-linux"
 # The Walkr commands that install.sh links into ~/.local/bin, with their files in packages/walkr/src.
-WALKR_LINKS = (("walkr", "cli.js"), ("walkr-compare", "walkr-compare.js"))
+WALKR_LINKS = (("walkr", "cli.js"), ("walkr-compare", "walkr-compare.js"), ("walkr-feedback", "walkr-feedback.js"))
 # The Herdr skill command that install.sh links into ~/.local/bin, with its file in packages/tenantext.
 HERDR_LINK = ("herdr-role-set", "skills/herdr/scripts/role_set.py")
 # The commands of the retired Walkr modes (packages/walkr/CHANGELOG.md). An earlier install linked them and wrote one
@@ -112,7 +112,7 @@ MEMORY_DEPENDENCIES = ("@aws-sdk/client-bedrock-agentcore", "@aws-sdk/credential
 # The roots of the Walkr setup (installSkills of packages/walkr/src/setup.js with global: true).
 WALKR_ROOTS = (".claude", ".codex", ".agents")
 # The placeholders that the Walkr setup replaces in a skill file, in its order: (placeholder, file in src).
-WALKR_COMMANDS = (("{{LOCAL_COMPARE_COMMAND}}", "walkr-compare.js"),)
+WALKR_COMMANDS = (("{{LOCAL_COMPARE_COMMAND}}", "walkr-compare.js"), ("{{LOCAL_FEEDBACK_COMMAND}}", "walkr-feedback.js"))
 # The instruction files that Pi loads from the profile, in the order of the DUMMIES state script.
 PI_CONTEXT_FILES = ("AGENTS.override.md", "AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD")
 DUMMIES_BEGIN, DUMMIES_END = "<!-- dummies-autostart:begin -->", "<!-- dummies-autostart:end -->"

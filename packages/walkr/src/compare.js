@@ -1,15 +1,16 @@
 import { A2UI_BASIC_CATALOG, A2UI_LIMITS, A2UI_MAX_LENGTH, A2UI_OPTION_DETAILS, A2UI_READ_ONLY, A2UI_VERSION, createA2uiHost } from "./a2ui.js";
 import { RATING_MAX, RATING_MIN, isRating, starsLabel, starsText, stepRating } from "./compare-stars.js";
 import { createSessionPreview } from "./compare-a2ui.js";
+import { createFeedbackView } from "./feedback.js";
 import { mountFrameZoom } from "./frame-zoom.js";
 
 // These codes prove that the server did not save the request. Anything else stays unresolved.
 const NOT_SAVED = new Set(["INVALID_REQUEST", "INVALID_ID", "ACTION_CONFLICT", "INVALID_TRANSITION", "NOT_FOUND", "FORBIDDEN", "UNAUTHORIZED", "WRITE_FAILED"]);
 const VIEWS = { columns: "Side by side", single: "One option" };
 const SESSION = /^[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}$/;
-// A row of a readable session opens the Compare stage with pick, comment, submit and rating. A row of a record that
-// the server cannot read shows its error code only.
+// A row of a readable session opens its mode workspace. A row of an unreadable record shows its error code only.
 const isCompare = (row) => row?.type === "compare" && !row.error;
+const isFeedback = (row) => row?.type === "feedback" && !row.error;
 /** A record time in the local time of the browser, as YYYY-MM-DD HH:MM. */
 function localTime(value, fallback = "unknown") {
   const date = value ? new Date(value) : null;
@@ -182,6 +183,7 @@ const overLong = (draft) => Object.values(draft.comments ?? {}).some((text) => t
 export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refreshMs = 2000 } = {}) {
   const doc = win.document, $ = (id) => doc.getElementById(id), body = doc.body.dataset;
   const api = "/_walkr/compare/api";
+  const feedbackApi = "/_walkr/feedback/api";
   const stored = (key, fallback = null) => { try { return win.localStorage.getItem(`walkr-compare:${key}`) ?? fallback; } catch { return fallback; } };
   const store = (key, value) => { try { value === null ? win.localStorage.removeItem(`walkr-compare:${key}`) : win.localStorage.setItem(`walkr-compare:${key}`, value); } catch {} };
   // A browser policy can make the localStorage getter throw. The zoom then keeps no preference.
@@ -205,7 +207,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     win.history.replaceState(null, "", fragment ? `#${fragment}` : win.location.pathname);
   };
 
-  let sessions = [], selected = hashId(), view = null, record = null, loaded = "", stageKey = "", recordKey = "", roundsKey = "", single = 0;
+  let sessions = [], selected = hashId(), view = null, feedbackView = null, record = null, loaded = "", stageKey = "", contextKey = "", recordKey = "", roundsKey = "", single = 0;
   // A request that is not confirmed yet, also from an earlier load of the page: a retry sends it unchanged.
   let pending = null;
   try { pending = JSON.parse(stored("pending", "null")); } catch {}
@@ -242,6 +244,20 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
       render();
     },
   });
+  const feedbackUi = $("feedbackWork") ? createFeedbackView(win, $("feedbackWork"), {
+    expand(sessionId, itemId, optionIds) {
+      if (!feedbackView || feedbackView.sessionId !== sessionId || busy || pending) return;
+      void send({ mode: "feedback", op: "expand", sessionId, body: { actionId: newId(), itemId, optionIds } });
+    },
+    respond(sessionId, responses, note) {
+      if (!feedbackView || feedbackView.sessionId !== sessionId || busy || pending) return;
+      void send({ mode: "feedback", op: "respond", sessionId, body: { actionId: newId(), responses, ...(note ? { note } : {}) } });
+    },
+    rate(sessionId, rating, note) {
+      if (!feedbackView || feedbackView.sessionId !== sessionId || busy || pending) return;
+      void send({ mode: "feedback", op: "rate", sessionId, body: { actionId: newId(), rating, ...(note ? { note } : {}) } });
+    },
+  }) : null;
   function switchRenderer(value) {
     if (renderer === value) return;
     renderer = value;
@@ -253,41 +269,58 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
 
   const newId = () => win.crypto?.randomUUID ? win.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const shown = () => {
-    const workflow = $("typeFilter").value.split(":")[1];
-    return sessions.filter((item) => !workflow || item.workflow === workflow);
+    const raw = $("typeFilter").value;
+    if (!raw) return sessions;
+    const [kind, workflow] = raw.split(":");
+    return sessions.filter((item) => (!kind || item.type === kind) && (!workflow || item.workflow === workflow));
   };
   const viewMode = () => {
     const saved = view && stored(`view:${view.workflow}`);
     return VIEWS[saved] ? saved : "columns";
   };
 
-  async function call(route, options = {}) {
+  async function callAt(base, route, options = {}) {
     let response;
     try {
-      response = await fetchImpl(`${api}${route}`, { ...options, headers: { "x-human-review-token": body.token, "content-type": "application/json" } });
+      response = await fetchImpl(`${base}${route}`, { ...options, headers: { "x-human-review-token": body.token, "content-type": "application/json" } });
     } catch { throw Object.assign(new Error("The private server did not answer."), { code: "NETWORK" }); }
     let value;
     try { value = await response.json(); } catch { throw Object.assign(new Error("The server answer was not readable."), { code: "MALFORMED" }); }
     if (!response.ok) throw Object.assign(new Error(value?.error?.message || `HTTP ${response.status}`), { code: value?.error?.code || `HTTP_${response.status}` });
     return value;
   }
+  const call = (route, options = {}) => callAt(api, route, options);
+  const feedbackCall = (route, options = {}) => callAt(feedbackApi, route, options);
 
   function setPending(value) {
     pending = value;
     store("pending", value ? JSON.stringify(value) : null);
   }
 
-  // Submit and Save rating. An answer that does not prove the result stays as one saved request for an exact retry.
+  // Submit, Expand, Respond and Save rating. An answer that does not prove the result stays saved for an exact retry.
   async function send(item) {
     readGeneration += 1;
     setPending(item);
     busy = true; error = ""; render();
     try {
-      const answer = await call(`/sessions/${item.sessionId}/${item.op}`, { method: "POST", body: JSON.stringify(item.body) });
+      const answer = item.mode === "feedback"
+        ? await feedbackCall(`/sessions/${item.sessionId}/${item.op}`, { method: "POST", body: JSON.stringify(item.body) })
+        : await call(`/sessions/${item.sessionId}/${item.op}`, { method: "POST", body: JSON.stringify(item.body) });
       // Only an answer for this session with a result proves the save. Any other answer keeps the request for a retry.
       if (answer?.view?.sessionId !== item.sessionId || !answer.result) throw Object.assign(new Error("The server answer did not confirm the save."), { code: "MALFORMED" });
       setPending(null);
-      if (item.sessionId === selected) { view = answer.view; loaded = `${view.sessionId}/${view.revision}`; }
+      if (item.mode === "feedback" && item.op === "respond" && item.body?.note && answer.result.outcome === "submitted") {
+        feedbackUi?.noteDelivered(item.sessionId);
+      }
+      if (item.sessionId === selected) {
+        if (item.mode === "feedback") {
+          feedbackView = answer.view;
+          loaded = `feedback:${feedbackView.sessionId}/${feedbackView.updatedAt}/${feedbackView.revision}/${feedbackView.isNew}`;
+        } else {
+          view = answer.view;
+          loaded = `${view.sessionId}/${view.revision}`;
+        }
+      }
       if (item.op === "rate" && item.sessionId === selected) { ratingDraft = null; ratingNote = ""; }
       if (answer.result.outcome === "already-submitted") error = "This session was already submitted. The first result is kept.";
     } catch (failure) {
@@ -299,8 +332,10 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
   function select(sessionId) {
     if (sessionId === selected) return;
     readGeneration += 1;
-    selected = sessionId; view = null; record = null; loaded = ""; single = 0; ratingDraft = null;
+    selected = sessionId; view = null; feedbackView = null; record = null; loaded = ""; single = 0; ratingDraft = null;
+    contextKey = "";
     folds.clear();
+    feedbackUi?.clear();
     draft = newDraft(sessionId);
     ratingNote = "";
     // A newly selected session starts with the rating fold closed and the side column at its top. A poll and a new draw of
@@ -321,7 +356,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
       if (stale()) return;
       sessions = answer.rows; // Newest first.
       const row = sessions.find((item) => item.ref === selected);
-      if (selected && !row) { error = "This session is not in the saved sessions."; selected = null; view = null; record = null; }
+      if (selected && !row) { error = "This session is not in the saved sessions."; selected = null; view = null; feedbackView = null; record = null; }
       // A record that the server cannot read: the page shows its error code and changes nothing.
       record = row?.error ? row : null;
       // Read the record again only after it changed, so a frame and a draft stay while you read.
@@ -332,8 +367,18 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
         if (stale() || wanted !== selected || fresh.sessionId !== wanted) return;
         if (view?.sessionId === wanted && fresh.revision < view.revision) return;
         view = fresh;
+        feedbackView = null;
         loaded = `${row.sessionId}/${row.updatedAt}/${row.isNew}`;
         if (view.isNew) call(`/sessions/${wanted}/seen`, { method: "POST", body: "{}" }).catch(() => {});
+      } else if (isFeedback(row) && !busy && loaded !== `feedback:${row.sessionId}/${row.updatedAt}/${row.revision}/${row.isNew}`) {
+        const wanted = row.sessionId;
+        const fresh = (await feedbackCall(`/sessions/${wanted}`)).view;
+        if (stale() || wanted !== selected || fresh.sessionId !== wanted) return;
+        if (feedbackView?.sessionId === wanted && fresh.revision < feedbackView.revision) return;
+        feedbackView = fresh;
+        view = null;
+        loaded = `feedback:${row.sessionId}/${row.updatedAt}/${row.revision}/${row.isNew}`;
+        if (feedbackView.isNew) feedbackCall(`/sessions/${wanted}/seen`, { method: "POST", body: "{}" }).catch(() => {});
       }
       if (!pending && error.startsWith("Could not read")) error = "";
     } catch (failure) {
@@ -344,10 +389,17 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
   }
 
   function chipText(item) {
+    if (item.type === "feedback") return item.workflow ? `Feedback · ${item.workflow}` : "Feedback";
     return item.workflow ? `Compare · ${item.workflow}` : "Compare";
   }
 
   function rowState(item) {
+    if (isFeedback(item)) {
+      if (item.status === "submitted") return "Submitted";
+      if (item.pendingExpands > 0) return "Expanding options...";
+      if (item.answeredCount > 0) return `${item.answeredCount}/${item.actionableCount} answered`;
+      return item.actionableCount > 1 ? `Waiting (${item.actionableCount} items)` : "Waiting for feedback";
+    }
     if (!isCompare(item)) return item.state;
     return item.status === "open" ? "Waiting for your pick" : item.pick === null ? "No option fitted" : `Picked: ${item.pickLabel}`;
   }
@@ -499,16 +551,16 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     $("stage").style.setProperty("--cmp-columns", tracks.join(" "));
   }
 
-  function context() {
-    const parts = [make("h2", "", "Brief"), make("p", "cmp-pre", view.brief)];
-    if (view.clarifications.length) {
+  function context(target = view) {
+    const parts = [make("h2", "", "Brief"), make("p", "cmp-pre", target.brief)];
+    if (target.clarifications.length) {
       const list = make("dl");
-      for (const item of view.clarifications) list.append(make("dt", "", item.question), make("dd", "", item.answer));
+      for (const item of target.clarifications) list.append(make("dt", "", item.question), make("dd", "", item.answer));
       parts.push(make("h2", "", "Answers before the start"), list);
     }
-    if (view.outcome) parts.push(make("h2", "", "Outcome of the agent"), make("p", "cmp-pre", view.outcome.summary));
-    if (view.repo) parts.push(make("p", "cmp-meta", `Repository: ${view.repo.name}${view.repo.revision ? ` at ${view.repo.revision}` : ""}`));
-    parts.push(make("p", "cmp-meta", `Session ${view.sessionId}`));
+    if (target.outcome) parts.push(make("h2", "", "Outcome of the agent"), make("p", "cmp-pre", target.outcome.summary));
+    if (target.repo) parts.push(make("p", "cmp-meta", `Repository: ${target.repo.name}${target.repo.revision ? ` at ${target.repo.revision}` : ""}`));
+    parts.push(make("p", "cmp-meta", `Session ${target.sessionId}`));
     return parts;
   }
 
@@ -678,15 +730,16 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
   // this session, in creation order. So a later round shows as soon as a poll lists it. An earlier session that is not in
   // the list shows its session ID as text. Drawn again only on a change.
   function drawRounds() {
-    const rows = sessions.filter(isCompare);
-    const earlier = view?.previous ? view.previous.sessionId : null;
+    const active = feedbackView ?? view;
+    const rows = feedbackView ? sessions.filter(isFeedback) : sessions.filter(isCompare);
+    const earlier = active?.previous ? active.previous.sessionId : null;
     const earlierRow = earlier ? rows.find((item) => item.ref === earlier) ?? null : null;
-    const later = view ? rows.filter((item) => item.previousSessionId === view.sessionId).sort((a, b) => order(a.time, b.time) || order(a.ref, b.ref)) : [];
-    const key = view ? JSON.stringify([view.sessionId, view.round ?? 1, earlier, earlierRow?.title ?? null, later.map((item) => [item.ref, item.title])]) : "";
+    const later = active ? rows.filter((item) => item.previousSessionId === active.sessionId).sort((a, b) => order(a.time, b.time) || order(a.ref, b.ref)) : [];
+    const key = active ? JSON.stringify([Boolean(feedbackView), active.sessionId, active.round ?? 1, earlier, earlierRow?.title ?? null, later.map((item) => [item.ref, item.title])]) : "";
     if (key === roundsKey) return;
     roundsKey = key;
-    if (renderer === "a2ui") {
-      const lines = [...(earlier ? [{ prefix: `Round ${view.round ?? 2}. Earlier round:`, title: earlierRow?.title ?? earlier, target: earlierRow?.ref }] : []),
+    if (!feedbackView && renderer === "a2ui") {
+      const lines = [...(earlier ? [{ prefix: `Round ${active.round ?? 2}. Earlier round:`, title: earlierRow?.title ?? earlier, target: earlierRow?.ref }] : []),
         ...later.map((item) => ({ prefix: "Next round:", title: item.title, target: item.ref }))];
       preview.rounds(lines); $("rounds").hidden = !lines.length;
       return;
@@ -700,7 +753,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     };
     const lines = [];
     if (earlier) {
-      const line = make("p", "cmp-round-line", `Round ${view.round ?? 2}. Earlier round: `);
+      const line = make("p", "cmp-round-line", `Round ${active.round ?? 2}. Earlier round: `);
       line.append(earlierRow ? link(earlier, earlierRow.title) : make("span", "cmp-round-name", earlier));
       lines.push(line);
     }
@@ -715,8 +768,10 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
 
   function render() {
     if (closed) return;
-    const isPreview = renderer === "a2ui";
+    const isFb = Boolean(feedbackView);
+    const isPreview = !isFb && renderer === "a2ui";
     $("renderer").value = renderer;
+    $("renderer").disabled = isFb;
     $("showAll").setAttribute("aria-controls", isPreview ? "aStage" : "stage");
     drawDecision();
     drawReceipt();
@@ -727,14 +782,24 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     $("toggleList").setAttribute("aria-expanded", String(listOpen));
     $("newCount").hidden = !fresh;
     $("newCount").textContent = fresh ? `${fresh} new` : "";
-    // The filter lists the workflows of the saved sessions.
-    const workflows = [...new Set(sessions.filter((item) => item.workflow).map((item) => item.workflow))].sort();
+    // The filter lists the workflows of the saved sessions (Compare and Feedback).
+    const wfEntries = [...new Map(sessions.filter((item) => item.workflow).map((item) => [`${item.type}:${item.workflow}`, item])).values()]
+      .sort((a, b) => order(a.workflow, b.workflow) || order(a.type, b.type));
+    const wfCounts = new Map();
+    for (const item of wfEntries) wfCounts.set(item.workflow, (wfCounts.get(item.workflow) ?? 0) + 1);
     const filter = $("typeFilter");
-    if (filter.dataset.workflows !== workflows.join()) {
+    const filterSig = wfEntries.map((item) => `${item.type}:${item.workflow}`).join();
+    if (filter.dataset.workflows !== filterSig) {
       const keep = filter.value;
-      filter.replaceChildren(new win.Option("All workflows", ""), ...workflows.map((name) => new win.Option(name, `compare:${name}`)));
+      filter.replaceChildren(
+        new win.Option("All workflows", ""),
+        ...wfEntries.map((item) => new win.Option(
+          wfCounts.get(item.workflow) > 1 ? `${item.type === "feedback" ? "Feedback" : "Compare"} · ${item.workflow}` : item.workflow,
+          `${item.type}:${item.workflow}`,
+        )),
+      );
       filter.value = [...filter.options].some((item) => item.value === keep) ? keep : "";
-      filter.dataset.workflows = workflows.join();
+      filter.dataset.workflows = filterSig;
     }
     $("empty").hidden = list.length > 0;
     $("sessions").replaceChildren(...list.map((item) => {
@@ -750,14 +815,15 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
       typeChip.dataset.type = item.type;
       if (item.workflow) typeChip.dataset.workflow = item.workflow;
       top.append(typeChip);
-      // A later round of a comparison.
-      const round = isCompare(item) && item.round > 1 ? `Round ${item.round}` : "";
+      const readable = isCompare(item) || isFeedback(item);
+      // A later round of a comparison or feedback session.
+      const round = readable && item.round > 1 ? `Round ${item.round}` : "";
       if (round) top.append(make("span", "cmp-round", round));
-      if (isCompare(item)) top.append(make("span", "cmp-row-stars", starsText(item.rating)));
+      if (readable) top.append(make("span", "cmp-row-stars", starsText(item.rating)));
       const state = rowState(item);
       const when = localTime(item.time, "time unknown");
       button.append(top, make("span", "cmp-row-title", item.title), make("span", "cmp-row-meta", `${when} · ${state}`));
-      button.setAttribute("aria-label", `${item.isNew ? "New. " : ""}${chip}: ${item.title}. ${round ? `${round}. ` : ""}${state}.${isCompare(item) ? ` ${starsLabel(item.rating)}.` : ""}`);
+      button.setAttribute("aria-label", `${item.isNew ? "New. " : ""}${chip}: ${item.title}. ${round ? `${round}. ` : ""}${state}.${readable ? ` ${starsLabel(item.rating)}.` : ""}`);
       button.addEventListener("click", () => select(item.ref));
       li.append(button);
       return li;
@@ -771,30 +837,62 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     $("resolve").hidden = !pending;
     $("resolve").disabled = busy;
 
-    for (const id of ["context", "work", "stage", "decide"]) $(id).hidden = !view;
+    if ($("feedbackWork")) $("feedbackWork").hidden = !isFb;
+    for (const id of ["work", "stage", "decide"]) $(id).hidden = !view;
+    $("context").hidden = !view && !isFb;
     $("aStage").hidden = !isPreview || !view; $("aInfo").hidden = !isPreview;
-    $("aRating").hidden = !isPreview; $("rating").hidden = isPreview;
+    $("aRating").hidden = !isPreview; $("rating").hidden = isPreview || isFb;
     if (!view || !isPreview) $("aTabs").hidden = true;
     if (isPreview) $("tabs").hidden = $("stage").hidden = $("context").hidden = true;
-    $("original").hidden = isPreview || !view?.source;
+    $("original").hidden = isPreview || isFb || !view?.source;
     $("record").hidden = !record;
     // With no session, the page shows how to start one: the guidance of src/compare-server.js.
-    const guide = !view && !record && !list.length;
+    const guide = !view && !isFb && !record && !list.length;
     $("guide").hidden = !guide;
     if (guide && !$("guide").childElementCount) {
       const part = make("section", "cmp-record-part");
       part.append(make("h2", "", "Start Compare"), ...[...doc.querySelectorAll("template[data-guide]")].map((item) => item.content.cloneNode(true)));
       $("guide").replaceChildren(part);
     }
-    $("hint").hidden = Boolean(view || record || guide);
-    $("type").hidden = !view && !record;
+    $("hint").hidden = Boolean(view || isFb || record || guide);
+    $("type").hidden = !view && !isFb && !record;
     $("viewMode").disabled = !view;
+    if (isFb) {
+      $("tabs").hidden = true;
+      $("showAll").hidden = true;
+      folds.clear();
+      for (const zoom of zooms.splice(0)) zoom.close();
+      $("stage").replaceChildren();
+      stageKey = "";
+      const cKey = `${feedbackView.sessionId}/${Boolean(feedbackView.outcome)}`;
+      if (cKey !== contextKey) {
+        contextKey = cKey;
+        $("contextBody").replaceChildren(...context(feedbackView));
+      }
+      $("type").textContent = `Feedback · ${feedbackView.workflow}`;
+      Object.assign($("type").dataset, { type: "feedback", workflow: feedbackView.workflow });
+      $("title").textContent = feedbackView.title;
+      const fbDone = feedbackView.status === "submitted";
+      const fbStatusText = fbDone
+        ? "Submitted"
+        : feedbackView.pendingExpands?.length
+          ? "Expanding options..."
+          : feedbackView.answeredCount > 0
+            ? `${feedbackView.answeredCount}/${feedbackView.actionableCount} answered`
+            : feedbackView.actionableCount > 1
+              ? `Waiting (${feedbackView.actionableCount} items)`
+              : "Waiting for feedback";
+      $("state").textContent = `${fbStatusText}${feedbackView.rating ? ` · ${starsLabel(feedbackView.rating.value)}` : ""}`;
+      $("state").dataset.status = fbDone ? "submitted" : "open";
+      feedbackUi?.render({ view: feedbackView, locked: busy || Boolean(pending), frames: body.feedbackFrames || "" });
+      return;
+    }
     if (!view) {
       $("title").textContent = record ? record.title : "Walkr sessions";
       $("state").textContent = record ? record.state : "";
       $("state").dataset.status = "";
-      $("type").textContent = record ? "Compare" : "";
-      $("type").dataset.type = record ? "compare" : "";
+      $("type").textContent = record ? (record.type === "feedback" ? "Feedback" : "Compare") : "";
+      $("type").dataset.type = record ? record.type : "";
       delete $("type").dataset.workflow;
       const key = record ? `${record.ref}/${record.error}` : "";
       if (key !== recordKey) {
@@ -953,7 +1051,7 @@ export function bootCompare(win, { fetch: fetchImpl = win.fetch.bind(win), refre
     closed = true; win.clearTimeout(timer);
     for (const [node, type, fn] of handlers) node.removeEventListener(type, fn);
     for (const zoom of zooms.splice(0)) zoom.close();
-    preview.close(); decision.close();
+    preview.close(); decision.close(); feedbackUi?.close();
   } };
 }
 

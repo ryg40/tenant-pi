@@ -5,7 +5,9 @@ the artifacts (/artifacts) and to /walkr, which redirects to the Walkr Compare p
 GET and HEAD, the archive and restore writes, and the requests that it passes to Walkr and Memory. It admits only a loopback peer with a loopback name in the Host header, and runs a retention
 sweep at its start and then once an hour. With the config key walkrPublicOrigin, a loopback peer with the host of
 that origin in the Host header is a public request (a reverse proxy sends it through an SSH forward): it reaches only
-/walkr and the pass of the Compare page (`public_route`). It runs until `artifacts off`. Python 3 standard library only.
+/walkr and the pass of the Compare page (`public_route`). Each other local request but /login, /logout, /healthz,
+/static/ and /events/v1 needs a session of the admin login or the local CLI token (`login_refusal`, login.py). It
+runs until `artifacts off`. Python 3 standard library only.
 
 To add a screen, add one entry to ROUTES. To add a content type, add one entry to VIEWS (and to the upload types of
 the CLI).
@@ -13,6 +15,7 @@ the CLI).
 import argparse
 import faulthandler
 import hashlib
+import hmac
 import html
 import http.server
 import ipaddress
@@ -33,6 +36,7 @@ import artifacts_store as store_lib
 import walkr_front
 import events
 import local_sockets
+import login as login_lib
 import memory_front
 
 WEB = Path(__file__).resolve().parent / 'web'
@@ -47,6 +51,8 @@ SANDBOX = 'allow-scripts allow-popups allow-forms allow-modals allow-downloads'
 # origin only.
 PAGE_POLICY = ("default-src 'none'; script-src 'self'; style-src 'self'; frame-src 'self'; connect-src 'self'; "
                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+# The login page has its own policy: its form posts to this origin. Each other page keeps form-action 'none'.
+LOGIN_POLICY = PAGE_POLICY.replace("form-action 'none'", "form-action 'self'")
 COMMON_HEADERS = {'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
                   'Cache-Control': 'no-store'}
 # The static files: URL name -> content type. The server reads no other file of its web directory.
@@ -203,6 +209,9 @@ PAGE_HEAD = """<!doctype html>
 THEME_LIST = ('<label class="theme-control" hidden>Theme <select data-theme-picker>'
               '<option value="torch-light">Torch Light</option><option value="torch-dark">Torch Dark</option>'
               '</select></label>')
+# The logout link of the band. A GET: PAGE_POLICY keeps form-action 'none', and a cross-site GET carries no Strict
+# cookie, so it ends no session.
+LOGOUT = '<a class="logout" href="/logout">Log out</a>'
 
 
 def section_links(current=None):
@@ -223,7 +232,7 @@ LIST_BAND = """\
 """ + section_links('artifacts') + """
 <h1 class="page-name">{title}</h1>
 <p class="facts">{facts}</p>
-<span class="band-end">""" + THEME_LIST + """</span>
+<span class="band-end">""" + THEME_LIST + LOGOUT + """</span>
 <p id="note" class="note" role="status" hidden></p>
 </header>
 <main>
@@ -331,7 +340,7 @@ VIEWER_BODY = """\
 <h1 class="name">{title}</h1>
 <p class="facts">{facts}</p>
 <nav class="nav">{nav}</nav>
-<span class="band-end">""" + THEME_LIST + """</span>
+<span class="band-end">""" + THEME_LIST + LOGOUT + """</span>
 <p id="note" class="note" role="status" hidden><span id="note-text"></span>
 <button id="reload" type="button" hidden>Reload</button></p>
 </header>
@@ -410,7 +419,7 @@ SIMPLE_BODY = """\
 <header class="band">
 {name}
 {sections}
-<span class="band-end">""" + THEME_LIST + """</span>
+<span class="band-end">""" + THEME_LIST + LOGOUT + """</span>
 </header>
 <main class="plain">
 {body}
@@ -668,7 +677,7 @@ def healthz(handler, match):
     data = {'status': 'ok', 'service': store_lib.SERVICE, 'pid': os.getpid(), 'uid': os.getuid(), 'schema': 2,
             'port': handler.server.server_port, 'modules': ['artifacts'],
             'pages': {'root': '/', 'artifacts': '/artifacts'},
-            'events': {'path': events.PATH, 'version': events.VERSION}}
+            'events': {'path': events.PATH, 'version': events.VERSION}, 'login': {'path': '/login'}}
     if walkr_front.installed():
         data['modules'].append('walkr')
         data['pages']['walkr'] = '/walkr'
@@ -933,6 +942,192 @@ def static(handler, match):
     return Answer(200, body, STATIC[name], headers)
 
 
+# ---------------------------------------------------------------------------
+# The admin login (login.py): the page /login, the logout and the check of each protected request
+# ---------------------------------------------------------------------------
+LOGIN_BODY = """\
+<body>
+<header class="band">
+<span class="mark">""" + SERVER_NAME + """</span>
+<h1 class="page-name">Log in</h1>
+<span class="band-end">""" + THEME_LIST + """</span>
+</header>
+<main class="plain">
+{note}<form class="login" method="post" action="/login">
+<input type="hidden" name="next" value="{next}">
+<p><label>User name <input name="user" value="admin" autocomplete="username" required></label></p>
+<p><label>Key <input name="key" type="password" autocomplete="current-password" required></label></p>
+<p><button type="submit">Log in</button></p>
+</form>
+<p>The key is in the password system that <code>artifacts login status</code> names. <code>artifacts login rotate</code>
+makes a new key and ends each session.</p>
+</main>
+</body>
+</html>
+"""
+# The largest body of POST /login.
+LOGIN_BYTES = 4096
+
+
+def cookie_name(handler):
+    """The name of the session cookie: it holds the port, because a browser sends a cookie of 127.0.0.1 to each port."""
+    return f'tenant_artifacts_{handler.server.server_port}'
+
+
+def session_id(handler):
+    """The value of the session cookie of this server in the Cookie headers, or None."""
+    name = cookie_name(handler)
+    for header in handler.headers.get_all('Cookie') or []:
+        for part in header.split(';'):
+            key, eq, value = part.strip().partition('=')
+            if eq and key == name and re.fullmatch(r'[A-Za-z0-9_-]{20,100}', value):
+                return value
+    return None
+
+
+def set_cookie(handler, sid, seconds=login_lib.SESSION_SECONDS):
+    # No Secure flag: the server speaks plain HTTP on loopback.
+    return f'{cookie_name(handler)}={sid}; HttpOnly; SameSite=Strict; Path=/; Max-Age={seconds}'
+
+
+def safe_next(value):
+    """A relative path of this server that starts with one `/`, else /artifacts."""
+    if (not isinstance(value, str) or not re.fullmatch(r'/(?![/\\])[^\\\x00-\x20\x7f]*', value)
+            or urlsplit(value).scheme or urlsplit(value).netloc):
+        return '/artifacts'
+    return value
+
+
+def login_page(handler, status=200, note='', target='/artifacts', headers=None):
+    e = html.escape
+    note = f'<p class="note-text" role="alert">{e(note)}</p>\n' if note else ''
+    body = PAGE_HEAD.format(title='Log in - ' + SERVER_NAME, scripts='') + LOGIN_BODY.format(note=note, next=e(target))
+    # Referrer-Policy same-origin: with no-referrer, a browser sends `Origin: null` with the POST of the form.
+    return Answer(status, body.encode('utf-8'), 'text/html; charset=utf-8',
+                  {'Content-Security-Policy': LOGIN_POLICY, 'Referrer-Policy': 'same-origin', **(headers or {})})
+
+
+def same_origin_refusal(handler, origin_needed):
+    """The reason when the headers name another site, else None: the checks of the archive writes. With
+    `origin_needed`, exactly one Origin header is required; else an absent Origin passes, and so does
+    `Sec-Fetch-Site: none` (an address that the user typed)."""
+    origin = 'http://' + handler.headers['Host'].strip().lower()
+    origins = [v.strip().lower() for v in handler.headers.get_all('Origin', [])]
+    if origins != [origin] and (origin_needed or origins):
+        return 'The origin must match this server.'
+    sites = [v.strip().lower() for v in handler.headers.get_all('Sec-Fetch-Site', [])]
+    if sites not in ([], ['same-origin']) + (() if origin_needed else (['none'],)):
+        return 'The request must come from the same origin.'
+    return None
+
+
+def login_route(handler):
+    """GET /login: the form, or a redirect for a live session. POST /login: the check of the user name and the key."""
+    logins = handler.server.logins
+    if handler.command in ('GET', 'HEAD'):
+        targets = parse_qs(urlsplit(handler.path).query).get('next', [])
+        target = safe_next(targets[0] if len(targets) == 1 else None)
+        if logins.session(session_id(handler))[0]:
+            return Answer(303, b'', headers={'Location': target})
+        if logins.current() is None:
+            return login_page(handler, 503, 'This server has no login key. Run artifacts start or artifacts login '
+                                            'rotate in a shell.', target)
+        return login_page(handler, target=target)
+    if handler.command != 'POST':
+        return Answer(405, b'method not allowed\n', headers={'Allow': 'GET, HEAD, POST'})
+    refused = same_origin_refusal(handler, origin_needed=True)
+    if refused:
+        return text(403, 'forbidden: ' + refused)
+    lengths = handler.headers.get_all('Content-Length', [])
+    if ('Transfer-Encoding' in handler.headers or len(lengths) != 1 or not re.fullmatch(r'[0-9]{1,5}', lengths[0])
+            or int(lengths[0]) > LOGIN_BYTES):
+        return text(413 if lengths and lengths[0].isdigit() else 411, 'the login form needs a small, whole body')
+    if handler.headers.get_content_type() != 'application/x-www-form-urlencoded':
+        return text(415, 'the login form is application/x-www-form-urlencoded')
+    raw = handler.rfile.read(int(lengths[0]))
+    wait = logins.retry_after()
+    if wait:
+        return login_page(handler, 429, f'Too many failed logins. Wait {wait} seconds, then try again.',
+                          headers={'Retry-After': str(wait)})
+    try:
+        fields = parse_qs(raw.decode('utf-8'), keep_blank_values=True, max_num_fields=8)
+    except (UnicodeDecodeError, ValueError):
+        fields = {}
+    one = {name: values[0] for name, values in fields.items() if len(values) == 1}
+    target = safe_next(one.get('next'))
+    if logins.current() is None:
+        return login_page(handler, 503, 'This server has no login key. Run artifacts login rotate in a shell.',
+                          target)
+    # login() checks the lock time again in the same locked step as the key check and the failure count.
+    sid, wait = logins.login(one.get('user', ''), one.get('key', ''))
+    if wait:
+        return login_page(handler, 429, f'Too many failed logins. Wait {wait} seconds, then try again.',
+                          headers={'Retry-After': str(wait)})
+    if sid is None:
+        log('login: refused')
+        return login_page(handler, 401, 'The user name or the key is not right.', target)
+    log('login: a new session')
+    return Answer(303, b'', headers={'Location': target, 'Set-Cookie': set_cookie(handler, sid)})
+
+
+def logout_route(handler):
+    """GET /logout: end the session of the cookie and go to /login."""
+    if handler.command not in ('GET', 'HEAD'):
+        return Answer(405, b'method not allowed\n', headers={'Allow': 'GET, HEAD'})
+    refused = same_origin_refusal(handler, origin_needed=False)
+    if refused:
+        return text(403, 'forbidden: ' + refused)
+    sid = session_id(handler)
+    if sid:
+        handler.server.logins.logout(sid)
+    return Answer(303, b'', headers={'Location': '/login', 'Set-Cookie': set_cookie(handler, 'none', 0)})
+
+
+def open_path(path):
+    """The paths outside the login: /healthz (the CLI asks it before it knows the program on the port) and the kit
+    files of /static/ (no user data; a sandboxed frame has an opaque origin and sends no cookie)."""
+    return path == '/healthz' or path.startswith('/static/')
+
+
+def page_request(handler, path, raw):
+    """True for a request of a page, which gets a redirect to /login; False for a JSON, download, write or pass
+    request, which gets 401."""
+    if handler.command not in ('GET', 'HEAD') or path.startswith(('/api/', '/a/', '/d/')):
+        return False
+    if walkr_front.listed(handler.command, handler.path):
+        return walkr_front.PAGE.fullmatch(handler.path) is not None
+    if memory_front.listed(handler.command, raw):
+        return raw == memory_front.PREFIX + '/'
+    return True
+
+
+def login_refusal(handler, path, raw):
+    """None when the request carries the local CLI token or a live session, else the answer: 303 to /login for a
+    page, 401 with no data for each other request. A wrong CLI token is 401 also with a session."""
+    tokens = handler.headers.get_all(login_lib.TOKEN_HEADER) or []
+    if tokens:
+        # An empty token of the server (before main writes the token file) passes nothing.
+        expected = handler.server.cli_token.encode('ascii')
+        if len(tokens) == 1 and expected and hmac.compare_digest(tokens[0].strip().encode('utf-8', 'replace'),
+                                                                 expected):
+            return None
+        return json_error(401, 'UNAUTHORIZED', 'The local token is not the one of this server run.')
+    sid = session_id(handler)
+    live, again = handler.server.logins.session(sid)
+    if live:
+        if again:
+            handler.cookie = set_cookie(handler, sid)
+        return None
+    if page_request(handler, path, raw):
+        return Answer(303, b'', headers={'Location': '/login?next=' + quote(handler.path, safe='/')})
+    return json_error(401, 'UNAUTHORIZED', 'Log in on /login first.')
+
+
+def api_login(handler, match):
+    """The generation of the verifier that this server uses, for `artifacts status` and `artifacts login status`."""
+    return Answer(200, json.dumps({'generation': handler.server.logins.generation()}).encode(), 'application/json')
+
+
 ROUTES = (
     (re.compile(r'/'), root),
     (re.compile(r'/artifacts'), index),
@@ -945,6 +1140,7 @@ ROUTES = (
     (re.compile(r'/v/(?P<slug>[^/]*)'), viewer),
     (re.compile(r'/d/(?P<slug>[^/]*)'), download),
     (re.compile(r'/api/state(?:/(?P<slug>[^/]*))?'), api_state),
+    (re.compile(r'/api/login'), api_login),
     (re.compile(r'/static/(?P<name>[A-Za-z0-9_./-]+)'), static),
 )
 
@@ -1001,6 +1197,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     timeout = 30
     # The public origin for a public request (admitted), else None.
     public = None
+    # The Set-Cookie value that renews the session cookie of this answer, else None.
+    cookie = None
 
     def version_string(self):
         return store_lib.SERVICE
@@ -1012,6 +1210,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def send(self, answer, body=True):
         self.send_response(answer.status)
         headers = {**COMMON_HEADERS, 'Content-Type': answer.content_type, **answer.headers}
+        if self.cookie and 'Set-Cookie' not in headers:
+            headers['Set-Cookie'] = self.cookie
         # A 304 has no body, and its Content-Length would have to be the length of the full answer: send none.
         if answer.status != 304:
             headers['Content-Length'] = str(len(answer.body))
@@ -1022,6 +1222,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(answer.body)
 
     def route(self):
+        self.cookie = None
         kind = admitted(self)
         if kind is None:
             return text(403, 'forbidden: only a loopback peer with Host 127.0.0.1, localhost or [::1]')
@@ -1034,14 +1235,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
         # The event channel of the Herdr app: the exact path, with no query. It writes its own answer.
         if self.path == events.PATH:
             return self.events()
+        # BaseHTTPRequestHandler folds leading slashes in self.path. Match and pass the original target.
+        raw_target = self.requestline.split()[1]
+        path = self.path.split('?', 1)[0].split('#', 1)[0]
+        # The login: a public request keeps its own rule (public_route), and each local request but the open paths
+        # needs the CLI token or a session. The check comes before the passes.
+        if kind == LOCAL:
+            if path == '/login':
+                return login_route(self)
+            if path == '/logout':
+                return logout_route(self)
+            if not open_path(path):
+                refused = login_refusal(self, path, raw_target)
+                if refused:
+                    return refused
         # The raw path: a path with a query or a fragment is not in the list.
         if walkr_front.listed(self.command, self.path):
             return walkr_pass(self)
-        # BaseHTTPRequestHandler folds leading slashes in self.path. Match and pass the original target.
-        raw_target = self.requestline.split()[1]
         if memory_front.listed(self.command, raw_target):
             return memory_pass(self, raw_target)
-        path = self.path.split('?', 1)[0].split('#', 1)[0]
         write = WRITE_PATH.fullmatch(path)
         if write:
             return archive_write(self, write)
@@ -1088,8 +1300,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
 class Server(http.server.ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, port, store, hub=None, memory=None, public=None):
+    def __init__(self, port, store, hub=None, memory=None, public=None, logins=None, cli_token=''):
         self.store = str(store)
+        # The admin login (login.Logins) and the local CLI token of this run.
+        self.logins = logins
+        self.cli_token = cli_token
         # The public origin of the key walkrPublicOrigin (admitted), or None.
         self.public = public
         # The event channel (events.py) and the child process of the Memory section (memory_front.py).
@@ -1174,7 +1389,12 @@ def main(argv=None):
     # The memory viewer: a child process with the settings file of the user. It starts beside the first answers of
     # this server, and again at a request when it is gone.
     memory = memory_front.Child(store_lib.config_path().parent / memory_front.SETTINGS, walkr_front.child_env(), log)
-    server = Server(args.port, store, memory=memory, public=public_origin())
+    logins = login_lib.Logins(store_lib.config_path().parent / login_lib.VERIFIER)
+    if logins.current() is None:
+        log('login: no valid verifier file; each protected route is refused until artifacts login rotate')
+    # The bind comes first: a server that cannot bind writes no token file, so the tokens of a running server stay.
+    server = Server(args.port, store, memory=memory, public=public_origin(), logins=logins)
+    server.cli_token = events.write_token(store_lib.state_dir(), login_lib.CLI_TOKEN_FILE)
     hub = server.hub = events.Hub(events.write_token(store_lib.state_dir()), lambda: artifact_facts(str(store)),
                                   lambda: module_states(memory))
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))

@@ -11,7 +11,7 @@
 
 (() => {
   const KEY = "human-review:theme";
-  const DARK = ["torch-dark", "dark", "plum", "night", "statue-dark"];
+  const DARK = ["torch-dark", "lavender-dark", "dark", "plum", "night", "statue-dark"];
   const themeOf = (value) => (DARK.includes(value) ? "torch-dark" : "torch-light");
   const stored = () => {
     try {

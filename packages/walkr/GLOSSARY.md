@@ -1,7 +1,7 @@
 # Glossary
 
 The words that the Walkr guides use. Each entry names a word to avoid in its place.
-Walkr has one mode, Compare. The words of the retired modes (Core, Double, Coinflip, Trainer) are in the glossary of the release tag `portable/20261122-548259a`.
+Walkr has two modes: Compare and Feedback. The words of the retired modes (Core, Double, Coinflip, Trainer) are in the glossary of the release tag `portable/20261122-548259a`.
 
 ## Compare
 

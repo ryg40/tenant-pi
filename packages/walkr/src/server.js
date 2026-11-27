@@ -9,8 +9,10 @@ import { ensureStateDir, SERVER_PROTOCOL, serverPath, stateDir } from "./paths.j
 import { allowedHosts, publicOrigin } from "./allowed-hosts.js";
 import { configPath } from "./compare-remote.js";
 import { createCompareHandler } from "./compare-server.js";
+import { createFeedbackHandler } from "./feedback-server.js";
 import { rejectUpgrade, WS_LIMITS } from "./compare-socket.js";
 import { compareRoot } from "./compare-store.js";
+import { feedbackRoot } from "./feedback-store.js";
 
 // The background server of Walkr: the Compare routes, the two theme files and the health check. Every other path
 // answers 404 and reads no request body. Core, Double, Coinflip, Trainer and the shared GUI are retired
@@ -46,18 +48,24 @@ function startPublicOrigin() {
   });
 }
 
-export function createServer({ ownFiles = [], publicSite = startPublicOrigin(), root = compareRoot(), socketPoll = null } = {}) {
+export function createServer({ ownFiles = [], publicSite = startPublicOrigin(), root = compareRoot(), feedbackRoot: fbRoot = feedbackRoot(), socketPoll = null } = {}) {
   /**
-   * Random per-run secret of the agent. The Compare API requires it or the token of the private page, so a web page
-   * that sends blind cross-origin requests to 127.0.0.1 cannot read or write a session. The CLI reads it from
+   * Random per-run secret of the agent. The Compare and Feedback APIs require it or the token of the private page, so a
+   * web page that sends blind cross-origin requests to 127.0.0.1 cannot read or write a session. The CLI reads it from
    * server.json.
    */
   const token = crypto.randomBytes(16).toString("hex");
-  // Hosted mode is retired. With the old variable set, the Compare handler refuses each route, as before.
+  // Hosted mode is retired. With the old variable set, the Compare and Feedback handlers refuse each route, as before.
   const hosted = process.env.HUMAN_REVIEW_HOSTED === "1";
   const loopbackPeer = loopbackPeerCheck();
   let lastActivity = Date.now();
-  const compare = createCompareHandler({ token, root, hosted, onSocketActivity: () => { lastActivity = Date.now(); }, socketPoll });
+  const sharedPage = { shell: crypto.randomBytes(32).toString("hex"), token: crypto.randomBytes(32).toString("hex") };
+  const pagePath = (sessionId) => `/_walkr/compare/g/${sharedPage.shell}${sessionId ? `#${sessionId}` : ""}`;
+  const feedback = createFeedbackHandler({ token, root: fbRoot, hosted, page: sharedPage, pagePath });
+  const compare = createCompareHandler({
+    token, root, hosted, page: sharedPage, extraHistoryRows: feedback.historyRows,
+    onSocketActivity: () => { lastActivity = Date.now(); }, socketPoll,
+  });
 
   const json = (res, code, payload) => {
     res.writeHead(code, { "content-type": "application/json; charset=utf-8" });
@@ -133,16 +141,17 @@ export function createServer({ ownFiles = [], publicSite = startPublicOrigin(), 
       // The host of the public origin (walkrPublicOrigin): a reverse proxy sends it unchanged through an SSH forward,
       // so the peer is loopback. It reaches Compare and the theme files only, and the agent token is not valid for it.
       const publicHost = Boolean(publicSite) && host.toLowerCase() === publicSite.host && !hosted && loopbackPeer(peer);
-      const page = pathname.startsWith("/_walkr/compare/") || Object.hasOwn(THEME, pathname);
+      const page = pathname.startsWith("/_walkr/compare/") || pathname.startsWith("/_walkr/feedback/") || Object.hasOwn(THEME, pathname);
       if (!local && !((loopbackHost || frontHost || allowedHost || publicHost) && page)) {
         res.writeHead(403, { "content-type": "text/plain" });
         return res.end("Forbidden");
       }
 
-      // Compare checks the Origin of a page write only for a request that the front exception alone admitted.
-      // A request of the public host has the rules of the public origin (compare-server.js).
-      if (await compare(req, res, { viaFront: frontHost && !loopbackHost && !allowedHost,
-        publicOrigin: publicHost ? publicSite.origin : null })) return;
+      // Compare and Feedback check the Origin of a page write only for a request that the front exception alone admitted.
+      // A request of the public host has the rules of the public origin (compare-server.js, feedback-server.js).
+      const context = { viaFront: frontHost && !loopbackHost && !allowedHost, publicOrigin: publicHost ? publicSite.origin : null };
+      if (await compare(req, res, context)) return;
+      if (await feedback(req, res, context)) return;
 
       if (pathname === "/health") return json(res, 200, { ok: true, pid: process.pid, protocol: SERVER_PROTOCOL });
 

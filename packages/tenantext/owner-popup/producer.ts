@@ -77,6 +77,8 @@ import { createLocalWsServer, type LocalWsClient, type LocalWsServer } from "./w
  * A coordinator can send only between its Stop event and its next turn-start event: then it sits at its prompt,
  * so a press sends at once, whatever status `hc get` reports. A delivered send or a turn-start locks the surface:
  * the rows that were not sent stay, Send is refused, and the next Stop report replaces the rows.
+ * A group, locked or open, also ends when herdr-core says that the terminal of its coordinator does not exist or is
+ * not live (checked at each idle tick, and at a press), because that terminal writes no later report.
  */
 
 export const DEFAULT_PRODUCER_PORT = 18766;
@@ -197,7 +199,9 @@ export interface HcClient {
 	refreshNoDraftWait?(): Promise<boolean>;
 	/**
 	 * True only when herdr-core says that the terminal does not exist (`hc get` gives an error of the kind
-	 * `not_found`). A failed or slow `hc get`, or any other answer, is false. It never rejects.
+	 * `not_found`), or that it is not live (`hc get` gives a record whose `state` is not `live`, for example
+	 * `finished` after `hc kill` with no `hc rm`). A failed or slow `hc get`, or any other answer, is false.
+	 * It never rejects.
 	 */
 	gone?(address: string): Promise<boolean>;
 }
@@ -419,8 +423,18 @@ export function createHcClient(hcBin = "hc", env: NodeJS.ProcessEnv = process.en
 				try {
 					execFile(hcBin, ["get", address, "--json"], { timeout: HC_QUERY_TIMEOUT_MS, env: childEnv }, (error, stdout, stderr) => {
 						const execErr = error as (NodeJS.ErrnoException & { killed?: boolean; signal?: string | null }) | null;
-						// Success, a timeout or a kill says nothing about a closed terminal.
-						if (!execErr || execErr.killed || execErr.signal) {
+						// A record of the terminal: it is gone only when it has a state that is not `live`.
+						if (!execErr) {
+							try {
+								const data = JSON.parse(stdout) as unknown;
+								resolveDone(isPlainObject(data) && !data.error && typeof data.state === "string" && data.state !== "live");
+							} catch {
+								resolveDone(false);
+							}
+							return;
+						}
+						// A timeout or a kill says nothing about a closed terminal.
+						if (execErr.killed || execErr.signal) {
 							resolveDone(false);
 							return;
 						}
@@ -778,6 +792,46 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		return gen;
 	};
 
+	/** End the group of a coordinator whose terminal is not live, and delete its surface on each client. */
+	const endGroupOfEndedTerminal = (group: CoordinatorGroup, result: string): void => {
+		const address = group.address;
+		bumpGeneration(address);
+		unknownSends.delete(address);
+		maybeSentLabels.delete(address);
+		unresolvedLabels.delete(address);
+		pastRevisions.delete(address);
+		dropSentNote(address, false);
+		state.coordinators = state.coordinators.filter((c) => c !== group);
+		logEvent("terminal-gone", address, group.reportDigest, result);
+		broadcastSurfaceDelete(address);
+	};
+
+	/** Addresses whose check for an ended terminal runs. */
+	const goneChecks = new Set<string>();
+	/**
+	 * A terminal that ended writes no later report, so the group of its coordinator, locked or open, would stay until
+	 * a restart of the producer: when herdr-core says that the terminal does not exist or is not live, the group ends
+	 * and its surface is deleted. A failed or slow check removes nothing. A group with a pending form or a send in
+	 * flight waits for the result of that send.
+	 */
+	const checkTerminalEnded = (group: CoordinatorGroup): void => {
+		const address = group.address;
+		if (printOnly || !hc.gone) return;
+		if (group.receiptPending || inFlightSend.has(address) || goneChecks.has(address)) return;
+		const gen = generations.get(address) ?? 0;
+		goneChecks.add(address);
+		const check = Promise.resolve()
+			.then(() => hc.gone?.(address) ?? false)
+			.catch(() => false)
+			.then((gone) => {
+				if (!gone || !isCurrentGen(address, gen) || findGroup(address) !== group) return;
+				if (group.receiptPending || inFlightSend.has(address)) return;
+				endGroupOfEndedTerminal(group, "surface-removed");
+			})
+			.finally(() => goneChecks.delete(address));
+		void trackJob(check);
+	};
+
 	/**
 	 * True for a press of a Button of a replaced view: it names an action of a Button, the coordinator of an active
 	 * surface, and a revision that this surface had before (not the current one).
@@ -893,10 +947,13 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 					`Send refused: hc get found no terminal ${destination}. The rows stay; press Send again.`,
 				),
 			);
+			// A failed or slow `hc get` also gives null: the group ends only when herdr-core says that the terminal ended.
+			checkTerminalEnded(liveGroup);
 			return { handled: false, reason: "hc-get-failed" };
 		}
 		if (term.state !== undefined && term.state !== "live") {
-			showCards(liveGroup, withUnknownNote(destination, gen, `Send refused: the terminal ${destination} is gone (${term.state}).`));
+			// No later report comes from a terminal that is not live, and no press can reach it: the group ends.
+			endGroupOfEndedTerminal(liveGroup, "press-surface-removed");
 			return { handled: false, reason: "terminal-gone" };
 		}
 		if (inFlightSend.has(destination)) {
@@ -1875,39 +1932,12 @@ export async function createProducer(options: ProducerOptions = {}): Promise<Pro
 		void trackJob(pollEventsNow());
 	}
 
-	/** Addresses whose check for a closed terminal runs. */
-	const goneChecks = new Set<string>();
 	/**
-	 * A locked group of a coordinator whose terminal no longer exists would stay for ever and hold the idle shutdown:
-	 * when herdr-core says that the terminal does not exist, the group ends and its surface is deleted. A failed or slow
-	 * check removes nothing.
+	 * The group of a coordinator whose terminal ended would stay for ever, show its card in the rail and hold the idle
+	 * shutdown: at each idle tick, each group gets the check for an ended terminal (`checkTerminalEnded`).
 	 */
 	const dropClosedTerminals = (): void => {
-		if (printOnly || !hc.gone) return;
-		for (const group of state.coordinators) {
-			const address = group.address;
-			if (!group.locked || group.receiptPending || inFlightSend.has(address) || goneChecks.has(address)) continue;
-			const gen = generations.get(address) ?? 0;
-			goneChecks.add(address);
-			const check = Promise.resolve()
-				.then(() => hc.gone?.(address) ?? false)
-				.catch(() => false)
-				.then((gone) => {
-					if (!gone || !isCurrentGen(address, gen) || findGroup(address) !== group || !group.locked) return;
-					if (group.receiptPending || inFlightSend.has(address)) return;
-					bumpGeneration(address);
-					unknownSends.delete(address);
-					maybeSentLabels.delete(address);
-					unresolvedLabels.delete(address);
-					pastRevisions.delete(address);
-					dropSentNote(address, false);
-					state.coordinators = state.coordinators.filter((c) => c !== group);
-					logEvent("terminal-gone", address, group.reportDigest, "surface-removed");
-					broadcastSurfaceDelete(address);
-				})
-				.finally(() => goneChecks.delete(address));
-			void trackJob(check);
-		}
+		for (const group of [...state.coordinators]) checkTerminalEnded(group);
 	};
 
 	if (idleShutdownMs > 0) {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { accountsRoot, AccountError, adopt, use } from "../claude-code/scripts/claude-accounts.mjs";
@@ -68,6 +68,8 @@ test("use refuses with no write when the live login belongs to no slot", () => {
 
 /** The text of each file, to show that a refused command wrote nothing. */
 const snapshot = (paths: string[]) => paths.map(path => [path, readFileSync(path, "utf8")]);
+/** The names of every entry under a folder, sorted. A link is not followed. */
+const listFiles = (dir: string): string[] => readdirSync(dir, { recursive: true }).map(String).sort();
 
 test("use refuses with no write when the live files name different accounts", () => {
 	const f = fixtureHome();
@@ -82,6 +84,38 @@ test("use refuses with no write when the live files name different accounts", ()
 		const before = snapshot([f.credentials, f.claudeJson, f.slot("1", ".credentials.json"), f.slot("2", ".credentials.json"), join(accountsRoot(f.env, f.home), "state.json")]);
 		assert.throws(() => use("1", { env: f.env, home: f.home, now: NOW + 1000 }), AccountError);
 		for (const [path, text] of before) assert.equal(readFileSync(path, "utf8"), text, path);
+	} finally { f.done(); }
+});
+
+test("use and adopt refuse with no write when CLAUDE_CONFIG_DIR is a slot folder", () => {
+	const f = fixtureHome();
+	try {
+		f.write(f.credentials, { claudeAiOauth: oauth("one") });
+		f.write(f.claudeJson, { oauthAccount: account("one") });
+		adopt("1", { env: f.env, home: f.home, now: NOW });
+		f.write(f.slot("2", ".credentials.json"), { claudeAiOauth: oauth("two") });
+		f.write(f.slot("2", ".claude.json"), { oauthAccount: account("two") });
+		// A session of claude2 while slot 1 is active: its config folder is the slot 2 folder.
+		const env = { ...f.env, CLAUDE_CONFIG_DIR: join(accountsRoot(f.env, f.home), "2") } as NodeJS.ProcessEnv;
+		const before = snapshot([f.credentials, f.claudeJson, f.slot("1", ".credentials.json"), f.slot("1", ".claude.json"),
+			f.slot("2", ".credentials.json"), f.slot("2", ".claude.json"), join(accountsRoot(f.env, f.home), "state.json")]);
+		for (const slot of ["1", "2"]) {
+			assert.throws(() => use(slot, { env, home: f.home, now: NOW + 1000 }), AccountError, `use ${slot}`);
+			assert.throws(() => adopt(slot, { env, home: f.home, now: NOW + 1000 }), AccountError, `adopt ${slot}`);
+		}
+		for (const [path, text] of before) assert.equal(readFileSync(path, "utf8"), text, path);
+
+		// ~/.claude is a link to the slot 2 folder, and CLAUDE_CONFIG_DIR is unset.
+		rmSync(join(f.home, ".claude"), { recursive: true, force: true });
+		symlinkSync(join(accountsRoot(f.env, f.home), "2"), join(f.home, ".claude"));
+		const names = listFiles(f.home);
+		const linked = snapshot([...before.map(([path]) => path).filter(path => path !== f.credentials)]);
+		for (const slot of ["1", "2"]) {
+			assert.throws(() => use(slot, { env: f.env, home: f.home, now: NOW + 1000 }), AccountError, `use ${slot}, ~/.claude linked`);
+			assert.throws(() => adopt(slot, { env: f.env, home: f.home, now: NOW + 1000 }), AccountError, `adopt ${slot}, ~/.claude linked`);
+		}
+		for (const [path, text] of linked) assert.equal(readFileSync(path, "utf8"), text, path);
+		assert.deepEqual(listFiles(f.home), names, "no new file, also no .prev file");
 	} finally { f.done(); }
 });
 

@@ -4,10 +4,13 @@
 Usage: herdr-role-set --set '<json>' [--dry-run]
        herdr-role-set --models
        herdr-role-set --coordinator <space> <tab> [--dry-run]
+       herdr-role-set --coordinator-tokens
 
 Runs on the computer of the space with no HC_TERMINAL_ID, no HERDR_ENV and no init.py record.
 Takes the space only from --set JSON. --models prints the Copilot models of the live Pi listing
-(read-only: no pane, no file, no hc call). --coordinator makes <tab> the coordinator tab of <space>:
+(read-only: no pane, no file, no hc call). --coordinator-tokens prints the coordinator token count
+(or null) of every local space with live terminals in one read-only JSON line. --coordinator makes
+<tab> the coordinator tab of <space>:
 its newest agent terminal gets the coordinator label and record, and each other coordinator of the space
 loses them (see SPAWN.md, "Role set launch"). Prints single-line JSON on stdout; real-run skip
 reasons go to stderr as one plain line per skipped target. The final line of a real --set run, `ok` true or
@@ -35,7 +38,9 @@ import contextlib
 import io
 import json
 import os
+import re
 import shlex
+import stat
 import subprocess
 import sys
 import tempfile
@@ -59,6 +64,7 @@ EXIT = exit_codes("role_set")
 HANDOFF_TOKEN_LIMIT = 200_000
 PREVIEW_MAX = 120
 RUN_LIMIT_SECONDS = 600
+COORDINATOR_TOKENS_LIMIT_SECONDS = 20
 SEND_LIMIT_SECONDS = 90
 # Claude Code reports `working` with "<count text> still running" (for example "1 shell still running")
 # after a completed turn while it waits for background tasks; in a turn the message is the tool detail.
@@ -108,6 +114,11 @@ LIST_TIMEOUT_SECONDS = 20
 TASK_ROLES = tuple(r for r in ROLES if r != "coordinator")
 
 SHELL_NAMES = frozenset({"bash", "zsh", "sh", "dash", "fish", "ksh"})
+AGY_HOME = os.path.join("~", ".gemini", "antigravity-cli")
+PROC_ROOT = "/proc"
+AGY_CONV_ID = re.compile(r"[A-Za-z0-9._-]+")
+PROC_MAX_DEPTH = 64
+PROC_DEADLINE_CHECK_MASK = 255
 
 
 class _DeadlineExceeded(Exception):
@@ -537,16 +548,54 @@ def terminal_tab_role(terminal, coordinator_tabs):
     return None
 
 
-def find_coordinator(terminals, *, raw_records=None):
-    """The active live coordinator agent terminal of the space, or None."""
-    if raw_records is None:
-        candidates = [t for t in terminals if core_role(t) == "coordinator" and terminal_agent(t)]
-    else:
-        candidates = [
-            t for t in terminals
-            if _core_role_in_memory(t, raw_records.get(t["address"])) == "coordinator"
-            and terminal_agent(t, record=raw_records.get(t["address"]))
-        ]
+def _where_is_first_tab(terminal):
+    """True when `where` ends in ' / 1' or ' / coordinator' (the dummies-skill first-tab rule)."""
+    where = (terminal.get("labels") or {}).get("where")
+    return isinstance(where, str) and " / " in where and where.rsplit(" / ", 1)[1] in ("coordinator", "1")
+
+
+def _in_task_role_tab(terminal):
+    """True when `terminal` sits in one of the fixed task-role tabs of its space."""
+    labels = terminal.get("labels") or {}
+    tab = labels.get("herdr.tab") or ""
+    if not tab or not labels.get("herdr.space"):
+        return False
+    return any(core_role_tab(labels, role) == tab for role in TASK_ROLES)
+
+
+def _is_fallback_coordinator(terminal, raw_record):
+    """Dummies-skill fallback for a coordinator with no role label: a live agent with no role label,
+    no role record and no task role, outside task-role tabs, whose `where` ends in ' / 1' or ' / coordinator'."""
+    if terminal.get("state") != "live":
+        return False
+    labels = terminal.get("labels") or {}
+    skill_role = labels.get("skill.role")
+    if isinstance(skill_role, str) and skill_role.strip():
+        return False
+    if _core_role_in_memory(terminal, raw_record) is not None or task_terminal(terminal, raw_record):
+        return False
+    if _in_task_role_tab(terminal):
+        return False
+    if not _where_is_first_tab(terminal):
+        return False
+    return bool(present_agent(terminal, raw_record))
+
+
+def find_coordinator(terminals, *, raw_records=None, fallback=False):
+    """The active live coordinator agent terminal of the space, or None.
+
+    An explicit coordinator (valid coordinator record or `skill.role=coordinator`) always wins.
+    With `fallback=True`, when no explicit coordinator exists, falls back to `_is_fallback_coordinator`.
+    """
+    raw = ({t["address"]: _read_raw_record(t["address"]) for t in terminals}
+           if raw_records is None else raw_records)
+    candidates = [
+        t for t in terminals
+        if _core_role_in_memory(t, raw.get(t["address"])) == "coordinator"
+        and terminal_agent(t, record=raw.get(t["address"]))
+    ]
+    if not candidates and fallback:
+        candidates = [t for t in terminals if _is_fallback_coordinator(t, raw.get(t["address"]))]
     if not candidates:
         return None
     return max(candidates, key=lambda t: (t.get("created_ms") if isinstance(t.get("created_ms"), (int, float)) else -1))
@@ -666,6 +715,76 @@ def set_coordinator(space, tab, dry_run, deadline):
         stop(f"internal error: {type(exc).__name__}")
 
 
+def discover_all_terminals(deadline):
+    """Return {space: [live local terminal records]} across all spaces, bounded by `deadline`.
+
+    Raises _ActionError or _DeadlineExceeded.
+    """
+    timeout = remaining_seconds(deadline, cap=20)
+    code, data, raw = hc("ls", "--json", timeout=timeout)
+    if code == 124 and time.monotonic() >= deadline:
+        raise _DeadlineExceeded()
+    if code != 0 or not isinstance(data, dict) or core_error_kind(data):
+        raise _ActionError("could not list herdr-core terminals")
+    terminals = data.get("terminals")
+    if not isinstance(terminals, list):
+        raise _ActionError("invalid herdr-core terminal list")
+    by_space = {}
+    seen = set()
+    for entry in terminals:
+        if not isinstance(entry, dict) or not isinstance(entry.get("address"), str) or not entry["address"]:
+            raise _ActionError("invalid herdr-core terminal list")
+        address = entry["address"]
+        if not core_local(address) or address in seen:
+            continue
+        seen.add(address)
+        if isinstance(entry.get("state"), str) and entry["state"] != "live":
+            continue
+        entry_labels = entry.get("labels")
+        if isinstance(entry_labels, dict) and not entry_labels.get("herdr.space"):
+            continue
+        timeout = remaining_seconds(deadline, cap=20)
+        code, rec, raw = hc("get", address, "--json", timeout=timeout)
+        if code == 124 and time.monotonic() >= deadline:
+            raise _DeadlineExceeded()
+        if code == 3 and core_error_kind(rec) == "not_found":
+            continue
+        if code != 0 or not isinstance(rec, dict) or core_error_kind(rec):
+            raise _ActionError(f"could not read herdr-core terminal {address}")
+        if rec.get("state") != "live":
+            continue
+        space = (rec.get("labels") or {}).get("herdr.space")
+        if valid_space_id(space):
+            by_space.setdefault(space, []).append(dict(rec, address=address))
+    return by_space
+
+
+def coordinator_tokens_all(deadline):
+    """--coordinator-tokens: print one JSON line with each space's coordinator token count or null."""
+    try:
+        by_space = discover_all_terminals(deadline)
+        spaces = {}
+        for space in sorted(by_space):
+            remaining_seconds(deadline)
+            terminals = by_space[space]
+            raw_records = {t["address"]: _read_raw_record(t["address"]) for t in terminals}
+            coordinator = find_coordinator(terminals, raw_records=raw_records, fallback=True)
+            _, tokens = coordinator_context(coordinator, deadline)
+            spaces[space] = tokens
+        remaining_seconds(deadline)
+        emit({"version": VERSION, "ok": True, "spaces": spaces})
+    except _DeadlineExceeded:
+        emit({"version": VERSION, "ok": False, "error": "run time limit exceeded"})
+        sys.exit(EXIT["failed"])
+    except (_ActionError, _ValidationError) as exc:
+        emit({"version": VERSION, "ok": False, "error": str(exc)})
+        sys.exit(EXIT["failed"])
+    except Exception as exc:
+        traceback.print_exc(file=sys.stderr)
+        emit({"version": VERSION, "ok": False, "error": f"internal error: {type(exc).__name__}"})
+        sys.exit(EXIT["failed"])
+
+
 def discover_terminals(space, deadline):
     """Return live local terminals in `space`, bounded by `deadline`. Raises _ActionError or _DeadlineExceeded."""
     timeout = remaining_seconds(deadline, cap=20)
@@ -730,19 +849,332 @@ def _input_usage(usage, keys):
     return total if seen else None
 
 
+def _proc_is_agy(pid):
+    """True when `PROC_ROOT/<pid>` is `agy`, False when not or gone, None when unreadable."""
+    pdir = os.path.join(PROC_ROOT, str(pid))
+    try:
+        with open(os.path.join(pdir, "comm"), encoding="utf-8", errors="replace") as f:
+            if _base_proc(f.read().strip()) == "agy":
+                return True
+    except (FileNotFoundError, ProcessLookupError):
+        pass
+    except OSError:
+        return None
+    try:
+        with open(os.path.join(pdir, "cmdline"), "rb") as f:
+            argv0 = f.read().split(b"\x00", 1)[0].decode("utf-8", errors="replace")
+            if _base_proc(argv0) == "agy":
+                return True
+    except (FileNotFoundError, ProcessLookupError):
+        pass
+    except OSError:
+        return None
+    return False
+
+
+def _parse_proc_stat(text, pid):
+    """Parse (ppid, starttime) from Linux `/proc/<pid>/stat` text, or None if invalid."""
+    if ")" not in text:
+        return None
+    head, tail = text.rsplit(")", 1)
+    if "(" not in head or head.split("(", 1)[0].strip() != str(pid):
+        return None
+    fields = tail.split()
+    if len(fields) < 2:
+        return None
+    try:
+        ppid = int(fields[1])
+    except ValueError:
+        return None
+    if ppid < 0:
+        return None
+    starttime = None
+    if len(fields) > 19:
+        try:
+            starttime = int(fields[19])
+        except ValueError:
+            return None
+    return ppid, starttime
+
+
+def _proc_stat(pid):
+    """Read (ppid, starttime) from `PROC_ROOT/<pid>/stat`, or None when unreadable or invalid."""
+    try:
+        with open(os.path.join(PROC_ROOT, str(pid), "stat"), encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return None
+    return _parse_proc_stat(text, pid)
+
+
+def _proc_owned_by(pid, tpid, *, deadline=None):
+    """Verify `pid` is `tpid` or a descendant of `tpid` via `PROC_ROOT/<p>/stat`.
+
+    Returns `(pid_stat, tpid_stat)` when ownership is established within `PROC_MAX_DEPTH`, else None.
+    """
+    if deadline is not None:
+        remaining_seconds(deadline)
+    if pid <= 0 or tpid <= 0:
+        return None
+    tpid_stat = _proc_stat(tpid)
+    if tpid_stat is None:
+        return None
+    if pid == tpid:
+        return tpid_stat, tpid_stat
+    pid_stat = _proc_stat(pid)
+    if pid_stat is None:
+        return None
+    cur_ppid = pid_stat[0]
+    visited = {pid}
+    for _ in range(PROC_MAX_DEPTH):
+        if cur_ppid == tpid:
+            return pid_stat, tpid_stat
+        if cur_ppid <= 0 or cur_ppid in visited:
+            return None
+        visited.add(cur_ppid)
+        st = _proc_stat(cur_ppid)
+        if st is None:
+            return None
+        cur_ppid = st[0]
+    return None
+
+
+def _proc_children(pid, *, deadline=None):
+    """Direct child PIDs of `pid` from PROC_ROOT (`task/*/children`, else `<p>/stat` ppid).
+
+    Returns None when the child listing cannot be read completely.
+    """
+    if deadline is not None:
+        remaining_seconds(deadline)
+    children = []
+    seen = set()
+    task_dir = os.path.join(PROC_ROOT, str(pid), "task")
+    tids = None
+    try:
+        tids = os.listdir(task_dir)
+    except FileNotFoundError:
+        tids = None
+    except OSError:
+        return None
+    if tids:
+        read_count = 0
+        for idx, tid in enumerate(tids):
+            if deadline is not None and (idx & PROC_DEADLINE_CHECK_MASK) == 0:
+                remaining_seconds(deadline)
+            try:
+                with open(os.path.join(task_dir, tid, "children"), encoding="utf-8", errors="replace") as f:
+                    text = f.read()
+            except FileNotFoundError:
+                continue
+            except OSError:
+                return None
+            read_count += 1
+            for tok in text.split():
+                try:
+                    cpid = int(tok)
+                except ValueError:
+                    return None
+                if cpid <= 0:
+                    return None
+                if cpid not in seen:
+                    seen.add(cpid)
+                    children.append(cpid)
+        if read_count == len(tids):
+            return children
+        if read_count > 0:
+            return None
+    try:
+        entries = os.listdir(PROC_ROOT)
+    except OSError:
+        return None
+    for idx, name in enumerate(entries):
+        if deadline is not None and (idx & PROC_DEADLINE_CHECK_MASK) == 0:
+            remaining_seconds(deadline)
+        if not name.isdigit():
+            continue
+        cpid = int(name)
+        if cpid <= 0:
+            continue
+        try:
+            with open(os.path.join(PROC_ROOT, name, "stat"), encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        except OSError:
+            return None
+        parsed = _parse_proc_stat(text, cpid)
+        if parsed is None:
+            return None
+        if parsed[0] == pid and cpid not in seen:
+            seen.add(cpid)
+            children.append(cpid)
+    return children
+
+
+def _agy_process_pid(terminal, *, deadline=None):
+    """Return `(pid, ident)` for the owned `agy` process in `terminal`, or `(None, None)`.
+
+    Prefers `foreground.pid` when it is an `agy` process owned by `terminal.pid` (same PID or
+    descendant via `PROC_ROOT/<pid>/stat`). Otherwise looks for a single owned `agy` child of
+    `terminal.pid` (or `terminal.pid` itself if it is `agy` with no `agy` children).
+    """
+    if deadline is not None:
+        remaining_seconds(deadline)
+    if not PROC_ROOT or not os.path.isdir(PROC_ROOT):
+        return None, None
+    tpid = _pos_int(terminal.get("pid"))
+    if tpid is None:
+        return None, None
+    fg_pid, _ = _foreground_identity(terminal)
+    if fg_pid is not None:
+        fg_agy = _proc_is_agy(fg_pid)
+        if fg_agy is None:
+            return None, None
+        if fg_agy:
+            ident = _proc_owned_by(fg_pid, tpid, deadline=deadline)
+            if ident is not None:
+                return fg_pid, ident
+            return None, None
+    children = _proc_children(tpid, deadline=deadline)
+    if children is None:
+        return None, None
+    agy_children = []
+    for idx, cpid in enumerate(children):
+        if deadline is not None and (idx & PROC_DEADLINE_CHECK_MASK) == 0:
+            remaining_seconds(deadline)
+        child_agy = _proc_is_agy(cpid)
+        if child_agy is None:
+            return None, None
+        if child_agy:
+            ident = _proc_owned_by(cpid, tpid, deadline=deadline)
+            if ident is None:
+                return None, None
+            agy_children.append((cpid, ident))
+    if len(agy_children) == 1:
+        return agy_children[0]
+    if len(agy_children) > 1:
+        return None, None
+    if tpid != fg_pid and _proc_is_agy(tpid) is True:
+        ident = _proc_owned_by(tpid, tpid, deadline=deadline)
+        if ident is not None:
+            return tpid, ident
+    return None, None
+
+
+def _agy_presence_id(pid, agy_home, *, deadline=None):
+    """Conversation ID from the single open regular presence lock of `pid` in PROC_ROOT, or None."""
+    if deadline is not None:
+        remaining_seconds(deadline)
+    fd_dir = os.path.join(PROC_ROOT, str(pid), "fd")
+    try:
+        fd_names = os.listdir(fd_dir)
+    except OSError:
+        return None
+    presence_dir = os.path.abspath(os.path.join(agy_home, "presence"))
+    try:
+        presence_st = os.stat(presence_dir)
+    except OSError:
+        return None
+    if not stat.S_ISDIR(presence_st.st_mode):
+        return None
+    presence_roots = {os.path.normpath(presence_dir), os.path.realpath(presence_dir)}
+    locks = set()
+    for idx, name in enumerate(fd_names):
+        if deadline is not None and (idx & PROC_DEADLINE_CHECK_MASK) == 0:
+            remaining_seconds(deadline)
+        fd_path = os.path.join(fd_dir, name)
+        try:
+            target = os.readlink(fd_path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        if not os.path.isabs(target):
+            continue
+        parent, filename = os.path.split(os.path.normpath(target))
+        if not filename.endswith(".lock"):
+            continue
+        if parent not in presence_roots and os.path.realpath(parent) not in presence_roots:
+            continue
+        try:
+            fd_st = os.stat(fd_path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return None
+        if not stat.S_ISREG(fd_st.st_mode):
+            continue
+        entry_path = os.path.join(presence_dir, filename)
+        try:
+            entry_st = os.lstat(entry_path)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError:
+            return None
+        if not stat.S_ISREG(entry_st.st_mode):
+            continue
+        if (fd_st.st_dev, fd_st.st_ino) != (entry_st.st_dev, entry_st.st_ino):
+            continue
+        locks.add(filename[:-5])
+    if deadline is not None:
+        remaining_seconds(deadline)
+    if len(locks) != 1:
+        return None
+    conv_id = next(iter(locks))
+    if not conv_id or conv_id in (".", "..") or not AGY_CONV_ID.fullmatch(conv_id):
+        return None
+    return conv_id
+
+
+def agy_transcript(terminal, *, deadline=None):
+    """Resolve the transcript path of a live `agy` terminal via its single open presence lock, or None."""
+    if deadline is not None:
+        remaining_seconds(deadline)
+    if not AGY_HOME or not PROC_ROOT or not os.path.isdir(PROC_ROOT):
+        return None
+    agy_home = os.path.expanduser(os.fspath(AGY_HOME))
+    tpid = _pos_int(terminal.get("pid"))
+    if tpid is None:
+        return None
+    pid, ident = _agy_process_pid(terminal, deadline=deadline)
+    if pid is None:
+        return None
+    conv_id = _agy_presence_id(pid, agy_home, deadline=deadline)
+    if not conv_id:
+        return None
+    after = _proc_owned_by(pid, tpid, deadline=deadline)
+    if after != ident or _proc_is_agy(pid) is not True:
+        return None
+    brain_dir = os.path.join(agy_home, "brain")
+    transcript = os.path.join(brain_dir, conv_id, _common.AGY_TRANSCRIPT)
+    if os.path.islink(transcript) or not os.path.isfile(transcript):
+        return None
+    expected = os.path.join(os.path.realpath(brain_dir), conv_id, _common.AGY_TRANSCRIPT)
+    if os.path.realpath(transcript) != expected:
+        return None
+    if deadline is not None:
+        remaining_seconds(deadline)
+    return transcript
+
+
 def transcript_tokens(path, agent, *, deadline=None):
     """Input-side context token count of the last valid assistant message, or None.
 
     Claude Code: input_tokens + cache_read_input_tokens + cache_creation_input_tokens.
     Pi: input + cacheRead + cacheWrite.
+    agy: input_tokens + cache_read_tokens of the last PLANNER_RESPONSE row with status DONE.
     Preserves a measured zero; returns None when input-side usage is absent or invalid.
     Sidechain and API-error records are ignored before compaction boundaries apply.
     Checks the deadline before, periodically during, and after the scan (local file reads
     are not supervised by a separate thread or process).
     """
     last = None
-    keys = (("input", "cacheRead", "cacheWrite") if agent in PI_AGENTS
-            else ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+    if agent == "agy":
+        keys = ("input_tokens", "cache_read_tokens")
+    elif agent in PI_AGENTS:
+        keys = ("input", "cacheRead", "cacheWrite")
+    else:
+        keys = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
     if deadline is not None:
         remaining_seconds(deadline)
     try:
@@ -755,6 +1187,11 @@ def transcript_tokens(path, agent, *, deadline=None):
                 except json.JSONDecodeError:
                     continue
                 if not isinstance(entry, dict):
+                    continue
+                if agent == "agy":
+                    if entry.get("type") != "PLANNER_RESPONSE" or entry.get("status") != "DONE":
+                        continue
+                    last = _input_usage(entry, keys)
                     continue
                 if entry.get("isSidechain") or entry.get("isApiErrorMessage"):
                     continue
@@ -776,24 +1213,32 @@ def transcript_tokens(path, agent, *, deadline=None):
 
 
 def coordinator_context(terminal, deadline):
-    """Resolve coordinator transcript path and input-side token count via ask.py: (path, tokens)."""
+    """Resolve coordinator transcript path and input-side token count: (path, tokens).
+
+    Claude Code and Pi use ask.core_transcript; agy resolves its single open presence lock under PROC_ROOT.
+    """
     if not terminal:
         return None, None
     remaining_seconds(deadline)
     try:
         info = core_info(terminal)
-        path, _, _ = ask.core_transcript(info, None, 0, None, 0, 0)
-        remaining_seconds(deadline)
-        if not path and info.get("agent") == "claude":
-            tpid = _pos_int(terminal.get("pid"))
-            if tpid is not None and tpid != info.get("pid"):
-                path, _, _ = ask.core_transcript(dict(info, pid=tpid), None, 0, None, 0, 0)
-                remaining_seconds(deadline)
+        agent = info.get("agent") or terminal_agent(terminal)
+        if agent == "agy":
+            path = agy_transcript(terminal, deadline=deadline)
+            remaining_seconds(deadline)
+        else:
+            path, _, _ = ask.core_transcript(info, None, 0, None, 0, 0)
+            remaining_seconds(deadline)
+            if not path and agent == "claude":
+                tpid = _pos_int(terminal.get("pid"))
+                if tpid is not None and tpid != info.get("pid"):
+                    path, _, _ = ask.core_transcript(dict(info, pid=tpid), None, 0, None, 0, 0)
+                    remaining_seconds(deadline)
     except (OSError, UnicodeError):
         return None, None
     if not path:
         return None, None
-    tokens = transcript_tokens(path, info.get("agent"), deadline=deadline)
+    tokens = transcript_tokens(path, agent, deadline=deadline)
     return os.path.realpath(path), tokens
 
 
@@ -873,6 +1318,7 @@ def plan_space(terminals, roles, deadline):
         launch_sources[addr] = t
 
     coordinator = find_coordinator(terminals, raw_records=raw_records)
+    token_coordinator = coordinator or find_coordinator(terminals, raw_records=raw_records, fallback=True)
     coord_identity = None
     if coordinator:
         coord_rec = raw_records.get(coordinator["address"])
@@ -883,19 +1329,18 @@ def plan_space(terminals, roles, deadline):
             "cpid": _coordinator_pid(coordinator),
             "tpid": _pos_int(coordinator.get("pid")),
         }
-    coord_transcript, tokens = coordinator_context(coordinator, deadline)
+    coord_transcript, tokens = coordinator_context(token_coordinator, deadline)
     coord_spec = roles.get("coordinator")
     do_handoff = False
     handoff_skip_reason = None
     if coordinator and coord_spec and tokens is not None and tokens > HANDOFF_TOKEN_LIMIT:
-        target_harness, _, _ = map_label(coord_spec["model"], coord_spec.get("thinking"))
         live_harness = coord_identity["harness"]
-        if target_harness == "agy":
-            handoff_skip_reason = "agy cannot hand off"
-        elif live_harness not in ("claude", *PI_AGENTS):
+        if live_harness not in ("claude", *PI_AGENTS):
             handoff_skip_reason = f"{live_harness or 'unknown'} cannot hand off"
         else:
             do_handoff = True
+    elif not coordinator and token_coordinator and coord_spec and tokens is not None and tokens > HANDOFF_TOKEN_LIMIT:
+        handoff_skip_reason = "no coordinator role"
     if handoff_skip_reason and coordinator:
         coord_addr = coordinator["address"]
         for entry in skip:
@@ -1050,10 +1495,9 @@ def handoff_command(coord_harness, coord_spec, roles=None):
     else:
         raise _ValidationError(f"unsupported coordinator harness for handoff: {coord_harness or 'unknown'}")
     target_harness, target_model, target_thinking = map_label(coord_spec["model"], coord_spec.get("thinking"))
-    if target_harness == "agy":
-        raise _ValidationError("coordinator handoff to agy is not supported")
     parts = [prefix, target_harness, target_model]
-    if target_thinking:
+    # The agy slug carries the effort (gemini-4-neon-<effort>), so the command gives no second thinking level.
+    if target_thinking and target_harness != "agy":
         parts.append(target_thinking)
     roles_value = handoff_roles_value(roles)
     if roles_value:
@@ -1451,6 +1895,11 @@ def main(argv=None):
         argv = sys.argv[1:] if argv is None else argv
         if len(argv) == 2 and argv[0] == SEND_HANDOFF_FLAG:
             send_handoff_child(argv[1])
+        if "--coordinator-tokens" in argv:
+            if argv != ["--coordinator-tokens"]:
+                bad_input("--coordinator-tokens takes no other argument")
+            coordinator_tokens_all(_run_start + COORDINATOR_TOKENS_LIMIT_SECONDS)
+            return
         if "--coordinator" in argv:
             space, tab, dry_run = parse_coordinator_args(argv)
             set_coordinator(space, tab, dry_run, deadline)

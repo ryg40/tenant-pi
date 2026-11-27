@@ -132,6 +132,15 @@ code {
 
 .filter::placeholder { color: var(--faint); opacity: 1; }
 .theme-control select { padding: 3px 6px; font-size: 12px; }
+/* The logout link of the band, and the form of the login page. */
+.band .logout { color: var(--band-mute); font-size: 12px; font-weight: 600; text-decoration: none; }
+.band .logout:hover { color: var(--band-txt); text-decoration: underline; }
+.login label { display: inline-flex; flex-direction: column; gap: 4px; font-weight: 600; }
+.login input { padding: 6px 9px; border: 1px solid var(--strong-border); border-radius: 7px; background: var(--input-bg);
+  color: var(--txt); font: inherit; min-width: 18rem; }
+.login button { padding: 6px 14px; border: 0; border-radius: 7px; background: var(--btn-bg); color: var(--btn-fg);
+  font: inherit; font-weight: 700; cursor: pointer; }
+.login input:focus-visible, .login button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 main { padding: 12px 16px 32px; }
 

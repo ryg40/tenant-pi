@@ -151,8 +151,8 @@ class RoleSetTests(unittest.TestCase):
                     "FAKE_PI_LISTING": self.pi_listing, "FAKE_PI_LOG": self.pi_log}
         self.write_state({})
 
-    def term(self, addr, tab, *, space="sp-demo", app=None, status_state=None, role=None, pid=4242, fg_pid=None, fg_name="bash", name=None):
-        labels = {"herdr.space": space, "herdr.tab": tab, "where": "demo / 1", **({"skill.role": role} if role else {})}
+    def term(self, addr, tab, *, space="sp-demo", app=None, status_state=None, role=None, pid=4242, fg_pid=None, fg_name="bash", name=None, where="demo / 1"):
+        labels = {"herdr.space": space, "herdr.tab": tab, **({"where": where} if where is not None else {}), **({"skill.role": role} if role else {})}
         fg = {"pid": pid if fg_pid is None else fg_pid, "cwd": self.work_cwd, **({"name": fg_name} if fg_name is not None else {})}
         rec = {"address": addr, "state": "live", "cwd": self.work_cwd, "pid": pid, "created_ms": (time.time() - 60) * 1000,
                "labels": labels, "foreground": fg, "status": {k: v for k, v in (("app", app), ("state", status_state)) if v is not None}}
@@ -468,13 +468,6 @@ class RoleSetTests(unittest.TestCase):
         self.assertTrue(skipped["t15"]["role"] is None and isinstance(skipped["t15"]["reason"], str) and bool(skipped["t15"]["reason"].strip()))
         self.assert_no_mutation()
 
-        with self.subTest(case="agy coordinator disables handoff with reason"):
-            proc = self.run_helper({"version": 1, "space": space, "roles": {"coordinator": {"model": "agy/neon", "thinking": "xhigh"}}}, dry_run=True)
-            out = json.loads(proc.stdout.strip())
-            self.assertEqual((proc.returncode, out["coordinator_tokens"], out["handoff"]), (0, 214000, False))
-            self.assertIn("agy", (out["preview"] + " " + next((s["reason"] for s in out["skip"] if s["terminal"] == "t10"), "")).lower())
-            self.assert_no_mutation()
-
         with self.subTest(case="opaque empty space exits 0"):
             empty_space = "sp_empty:1/" + "a" * 130
             ep = {"version": 1, "space": empty_space, "roles": {"worker": {"model": "claude/opus"}}}
@@ -637,7 +630,6 @@ class RoleSetTests(unittest.TestCase):
 
         for label, run_p, muts, marker in (
             ("changed session skips on stderr", payload, {"t33": [{"pid": 5999, "foreground": {"pid": 5999, "name": "claude", "cwd": self.work_cwd}}]}, "t33"),
-            ("agy coordinator skips on stderr", {"version": 1, "space": space, "roles": {"coordinator": {"model": "agy/neon", "thinking": "xhigh"}}}, None, "agy"),
         ):
             with self.subTest(case=label):
                 self.write_state({"t33": coord("t33", "claude-code", "idle", 5104)}, mutations=muts)
@@ -703,6 +695,24 @@ class RoleSetTests(unittest.TestCase):
         self.assertEqual(self.sends()[0][2].split(), [
             "/tenantext:handoff_coordinator", "claude", "claude-fable-5-2", "medium",
             "roles=researcher:claude:claude-sonnet-5-5:high,worker:claude:claude-opus-5-5:medium,reviewer:pi:astra:low"])
+
+    def test_an_agy_coordinator_choice_hands_off_and_a_live_agy_coordinator_does_not(self):
+        payload = {"version": 1, "space": "sp-demo", "roles": {"coordinator": {"model": "agy/neon", "thinking": "xhigh"}}}
+        self.write_claude_transcript(5104, "sess-5104", 100001, 100000, 0)
+        self.write_state({"t33": self.term("t33", "tb-coord", app="claude-code", status_state="done", role="coordinator", pid=5104, fg_name="claude")})
+        real = self.run_helper(payload)
+        self.assertEqual(real.returncode, 0, real.stdout + real.stderr)
+        self.handoff_result(real.stdout)
+        # The slug carries the effort, so the command gives no second thinking level (spawn.py refuses another
+        # effort and accepts the same one).
+        self.assertEqual(self.sends()[0][2].split(), ["/tenantext:handoff_coordinator", "agy", "gemini-4-neon-xhigh"])
+
+        # A live agy coordinator has no slash command: no handoff, a reason that names agy, no send.
+        self.write_state({"t34": self.term("t34", "tb-coord", app="antigravity", status_state="idle", role="coordinator", pid=5105, fg_name="agy")})
+        code, out, err = self.run_inprocess(payload, mock.patch.object(role_set, "coordinator_context", return_value=(None, 250000)))
+        self.assertEqual(code, 0, out + err)
+        self.assertFalse([send for send in self.sends() if "handoff_coordinator" in send[2]], out + err)
+        self.assertIn("agy", err)
 
     def test_detached_handoff_send_ends_the_run_before_a_slow_send(self):
         payload = {"version": 1, "space": "sp-demo", "roles": {"coordinator": {"model": "claude/opus", "thinking": "max"}}}
@@ -784,6 +794,359 @@ class RoleSetTests(unittest.TestCase):
         actions, _ = self.assert_real_stdout(later.stdout)
         self.assertTrue(self.wait_result(actions[0]["result"])["ok"])
         self.assertEqual([(s[1], s[2]) for s in self.sends()], [("t33", self.NOTICE_TEXT)])
+
+    def test_coordinator_tokens_reports_every_space_in_one_call_with_fallback(self):
+        self.write_claude_transcript(6101, "sess-exp", 100000, 20000, 0)
+        self.write_claude_transcript(6102, "sess-exp-fb", 350000, 0, 0)
+        self.write_claude_transcript(6103, "sess-fb1", 10000, 300000, 4662)
+        self.write_claude_transcript(6104, "sess-fbc", 0, 0, 0)
+        self.write_claude_transcript(6105, "sess-tab2", 99000, 0, 0)
+        self.write_claude_transcript(6106, "sess-worker", 88000, 0, 0)
+        self.write_claude_transcript(6107, "sess-wtab", 77000, 0, 0)
+        self.write_claude_transcript(6108, "sess-named", 66000, 0, 0)
+
+        exp_coord = self.term("t61", "tb-exp-2", space="sp-explicit", app="claude-code", status_state="idle", role="coordinator", pid=6101, fg_name="claude", where="exp / 2")
+        exp_coord["created_ms"] -= 60000
+        exp_fallback = self.term("t62", "tb-exp-1", space="sp-explicit", app="claude-code", status_state="idle", pid=6102, fg_name="claude", where="exp / 1")
+        fb1 = self.term("t63", "tb-fb1", space="sp-fallback-one", app="claude-code", status_state="idle", pid=6103, fg_name="claude", where="tenant-herdr / 1")
+        fbc = self.term("t64", "tb-fbc", space="sp-fallback-coord", app="claude-code", status_state="idle", pid=6104, fg_name="claude", where="proj / coordinator")
+        nc_shell = self.term("t65", "tb-nc1", space="sp-no-coord", pid=6100, fg_name="bash", where="nc / 1")
+        nc_tab2 = self.term("t66", "tb-nc2", space="sp-no-coord", app="claude-code", status_state="idle", pid=6105, fg_name="claude", where="nc / 2")
+        nc_worker = self.term("t67", "tb-nc1", space="sp-no-coord", app="claude-code", status_state="idle", role="worker", pid=6106, fg_name="claude", where="nc / 1")
+        nc_wtab = self.term("t68", role_tab("sp-no-coord", "worker"), space="sp-no-coord", app="claude-code", status_state="idle", pid=6107, fg_name="claude", where="nc / 1")
+        nc_named = self.term("t69", "tb-nc1", space="sp-no-coord", app="claude-code", status_state="idle", pid=6108, fg_name="claude", name="nc-reviewer-1", where="nc / 1")
+        pi_unknown = self.term("t70", "tb-pi1", space="sp-pi-unknown", app="pi", status_state="idle", pid=6109, fg_name="pi", where="pi / 1")
+        no_space = {"address": "t71", "state": "live", "cwd": self.work_cwd, "pid": 6110, "created_ms": time.time() * 1000,
+                    "labels": {}, "foreground": {"pid": 6110, "name": "bash"}, "status": {}}
+        remote = self.term("prox3090/t99", "tb-r1", space="sp-remote", app="claude-code", status_state="idle", role="coordinator", pid=6111, fg_name="claude")
+
+        self.write_state({
+            "t61": exp_coord, "t62": exp_fallback, "t63": fb1, "t64": fbc,
+            "t65": nc_shell, "t66": nc_tab2, "t67": nc_worker, "t68": nc_wtab, "t69": nc_named,
+            "t70": pi_unknown, "t71": no_space, "prox3090/t99": remote,
+        })
+        proc = self.run_raw(["--coordinator-tokens"])
+        lines = proc.stdout.strip().splitlines()
+        self.assertEqual((proc.returncode, len(lines)), (0, 1), proc.stdout + proc.stderr)
+        self.assertEqual(json.loads(lines[0]), {
+            "version": 1,
+            "ok": True,
+            "spaces": {
+                "sp-explicit": 120000,
+                "sp-fallback-coord": 0,
+                "sp-fallback-one": 314662,
+                "sp-no-coord": None,
+                "sp-pi-unknown": None,
+            },
+        })
+        self.assert_no_mutation()
+        self.assertFalse(any(len(c) > 2 and c[1] == "get" and c[2] == "prox3090/t99" for c in self.calls()))
+
+        with self.subTest(case="empty core"):
+            self.write_state({})
+            proc = self.run_raw(["--coordinator-tokens"])
+            self.assertEqual((proc.returncode, json.loads(proc.stdout.strip())), (0, {"version": 1, "ok": True, "spaces": {}}))
+
+    def test_dry_run_uses_coordinator_fallback_without_sending_handoff(self):
+        space = "sp-unlabeled"
+        self.write_claude_transcript(6201, "sess-t1d7", 14662, 300000, 0)
+        self.write_claude_transcript(6202, "sess-explicit", 50000, 0, 0)
+        payload = {"version": 1, "space": space, "roles": {"coordinator": {"model": "claude/opus", "thinking": "max"}}}
+
+        t1d7 = self.term("t1d7", "tb-first", space=space, app="claude-code", status_state="idle", pid=6201, fg_name="claude", where="tenant-herdr / 1")
+        self.write_state({"t1d7": t1d7})
+        dry = self.run_helper(payload, dry_run=True)
+        self.assertEqual(dry.returncode, 0, dry.stdout + dry.stderr)
+        out = json.loads(dry.stdout.strip())
+        self.assertEqual((out["ok"], out["coordinator_tokens"], out["handoff"], out["role_models"]), (True, 314662, False, False))
+        self.assert_no_mutation()
+
+        real = self.run_helper(payload)
+        self.assertEqual((real.returncode, self.assert_real_stdout(real.stdout), self.sends()), (0, ([], {"version": 1, "ok": True, "done": 0}), []))
+
+        with self.subTest(case="second tab unlabeled is not a coordinator"):
+            tab2 = self.term("t1d8", "tb-second", space=space, app="claude-code", status_state="idle", pid=6201, fg_name="claude", where="tenant-herdr / 2")
+            self.write_state({"t1d8": tab2})
+            dry2 = self.run_helper(payload, dry_run=True)
+            self.assertEqual((dry2.returncode, json.loads(dry2.stdout.strip())["coordinator_tokens"]), (0, None))
+
+        with self.subTest(case="explicit coordinator wins over fallback in dry run"):
+            explicit = self.term("t1d9", "tb-second", space=space, app="claude-code", status_state="idle", role="coordinator", pid=6202, fg_name="claude", where="tenant-herdr / 2")
+            explicit["created_ms"] -= 60000
+            self.write_state({"t1d7": t1d7, "t1d9": explicit})
+            dry3 = self.run_helper(payload, dry_run=True)
+            self.assertEqual((dry3.returncode, json.loads(dry3.stdout.strip())["coordinator_tokens"]), (0, 50000))
+
+    def test_coordinator_tokens_rejects_extra_args_and_handles_failures_and_deadline(self):
+        for bad_args in (["--coordinator-tokens", "--dry-run"], ["--coordinator-tokens", "sp-1"], ["--models", "--coordinator-tokens"]):
+            with self.subTest(args=bad_args):
+                self.assert_bad_input(self.run_raw(bad_args))
+
+        def assert_tokens_fail(code, stdout_text, detail=""):
+            lines = stdout_text.strip().splitlines()
+            self.assertEqual((code, len(lines)), (1, 1), detail or stdout_text)
+            out = json.loads(lines[0])
+            self.assertEqual((out["version"], out["ok"]), (1, False))
+            self.assertTrue(isinstance(out.get("error"), str) and out["error"])
+            self.assertNotIn("spaces", out)
+
+        with self.subTest(case="hc ls error exits 1"):
+            with open(self.state_path, "w", encoding="utf-8") as f:
+                json.dump({"terminals": {}, "ls_reply": {"error": {"kind": "failed"}}}, f)
+            proc = self.run_raw(["--coordinator-tokens"])
+            assert_tokens_fail(proc.returncode, proc.stdout, proc.stdout + proc.stderr)
+
+        with self.subTest(case="hc get error exits 1"):
+            self.write_state({"t1": self.term("t1", "tb-1")})
+            out_buf, err_buf, code = io.StringIO(), io.StringIO(), 0
+            orig_hc = role_set.hc
+            def fail_get(*args, **kw):
+                if args and args[0] == "get":
+                    return 1, {"error": {"kind": "io_error"}}, "boom"
+                return orig_hc(*args, **kw)
+            with contextlib.ExitStack() as stack:
+                for ctx in (mock.patch.dict(os.environ, self.env, clear=True),
+                            mock.patch.object(role_set, "hc", side_effect=fail_get),
+                            contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf)):
+                    stack.enter_context(ctx)
+                try:
+                    role_set.main(["--coordinator-tokens"])
+                except SystemExit as exc:
+                    code = exc.code if isinstance(exc.code, int) else 1
+            assert_tokens_fail(code, out_buf.getvalue(), out_buf.getvalue() + err_buf.getvalue())
+
+        with self.subTest(case="malformed hc ls terminal list exits 1"):
+            for bad_reply in ({}, {"terminals": None}, {"terminals": "bad"}, {"terminals": ["t1"]}, {"terminals": [{}]}):
+                with open(self.state_path, "w", encoding="utf-8") as f:
+                    json.dump({"terminals": {}, "ls_reply": bad_reply}, f)
+                proc = self.run_raw(["--coordinator-tokens"])
+                assert_tokens_fail(proc.returncode, proc.stdout, proc.stdout + proc.stderr)
+
+        with self.subTest(case="deadline exceeded exits 1"):
+            self.write_state({"t1": self.term("t1", "tb-1")})
+            out_buf, err_buf, code = io.StringIO(), io.StringIO(), 0
+            with contextlib.ExitStack() as stack:
+                for ctx in (mock.patch.dict(os.environ, self.env, clear=True),
+                            mock.patch.object(role_set, "COORDINATOR_TOKENS_LIMIT_SECONDS", 0),
+                            contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf)):
+                    stack.enter_context(ctx)
+                try:
+                    role_set.main(["--coordinator-tokens"])
+                except SystemExit as exc:
+                    code = exc.code if isinstance(exc.code, int) else 1
+            assert_tokens_fail(code, out_buf.getvalue(), out_buf.getvalue() + err_buf.getvalue())
+
+        with self.subTest(case="deadline expiring during transcript scan fails without partial success"):
+            # Write a fast first space and a >1024-line second transcript so the deadline expires inside the scan.
+            self.write_claude_transcript(6300, "sess-fast", 50000, 0, 0)
+            sdir = os.path.join(self.home, ".claude", "sessions")
+            pdir = os.path.join(self.home, ".claude", "projects", "-work-demo")
+            os.makedirs(sdir, exist_ok=True)
+            os.makedirs(pdir, exist_ok=True)
+            with open(os.path.join(sdir, "6301.json"), "w", encoding="utf-8") as f:
+                json.dump({"pid": 6301, "sessionId": "sess-slow-scan", "cwd": self.work_cwd}, f)
+            slow_path = os.path.join(pdir, "sess-slow-scan.jsonl")
+            with open(slow_path, "w", encoding="utf-8") as f:
+                row = json.dumps({"type": "assistant", "message": {"role": "assistant", "usage": {"input_tokens": 12345}}}) + "\n"
+                for _ in range(1100):
+                    f.write(row)
+            t1 = self.term("t1", "tb-1", space="sp-a", app="claude-code", status_state="idle", role="coordinator", pid=6300, fg_name="claude")
+            t2 = self.term("t2", "tb-1", space="sp-b", app="claude-code", status_state="idle", role="coordinator", pid=6301, fg_name="claude")
+            self.write_state({"t1": t1, "t2": t2})
+
+            now = [1000.0]
+            real_open = open
+            slow_real = os.path.realpath(slow_path)
+
+            class AdvancingReader:
+                def __init__(self, fp):
+                    self._fp = fp
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return self._fp.__exit__(*exc)
+
+                def __iter__(self):
+                    for line in self._fp:
+                        yield line
+                        now[0] = 1000.0 + role_set.COORDINATOR_TOKENS_LIMIT_SECONDS + 1.0
+
+            def fake_open(file, *args, **kwargs):
+                fp = real_open(file, *args, **kwargs)
+                if isinstance(file, (str, os.PathLike)) and os.path.realpath(file) == slow_real:
+                    return AdvancingReader(fp)
+                return fp
+
+            out_buf, err_buf, code = io.StringIO(), io.StringIO(), 0
+            with contextlib.ExitStack() as stack:
+                for ctx in (mock.patch.dict(os.environ, self.env, clear=True),
+                            mock.patch.object(role_set, "open", side_effect=fake_open, create=True),
+                            mock.patch.object(role_set.time, "monotonic", side_effect=lambda: now[0]),
+                            contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf)):
+                    stack.enter_context(ctx)
+                try:
+                    role_set.main(["--coordinator-tokens"])
+                except SystemExit as exc:
+                    code = exc.code if isinstance(exc.code, int) else 1
+            assert_tokens_fail(code, out_buf.getvalue(), out_buf.getvalue() + err_buf.getvalue())
+
+    def write_agy_transcript(self, agy_home, conv_id, rows):
+        tdir = os.path.join(agy_home, "brain", conv_id, ".system_generated", "logs")
+        os.makedirs(tdir, exist_ok=True)
+        path = os.path.join(tdir, "transcript.jsonl")
+        with open(path, "w", encoding="utf-8") as f:
+            for row in rows:
+                f.write(json.dumps(row) + "\n")
+        return path
+
+    def write_proc_entry(self, proc_root, agy_home, pid, comm, *, ppid=1, lock_ids=(), children=None, extra_fds=()):
+        pdir = os.path.join(proc_root, str(pid))
+        fd_dir = os.path.join(pdir, "fd")
+        os.makedirs(fd_dir, exist_ok=True)
+        with open(os.path.join(pdir, "comm"), "w", encoding="utf-8") as f:
+            f.write(comm + "\n")
+        with open(os.path.join(pdir, "stat"), "w", encoding="utf-8") as f:
+            f.write(f"{pid} ({comm}) S {ppid} {pid} {pid} 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 {pid * 10}\n")
+        p_dir = os.path.join(agy_home, "presence")
+        os.makedirs(p_dir, exist_ok=True)
+        fd_num = 10
+        for conv_id in lock_ids:
+            lock_path = os.path.join(p_dir, f"{conv_id}.lock")
+            with open(lock_path, "w", encoding="utf-8"):
+                pass
+            os.symlink(lock_path, os.path.join(fd_dir, str(fd_num)))
+            fd_num += 1
+        for target in extra_fds:
+            os.symlink(target, os.path.join(fd_dir, str(fd_num)))
+            fd_num += 1
+        if children is not None:
+            tdir = os.path.join(pdir, "task", str(pid))
+            os.makedirs(tdir, exist_ok=True)
+            with open(os.path.join(tdir, "children"), "w", encoding="utf-8") as f:
+                f.write(" ".join(str(c) for c in children))
+
+    def run_coordinator_tokens_inprocess(self, *patches):
+        with open(self.log_path, "w", encoding="utf-8"):
+            pass
+        out, err, code = io.StringIO(), io.StringIO(), 0
+        with contextlib.ExitStack() as stack:
+            for ctx in (mock.patch.dict(os.environ, self.env, clear=True),
+                        mock.patch.object(role_set.spawn, "STATE_DIR", self.state_dir),
+                        mock.patch.object(role_set.spawn._common, "STATE_DIR", self.state_dir),
+                        *patches, contextlib.redirect_stdout(out), contextlib.redirect_stderr(err)):
+                stack.enter_context(ctx)
+            try:
+                role_set.main(["--coordinator-tokens"])
+            except SystemExit as exc:
+                code = exc.code if isinstance(exc.code, int) else 1
+        return code, out.getvalue(), err.getvalue()
+
+    def test_agy_coordinator_with_single_presence_lock_counts_transcript(self):
+        proc_root = os.path.join(self.root, "proc")
+        agy_home = os.path.join(self.root, "agy-home")
+        self.write_agy_transcript(agy_home, "conv-explicit", [
+            {"type": "USER_INPUT", "status": "DONE", "content": "hi"},
+            {"type": "PLANNER_RESPONSE", "status": "DONE", "input_tokens": 1000, "cache_read_tokens": 5000},
+            {"type": "PLANNER_RESPONSE", "status": "DONE", "input_tokens": 2858, "cache_read_tokens": 234915, "output_tokens": 900},
+            {"type": "PLANNER_RESPONSE", "status": "RUNNING", "input_tokens": 999, "cache_read_tokens": 1},
+        ])
+        self.write_agy_transcript(agy_home, "conv-fallback", [
+            {"type": "PLANNER_RESPONSE", "status": "DONE", "input_tokens": 0, "cache_read_tokens": 0},
+        ])
+        self.write_proc_entry(proc_root, agy_home, 7000, "bash", children=[7001])
+        self.write_proc_entry(proc_root, agy_home, 7001, "agy", ppid=7000, lock_ids=("conv-explicit",))
+        self.write_proc_entry(proc_root, agy_home, 7100, "bash", children=[7101])
+        self.write_proc_entry(proc_root, agy_home, 7101, "agy", ppid=7100, lock_ids=("conv-fallback",))
+        self.write_proc_entry(proc_root, agy_home, 7102, "python3", ppid=7101)
+
+        exp = self.term("t81", "tb-agy-exp", space="sp-agy-explicit", app="antigravity", status_state="done",
+                        role="coordinator", pid=7000, fg_pid=7001, fg_name="agy", where="exp / 2")
+        fb = self.term("t82", "tb-agy-fb", space="sp-agy-fallback", app="antigravity", status_state="idle",
+                       pid=7100, fg_pid=7102, fg_name="python3", where="proj / 1")
+        self.write_state({"t81": exp, "t82": fb})
+
+        code, out, err = self.run_coordinator_tokens_inprocess(
+            mock.patch.object(role_set, "PROC_ROOT", proc_root),
+            mock.patch.object(role_set, "AGY_HOME", agy_home),
+        )
+        self.assertEqual((code, json.loads(out.strip())), (0, {
+            "version": 1,
+            "ok": True,
+            "spaces": {
+                "sp-agy-explicit": 237773,
+                "sp-agy-fallback": 0,
+            },
+        }), out + err)
+        self.assert_no_mutation()
+
+    def test_agy_coordinator_without_unique_presence_lock_returns_null(self):
+        proc_root = os.path.join(self.root, "proc")
+        agy_home = os.path.join(self.root, "agy-home")
+        self.write_agy_transcript(agy_home, "conv-a", [
+            {"type": "PLANNER_RESPONSE", "status": "DONE", "input_tokens": 50000, "cache_read_tokens": 10000},
+        ])
+        self.write_agy_transcript(agy_home, "conv-b", [
+            {"type": "PLANNER_RESPONSE", "status": "DONE", "input_tokens": 80000, "cache_read_tokens": 20000},
+        ])
+        other_lock = os.path.join(self.root, "conv-a.lock")
+        with open(other_lock, "w", encoding="utf-8"):
+            pass
+        self.write_proc_entry(proc_root, agy_home, 1, "init", ppid=0)
+        self.write_proc_entry(proc_root, agy_home, 7200, "bash", children=[7201])
+        self.write_proc_entry(proc_root, agy_home, 7201, "agy", ppid=7200, extra_fds=(other_lock,))
+        self.write_proc_entry(proc_root, agy_home, 7210, "bash", children=[7202])
+        self.write_proc_entry(proc_root, agy_home, 7202, "agy", ppid=7210, lock_ids=("conv-a", "conv-b"))
+        self.write_proc_entry(proc_root, agy_home, 7220, "bash", children=[7203])
+        self.write_proc_entry(proc_root, agy_home, 7203, "agy", ppid=7220, lock_ids=("conv-missing",))
+        self.write_proc_entry(proc_root, agy_home, 7240, "bash", children=[])
+        self.write_proc_entry(proc_root, agy_home, 7999, "bash", children=[7241])
+        self.write_proc_entry(proc_root, agy_home, 7241, "agy", ppid=7999, lock_ids=("conv-a",))
+
+        self.write_state({
+            "t91": self.term("t91", "tb-1", space="sp-no-lock", app="antigravity", status_state="idle",
+                             role="coordinator", pid=7200, fg_pid=7201, fg_name="agy"),
+            "t92": self.term("t92", "tb-1", space="sp-two-locks", app="antigravity", status_state="idle",
+                             role="coordinator", pid=7210, fg_pid=7202, fg_name="agy"),
+            "t93": self.term("t93", "tb-1", space="sp-no-transcript", app="antigravity", status_state="idle",
+                             role="coordinator", pid=7220, fg_pid=7203, fg_name="agy"),
+            "t95": self.term("t95", "tb-1", space="sp-foreign-fg", app="antigravity", status_state="idle",
+                             role="coordinator", pid=7240, fg_pid=7241, fg_name="agy"),
+        })
+        code, out, err = self.run_coordinator_tokens_inprocess(
+            mock.patch.object(role_set, "PROC_ROOT", proc_root),
+            mock.patch.object(role_set, "AGY_HOME", agy_home),
+        )
+        self.assertEqual((code, json.loads(out.strip())), (0, {
+            "version": 1,
+            "ok": True,
+            "spaces": {
+                "sp-foreign-fg": None,
+                "sp-no-lock": None,
+                "sp-no-transcript": None,
+                "sp-two-locks": None,
+            },
+        }), out + err)
+        self.assert_no_mutation()
+
+        with self.subTest(case="missing proc root gives null"):
+            self.write_proc_entry(proc_root, agy_home, 7230, "bash", children=[7204])
+            self.write_proc_entry(proc_root, agy_home, 7204, "agy", ppid=7230, lock_ids=("conv-a",))
+            self.write_state({
+                "t94": self.term("t94", "tb-1", space="sp-no-proc", app="antigravity", status_state="idle",
+                                 role="coordinator", pid=7230, fg_pid=7204, fg_name="agy"),
+            })
+            code, out, err = self.run_coordinator_tokens_inprocess(
+                mock.patch.object(role_set, "PROC_ROOT", os.path.join(self.root, "no-proc")),
+                mock.patch.object(role_set, "AGY_HOME", agy_home),
+            )
+            self.assertEqual((code, json.loads(out.strip())), (0, {
+                "version": 1,
+                "ok": True,
+                "spaces": {"sp-no-proc": None},
+            }), out + err)
+            self.assert_no_mutation()
 
 
 if __name__ == "__main__":

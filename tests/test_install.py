@@ -608,10 +608,14 @@ sys.exit(int(os.environ.get('FAKE_FAIL', '0')))
                 self.assertNotIn('{{', skill)
         compare = (self.home / '.claude/skills/walkr-compare/SKILL.md').read_text()
         self.assertIn(str(walkr / 'src/walkr-compare.js'), compare)
+        feedback = (self.home / '.claude/skills/walkr-feedback/SKILL.md').read_text()
+        self.assertIn(str(walkr / 'src/walkr-feedback.js'), feedback)
         prompt = (self.profile / 'prompts/walkr-compare.md').read_text()
         self.assertIn(json.dumps(str(self.home / '.agents/skills/walkr-compare/SKILL.md')), prompt)
+        fb_prompt = (self.profile / 'prompts/walkr-feedback.md').read_text()
+        self.assertIn(json.dumps(str(self.home / '.agents/skills/walkr-feedback/SKILL.md')), fb_prompt)
         # The skills call their command by name: the link exists, points into the kit and can run.
-        for name, source in (('walkr', 'cli.js'), ('walkr-compare', 'walkr-compare.js')):
+        for name, source in (('walkr', 'cli.js'), ('walkr-compare', 'walkr-compare.js'), ('walkr-feedback', 'walkr-feedback.js')):
             link = self.home / '.local/bin' / name
             self.assertEqual((walkr / 'src' / source).resolve(), link.resolve())
             self.assertTrue(os.access(link, os.X_OK), name)

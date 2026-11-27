@@ -10,7 +10,7 @@ function posixQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export const SKILL_NAMES = Object.freeze(["walkr", "walkr-compare"]);
+export const SKILL_NAMES = Object.freeze(["walkr", "walkr-compare", "walkr-feedback"]);
 /**
  * The skills of the retired modes (CHANGELOG.md, 2026-11-23). An earlier setup wrote one skill file and one Pi prompt
  * for each. Setup removes such a file only when its own record names it and its content is unchanged.
@@ -24,18 +24,26 @@ const BLOCK_END = "<!-- walkr:end -->";
 const LEGACY_HEADING = "## Reviewing files and localhost pages with human-review";
 const LEGACY_SKILL_HASH = "e919a34c4fbe8fb6f5f446fbf64d2492d3e07d094fcb858d9da15a151fb74a46";
 const LEGACY_AGENTS_HASH = "1389b703c97b0ad6f9e05171c96dddf799dc1b0243104c8f43be9bdfcece3d68";
-export const AGENTS_BLOCK = `## Walkr Compare
+export const AGENTS_BLOCK = `## Walkr Compare and Feedback
+
+To let the owner pick among 2 or 3 prepared options side by side, read the installed walkr-compare skill.
+For quick feedback on a component chunk, a decision tree, or a grill-me session with expandable options, read the installed walkr-feedback skill.
+Use walkr when a request names Walkr and no mode. Core, Double, Coinflip and Trainer are retired.
+Skill invocation does not authorize deployment or a chat connection.`;
+/** Earlier blocks that setup wrote. Setup replaces them automatically; any other text between the markers stays. */
+const PRIOR_AGENTS_BLOCKS = [
+  `## Walkr Compare
 
 To let the owner pick among 2 or 3 prepared options, read the installed walkr-compare skill.
 Use walkr when a request names Walkr and no mode. Core, Double, Coinflip and Trainer are retired.
-Skill invocation does not authorize deployment or a chat connection.`;
-/** The block that setup wrote before the retirement. Setup replaces it; any other text between the markers stays. */
-const RETIRED_AGENTS_BLOCK = `## Walkr review modes
+Skill invocation does not authorize deployment or a chat connection.`,
+  `## Walkr review modes
 
 For HTML or Markdown feedback, read the installed walkr-core skill.
 For an explicit named mode, read walkr-double, walkr-coinflip, or walkr-trainer.
 Use walkr to choose a mode when the request is unclear.
-Skill invocation does not authorize deployment or a chat connection.`;
+Skill invocation does not authorize deployment or a chat connection.`,
+];
 
 export function readSkill(name = "walkr") {
   if (!SKILL_NAMES.includes(name)) throw new Error(`Unknown Walkr skill: ${name}`);
@@ -75,7 +83,7 @@ export function mergeAgentsBlock(existing, block = AGENTS_BLOCK) {
     const last = existing.indexOf(end);
     if (last < first) return { text: existing, action: "custom" };
     const body = existing.slice(first + start.length, last).trim();
-    if (legacy ? !isLegacy(body, "agents") : body !== AGENTS_BLOCK.trim() && body !== RETIRED_AGENTS_BLOCK.trim()) {
+    if (legacy ? !isLegacy(body, "agents") : body !== AGENTS_BLOCK.trim() && !PRIOR_AGENTS_BLOCKS.some((prior) => body === prior.trim())) {
       return { text: existing, action: "custom" };
     }
     const tail = existing.slice(last + end.length).replace(/^\n/, "");
@@ -287,6 +295,7 @@ export function installSkills(cwd, {
       if (safePath(standalone)) conflict(standalone, "standalone skill name collision");
       plans.get(base).files.set(`skills/${name}/SKILL.md`, readSkill(name)
         .replaceAll("{{LOCAL_COMPARE_COMMAND}}", `node ${posixQuote(path.join(repository, "src", "walkr-compare.js"))}`)
+        .replaceAll("{{LOCAL_FEEDBACK_COMMAND}}", `node ${posixQuote(path.join(repository, "src", "walkr-feedback.js"))}`)
         .replaceAll("{{REPOSITORY}}", repository));
     }
   }

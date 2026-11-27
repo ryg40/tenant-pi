@@ -24,7 +24,8 @@ def out(result): print(json.dumps({"result": result}))
 with open(log, "a") as f:
     f.write(json.dumps({"herdr": a[:3]}) + "\\n")
 if a[:2] == ["agent", "get"]:
-    out({"agent": {"pane_id": a[2], "agent": "claude", "agent_status": "idle"}})
+    out({"agent": {"pane_id": a[2], "agent": "claude", "agent_status": "idle",
+                   "cwd": os.environ.get("FAKE_AGENT_CWD")}})
 elif a[:2] == ["pane", "list"]:
     out({"panes": [{"pane_id": "w:old", "tab_id": "t1", "agent": "claude", "agent_status": "idle", "cwd": "/w"},
                    {"pane_id": "w:task", "tab_id": "t2", "agent": "pi", "agent_status": "working", "cwd": "/w"}]})
@@ -41,8 +42,11 @@ else:
     out({})
 '''
 
+# The fake spawn.py logs its arguments.
 FAKE_SPAWN = '''#!/usr/bin/env python3
-import json
+import json, os, sys
+with open(os.environ["FAKE_LOG"], "a") as f:
+    f.write(json.dumps({"spawn": sys.argv[1:]}) + "\\n")
 print(json.dumps({"name": "proj-coordinator-2", "pane_id": "w:new"}))
 '''
 
@@ -59,6 +63,14 @@ print("--- reply ---")
 print(os.environ.get("FAKE_REPLY", "HANDOFF-ACCEPTED first step: read the worker reply"))
 sys.exit(int(os.environ.get("FAKE_ASK_EXIT" if calls == 1 else "FAKE_ASK2_EXIT", "0")))
 '''
+
+
+RECORD = {"pane_id": "w:old", "role": "coordinator", "harness": "claude", "workspace_id": "w", "session": "primary"}
+
+
+def write_record(state, cwd=None):
+    with open(os.path.join(state, "panes", "w_old.json"), "w", encoding="utf-8") as f:
+        json.dump(dict(RECORD, cwd=cwd) if cwd else RECORD, f)
 
 
 def fixture(root):
@@ -78,9 +90,7 @@ def fixture(root):
         os.chmod(path, 0o755)
     state = os.path.join(root, "state")
     os.makedirs(os.path.join(state, "panes"))
-    with open(os.path.join(state, "panes", "w_old.json"), "w", encoding="utf-8") as f:
-        json.dump({"pane_id": "w:old", "role": "coordinator", "harness": "claude", "workspace_id": "w",
-                   "session": "primary"}, f)
+    write_record(state)
     session = os.path.join(root, "session")
     os.makedirs(session)
     handoff = os.path.join(session, "handoff.md")
@@ -92,11 +102,11 @@ def fixture(root):
     return os.path.join(scripts, "handoff.py"), handoff, env
 
 
-def run(script, handoff, env, *extra, **fake):
+def run(script, handoff, env, *extra, cwd=None, **fake):
     env = dict(env, **fake)
     with open(os.path.join(os.path.dirname(env["FAKE_LOG"]), "ask-calls"), "w", encoding="utf-8") as f:
         f.write("0")  # each run starts with the start prompt
-    p = subprocess.run([sys.executable, script, "--file", handoff, "--timeout", "5", *extra], env=env,
+    p = subprocess.run([sys.executable, script, "--file", handoff, "--timeout", "5", *extra], env=env, cwd=cwd,
                        capture_output=True, text=True, timeout=120)
     try:
         with open(env["FAKE_LOG"], encoding="utf-8") as f:
@@ -129,11 +139,62 @@ class Handoff(unittest.TestCase):
                 self.assertEqual(code, expected, out)
                 self.assertEqual(closes, [])
 
+    def test_the_new_coordinator_starts_in_the_folder_of_the_pane_not_in_the_folder_of_the_shell(self):
+        # The shell of the caller is in a subfolder of the project.
+        project = os.path.join(self.root, "project")
+        shell = os.path.join(project, "packages")
+        os.makedirs(shell)
+        for record_cwd, fake, want in (
+                (project, {"FAKE_AGENT_CWD": shell}, project),  # the record of spawn.py wins over `herdr agent get`
+                (None, {"FAKE_AGENT_CWD": project}, project),  # an init.py record has no folder: `herdr agent get`
+                (None, {}, os.path.realpath(shell))):  # no folder from Herdr, none in the record: os.getcwd()
+            with self.subTest(record_cwd=record_cwd, fake=fake):
+                write_record(self.env["HERDR_SKILL_STATE_DIR"], record_cwd)  # a done handoff removes the record
+                code, out, _ = run(self.script, self.handoff, self.env, cwd=shell, **fake)
+                self.assertEqual(code, 0, out)
+                with open(self.env["FAKE_LOG"], encoding="utf-8") as f:
+                    argv = [e["spawn"] for e in map(json.loads, f) if "spawn" in e][-1]
+                self.assertEqual(argv[argv.index("--cwd") + 1], want)
+
     def test_a_bad_roles_value_refuses_with_usage_and_starts_no_pane(self):
         code, out, closes = run(self.script, self.handoff, self.env, "--roles", "worker:codex:astra")
         # The fake herdr logs each call: no log file means that no herdr call and no spawn ran.
         self.assertEqual((code, closes, os.path.exists(self.env["FAKE_LOG"])),
                          (CONTRACT["handoff"]["exit"]["usage"]["code"], [], False), out)
+
+    def test_the_harness_agy_starts_an_agy_coordinator(self):
+        code, out, _ = run(self.script, self.handoff, self.env, "--harness", "agy", "--model", "gemini-4-neon-xhigh")
+        self.assertEqual(code, 0, out)
+        with open(self.env["FAKE_LOG"], encoding="utf-8") as f:
+            argv = [e["spawn"] for e in map(json.loads, f) if "spawn" in e][-1]
+        options = {name: argv[argv.index(name) + 1] for name in ("--harness", "--role", "--model")}
+        self.assertEqual(options, {"--harness": "agy", "--role": "coordinator", "--model": "gemini-4-neon-xhigh"})
+
+    def test_an_account_reaches_spawn_and_a_bad_account_starts_no_pane(self):
+        def spawns():
+            try:
+                with open(self.env["FAKE_LOG"], encoding="utf-8") as f:
+                    return [e["spawn"] for e in map(json.loads, f) if "spawn" in e]
+            except OSError:
+                return []
+
+        usage = CONTRACT["handoff"]["exit"]["usage"]["code"]
+        for extra in (("--account", "3"), ("--account", "1", "--harness", "pi"), ("--account", "1", "--harness", "agy")):
+            with self.subTest(extra=extra):
+                code, out, closes = run(self.script, self.handoff, self.env, *extra)
+                self.assertEqual((code, closes, spawns()), (usage, [], []), out)
+        with self.subTest(account="2"):
+            code, out, _ = run(self.script, self.handoff, self.env, "--account", "2")
+            self.assertEqual(code, 0, out)
+            argv = spawns()[-1]
+            self.assertEqual(argv[argv.index("--account") + 1], "2")
+        with self.subTest(roles="worker:claude2:claude-opus-5-5:xhigh"):
+            write_record(self.env["HERDR_SKILL_STATE_DIR"])  # the done handoff above removed the record
+            code, out, _ = run(self.script, self.handoff, self.env, "--roles", "worker:claude2:claude-opus-5-5:xhigh")
+            self.assertEqual(code, 0, out)
+            with open(self.handoff, encoding="utf-8") as f:
+                self.assertIn("- worker: `--harness claude --account 2 --model claude-opus-5-5 --thinking xhigh`",
+                              f.read())
 
     def test_the_roles_section_is_written_one_time_beside_the_open_panes(self):
         sys.path.insert(0, os.path.dirname(self.script))

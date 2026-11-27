@@ -305,6 +305,14 @@ class SkillInvariantTests(unittest.TestCase):
     def test_kit_source_skills_have_no_finding(self):
         self.assertEqual([], skill_findings(kit_skill_dirs(), TRACKER, require_credits=False))
 
+    def test_tenant_design_has_the_required_frontmatter_keys(self):
+        # The description is the trigger of a model-invoked skill; check.py parses frontmatter but needs no key.
+        # The parser of the dummies page script reads the `key: value` lines in any order.
+        parse = runpy.run_path(str(COMPONENT / "dummies/scripts/page.py"))["frontmatter"]
+        fields, _ = parse((COMPONENT / "tenant-design/SKILL.md").read_text(encoding="utf-8"))
+        self.assertEqual("tenant-design", fields.get("name"))
+        self.assertTrue(fields.get("description", "").strip())
+
     def test_plugin_skill_build_matches_sources(self):
         destination = Path(subprocess.check_output(["mktemp", "-d"], text=True).strip())
         self.addCleanup(shutil.rmtree, destination)

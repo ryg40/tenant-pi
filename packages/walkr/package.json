@@ -1,12 +1,13 @@
 {
   "name": "walkr",
   "version": "0.9.3",
-  "description": "Local tool that shows 2 or 3 prepared options of one change in a browser page; the owner picks one, comments and rates the session (Compare).",
+  "description": "Local tool for side-by-side option reviews (Compare) and fast component, decision-tree, and grilling feedback sessions (Feedback).",
   "author": "Peter Yang",
   "type": "module",
   "bin": {
     "walkr": "src/cli.js",
-    "walkr-compare": "src/walkr-compare.js"
+    "walkr-compare": "src/walkr-compare.js",
+    "walkr-feedback": "src/walkr-feedback.js"
   },
   "files": [
     "src",

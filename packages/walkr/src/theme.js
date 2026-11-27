@@ -1,6 +1,8 @@
 export const THEMES = Object.freeze([
   { value: "torch-light", label: "Torch Light" },
   { value: "torch-dark", label: "Torch Dark" },
+  { value: "lavender-light", label: "Lavender Light" },
+  { value: "lavender-dark", label: "Lavender Dark" },
   { value: "plum", label: "Fleet / Plum Dusk" },
   { value: "night", label: "Fleet / Soft Night" },
   { value: "day", label: "Fleet / Soft Day" },

@@ -23,12 +23,14 @@
       </svg>
       <span>Memory</span>
     </a>
-    <!-- The sections of the local web app: the same three links in the band of each section. As a standalone server
-         the app has no other section, and app.js hides the links. -->
+    <!-- The sections of the local web app: the same three links in the band of each section, and the logout of the
+         login of the artifacts server. As a standalone server the app has no other section and no login, and app.js
+         hides the links. -->
     <nav class="app-nav" id="app-nav" aria-label="Sections">
       <a href="/artifacts">Artifacts</a>
       <a href="/walkr">Walkr</a>
       <a href="/memory/" aria-current="page">Memory</a>
+      <a class="logout" href="/logout">Log out</a>
     </nav>
     <form class="search" id="search-form" role="search">
       <label class="visually-hidden" for="search-input">Search all memory</label>

@@ -240,6 +240,17 @@ test('read-only WAL and immutable fallback work without changing database bytes 
   for (const name of ['adapters/hermes.mjs', 'adapters/base.mjs', 'localindex.mjs', 'model.mjs', 'files.mjs']) {
     await copyFile(new URL(`../lib/${name}`, import.meta.url), path.join(root, 'lib', name));
   }
+  const privileges = process.getuid?.() === 0 ? { uid: 65534, gid: 65534 } : {};
+  // The test sets the fixture folder to 0o755 itself; each parent must let other users pass.
+  if (privileges.uid !== undefined) {
+    for (let folder = path.dirname(root); ; folder = path.dirname(folder)) {
+      if (((await stat(folder)).mode & 0o001) === 0) {
+        t.skip(`an unprivileged child cannot pass a parent of the temporary folder: ${folder}`);
+        return;
+      }
+      if (folder === path.dirname(folder)) break;
+    }
+  }
   // A copied executable avoids an inaccessible root-owned Node installation.
   const node = path.join(root, 'node');
   await copyFile(process.execPath, node);
@@ -283,11 +294,10 @@ test('read-only WAL and immutable fallback work without changing database bytes 
     assert.equal(readStore(withoutIndex).length, 4);
     console.log('read-only WAL and immutable fallback passed');
   `;
-  const privileges = process.getuid?.() === 0 ? { uid: 65534, gid: 65534 } : {};
   const child = spawnSync(node, ['--disable-warning=ExperimentalWarning', '--input-type=module', '-e', script], {
     ...privileges, encoding: 'utf8', timeout: 10_000,
   });
-  assert.equal(child.status, 0, child.stderr);
+  assert.equal(child.status, 0, child.stderr || String(child.error?.code ?? child.signal));
   assert.match(child.stdout, /fallback passed/);
   assert.deepEqual(await Promise.all([digest(withIndex), digest(withoutIndex)]), before);
 });

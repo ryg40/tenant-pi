@@ -1,7 +1,7 @@
 # Commands and skills
 
-Walkr has one mode: [Compare](compare.md). It has the command `walkr-compare` and the agent skill `walkr-compare`.
-The skill `walkr` is the entry: it leads a request that names Walkr to Compare.
+Walkr has two modes: [Compare](compare.md) and [Feedback](feedback.md). Compare has the command `walkr-compare` and the agent skill `walkr-compare`; Feedback has the command `walkr-feedback` and the agent skill `walkr-feedback`.
+The skill `walkr` is the entry: it leads a request that names Walkr to Compare or Feedback.
 
 Core, Double, Coinflip, Trainer and the shared GUI are retired since 2026-11-23. The release tag `portable/20261122-548259a` is the last release with their code and their guides.
 
@@ -10,9 +10,10 @@ Core, Double, Coinflip, Trainer and the shared GUI are retired since 2026-11-23.
 Each command shows help with no arguments and with `--help`, `-h` or `help`. Each command accepts `--version`.
 
 - `walkr-compare` runs the Compare commands. `walkr compare ...` is the same.
+- `walkr-feedback` runs the Feedback commands. `walkr feedback ...` is the same.
 - `walkr setup` installs the skills. It starts no server.
 
-Each `walkr-compare` command except help and `close` starts the Walkr server in the background when no compatible server runs.
+Each `walkr-compare` and `walkr-feedback` command except help and `close` starts the Walkr server in the background when no compatible server runs.
 No command opens a chat, loads a Pi extension or requests a model.
 
 ### Retired command names
@@ -22,12 +23,12 @@ The installer of the package and `install.sh --upgrade` of the kit remove these 
 
 ### Retired routes and records
 
-The server has the Compare routes, `/theme.css`, `/theme.js` and `/health`. Each other path answers 404 and writes nothing.
+The server has the Compare and Feedback routes, `/theme.css`, `/theme.js` and `/health`. Each other path answers 404 and writes nothing.
 A saved record of a retired mode stays on disk untouched: the Core state file `~/.human-review/state.json`, the Double archive `~/.local/.walkr/double` and the Trainer datasets `~/.local/.walkr/trainer`. No Walkr code reads them. Remove them by hand when you do not need them.
 
 ## Skills
 
-`walkr setup` installs the two skills: `walkr` and `walkr-compare`.
+`walkr setup` installs the three skills: `walkr`, `walkr-compare` and `walkr-feedback`.
 The [install guide](../INSTALL.md) runs it for you.
 
 ```sh
@@ -46,9 +47,9 @@ Setup writes the absolute path of your clone into each skill. Keep the clone in 
 
 ### Use the skills
 
-- Claude Code: `/walkr`, `/walkr-compare`.
-  `/walkr compare cfn options` and `/walkr simplify ticket` start the two [Compare workflows](compare.md#two-workflows).
-- Pi: the bare commands `/walkr` and `/walkr-compare` are prompt aliases from a project setup. `/skill:walkr` is the native Pi skill command.
+- Claude Code: `/walkr`, `/walkr-compare`, `/walkr-feedback`.
+  `/walkr compare cfn options` and `/walkr simplify ticket` start the two [Compare workflows](compare.md#two-workflows). `/walkr-feedback` starts a [Feedback](feedback.md) session for a component preview, decision tree, or grill-me walkthrough.
+- Pi: the bare commands `/walkr`, `/walkr-compare` and `/walkr-feedback` are prompt aliases from a project setup. `/skill:walkr` is the native Pi skill command.
 - Other agents read the installed skills by name.
 
 Each Pi prompt alias tells the agent to read one installed skill file. It passes your text as request data.

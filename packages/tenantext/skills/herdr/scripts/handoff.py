@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """Hand the work of this coordinator pane to a new coordinator, then close this pane.
 
-Usage: handoff.py --file <handoff.md> [--harness claude|pi] [--model NAME] [--thinking LEVEL]
+Usage: handoff.py --file <handoff.md> [--harness claude|pi|agy] [--account 1|2] [--model NAME] [--thinking LEVEL]
                   [--timeout SECONDS] [--roles ROLE:HARNESS:MODEL[:THINKING],...]
 
 1. Checks: inside Herdr, this pane is a coordinator (a record of init.py or spawn.py), and the
-   handoff file exists and is not empty. A bad --roles value fails first. A failed check starts nothing.
+   handoff file exists and is not empty. A bad --roles or --account value fails first. A failed check starts
+   nothing. --account applies only when the harness of the new coordinator is claude.
 2. Appends the open task panes of the workspace to the handoff file. A rerun replaces that section.
    With --roles (the Role models choices of the owner, from role_set.py) it also writes the section
-   "## Role models of the owner": the spawn.py inputs of each role. Without --roles it removes that section.
+   "## Role models of the owner": the spawn.py inputs of each role. The harness field claude1 or claude2 gives
+   `--harness claude --account 1` or `2` there. Without --roles it removes that section.
 3. Starts the new coordinator with spawn.py --role coordinator (model and thinking: the request,
    else models.json, as spawn.py resolves them). The harness defaults to the harness of this pane.
+   --account 1 or 2 goes to spawn.py, which starts the program claude1 or claude2 in place of claude.
+   The new coordinator starts in the start folder of this pane, not in the last `cd` of its shell tool
+   (start_folder).
 4. Sends the start prompt with ask.py and waits up to --timeout seconds (default 900).
 5. Success: ask.py exit 0 and a reply line that starts with the marker of contract.json. Then it
    appends the record to handoffs.jsonl beside the handoff file (status "recorded", key "roles" with the
-   raw --roles value when given), sends the second
+   raw --roles value and key "account" when given), sends the second
    prompt with ask.py --timeout 45, prints the result line, and closes this pane by its ID as the last
    step. The second send succeeds on ask.py exit 124 (the turn still works) or exit 0 with a new reply
    that is no API error. A hung or missing ask.py is a failure.
@@ -54,7 +59,9 @@ ASK_EXIT = exit_codes("ask")
 NO_REPLY_LINES = (CONTRACT["ask"]["no_new_reply_line"], CONTRACT["ask"]["no_transcript_line"])
 API_ERROR_NOTE = CONTRACT["ask"]["api_error_note"]
 REPLY_LINE = "--- reply ---\n"
-HARNESSES = ("claude", "pi")
+HARNESSES = ("claude", "pi", "agy")
+# The values of --account: the values of spawn.py --account (claude1 or claude2 in place of claude).
+ACCOUNTS = ("1", "2")
 # The second prompt only has to start a turn: ask.py waits this long, then exit 124 means the turn still works.
 SEND_SECONDS = 45
 # ask.py ends by itself at --timeout; this extra time only guards against a hung ask.py.
@@ -62,6 +69,8 @@ ASK_GRACE = 300
 SECTION = "## Open panes at the handoff"
 ROLES_SECTION = "## Role models of the owner"
 ROLES_HARNESSES = ("pi", "claude", "agy")
+# The harness field of --roles for an account slot of claude: claude1 or claude2 (as the owner says it).
+ROLES_ACCOUNTS = {f"claude{n}": n for n in ACCOUNTS}
 TASK_ROLES = ("researcher", "scout", "worker", "reviewer")
 # After `hc kill` of the own terminal the helper waits this long for the state "finished", then gives up.
 REMOVE_SECONDS = 60
@@ -73,7 +82,8 @@ def fail(msg, code):
 
 
 def parse(argv):
-    opts = {"file": None, "harness": None, "model": None, "thinking": None, "timeout": "900", "roles": None}
+    opts = {"file": None, "harness": None, "account": None, "model": None, "thinking": None, "timeout": "900",
+            "roles": None}
     i = 0
     while i < len(argv):
         key = argv[i][2:].replace("-", "_") if argv[i].startswith("--") else None
@@ -87,6 +97,11 @@ def parse(argv):
         fail("--file is required", EXIT["usage"])
     if opts["harness"] and opts["harness"] not in HARNESSES:
         fail(f"--harness must be one of {', '.join(HARNESSES)}", EXIT["usage"])
+    if opts["account"] is not None:
+        if opts["account"] not in ACCOUNTS:
+            fail(f"--account must be one of {', '.join(ACCOUNTS)}", EXIT["usage"])
+        if opts["harness"] and opts["harness"] != "claude":
+            fail(f"--account applies only to --harness claude, not to --harness {opts['harness']}", EXIT["usage"])
     try:
         opts["timeout"] = int(opts["timeout"])
     except ValueError:
@@ -97,9 +112,11 @@ def parse(argv):
 
 
 def parse_roles(value):
-    """Parse `<role>:<harness>:<model>[:<thinking>],...` into [(role, harness, model, thinking or None)].
+    """Parse `<role>:<harness>:<model>[:<thinking>],...` into [(role, harness, model, thinking or None, account
+    or None)].
 
-    A bad form, an unknown role, a role two times, an empty field or an unknown harness exits with usage."""
+    The harness field claude1 or claude2 gives the harness claude and the account 1 or 2. A bad form, an unknown
+    role, a role two times, an empty field, an unknown harness or an account on another harness exits with usage."""
     out = []
     for part in value.split(","):
         fields = part.split(":")
@@ -110,10 +127,14 @@ def parse_roles(value):
             fail(f"bad --roles part {part!r}: the role must be one of {', '.join(TASK_ROLES)}", EXIT["usage"])
         if any(r[0] == role for r in out):
             fail(f"bad --roles value: the role {role} is there two times", EXIT["usage"])
-        if harness not in ROLES_HARNESSES:
-            fail(f"bad --roles part {part!r}: the harness must be one of {', '.join(ROLES_HARNESSES)}",
+        account = ROLES_ACCOUNTS.get(harness)
+        if account:
+            harness = "claude"
+        elif harness not in ROLES_HARNESSES:
+            fail(f"bad --roles part {part!r}: the harness must be one of "
+                 f"{', '.join(ROLES_HARNESSES + tuple(ROLES_ACCOUNTS))}; an account applies only to claude",
                  EXIT["usage"])
-        out.append((role, harness, model, fields[3] if len(fields) == 4 else None))
+        out.append((role, harness, model, fields[3] if len(fields) == 4 else None, account))
     return out
 
 
@@ -217,8 +238,9 @@ def roles_section(role_models):
     if not role_models:
         return ""
     lines = []
-    for role, harness, model, thinking in role_models:
-        inputs = f"--harness {harness} --model {model}" + (f" --thinking {thinking}" if thinking else "")
+    for role, harness, model, thinking, account in role_models:
+        inputs = (f"--harness {harness}" + (f" --account {account}" if account else "") + f" --model {model}"
+                  + (f" --thinking {thinking}" if thinking else ""))
         lines.append(f"- {role}: `{inputs}`")
     roles = {r[0] for r in role_models}
     if "researcher" in roles and "scout" not in roles:
@@ -254,10 +276,37 @@ def append_panes(path, text, lines, role_models=None):
         fail(f"cannot append the open panes to {path}: {exc.strerror}", EXIT["usage"])
 
 
-def spawn(opts, harness):
+def start_folder(found, me):
+    """The start folder of the calling coordinator: the --cwd of the new coordinator.
+
+    The shell tool of a Claude Code or Pi coordinator keeps the folder of its last `cd`, so os.getcwd() of this
+    command can be a subfolder. The folder of the agent process comes from these sources, in this order:
+    - herdr-core: `cwd` of the `hc get` record of the own terminal, the folder that the terminal started in.
+      Not `foreground.cwd`: it is the folder of the process that holds the terminal at this moment.
+    - Herdr 1: `cwd` of the skill record, the --cwd that spawn.py gave the agent. It cannot change after the launch.
+      Then, for an init.py record (it has no `cwd`), `cwd` of `herdr agent get`. Herdr gives there the last
+      OSC 7 folder that the pane reported, else the folder of the shell of the pane, so it can move after the launch.
+      Not `foreground_cwd`: Herdr can give the folder of another process of the foreground job, such as this one.
+    A source is read only when the sources before it give no folder. A value that is not a dict gives no folder.
+    With no folder from these sources, os.getcwd() stays.
+    """
+    if found["backend"] == "core":
+        sources = (lambda: found.get("record"),)
+    else:
+        sources = (lambda: read_record(me), lambda: agent_info(me))
+    for source in sources:
+        data = source()
+        folder = data.get("cwd") if isinstance(data, dict) else None
+        if isinstance(folder, str) and folder:
+            return folder
+    return os.getcwd()
+
+
+def spawn(opts, harness, cwd):
+    """Start the new coordinator in `cwd`, the start folder of the caller (start_folder)."""
     cmd = [sys.executable, os.path.join(HERE, "spawn.py"), "--harness", harness, "--role", "coordinator",
-           "--cwd", os.getcwd()]
-    for key in ("model", "thinking"):
+           "--cwd", cwd]
+    for key in ("account", "model", "thinking"):
         if opts[key]:
             cmd += [f"--{key}", opts[key]]
     p = subprocess.run(cmd, capture_output=True, text=True)
@@ -305,13 +354,15 @@ def ask(pane, prompt, timeout, grace=ASK_GRACE):
     return p.returncode, p.stdout
 
 
-def record_handoff(path, me, pane, name, status, cause=None, roles=None):
+def record_handoff(path, me, pane, name, status, cause=None, roles=None, account=None):
     """Append one line to handoffs.jsonl beside the handoff file. Status: recorded, or failed with a cause."""
     record_file = os.path.join(os.path.dirname(path), "handoffs.jsonl")
     entry = {"time": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
              "old_pane_id": me, "new_pane_id": pane, "new_name": name, "handoff_file": path, "status": status}
     if roles is not None:
         entry["roles"] = roles
+    if account is not None:
+        entry["account"] = account
     if cause:
         entry["cause"] = cause
     with open(record_file, "a", encoding="utf-8") as f:
@@ -406,16 +457,16 @@ def main():
     me, workspace, own_harness = check_core_caller(found) if on_core else check_caller()
     path, text = check_file(opts["file"])
     harness = opts["harness"] or own_harness
-    if harness == "agy":
-        # The handoff to an agy coordinator is not proven (role_set.py refuses it too), so it stays refused.
-        why = "--harness agy was given" if opts["harness"] else f"pane {me} runs agy"
-        fail(f"handoff.py starts no agy coordinator ({why}); give --harness claude or --harness pi", EXIT["usage"])
     if harness not in HARNESSES:
-        fail(f"cannot tell the harness of pane {me} ({harness}); give --harness claude or --harness pi", EXIT["usage"])
+        fail(f"cannot tell the harness of pane {me} ({harness}); give --harness claude, pi or agy",
+             EXIT["usage"])
+    if opts["account"] and harness != "claude":
+        fail(f"--account applies only to the harness claude, and pane {me} runs {harness}; give --harness claude",
+             EXIT["usage"])
 
     append_panes(path, text, core_open_panes(workspace, me) if on_core else open_panes(workspace, me),
                  opts.get("role_models"))
-    pane, name = spawn(opts, harness)
+    pane, name = spawn(opts, harness, start_folder(found, me))
     say = say_name(name)
     new = f"new pane {pane} {name}{f' ({say})' if say else ''}; both panes stay open"
 
@@ -430,13 +481,14 @@ def main():
         fail(f"the reply has no line that starts with {MARKER}; {new}. Read it with `last-reply.py {pane}`.",
              EXIT["not_accepted"])
     try:
-        record_file = record_handoff(path, me, pane, name, "recorded", roles=opts["roles"])
+        record_file = record_handoff(path, me, pane, name, "recorded", roles=opts["roles"], account=opts["account"])
     except OSError as exc:
         fail(f"cannot write handoffs.jsonl beside {path}: {exc.strerror}; {new}", EXIT["record_failed"])
     ok, why = send_second(pane, second_prompt(path, record_file, me))
     if not ok:
         try:
-            record_handoff(path, me, pane, name, "failed", f"second prompt: {why}", roles=opts["roles"])
+            record_handoff(path, me, pane, name, "failed", f"second prompt: {why}", roles=opts["roles"],
+                           account=opts["account"])
         except OSError:
             pass  # exit 7 stays; the line below names the cause
         fail(f"the second prompt failed ({why}); {new}. Read the new pane with `last-reply.py {pane}`.",

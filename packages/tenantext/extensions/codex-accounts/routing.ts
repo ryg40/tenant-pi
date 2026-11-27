@@ -129,9 +129,14 @@ export const gatewayStream: typeof streamSimple = (model, context, options) => {
 			if (!response.ok) {
 				await response.body?.cancel();
 				await options?.onResponse?.({ status, headers: Object.fromEntries(ACCOUNT_HEADERS.map((name) => [name, response.headers.get(name) ?? ""])) }, model);
-				return new Response(JSON.stringify({ error: { message: gatewayHttpError(status) } }), {
-					status, headers: { "content-type": "application/json" },
-				});
+				// Pi 1.6.1 fires `after_provider_response` again with the headers of this substitute
+				// response, so it carries each valid account header and the last event keeps the account.
+				const headers: Record<string, string> = { "content-type": "application/json" };
+				for (const name of ACCOUNT_HEADERS) {
+					const value = response.headers.get(name);
+					if (value !== null && ACCOUNT_NAME.test(value)) headers[name] = value;
+				}
+				return new Response(JSON.stringify({ error: { message: gatewayHttpError(status) } }), { status, headers });
 			}
 			return response;
 		},

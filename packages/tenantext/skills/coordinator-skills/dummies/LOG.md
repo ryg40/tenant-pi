@@ -38,6 +38,8 @@ Tell the users of the service about the wait before the change.
 
 The page `DUMMIES` is the human session log of a project: one entry for each session, the newest first. It is the page `projects/<project>/DUMMIES` of OpenKnowledge. The script `page.py` reads and writes it through the `okknow` command only. On a host with no `okknow` command, the log is the local file DUMMIES.md of the user in the directory `<XDG_CONFIG_HOME or ~/.config>/dummies-skill/logs/<project>`, shared by Claude Code, Pi and agy. Each command of `page.py` uses it then, and `state.py` shows it as `log: on (local file <path>)`. `<project>` is the name of the repository directory; `--project <slug>` names another project. Outside a Git repository, `--project <slug>` is necessary.
 
+When the page has more than 20 entries, `page.py add` keeps the 10 newest and moves the rest to the archive page. The archive uses the page name with `-archive` at the end: `DUMMIES-archive` for the default page. The first `add` after a skill update moves the older entries of a long page by itself. `page.py trim` uses the same rule. With 20 entries or fewer, either command moves nothing unless it must finish an interrupted move. Open the archive page to read the older entries.
+
 The page keeps its own schema: the four labels and the Markdown tables below. Compact report syntax 2 and detailed report syntax 1 are chat contracts only. They do not apply to the page, and a program that reads a report never reads the page.
 
 ## Add the entry of this session
@@ -86,7 +88,9 @@ EOF
 | --- | --- | --- |
 | 0 | A line `added: ...` | Give the user that line. It names the page, or the path of the local file. |
 | 0 | The line `log: off, no entry` | The user turned the page log off. Give no `added:` line. |
-| 0 | The line ends with `new entries of other writers: <n>` | Another session added `<n>` entries between the read and the write of the script. Read the page. Change nothing. |
+| 0 | The line includes `new entries of other writers: <n>` | Another session added `<n>` entries between the read and the write of the script. Read the page. Change nothing. |
+| 0 | The line ends with `\| archived: <n>` | The page had more than 20 entries. It keeps the 10 newest now, and <n> older entries are on the page `<page>-archive`. Give the user the line. |
+| 0 | The line ends with `\| archive: not done` | The entry is on the page: do not add it again. The move of the older entries failed, and the next `add` tries it again. Give the user the line. Do not move entries by hand. |
 | 2 | The body or an argument is refused | Correct what the message names. Run the command again. When a line is refused as a credential and holds none, write it in other words. |
 | 3 | The `okknow` command or the file failed | Give the user the message. Do not write the page in another way. |
 | 5 | This session has an entry | Stop. Earlier entries stay as they are. For a correction, or for later work of the same session, add a new entry with `--again`. The summary of a correction starts with `Correction:`. |

@@ -65,18 +65,19 @@ def short(value, limit=TITLE):
     return re.sub(r'[\x00-\x1f\x7f]+', ' ', value).strip()[:limit]
 
 
-def write_token(state_dir):
-    """Make a new token, write it to TOKEN_FILE of `state_dir` with mode 0600 and return it. The write goes to a new
-    file that replaces the old one, so no reader sees a part of a token and no old link is followed."""
+def write_token(state_dir, name=TOKEN_FILE):
+    """Make a new token, write it to the file `name` (default TOKEN_FILE) of `state_dir` with mode 0600 and return
+    it. The write goes to a new file that replaces the old one, so no reader sees a part of a token and no old link
+    is followed."""
     token = secrets.token_hex(32)
     directory = Path(state_dir)
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    scratch = directory / f'.{TOKEN_FILE}-{secrets.token_hex(4)}'
+    scratch = directory / f'.{name}-{secrets.token_hex(4)}'
     fd = os.open(scratch, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, 'O_NOFOLLOW', 0), 0o600)
     try:
         with os.fdopen(fd, 'w', encoding='ascii') as handle:
             handle.write(token + '\n')
-        os.replace(scratch, directory / TOKEN_FILE)
+        os.replace(scratch, directory / name)
     except BaseException:
         try:
             os.unlink(scratch)

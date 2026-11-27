@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """artifacts: store an HTML or Markdown file in the local artifact store and print its view link.
 
-Commands: setup, upload, list, open, archive, restore, delete, doctor, retention, and start, off (alias stop), status, events and
-walkr-url for the one local server of this user. An upload writes into the store directly and needs no running server.
+Commands: setup, upload, list, open, archive, restore, delete, doctor, retention, and start, off (alias stop), status, events,
+walkr-url and login (status, rotate) for the one local server of this user. An upload writes into the store directly and needs no running server.
 The server is the program `server/artifacts_server.py` of this package; it listens on 127.0.0.1 only and has the root
 page /, the index /artifacts, the Walkr page /walkr and, with the memory viewer of the kit, the section /memory/. off
 stops this server, its memory viewer and the live Walkr server (--keep-walkr leaves that one). With the key `remote`
 (artifacts setup --remote HOST), upload, list, archive, restore, delete and open work on the store of HOST over SSH; --here ignores
 the key for one call.
 
+The pages of the server need a login: the user admin and a key. The first start makes the key, writes it into a
+password system (the key keyStore, `artifacts setup --key-store`) and then the verifier file with its hash. The
+server keeps only that hash. Each call of the CLI to a running server sends the local token of that server run.
+
 Exit codes: 0 done, 2 refused input (walkr-url: the session is unknown or the ID is not valid), 3 the server or the
-remote store did not start or answer, 4 walkr-url: Walkr or Node is absent, 5 the scan stopped the upload.
+remote store did not start or answer, 4 walkr-url: Walkr or Node is absent, 5 the scan stopped the upload, 6 no
+password system can take the admin key, or the store did not take it.
 """
 import argparse
 import fcntl
@@ -39,6 +44,8 @@ import walkr_front  # noqa: E402
 import local_sockets  # noqa: E402
 import events as events_lib  # noqa: E402
 import memory_front  # noqa: E402
+import login as login_lib  # noqa: E402
+import key_store  # noqa: E402
 
 TYPES = {'.html': 'text/html', '.htm': 'text/html', '.md': 'text/markdown', '.markdown': 'text/markdown'}
 SCAN_TIMEOUT = 300
@@ -402,6 +409,196 @@ def log_tail(log, count=20):
 
 
 # ---------------------------------------------------------------------------
+# The admin login: the key, its store and the verifier file
+# ---------------------------------------------------------------------------
+NO_STORE_FIX = ('Unlock a password system (for Bitwarden, run export BW_SESSION="$(bw unlock --raw)" in a terminal '
+                'with shell tracing off, then retry in that shell), or choose a store with artifacts setup --key-store keychain|bitwarden|vault|file')
+
+
+def verifier_path():
+    return store_lib.config_path().parent / login_lib.VERIFIER
+
+
+def key_store_setting(data):
+    try:
+        return store_lib.key_store_of(data)
+    except store_lib.ConfigError as error:
+        raise Stop(2, str(error)) from None
+
+
+ROTATE_NOT_DONE = ('The rotate did not finish: the key that the store holds works, the earlier one or the new one. '
+                   'Run artifacts login rotate to make it whole again (artifacts login rotate --fresh when the item '
+                   'cannot be read)')
+
+
+def kept_entry(old):
+    """The entry of the verifier `old` whose key its item holds now: 'active' or 'pending'. It reads the item of
+    `pending` when that entry exists and names an item that can be read, else the item of the active entry. A new
+    Bitwarden item has no id in `pending` (the id comes only after the create), so the active item counts then.
+    Raises Stop 6, with no change, when the read fails or the item holds a key that no entry takes."""
+    pending = old.get('pending')
+    item = pending['store'] if pending and key_store.addressable(pending['store']) else old['store']
+    way_out = ('nothing changed. Make the item readable and run artifacts login rotate again, or run artifacts login '
+               'rotate --fresh for a new key in a new item')
+    kind = item.get('kind')
+    if kind not in key_store.STORE:
+        raise Stop(6, f'the verifier names an unknown store ({kind}); {way_out}')
+    try:
+        held = key_store.STORE[kind][3](item)
+    except key_store.StoreError as error:
+        raise Stop(6, f'cannot read {key_store.describe(item)}: {error}; {way_out}') from None
+    if held is None:
+        raise Stop(6, f'cannot read {key_store.describe(item)}; {way_out}')
+    entry = login_lib.fitting_entry(old, held)
+    if entry is None:
+        raise Stop(6, f'{key_store.describe(item)} holds a key that the verifier does not take; {way_out}')
+    return entry
+
+
+def new_login(data, port, old, lost, fresh=False):
+    """Make a new key and write it into its store. Returns the item reference.
+
+    A first start (`old` is None): the store, the read-back, then the verifier file; on a failure, a Stop and no
+    verifier. A rotate: first it reads the item of the verifier and keeps the hash of the key that the item holds
+    (kept_entry; with `fresh`, it reads nothing and keeps the active hash). Then the verifier with that hash and the
+    `pending` entry of the new key (the sessions stay valid), then the store and the read-back, then the verifier
+    with the new key alone and a new generation. On a failure after the `pending` write, the `pending` entry stays, so
+    the key of the store works. With `fresh`, the key goes into a new item of the store of the setting, as at a first
+    start. `lost` says what did not happen on a failure before any write."""
+    if not login_lib.available():
+        raise Stop(3, 'this Python has no hashlib.scrypt (an OpenSSL build of Python has it; on macOS use the Python '
+                      f'of the macOS guide of the kit); {lost}')
+    setting = key_store_setting(data)
+    keep = 'active' if old is None or fresh else kept_entry(old)
+    current = None if old is None or fresh else (old['pending']['store'] if keep == 'pending' else old['store'])
+    # A plain rotate with the setting auto keeps the store of the item that holds the key now.
+    wanted = current.get('kind') if setting == 'auto' and current else setting
+    try:
+        kind = key_store.choose(wanted)
+    except key_store.StoreError as error:
+        raise Stop(6, f'the key store {wanted} is not usable now: {error}. {NO_STORE_FIX}; {lost}') from None
+    if kind is None:
+        if wanted == 'auto':
+            raise Stop(6, 'no password system can take the admin key: no unlocked Keychain (macOS), Bitwarden '
+                          f'session or Vault token. {NO_STORE_FIX}; {lost}')
+        raise Stop(6, f'the key store {wanted} is not usable now. {NO_STORE_FIX}; {lost}')
+    item = current if current and current.get('kind') == kind else \
+        key_store.new_item(kind, port, store_lib.config_path().parent)
+    key = login_lib.new_key()
+    if old is None:
+        try:
+            item = key_store.store_key(item, key)
+        except key_store.StoreError as error:
+            raise Stop(6, f'{error}. {NO_STORE_FIX}; {lost}') from None
+        login_lib.write_verifier(verifier_path(), login_lib.verifier(key, item, store_lib.iso(store_lib.now_utc())))
+        return item
+    try:
+        login_lib.write_verifier(verifier_path(), login_lib.with_pending(old, key, item, keep))
+    except OSError as error:
+        raise Stop(6, f'cannot write the verifier file {verifier_path()} ({type(error).__name__}); {lost}') from None
+    try:
+        item = key_store.store_key(item, key)
+        login_lib.write_verifier(verifier_path(), login_lib.verifier(key, item, store_lib.iso(store_lib.now_utc())))
+    except key_store.StoreError as error:
+        raise Stop(6, f'{error}. {ROTATE_NOT_DONE}') from None
+    except OSError as error:
+        raise Stop(6, f'cannot write the verifier file {verifier_path()} ({type(error).__name__}). '
+                      f'{ROTATE_NOT_DONE}') from None
+    return item
+
+
+def ensure_login(data, port):
+    """The first start: a new key when no verifier file exists. Returns the item of a new key, or None."""
+    if verifier_path().exists():
+        if login_lib.read_verifier(verifier_path()) is None:
+            raise Stop(2, f'the verifier file {verifier_path()} is not valid; run artifacts login rotate')
+        return None
+    return new_login(data, port, None, 'no server started')
+
+
+def cli_token(answer):
+    """The local token of the running server, only when its /healthz PID is the PID of the state file, else None."""
+    state = read_state()
+    if not answer or state.get('pid') != answer.get('pid'):
+        return None
+    try:
+        token = (store_lib.state_dir() / login_lib.CLI_TOKEN_FILE).read_text(encoding='ascii').strip()
+    except (OSError, ValueError):
+        return None
+    return token or None
+
+
+def server_json(port, answer, path):
+    """The JSON of a 200 answer of the running server of the state file to GET `path` with the local token, or
+    None."""
+    token = cli_token(answer)
+    if token is None:
+        return None
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=HEALTH_TIMEOUT)
+    try:
+        connection.request('GET', path, headers={login_lib.TOKEN_HEADER: token})
+        reply = connection.getresponse()
+        return json.loads(reply.read(4096).decode('utf-8')) if reply.status == 200 else None
+    except (OSError, http.client.HTTPException, ValueError, UnicodeDecodeError):
+        return None
+    finally:
+        connection.close()
+
+
+def server_login(port, answer, data):
+    """How the running server uses the verifier `data`: yes, another key, no server, or a server without login."""
+    if not answer:
+        return 'no server runs'
+    if 'login' not in answer:
+        return 'no: the server runs from before the login'
+    reply = server_json(port, answer, '/api/login')
+    if not isinstance(reply, dict):
+        return 'unknown: the server of the state file gave no answer to the local token'
+    if data and reply.get('generation') == data['generation']:
+        return 'yes'
+    return 'no: the server has no valid verifier' if reply.get('generation') is None else 'no: another key'
+
+
+LOGIN_NOTE = ('note: this server runs from before the login and its pages need none; run artifacts off and '
+              'artifacts start to get the login')
+
+
+def cmd_login(args):
+    data = config()
+    port = port_of(data)
+    if args.action == 'rotate':
+        with lock():
+            old = login_lib.read_verifier(verifier_path())
+            item = new_login(data, port, old, 'the old key stays valid', fresh=args.fresh)
+        print('rotated: the admin key is new; each browser session of the server ends')
+        print('login: admin key in ' + key_store.describe(item))
+        return 0
+    found = login_lib.read_verifier(verifier_path())
+    answer = health(port)
+    used = server_login(port, answer, found)
+    if args.json:
+        out = {'verifier': str(verifier_path()), 'present': found is not None, 'server': used}
+        if found:
+            out.update({'user': found['user'], 'store': found['store'], 'createdAt': found.get('createdAt'),
+                        'pending': 'pending' in found})
+        print(json.dumps(out))
+        return 0
+    if not found:
+        print(f'login: no valid verifier file {verifier_path()}; artifacts start or artifacts login rotate makes one')
+        return 0
+    print('user: ' + found['user'])
+    print('store: ' + key_store.describe(found['store']))
+    print('created: ' + str(found.get('createdAt')))
+    print('verifier: ' + str(verifier_path()))
+    if 'pending' in found:
+        print('pending: a rotate did not finish; the old key and the new key in '
+              + key_store.describe(found['pending']['store']) + ' both work, whichever one the store holds. '
+              'artifacts login rotate makes it whole')
+    print('server uses it: ' + used)
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # The commands
 # ---------------------------------------------------------------------------
 def cmd_setup(args):
@@ -436,6 +633,8 @@ def cmd_setup(args):
         data[store_lib.PUBLIC_KEY] = public
     elif args.no_walkr_public_origin:
         data.pop(store_lib.PUBLIC_KEY, None)
+    if args.key_store is not None:
+        data[store_lib.KEY_STORE_KEY] = args.key_store
     store_lib.write_config(data)
     print('config: ' + str(store_lib.config_path()))
     print(f'port: {port}')
@@ -444,6 +643,8 @@ def cmd_setup(args):
     if public or args.no_walkr_public_origin:
         print('walkr public origin: ' + data.get(store_lib.PUBLIC_KEY, 'none (loopback only)'))
         print('restart the artifacts server and the live Walkr server: they read the key at their start')
+    if args.key_store is not None:
+        print('key store: ' + args.key_store + ' (artifacts login rotate moves the key; a first start uses it)')
     return 0
 
 
@@ -826,13 +1027,16 @@ def page_lines(known):
 
 
 def cmd_start(args):
-    port = port_of(config())
+    data = config()
+    port = port_of(data)
     with lock():
         answer = health(port)
         if answer:
             known = facts(port, answer)
             print(f'a server runs already (pid {answer["pid"]}); start starts no second one')
             print('\n'.join(page_lines(known)))
+            if not known['old'] and 'login' not in answer:
+                print(LOGIN_NOTE)
             print(known['url'])
             return 0
         if not port_free(port):
@@ -841,6 +1045,8 @@ def cmd_start(args):
                        + ('\nartifacts: ' + hint if hint else ''))
         if not SERVER.is_file():
             raise Stop(3, f'the server program {SERVER} is missing')
+        # The key comes before the server: a store that cannot take it starts no server.
+        made = ensure_login(data, port)
         log = store_lib.state_dir() / 'server.log'
         fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, 'w') as out:
@@ -876,6 +1082,8 @@ def cmd_start(args):
         known = facts(port, answer)
         print(f'started: pid {process.pid}, log {log}')
         print('\n'.join(page_lines(known)))
+        if made:
+            print('login: user admin, new key in ' + key_store.describe(made))
         print(known['url'])
         return 0
 
@@ -971,6 +1179,9 @@ def cmd_events(args):
     known = facts(port, answer)
     if not answer or not known['events']:
         raise Stop(3, f'no local server with an event channel runs on port {port}; start it with artifacts start')
+    if read_state().get('pid') != answer['pid']:
+        raise Stop(3, f'the server on port {port} (pid {answer["pid"]}) is not the one of the state file; '
+                      'the token goes to no other program')
     try:
         token = Path(known['events']['token_file']).read_text(encoding='ascii').strip()
     except (OSError, ValueError):
@@ -1044,6 +1255,11 @@ def cmd_status(args):
         print(f'events: {known["events"]["url"]} (token file: {known["events"]["token_file"]})')
     if known['old']:
         print(OLD_SERVER_NOTE)
+    elif answer and 'login' not in answer:
+        print(LOGIN_NOTE)
+    elif answer:
+        print('login: the server uses the verifier: ' + server_login(port, answer,
+                                                                      login_lib.read_verifier(verifier_path())))
     if value is not None and remote is None:
         print('remote: the value in the configuration file is not a plain SSH destination')
     return 0
@@ -1076,7 +1292,8 @@ def cmd_walkr_url(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='artifacts', description=__doc__.split('\n')[0])
-    parser.add_argument('--json', action='store_true', help='status: print one JSON object: state, url, pages, modules and more')
+    parser.add_argument('--json', action='store_true',
+                        help='status and login status: print one JSON object: state, url, pages, modules and more')
     parser.add_argument('--here', action='store_true',
                         help='use the store of this computer; ignore the key remote for this call')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -1092,6 +1309,9 @@ def main(argv=None):
                              'Compare page, for example https://walkr.example.org')
     public.add_argument('--no-walkr-public-origin', action='store_true',
                         help='remove the key walkrPublicOrigin: the Walkr page is loopback only')
+    setup.add_argument('--key-store', choices=store_lib.KEY_STORES,
+                       help='write the key keyStore: the password system of the admin key (default auto: the '
+                            'Keychain on macOS, else Bitwarden, else Vault; file only by this choice)')
     upload = sub.add_parser('upload', help='scan one .html or .md file and store it; print the view link')
     upload.add_argument('file', help='the file, or - for standard input with --name')
     upload.add_argument('--name', help='with -: the file name of standard input (only its last path part)')
@@ -1124,11 +1344,17 @@ def main(argv=None):
     walkr_url = sub.add_parser('walkr-url', help='print the private address of the Walkr page on this server; '
                                                  'start the live Walkr server when none runs')
     walkr_url.add_argument('session', nargs='?', metavar='SESSION-ID')
+    login = sub.add_parser('login', help='status: the store and the item of the admin key, never the value; '
+                                         'rotate: a new key, which ends each browser session')
+    login.add_argument('action', choices=('status', 'rotate'))
+    login.add_argument('--fresh', action='store_true',
+                       help='rotate: a new key in a new item of the store of the setting; reads no old item')
     args = parser.parse_args(argv)
     commands = {'setup': cmd_setup, 'upload': cmd_upload, 'list': cmd_list, 'open': cmd_open, 'delete': cmd_delete,
                 'archive': cmd_archive, 'restore': cmd_archive, 'doctor': cmd_doctor,
                 'retention': cmd_retention, 'start': cmd_start, 'off': cmd_off, 'stop': cmd_off,
-                'status': cmd_status, 'walkr-url': cmd_walkr_url, 'events': cmd_events}
+                'status': cmd_status, 'walkr-url': cmd_walkr_url, 'events': cmd_events,
+                'login': cmd_login}
     try:
         args.host = remote_of(config()) if args.command in REMOTE_COMMANDS and not args.here else None
         return commands[args.command](args)

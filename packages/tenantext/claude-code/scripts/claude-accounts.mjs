@@ -12,9 +12,9 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve as resolvePath } from "node:path";
 
 export const SLOTS = ["1", "2"];
 const STATE_FILE = "state.json";
@@ -138,6 +138,18 @@ export function slotSources(root, env = process.env, home = homedir(), read = re
 function requireSlot(slot) {
 	if (!isSlot(slot)) throw new AccountError(`Unknown slot "${String(slot ?? "")}". Use one of: ${SLOTS.join(", ")}.`);
 }
+const realPath = path => { try { return realpathSync(path); } catch { return resolvePath(path); } };
+/**
+ * `adopt` and `use` refuse when the live config folder is a slot folder: in a session of the non-active slot command
+ * (claude1 or claude2), where `CLAUDE_CONFIG_DIR` is a slot folder, or when `~/.claude` is a link to a slot folder.
+ * Then the live files are the files of that slot: `use` would write the login of another account into it, and the
+ * login of that slot would be lost.
+ */
+function refuseInsideSlot(root, env, home) {
+	const live = realPath(liveDir(env, home));
+	const slot = SLOTS.find(s => realPath(slotDir(root, s)) === live);
+	if (slot) throw new AccountError(`The live config folder (CLAUDE_CONFIG_DIR, or ~/.claude) is the folder of slot ${slot}, as in a session of claude${slot}. Nothing was changed. Run this command in a shell outside that session, with ~/.claude as a real folder.`);
+}
 function ensureSlotDir(root, slot) {
 	mkdirSync(root, { recursive: true, mode: 0o700 });
 	chmodSync(root, 0o700);
@@ -172,6 +184,7 @@ function writeState(root, active, now) {
 export function adopt(slot, { env = process.env, home = homedir(), now = Date.now() } = {}) {
 	requireSlot(slot);
 	const root = accountsRoot(env, home);
+	refuseInsideSlot(root, env, home);
 	const live = liveLogin(env, home, readJsonStrict);
 	if (!hasLogin(live)) throw new AccountError("No live Claude login to adopt. Log in with claude first, or use: claude-account login <slot>.");
 	const other = SLOTS.find(s => s !== slot && hasLogin(slotLogin(root, s, readJsonStrict)) && sameAccount(live, slotLogin(root, s, readJsonStrict)));
@@ -198,6 +211,7 @@ export function adopt(slot, { env = process.env, home = homedir(), now = Date.no
 export function use(slot, { env = process.env, home = homedir(), now = Date.now() } = {}) {
 	requireSlot(slot);
 	const root = accountsRoot(env, home);
+	refuseInsideSlot(root, env, home);
 	const target = slotLogin(root, slot, readJsonStrict);
 	if (!hasLogin(target)) throw new AccountError(`Slot ${slot} has no login. Run: claude-account login ${slot}.`);
 	const credentialsPath = join(liveDir(env, home), ".credentials.json"), claudeJsonPath = liveClaudeJson(env, home);

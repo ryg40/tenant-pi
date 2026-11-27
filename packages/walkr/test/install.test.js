@@ -11,6 +11,7 @@ const script = path.join(clone, "install.sh");
 const LINKS = {
   walkr: "src/cli.js",
   "walkr-compare": "src/walkr-compare.js",
+  "walkr-feedback": "src/walkr-feedback.js",
 };
 const posix = process.platform !== "win32";
 

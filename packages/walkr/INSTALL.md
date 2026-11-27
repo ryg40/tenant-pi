@@ -1,8 +1,6 @@
 # Install Walkr
 
-Walkr Compare is a local tool. It shows 2 or 3 prepared options of one change in your browser on `localhost`. You pick one option, and your agent reads the result.
-
-Compare is the one mode of Walkr. Core, Double, Coinflip, Trainer, the shared GUI and hosted mode are retired since 2026-11-23; the release tag `portable/20261122-548259a` is the last release with their code.
+Walkr is a local tool with two modes: Compare (2 or 3 prepared options side by side) and Feedback (component previews, decision trees, and grill-me sessions with expandable options). Core, Double, Coinflip, Trainer, the shared GUI and hosted mode are retired since 2026-11-23; the release tag `portable/20261122-548259a` is the last release with their code.
 
 This page installs Walkr from a clone of this repository. The [question list](skills/walkr-install/SKILL.md) is for an agent that installs Walkr for a user.
 
@@ -47,7 +45,7 @@ Keep the clone in its place. The command links point into it.
 The script does these steps, in this order:
 
 1. It checks Node.js. It stops when Node.js is too old. The package has no runtime dependency, so no npm step runs.
-2. It links two commands into `<bin>`: `walkr` and `walkr-compare`.
+2. It links three commands into `<bin>`: `walkr`, `walkr-compare` and `walkr-feedback`.
 3. It removes a link of this clone for a retired command (`walkr-core`, `walkr-double`, `walkr-coinflip`, `walkr-trainer`). A file or a link of another owner with such a name stays.
 4. It installs the Walkr agent skills with `walkr setup`.
 
@@ -80,7 +78,7 @@ Examples:
 
 ### Where the skills go
 
-`walkr setup` installs two skills: `walkr` and `walkr-compare`. It removes the skills and the Pi prompts of the retired modes that an earlier setup wrote and that are unchanged; see [Commands and skills](docs/modes.md#conflicts-and-updates).
+`walkr setup` installs three skills: `walkr`, `walkr-compare` and `walkr-feedback`. It removes the skills and the Pi prompts of the retired modes that an earlier setup wrote and that are unchanged; see [Commands and skills](docs/modes.md#conflicts-and-updates).
 
 - Project: `<project>/.claude/skills`, `<project>/.agents/skills`, Pi prompt aliases in `<project>/.pi/prompts`, and a short block in `<project>/AGENTS.md`.
 - Global: `~/.claude/skills`, `~/.codex/skills` and `~/.agents/skills`. Global setup installs no Pi prompt aliases.
@@ -102,9 +100,9 @@ Give the same `--bin-dir` as for the install. The script removes each link in `<
 
 The script does not remove the skills. To remove them, delete these files from the directories in [Where the skills go](#where-the-skills-go):
 
-- the two folders `walkr` and `walkr-compare` in each `skills` directory,
+- the three folders `walkr`, `walkr-compare` and `walkr-feedback` in each `skills` directory,
 - the `.walkr-setup.json` file in each of `.claude`, `.codex`, `.agents` and `.pi`,
-- the files `walkr.md` and `walkr-compare.md` in `.pi/prompts` of a project,
+- the files `walkr.md`, `walkr-compare.md` and `walkr-feedback.md` in `.pi/prompts` of a project,
 - the block between `<!-- walkr:start -->` and `<!-- walkr:end -->` in `AGENTS.md` of a project.
 
 Then delete the clone.
@@ -117,6 +115,7 @@ Use these steps when `install.sh` cannot run.
 cd ~/walkr
 ln -s "$PWD/src/cli.js" ~/.local/bin/walkr
 ln -s "$PWD/src/walkr-compare.js" ~/.local/bin/walkr-compare
+ln -s "$PWD/src/walkr-feedback.js" ~/.local/bin/walkr-feedback
 node src/cli.js setup --global
 ```
 

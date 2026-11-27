@@ -56,7 +56,7 @@ test("offline package installs and preflights with complete rendered references 
   }
   references(path.join(unpacked, "README.md"));
   // Every {{LOCAL_*_COMMAND}} placeholder in a source skill renders to its quoted checkout command.
-  const rendered = { COMPARE: ["walkr-compare", "create"] };
+  const rendered = { COMPARE: ["walkr-compare", "create"], FEEDBACK: ["walkr-feedback", "create"] };
   const placeholders = new Set(SKILL_NAMES.flatMap((name) => [...fs.readFileSync(path.join(unpacked, "skills", name, "SKILL.md"), "utf8")
     .matchAll(/\{\{LOCAL_([A-Z]+)_COMMAND\}\}/g)].map((match) => match[1])));
   assert.deepEqual([...placeholders].sort(), Object.keys(rendered).sort());

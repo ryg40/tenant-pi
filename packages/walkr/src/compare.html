@@ -7,9 +7,10 @@
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/_walkr/compare/a2ui.css">
   <link rel="stylesheet" href="/_walkr/compare/compare.css">
+  <link rel="stylesheet" href="/_walkr/compare/feedback.css">
   <script type="module" src="/theme.js"></script>
 </head>
-<body data-compare data-token="__TOKEN__" data-frames="__FRAMES__">
+<body data-compare data-token="__TOKEN__" data-frames="__FRAMES__" data-feedback-frames="__FEEDBACK_FRAMES__">
   <div class="cmp-app" id="app">
     <header class="cmp-bar">
       <span class="cmp-mark"><!--walkr-foot-->walk<span class="cmp-mark-r">r</span></span>
@@ -31,6 +32,8 @@
             <select id="theme" data-theme-picker>
               <option value="torch-light">Torch Light</option>
               <option value="torch-dark">Torch Dark</option>
+              <option value="lavender-light">Lavender Light</option>
+              <option value="lavender-dark">Lavender Dark</option>
               <option value="plum">Fleet / Plum Dusk</option>
               <option value="night">Fleet / Soft Night</option>
               <option value="day">Fleet / Soft Day</option>
@@ -77,6 +80,7 @@
       <div class="cmp-tabs" id="tabs" role="tablist" aria-label="Options" hidden></div>
       <!-- The option columns and the side column of a Compare session. A wide main area shows the side column on the right
            of the columns; a narrower one shows it below them. See the header of src/compare.css. -->
+      <div class="fb-work" id="feedbackWork" hidden></div>
       <div class="cmp-work" id="work" hidden>
         <div id="aStage" hidden></div>
         <div class="cmp-stage" id="stage" hidden></div>

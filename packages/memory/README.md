@@ -52,7 +52,7 @@ cp packages/memory/config/sources.example.json ~/.config/tenant-artifacts/memory
 chmod 600 ~/.config/tenant-artifacts/memory-sources.json
 ```
 
-Warning: with real sources the page shows private memory to each program of your user that reaches the local server, and on macOS to each local user (see the warning of the module guide). Keep the server on `127.0.0.1`.
+Warning: with real sources the page shows private memory. The artifacts server requires an admin session or its local CLI token before it passes a request to `/memory/`. Linux also checks that the client socket belongs to the server user. Keep the server on `127.0.0.1`.
 
 ## Layout
 
@@ -86,4 +86,4 @@ node server.mjs --sample --no-auth --port 8795
 
 ## Where it comes from
 
-The viewer was a separate container app with its own sign-in. In the kit it is a local module with no container, no proxy and no sign-in.
+The viewer was a separate container app with its own sign-in. In the kit it is a local module with no container, no proxy and no separate sign-in.

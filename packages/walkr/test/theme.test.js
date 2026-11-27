@@ -15,7 +15,7 @@ test("theme choices preserve legacy light/dark and reject unknown values", () =>
   for (const { value } of THEMES) assert.equal(normalizeTheme(value), value);
 });
 
-test("Statue and Torch palettes provide readable text, actions, and focus colors", () => {
+test("Statue, Torch, and Lavender palettes provide readable text, actions, and focus colors", () => {
   const css = fs.readFileSync(new URL("../src/theme.css", import.meta.url), "utf8");
   const dom = new JSDOM(`<style>${css}</style>`);
   const root = dom.window.document.documentElement;
@@ -26,7 +26,7 @@ test("Statue and Torch palettes provide readable text, actions, and focus colors
     });
     return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
   };
-  for (const theme of ["statue-light", "statue-dark", "torch-light", "torch-dark"]) {
+  for (const theme of ["statue-light", "statue-dark", "torch-light", "torch-dark", "lavender-light", "lavender-dark"]) {
     root.dataset.theme = theme;
     const style = dom.window.getComputedStyle(root);
     const color = (name) => style.getPropertyValue(`--${name}`).trim();
@@ -35,7 +35,7 @@ test("Statue and Torch palettes provide readable text, actions, and focus colors
       return (values[0] + 0.05) / (values[1] + 0.05);
     };
     assert.equal(style.colorScheme, theme.endsWith("light") ? "light" : "dark");
-    assert.equal(color("brand"), "#ffd000");
+    if (!theme.startsWith("lavender-")) assert.equal(color("brand"), "#ffd000");
     for (const background of ["canvas", "card", "rail", "input-bg", "soft", "chip"]) {
       for (const foreground of ["txt", "strong-txt", "mute", "faint", "accent", "danger", "green", "amber"]) {
         assert.ok(contrast(foreground, background) >= 4.5, `${theme}: ${foreground} on ${background}`);
@@ -44,6 +44,10 @@ test("Statue and Torch palettes provide readable text, actions, and focus colors
     }
     assert.ok(contrast("btn-fg", "btn-bg") >= 4.5, `${theme}: button text`);
     assert.ok(contrast("brand-ink", "brand") >= 4.5, `${theme}: brand text`);
+    if (theme.startsWith("lavender-")) {
+      assert.ok(contrast("btn-fg", "accent") >= 4.5, `${theme}: button hover text`);
+      assert.ok(contrast("band-txt", "band-soft") >= 4.5, `${theme}: band hover text`);
+    }
   }
   dom.window.close();
 });
@@ -68,6 +72,8 @@ test("theme selection restores preferences, persists changes, and syncs tabs", (
   assert.equal(picker.value, "night");
   win.dispatchEvent(new win.StorageEvent("storage", { key: THEME_KEY, newValue: "invalid" }));
   assert.equal(picker.value, "torch-light");
+  win.dispatchEvent(new win.StorageEvent("storage", { key: THEME_KEY, newValue: "lavender-dark" }));
+  assert.equal(picker.value, "lavender-dark");
   win.dispatchEvent(new win.StorageEvent("storage", { key: null, newValue: null }));
   assert.equal(picker.value, "torch-light");
   dispose();

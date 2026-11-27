@@ -2,13 +2,16 @@
 """Start one new agent in the tab of its role. Does not send a task.
 
 Usage: spawn.py --harness pi|claude|agy --role coordinator|researcher|scout|worker|reviewer
-                [--model NAME] [--thinking LEVEL] [--cwd PATH] [--interactive]
+                [--account 1|2] [--model NAME] [--thinking LEVEL] [--cwd PATH] [--interactive]
                 [--strict] [--unattended] [--start-timeout SECONDS] [--dry-run]
                 [-- <extra native arguments>]
 
 Inputs
   --harness      the agent program: pi, claude or agy (the Antigravity CLI; see SPAWN.md, "The agy harness")
   --role         sets the tab, the focus and the access (read or write); see roles.json
+  --account      claude only: start the program claude1 or claude2 in place of claude, with the login of that
+                 account slot (docs/claude-accounts.md). Install them with
+                 node packages/tenantext/claude-code/install-launcher.mjs --slots
   --model        pi: provider/model, or a model name that `pi --list-models` finds one time
                  claude: a model ID or an alias of the claude CLI (opus, claude-opus-5-5)
                  agy: a slug of `agy models` (the first column)
@@ -54,6 +57,9 @@ EXIT = exit_codes("spawn")
 
 THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
 HARNESSES = ("pi", "claude", "agy")
+# The values of --account: the account slots of claude-account, started as claude1 or claude2.
+ACCOUNTS = ("1", "2")
+SLOT_INSTALL = "node packages/tenantext/claude-code/install-launcher.mjs --slots"
 # The values of `agy --effort` (agy --help of agy 1.5.15). A slug of `agy models` can end with one of them.
 AGY_EFFORT = ["low", "medium", "high", "xhigh", "max"]
 # A line of `agy models` is `slug<TAB>name`: the slug of a model is the first column.
@@ -96,7 +102,7 @@ def parse(argv):
     if "--" in argv:
         i = argv.index("--")
         argv, extra = argv[:i], argv[i + 1:]
-    opts = {"harness": None, "role": None, "model": None, "thinking": None,
+    opts = {"harness": None, "role": None, "account": None, "model": None, "thinking": None,
             "cwd": os.getcwd(), "start_timeout": "60",
             "interactive": False, "strict": False, "unattended": False, "dry_run": False}
     i = 0
@@ -168,6 +174,14 @@ def resolve(opts, cfg, *, lookup_timeout=None):
         fail(f"--role must be one of: {', '.join(roles)}")
     role = roles[opts["role"]]
     harness = opts["harness"]
+    account = opts.get("account")
+    if account is not None:
+        if harness != "claude":
+            fail("--account applies only to --harness claude")
+        if account not in ACCOUNTS:
+            fail(f"--account must be one of: {', '.join(ACCOUNTS)}")
+        if not shutil.which(f"claude{account}"):
+            fail(f"the program claude{account} is not on PATH. Install it with: {SLOT_INSTALL}. No pane was started.")
     defaults = {} if opts["model"] is not None else local_models(cfg).get(opts["role"], {}).get(harness, {})
     model = opts["model"] if opts["model"] is not None else defaults.get("model")
     source = "request" if opts["model"] is not None else "models.json" if model else "harness default"
@@ -189,7 +203,14 @@ def resolve(opts, cfg, *, lookup_timeout=None):
            "web": role["web"], "focus": role["focus"]}
     if harness == "agy":
         out["effort"] = effort  # the value of --effort, or None when the slug carries the effort
+    if account is not None:
+        out["account"] = account
     return out
+
+
+def program(r):
+    """The program that starts the agent: claude1 or claude2 for an account, else the harness."""
+    return f"claude{r['account']}" if r.get("account") else r["harness"]
 
 
 # The switch of the recall compressor of the OpenViking memory plugin. A task session has a task file and
@@ -229,7 +250,7 @@ def is_pi_bolt(executable):
     return "(Pi-Bolt " in (out.splitlines() or [""])[0]
 
 
-def prepare_pi_launcher(pane, executable, project=False, harness="pi"):
+def prepare_pi_launcher(pane, executable, project=False, harness="pi", account=False):
     if executable == "pi" and not project:
         return
     # Right after a new pane opens, its shell can still be busy (for example two foreground processes while
@@ -250,6 +271,8 @@ def prepare_pi_launcher(pane, executable, project=False, harness="pi"):
         if project and executable in HARNESSES:
             print("credsync: pane shell cannot install the wrapper; starting unchanged; use a POSIX shell", file=sys.stderr)
             return
+        if account:
+            raise RuntimeError(f"the launcher {executable} requires a new pane at a POSIX shell prompt")
         raise RuntimeError("custom Pi launcher requires a new pane at a POSIX shell prompt")
     # Herdr keeps its Pi lifecycle detection; only this new shell gets the wrapper.
     target = shlex.quote(executable)
@@ -266,6 +289,8 @@ def prepare_pi_launcher(pane, executable, project=False, harness="pi"):
         if project and executable in HARNESSES:
             print("credsync: pane wrapper setup failed; starting unchanged; check the pane shell", file=sys.stderr)
             return
+        if account:
+            raise RuntimeError(f"could not configure the launcher {executable} in the new pane")
         raise RuntimeError("could not configure the custom Pi launcher in the new pane")
 
 
@@ -611,7 +636,7 @@ def main():
     name = make_name(me["workspace"], r["role"], live_agents())
     if not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", name):
         fail(f"could not build a valid name from the workspace label: {name}", EXIT["failed"])
-    label = pane_label(name, r["harness"], r["model"], r["thinking"])
+    label = pane_label(name, program(r), r["model"], r["thinking"])
     # The check of the model follows the catalog check of native_args, so a bad catalog keeps its own error.
     executable, args, _ = build_command(r, cfg, name, cwd, unattended=opts["unattended"], extra=extra,
                                         write=bool(r["model"] or r["harness"] == "agy") and not opts["dry_run"])
@@ -642,9 +667,11 @@ def main():
             remove_record(pane)
             fail("could not set the session environment in the new pane", EXIT["failed"])
     project = os.path.isfile(os.path.join(cwd, ".credsync.json"))
-    if r["harness"] == "pi" or project:
+    # `herdr agent start` runs the program of its kind (claude). A shell function in the new pane makes it claude1 or
+    # claude2; claude<N> starts `claude` from PATH, so the function does not call itself.
+    if r["harness"] == "pi" or project or r.get("account"):
         try:
-            prepare_pi_launcher(pane, executable, project=project, harness=r["harness"])
+            prepare_pi_launcher(pane, executable, project=project, harness=r["harness"], account=bool(r.get("account")))
         except RuntimeError as exc:
             herdr("pane", "close", pane)
             remove_record(pane)
@@ -702,7 +729,7 @@ def build_command(r, cfg, name, cwd, *, unattended=False, extra=(), write=True):
     """
     args = native_args(r, cfg, unattended, name, write=write) + list(extra)
     require_model(r)
-    executable = pi_executable() if r["harness"] == "pi" else r["harness"]
+    executable = pi_executable() if r["harness"] == "pi" else program(r)
     return executable, args, launch_argv(r, executable, args, cwd)
 
 
@@ -752,7 +779,7 @@ def spawn_in_app(me, r, cfg, opts, extra, cwd):
     executable, args, _ = build_command(r, cfg, name, cwd, unattended=opts["unattended"], extra=extra,
                                         write=bool(r["model"] or r["harness"] == "agy") and not opts["dry_run"])
     tab, how = app_tab(me, r["role"])
-    summary = dict(r, name=name, say=say_name(name), pane_label=pane_label(name, r["harness"], r["model"], r["thinking"]),
+    summary = dict(r, name=name, say=say_name(name), pane_label=pane_label(name, program(r), r["model"], r["thinking"]),
                    tab=r["role"],
                    cwd=cwd, workspace=project, executable=executable, session_env=session_env(r), backend="herdr-core")
     if r["harness"] == "agy":

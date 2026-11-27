@@ -84,7 +84,9 @@ test("project setup installs Claude/shared skills and Pi aliases, and repeats wi
   const home = fixture(t);
   installSkills(cwd, { home });
   assert.equal(fs.existsSync(path.join(cwd, ".pi", "prompts", "walkr.md")), true);
+  assert.equal(fs.existsSync(path.join(cwd, ".pi", "prompts", "walkr-feedback.md")), true);
   assert.equal(fs.existsSync(path.join(cwd, ".agents", "skills", "walkr-compare", "SKILL.md")), true);
+  assert.equal(fs.existsSync(path.join(cwd, ".agents", "skills", "walkr-feedback", "SKILL.md")), true);
   assert.deepEqual(fs.readdirSync(home), []);
   const before = snapshot(cwd);
   const file = path.join(cwd, ".agents", "skills", "walkr", "SKILL.md");
@@ -417,6 +419,18 @@ test("a project setup migrates exact legacy AGENTS blocks and preserves neighbor
     assert.doesNotMatch(text, /human-review|npx/);
     assert.equal(mergeAgentsBlock(text).action, "current");
   }
+});
+
+test("a project setup upgrades the prior Compare-only AGENTS block to include Feedback", (t) => {
+  const cwd = fixture(t);
+  const prior = `<!-- walkr:start -->\n## Walkr Compare\n\nTo let the owner pick among 2 or 3 prepared options, read the installed walkr-compare skill.\nUse walkr when a request names Walkr and no mode. Core, Double, Coinflip and Trainer are retired.\nSkill invocation does not authorize deployment or a chat connection.\n<!-- walkr:end -->\n`;
+  const file = path.join(cwd, "AGENTS.md");
+  put(file, `# House rules\n\n${prior}`);
+  const result = installSkills(cwd, { home: fixture(t) });
+  assert.ok(result.includes("Updated AGENTS.md"));
+  const text = fs.readFileSync(file, "utf8");
+  assert.match(text, /walkr-feedback/);
+  assert.equal(mergeAgentsBlock(text).action, "current");
 });
 
 for (const body of [

@@ -15,12 +15,17 @@ export const REMOTE_TIMEOUT_S = 60;
 // After ssh ends, the pipes get this long to close; a child of ssh can hold them open (runRemote).
 export const REMOTE_GRACE_MS = 2000;
 const REMOTE_MISSING = 127;
-// The remote shell gives the words to this script as "$@": walkr-compare of the remote PATH, else
-// ~/.local/bin/walkr-compare, else exit 127. Without HERDR_ENV, a remote create or open makes no Sheprd link.
-export const REMOTE_SCRIPT = "unset HERDR_ENV; "
-  + 'if command -v walkr-compare >/dev/null 2>&1; then exec walkr-compare "$@"; fi; '
-  + 'if [ -x "$HOME/.local/bin/walkr-compare" ]; then exec "$HOME/.local/bin/walkr-compare" "$@"; fi; '
-  + "exit 127";
+// The remote shell gives the words to this script as "$@": the Walkr command of the remote PATH, else
+// ~/.local/bin/<program>, else exit 127. Without HERDR_ENV, a remote create or open makes no Sheprd link.
+const REMOTE_PROGRAMS = new Set(["walkr-compare", "walkr-feedback"]);
+export function remoteScript(program = "walkr-compare") {
+  if (!REMOTE_PROGRAMS.has(program)) stop(`Unknown remote Walkr program: ${program}.`);
+  return "unset HERDR_ENV; "
+    + `if command -v ${program} >/dev/null 2>&1; then exec ${program} "$@"; fi; `
+    + `if [ -x "$HOME/.local/bin/${program}" ]; then exec "$HOME/.local/bin/${program}" "$@"; fi; `
+    + "exit 127";
+}
+export const REMOTE_SCRIPT = remoteScript("walkr-compare");
 // The value rule of the key `remote` in artifacts_store.py (REMOTE): no value starts with "-" or holds a shell character.
 const REMOTE = /^(?:[A-Za-z0-9_][A-Za-z0-9._-]{0,31}@)?[A-Za-z0-9][A-Za-z0-9._-]{0,252}$/;
 // The refusal of a walkr-compare older than remote mode: it reads `--here` as an unknown command.
@@ -57,9 +62,9 @@ export function quote(word) {
   return `'${word.replaceAll("'", "'\"'\"'")}'`;
 }
 
-/** The command line for the remote shell; each word reaches walkr-compare as text. */
-export function remoteCommand(words) {
-  return ["sh", "-c", REMOTE_SCRIPT, "walkr-compare", "--here", ...words].map(quote).join(" ");
+/** The command line for the remote shell; each word reaches the Walkr command as text. */
+export function remoteCommand(words, program = "walkr-compare") {
+  return ["sh", "-c", remoteScript(program), program, "--here", ...words].map(quote).join(" ");
 }
 
 /** shlex.split of Python (POSIX mode), for the test seam only. */
@@ -108,7 +113,7 @@ const write = (stream, data) => new Promise((resolve) => { if (!data.length) res
 // What a lost call of each command means, and what to do next.
 function advice(command, host, reached) {
   if (command === "wait") return "Run wait again; it is safe to repeat.";
-  if (reached && (command === "create" || command === "outcome")) {
+  if (reached && (command === "create" || command === "outcome" || command === "patch")) {
     return `The request may have reached ${host}. A retry with the exact same file and action ID is safe.`;
   }
   if (command === "received") return "Run received again; it is safe to repeat.";
@@ -119,29 +124,29 @@ function advice(command, host, reached) {
  * The note for a page address of create or open: a loopback address works on the host only. With the key
  * walkrPublicOrigin on the host, create prints the public address in `url` and the loopback address in `localUrl`.
  */
-function addressNote(command, host, out) {
+function addressNote(command, host, out, program = "walkr-compare") {
   let url = out.trim();
   if (command === "create") {
     try {
       const made = JSON.parse(url);
-      if (typeof made.localUrl === "string") return `walkr-compare: localUrl is valid on the host ${host} only; url is the public address.\n`;
+      if (typeof made.localUrl === "string") return `${program}: localUrl is valid on the host ${host} only; url is the public address.\n`;
       url = made.url;
     } catch { url = ""; }
   }
   let name = "";
   try { name = new URL(url).hostname; } catch {}
   if (name && !["127.0.0.1", "localhost", "[::1]"].includes(name)) return "";
-  return `walkr-compare: the page address is valid on the host ${host} only.\n`;
+  return `${program}: the page address is valid on the host ${host} only.\n`;
 }
 
 /**
- * Run `walkr-compare --here WORDS` on `host` with one ssh call, `input` on its standard input. The remote standard
- * output, standard error and exit code pass through. A call that did not reach a remote walkr-compare, or that ended
+ * Run `<program> --here WORDS` on `host` with one ssh call, `input` on its standard input. The remote standard
+ * output, standard error and exit code pass through. A call that did not reach a remote Walkr command, or that ended
  * without its answer, is exit 3: it never falls back to this computer.
  */
-export async function runRemote(host, command, words, { input = Buffer.alloc(0), seconds = REMOTE_TIMEOUT_S, env = process.env } = {}) {
+export async function runRemote(host, command, words, { input = Buffer.alloc(0), seconds = REMOTE_TIMEOUT_S, env = process.env, program: remoteProgram = "walkr-compare" } = {}) {
   const program = sshProgram(env);
-  const args = [...program.slice(1), ...SSH_OPTIONS, "--", host, remoteCommand(words)];
+  const args = [...program.slice(1), ...SSH_OPTIONS, "--", host, remoteCommand(words, remoteProgram)];
   const done = await new Promise((resolve) => {
     const out = [];
     const err = [];
@@ -187,20 +192,20 @@ export async function runRemote(host, command, words, { input = Buffer.alloc(0),
   else if (done.timedOut) why = `no answer from ${host} in ${seconds} s; the call is stopped${late}`;
   else if (done.code === 255) why = `ssh lost or did not get the connection to ${host} (exit 255)${late}`;
   else if (done.signal) why = `a signal ended the ssh program (${done.signal})${late}`;
-  else if (done.code === REMOTE_MISSING) why = `${host} has no walkr-compare on its PATH or in ~/.local/bin`;
+  else if (done.code === REMOTE_MISSING) why = `${host} has no ${remoteProgram} on its PATH or in ~/.local/bin`;
   if (why) {
     if (done.stderr?.length) await write(process.stderr, done.stderr);
-    stop(`walkr-compare: ${why}. Nothing was written on this computer. ${advice(command, host, reached)} `
-      + "To use this computer, run walkr-compare --here <command>.", 3);
+    stop(`${remoteProgram}: ${why}. Nothing was written on this computer. ${advice(command, host, reached)} `
+      + `To use this computer, run ${remoteProgram} --here <command>.`, 3);
   }
   await write(process.stdout, done.stdout);
   await write(process.stderr, done.stderr);
   const text = done.stderr.toString("utf8");
-  if (done.code === 1 && text.startsWith(OLD_REFUSAL)) {
+  if (done.code === 1 && remoteProgram === "walkr-compare" && text.startsWith(OLD_REFUSAL)) {
     process.stderr.write(`walkr-compare: ${host} has a walkr-compare without remote mode. Install this version or a newer one there.\n`);
   }
   if (done.code === 0 && (command === "create" || command === "open")) {
-    process.stderr.write(addressNote(command, host, done.stdout.toString("utf8")));
+    process.stderr.write(addressNote(command, host, done.stdout.toString("utf8"), remoteProgram));
   }
   process.exitCode = done.code;
 }

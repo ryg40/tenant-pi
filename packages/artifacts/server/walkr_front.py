@@ -33,7 +33,7 @@ import urllib.parse
 # The program that marks Walkr as installed, on the PATH of the server process.
 PROGRAM = 'walkr-compare'
 # SERVER_PROTOCOL of packages/walkr/src/paths.js: a live server of another protocol does not count.
-PROTOCOL = 10
+PROTOCOL = 11
 # The whole probe (connect, request, answer) takes this long at most, so /healthz stays fast when the record is stale
 # or a slow program holds the recorded port.
 PROBE_SECONDS = 0.5
@@ -162,13 +162,18 @@ SECRET = re.compile(r'[a-f0-9]{64}')
 READ = ('GET',)
 PASSED = (
     (READ, re.compile(r'/theme\.css|/theme\.js')),
-    (READ, re.compile(r'/_walkr/compare/(?:app\.js|a2ui\.js|compare-a2ui\.js|compare-stars\.js|frame-zoom\.js|a2ui\.css|compare\.css)')),
+    (READ, re.compile(r'/_walkr/compare/(?:app\.js|a2ui\.js|compare-a2ui\.js|compare-stars\.js|feedback\.js|frame-zoom\.js|a2ui\.css|compare\.css|feedback\.css)')),
     (READ, re.compile(r'/_walkr/compare/g/[a-f0-9]{64}')),
     # An HTML option, or with next/ the HTML preview of a Next round card: an optionId and a roundId have one rule.
     (READ, re.compile(r'/_walkr/compare/o/[a-f0-9]{64}/' + SESSION + r'/(?:next/)?[A-Za-z0-9][A-Za-z0-9._-]{0,63}')),
     (READ, re.compile(r'/_walkr/compare/api/history')),
     (READ, re.compile(r'/_walkr/compare/api/sessions/' + SESSION)),
     (('POST',), re.compile(r'/_walkr/compare/api/sessions/' + SESSION + r'/(?:seen|submit|rate)')),
+    (READ, re.compile(r'/_walkr/feedback/(?:feedback\.js|feedback\.css)')),
+    # Sandboxed Feedback HTML frame: component preview or option concept overview.
+    (READ, re.compile(r'/_walkr/feedback/o/[a-f0-9]{64}/' + SESSION + r'/[A-Za-z0-9][A-Za-z0-9._-]{0,63}/[A-Za-z0-9][A-Za-z0-9._-]{0,63}')),
+    (READ, re.compile(r'/_walkr/feedback/api/sessions/' + SESSION)),
+    (('POST',), re.compile(r'/_walkr/feedback/api/sessions/' + SESSION + r'/(?:seen|expand|respond|rate)')),
 )
 # One deadline covers the probe, the connect, the request and the whole answer, so a live server that stops or answers byte by
 # byte cannot hold a thread of the front longer.

@@ -1,10 +1,9 @@
 {
   "defaultProjectTrust": "ask",
-  "enableInstallTelemetry": false,
   "enableAnalytics": false,
   "theme": "dark",
   "packages": [
     "{kit}/packages/tenantext",
-    "npm:@juicesharp/rpiv-ask-user-question@2.15.0"
+    "npm:@juicesharp/rpiv-ask-user-question@2.16.0"
   ]
 }

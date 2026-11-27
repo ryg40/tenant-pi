@@ -47,11 +47,26 @@ def free_port():
         return probe.getsockname()[1]
 
 
-def request(port, path, host=None, method='GET', headers=None, body=None):
-    """(status, headers, body) of one request (GET by default); `host` replaces the Host header."""
+# The local CLI token of the scratch server on each port (Scratch.cli reads it after each start). The helpers send
+# it, so a test of a protected route passes the login as the CLI does.
+TOKENS = {}
+TOKEN_HEADER = 'X-Tenant-Artifacts-Token'
+
+
+def signed(port, headers):
+    """`headers` with the local token of the server on `port`, when the test has one."""
+    fields = dict(headers or {})
+    if port in TOKENS:
+        fields.setdefault(TOKEN_HEADER, TOKENS[port])
+    return fields
+
+
+def request(port, path, host=None, method='GET', headers=None, body=None, token=True):
+    """(status, headers, body) of one request (GET by default); `host` replaces the Host header. With `token`, the
+    request carries the local token of the scratch server."""
     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=10)
     try:
-        fields = dict(headers or {})
+        fields = signed(port, headers) if token else dict(headers or {})
         if host is not None:
             fields['Host'] = host
         connection.request(method, path, body=body, headers=fields)
@@ -81,7 +96,7 @@ def health_pid(port):
 class Scratch:
     """A scratch home with its own config, store and state, and a free port. The real home is never used."""
 
-    def __init__(self, test):
+    def __init__(self, test, key_store='file'):
         temp = tempfile.TemporaryDirectory(prefix='artifacts-test-')
         test.addCleanup(temp.cleanup)
         self.base = Path(temp.name).resolve()
@@ -91,16 +106,27 @@ class Scratch:
         self.state = self.home / '.local/state/tenant-artifacts/server.json'
         self.port = free_port()
         # A clean scan by default: the seam replaces the kit scanner, which needs the Betterleaks binary.
+        # The admin key goes to the file store of the scratch home: no password system of the host is asked.
+        # XDG_RUNTIME_DIR is the scratch folder, so no session cache of tenant-credsync is read.
         self.env = {'HOME': str(self.home), 'PATH': '/usr/bin:/bin', 'PYTHONDONTWRITEBYTECODE': '1',
-                    'ARTIFACTS_SCAN_COMMAND': 'true'}
+                    'ARTIFACTS_SCAN_COMMAND': 'true', 'XDG_RUNTIME_DIR': str(self.base)}
         self.test = test
         test.addCleanup(self.kill_server)
         seed_config(self.home, self.port)
-        self.ok('setup', '--port', str(self.port))
+        self.ok('setup', '--port', str(self.port), '--key-store', key_store)
 
     def cli(self, *args, **env):
-        return subprocess.run([sys.executable, str(CLI), *args], env=self.env | env, text=True,
+        done = subprocess.run([sys.executable, str(CLI), *args], env=self.env | env, text=True,
                               capture_output=True, timeout=60, cwd=self.base)
+        if 'start' in args:
+            self.remember_token()
+        return done
+
+    def remember_token(self):
+        """Keep the local token of the server of this home for the request helpers."""
+        token = self.home / '.local/state/tenant-artifacts/cli-token'
+        if token.is_file():
+            TOKENS[self.port] = token.read_text().strip()
 
     def ok(self, *args):
         done = self.cli(*args)
@@ -203,7 +229,8 @@ class ServerTests(unittest.TestCase):
                            ('Content-Type', 'application/json')]:
             handler.headers[key] = value
         before = self.scratch.files(self.html)
-        with mock.patch.object(server, 'peer_refusal', return_value='Another local user.'):
+        with mock.patch.object(server, 'peer_refusal', return_value='Another local user.'), \
+                mock.patch.object(server, 'login_refusal', return_value=None):
             self.assertEqual(403, server.Handler.route(handler).status)
         self.assertEqual(before, self.scratch.files(self.html))
         handler.rfile.read.assert_not_called()
@@ -435,10 +462,10 @@ class ThemeTests(unittest.TestCase):
 
 
 class FakeWalkr(http.server.BaseHTTPRequestHandler):
-    """A live Walkr server: /health answers with the PID of the test process and protocol 10."""
+    """A live Walkr server: /health answers with the PID of the test process and protocol 11."""
 
     def do_GET(self):
-        body = json.dumps({'ok': True, 'pid': getattr(self.server, 'health_pid', os.getpid()), 'protocol': 10}).encode()
+        body = json.dumps({'ok': True, 'pid': getattr(self.server, 'health_pid', os.getpid()), 'protocol': 11}).encode()
         self.send_response(200 if self.path == '/health' else 404)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(body)))
@@ -476,7 +503,7 @@ def fake_walkr(test, scratch):
     walkr_port = live.server_address[1]
     record = scratch.home / '.human-review/server.json'
     record.parent.mkdir()
-    record.write_text(json.dumps({'port': walkr_port, 'pid': os.getpid(), 'protocol': 10, 'token': token}))
+    record.write_text(json.dumps({'port': walkr_port, 'pid': os.getpid(), 'protocol': 11, 'token': token}))
     return live, walkr_port, token
 
 
@@ -552,7 +579,7 @@ class WalkrTests(unittest.TestCase):
         walkr = child('import http.server, json, os\n'
                       'class H(http.server.BaseHTTPRequestHandler):\n'
                       '    def do_GET(self):\n'
-                      '        body = json.dumps({"ok": True, "pid": os.getpid(), "protocol": 10}).encode()\n'
+                      '        body = json.dumps({"ok": True, "pid": os.getpid(), "protocol": 11}).encode()\n'
                       '        self.send_response(200); self.send_header("Content-Length", str(len(body)))\n'
                       '        self.end_headers(); self.wfile.write(body)\n'
                       '    def log_message(self, *args): pass\n'
@@ -562,14 +589,14 @@ class WalkrTests(unittest.TestCase):
         port = int(walkr.stdout.readline())
         # A record that names another process than the one that answers /health: that process gets no signal.
         other = child('import time\ntime.sleep(120)\n')
-        record.write_text(json.dumps({'port': port, 'pid': other.pid, 'protocol': 10, 'token': secrets.token_hex(16)}))
+        record.write_text(json.dumps({'port': port, 'pid': other.pid, 'protocol': 11, 'token': secrets.token_hex(16)}))
         record.chmod(0o600)
         scratch.ok('start')
         scratch.ok('off')
         self.assertIsNone(other.poll())
         self.assertIsNone(walkr.poll())
         # The record of the live server: off stops it after the local server, and says so.
-        record.write_text(json.dumps({'port': port, 'pid': walkr.pid, 'protocol': 10, 'token': secrets.token_hex(16)}))
+        record.write_text(json.dumps({'port': port, 'pid': walkr.pid, 'protocol': 11, 'token': secrets.token_hex(16)}))
         scratch.ok('start')
         scratch.ok('off')
         if sys.platform.startswith('linux'):
@@ -587,7 +614,7 @@ class WalkrTests(unittest.TestCase):
         self.addCleanup(decoy.kill)
         listener.health_pid = decoy.pid
         record = scratch.home / '.human-review/server.json'
-        record.write_text(json.dumps({'port': port, 'pid': decoy.pid, 'protocol': 10}))
+        record.write_text(json.dumps({'port': port, 'pid': decoy.pid, 'protocol': 11}))
         record.chmod(0o600)
         scratch.ok('off')
         self.assertIsNone(decoy.poll())
@@ -626,7 +653,7 @@ class WalkrTests(unittest.TestCase):
         threading.Thread(target=accept, daemon=True).start()
         record = scratch.home / '.human-review/server.json'
         record.parent.mkdir()
-        record.write_text(json.dumps({'port': listener.getsockname()[1], 'pid': os.getpid(), 'protocol': 10,
+        record.write_text(json.dumps({'port': listener.getsockname()[1], 'pid': os.getpid(), 'protocol': 11,
                                       'agentToken': secrets.token_hex(32)}))
         scratch.ok('start')
         began = time.monotonic()
@@ -884,7 +911,7 @@ class EventsTests(unittest.TestCase):
             self.assertEqual(401, reply.status, headers)
             self.assertNotIn(self.token, reply.read().decode())
         # The token opens the channel only in the header: a path with a query is not the channel.
-        self.assertEqual(404, self.open({}, '/events/v1?token=' + self.token).status)
+        self.assertEqual(404, self.open(signed(self.scratch.port, {}), '/events/v1?token=' + self.token).status)
         # The token is in no status answer and in no log line.
         self.assertNotIn(self.token, self.scratch.ok('--json', 'status').stdout + self.scratch.ok('status').stdout)
         status, _, body = request(self.scratch.port, '/healthz')

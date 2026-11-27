@@ -214,7 +214,8 @@ function makeFakeHc(
 			'appendFileSync(logFile, JSON.stringify({ args, envKeys: Object.keys(process.env).sort() }) + "\\n");',
 			'if (args[0] === "get") {',
 			'  const data = JSON.parse(readFileSync(stateFile, "utf8")).terminal;',
-			"  if (!data) { process.exit(3); }",
+			// As herdr-core: a terminal that does not exist gives an error of the kind `not_found` on stderr, exit 3.
+			'  if (!data) { process.stderr.write(JSON.stringify({ error: { kind: "not_found", message: "no terminal" } }) + "\\n"); process.exit(3); }',
 			'  process.stdout.write(JSON.stringify(data) + "\\n");',
 			"  process.exit(0);",
 			"}",
@@ -2433,4 +2434,49 @@ test("26. the fresh, mixed, all-answered, locked and pending forms keep the two-
 	producer.handleTurnStart("t26f");
 	assert.equal(group().locked, true);
 	assertShape("locked");
+});
+
+// Test 27: a terminal that ended writes no later report, so the producer ends the open group of its coordinator.
+test("27. an open group whose terminal is finished, or no longer exists, gets one deleteSurface and leaves the state", async (t) => {
+	const dir = makeTempDir(t, "owner-popup-t27-");
+	const live = (address: string) => ({ address, state: "live", status: { state: "idle" }, labels: { "skill.role": "coordinator" } });
+	const fakeHc = makeFakeHc(dir, live("t27a"));
+	// A short idle time gives an idle tick, and so a check of each group, every 50 ms; the open socket stops the shutdown.
+	const producer = await createProducer({
+		port: 0,
+		stateDir: join(dir, "state"),
+		hc: createHcClient(fakeHc.binPath),
+		decider: false,
+		writer: false,
+		idleShutdownMs: 200,
+	});
+	t.after(() => producer.close());
+	const client = await connectWs(t, producer.port);
+	const ends: Array<{ address: string; from: number }> = [];
+
+	for (const [address, end] of [
+		["t27a", { address: "t27a", state: "finished", exit_code: 0 }],
+		["t27b", null],
+	] as const) {
+		fakeHc.setTerminal(live(address));
+		await producer.addReport({ address, reportText: ONE_ROW_REPORT, skipRoleCheck: true });
+		const sid = surfaceIdFor(address);
+		await waitUntil(() => drawnComponents(client.messages, sid) !== null, `surface of ${address}`);
+		const group = producer.getState().coordinators.find((c) => c.address === address);
+		assert.ok(group);
+		// An open group: not locked, with its owner row.
+		assert.notEqual(group.locked, true);
+		assert.equal(group.rows.length, 1);
+		const from = client.messages.length;
+		fakeHc.setTerminal(end);
+		await waitUntil(() => drawnComponents(client.messages, sid) === null, `surface of ${address} deleted`);
+		assert.equal(producer.getState().coordinators.some((c) => c.address === address), false);
+		ends.push({ address, from });
+	}
+	// Exactly one deleteSurface for each surface after its terminal ended, also after the later ticks of the second part.
+	for (const { address, from } of ends) {
+		const deletes = client.messages.slice(from).filter((m) => "deleteSurface" in m && surfaceIdOfMessage(m) === surfaceIdFor(address));
+		assert.equal(deletes.length, 1, address);
+	}
+	assert.equal(producer.getState().coordinators.length, 0);
 });

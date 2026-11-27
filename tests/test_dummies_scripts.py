@@ -116,6 +116,8 @@ FAKE_OKKNOW = textwrap.dedent('''\
                 print(json.dumps({"content": [{"type": "text", "text": "Text not found"}], "isError": True}))
                 fail("edit returned isError", 1)
             changed = text[:position] + document["replace"] + text[position + len(document["find"]):]
+            if MODE == "refuse-shortening" and len(document["replace"]) < len(document["find"]):
+                fail("refused the edit that shortens the page", 1)
             if MODE == "edit-lost":
                 changed = text
             elif MODE == "edit-damages":
@@ -1103,6 +1105,51 @@ class PageTests(Sandbox):
         self.assertNotIn("occurrence", requests[1]["document"])
         self.assertEqual("claude/example/model demo: add DUMMIES entry", requests[1]["summary"])
         self.assertTrue(all(len(request["summary"]) <= 80 for request in requests))
+
+    def seed_twenty_entries(self):
+        head, first = HAND_MADE.split("\n## Session entries\n\n")
+        entries = [first.rstrip().replace("First hand-made entry", f"Hand-made entry {n}") for n in range(20, 0, -1)]
+        self.page_file().parent.mkdir(parents=True)
+        self.page_file().write_text(head + "\n## Session entries\n\n" + "\n\n".join(entries) + "\n\n## End\n", encoding="utf-8")
+        return entries
+
+    def whole_entries(self, name="projects/demo/DUMMIES"):
+        page = load_module(PAGE, "dummies_page").Page(self.page_file(name).read_text(encoding="utf-8"))
+        return [entry.text for entry in page.entries]
+
+    def test_add_above_twenty_keeps_ten_then_the_next_add_moves_nothing(self):
+        older = self.seed_twenty_entries()
+        trim = self.page("trim", "--project", "demo")
+        self.assertEqual(0, trim.returncode, trim.stderr)
+        self.assertEqual(older, self.whole_entries())
+        self.assertFalse(self.page_file("projects/demo/DUMMIES-archive").exists())
+        result = self.add("Entry twenty one")
+        self.assertEqual(0, result.returncode, result.stderr)
+        kept = self.whole_entries()
+        self.assertIn("Entry twenty one", kept[0].splitlines()[0])
+        self.assertEqual(older[:9], kept[1:])
+        self.assertEqual(older[9:], self.whole_entries("projects/demo/DUMMIES-archive"))
+        next_add = self.add("Entry twenty two", "--again")
+        self.assertEqual(0, next_add.returncode, next_add.stderr)
+        self.assertEqual(kept, self.whole_entries()[1:])
+        self.assertEqual(older[9:], self.whole_entries("projects/demo/DUMMIES-archive"))
+        self.assertIn(older[-1], self.page_file("projects/demo/DUMMIES-archive").read_text(encoding="utf-8"))
+        self.assertIn("## End", self.page_file().read_text(encoding="utf-8").splitlines())
+
+    def test_add_recovers_after_the_edit_that_shortens_the_page_fails(self):
+        older = self.seed_twenty_entries()
+        first = self.add("Entry twenty one", FAKE_OK_MODE="refuse-shortening")
+        self.assertEqual(0, first.returncode, first.stderr)
+        self.assertTrue(first.stdout.rstrip().endswith(" | archive: not done"), first.stdout)
+        pending = self.whole_entries()
+        self.assertEqual(older, pending[1:])
+        self.assertEqual(older[9:], self.whole_entries("projects/demo/DUMMIES-archive"))
+        second = self.add("Entry twenty two", "--again")
+        self.assertEqual(0, second.returncode, second.stderr)
+        self.assertEqual(pending[:9], self.whole_entries()[1:])
+        self.assertEqual(pending[9:], self.whole_entries("projects/demo/DUMMIES-archive"))
+        self.assertIn(older[-1], self.page_file("projects/demo/DUMMIES-archive").read_text(encoding="utf-8"))
+        self.assertIn("## End", self.page_file().read_text(encoding="utf-8").splitlines())
 
     def test_a_second_entry_of_the_same_session_is_refused(self):
         self.init()

@@ -71,6 +71,52 @@ Warning: a later `use` replaces `.credentials.json.prev`. Restore it before the 
 
 Warning: A running Claude Code session can keep the old login in memory. Not verified: whether it writes the old login back to the live files. Start new sessions after `use`, and check the result with `claude-account status`.
 
+## claude1 and claude2
+
+`claude1` and `claude2` start Claude Code with the login of slot 1 or slot 2. Use them to run both accounts at the same time. Both commands have the settings, plugins, skills, hooks, memory and sessions of plain `claude`. Only the login is different.
+
+Install the two links once, from the kit root:
+
+```sh
+node packages/tenantext/claude-code/install-launcher.mjs --slots
+```
+
+This links `~/.local/bin/claude1` and `~/.local/bin/claude2` to `claude-code/bin/claude-slot.sh`. It keeps an unrelated entry of either name, reports the conflict and exits with 2.
+
+The commands need `bash` and `node` on `PATH`. The shell script runs `claude-code/bin/claude-slot.mjs`, beside its own real path. That helper uses the store rules of `claude-code/scripts/claude-accounts.mjs`. It makes every check before it changes a link or a file. The commands support only the file login in `~/.claude/.credentials.json`, as `claude-account` does. A host that keeps the login in the macOS keychain gets a refusal.
+
+These cases stop the command with exit 1 and a message. `claude` does not start, and no link or file changes:
+
+- `state.json` is missing, does not parse, or names no slot `1` or `2`.
+- The live login is not a file login: `~/.claude/.credentials.json` has no `claudeAiOauth`, or `~/.claude.json` has no `oauthAccount`.
+- The live `oauthAccount` is not the account of the active slot (the account rule of `use`).
+- The live refresh token is the saved refresh token of the non-active slot. This follows from a `use` that stopped before it wrote `state.json`.
+- `~/.claude` is a slot folder, for example through a link.
+- The slot has no login: its `.credentials.json` is missing or has no `claudeAiOauth` with a refresh token. The message names `claude-account login <slot>`.
+- The slot `.credentials.json` is not a regular file (for example a link), does not parse, or is the live file.
+- The non-active slot only: the slot folder is a link or no folder, `~/.claude` is no folder, `~/.claude.json` or `<slot folder>/.claude.json` does not parse, or the slot copy has no `oauthAccount`.
+
+For the first five cases, the message names `claude-account status` and `claude-account use <slot>`. Check the slots, then finish or redo the switch.
+
+- The active slot (`active` in `state.json`): the command removes `CLAUDE_CONFIG_DIR` from the environment and starts plain `claude`. The live login in `~/.claude` is that account. So one login is never used from two files. After `adopt`, the slot folder holds a copy of the same login, but only the live files are in use.
+- The other slot: before each start, the command links each entry of `~/.claude` into the slot folder, except `.credentials.json`, `.credentials.json.*`, `.claude.json` and `backups`. It removes dead links that point into `~/.claude`. A real file or folder in the slot folder with the name of an entry stays, and the command warns. Then it copies `~/.claude.json` into `<slot folder>/.claude.json` and keeps the `oauthAccount` of the slot (a temp file and a rename, mode `0600`). Claude Code starts with `CLAUDE_CONFIG_DIR=<slot folder>`.
+
+Both cases set `CLAUDE_ACCOUNT_SLOT=<slot>`. The command starts the `claude` on `PATH`, so a wrapper of `claude` on `PATH` still applies.
+
+| Shared | Own to the slot |
+| --- | --- |
+| Each entry of `~/.claude` through a link: settings, plugins, skills, hooks, memory, sessions | The login: `.credentials.json` |
+| The content of `~/.claude.json`, copied at each start | The copy `<slot folder>/.claude.json` with the `oauthAccount` of the slot |
+
+Limits:
+
+- Do not run `claude-account use` while a session of the non-active command runs. `adopt` and `use` refuse when the live config folder is a slot folder: `CLAUDE_CONFIG_DIR` is a slot folder, as in a session of the non-active command, or `~/.claude` is a link to a slot folder. Run them in a shell outside that session, with `~/.claude` as a real folder.
+- At each start, the non-active command copies `~/.claude.json` over its slot copy. A top-level key that `~/.claude.json` also has gets its value from `~/.claude.json` again, so a change to it in the non-active command (for example `claude mcp add --scope user` in `mcpServers`) is lost. A top-level key that only the slot copy has stays. Make such changes in plain `claude`.
+- When `.credentials.json` holds MCP logins (`mcpOAuth`), the non-active command does not have them and needs its own MCP login.
+- Not verified: the status line meters inside a session of the non-active command.
+
+Herdr starts a Claude pane with one of the two commands: `spawn.py --harness claude --account 1` or `2` (`skills/herdr/SPAWN.md`, section 3).
+
 ## Meters
 
 With a store, the Pi operations footer and the Claude Code status line show `Claude1` and `Claude2` (short forms `CL1`, `CL2`) after the Codex accounts and before Copilot. A `*` marks the slot of the live login.
@@ -102,3 +148,10 @@ The meter in Pi uses only the Claude Code login with a store. The Pi `anthropic`
 | `claude auth status` renews an expired token in a slot folder | Not verified |
 | `claude auth login` in an empty slot folder | Not verified |
 | The macOS keychain login | Not supported. The command reads and writes only the files |
+| The non-active launcher keeps the slot login and its `oauthAccount`, keeps a real file of the slot, and starts `claude` in the slot folder | Verified with a fixture test in a temp home and a fake `claude` |
+| The active launcher starts `claude` with no `CLAUDE_CONFIG_DIR`, also when the caller set one | Verified with a fixture test |
+| `adopt` and `use` refuse with no write when `CLAUDE_CONFIG_DIR` is a slot folder, or `~/.claude` is a link to a slot folder | Verified with a fixture test |
+| The launcher refuses with no change for a missing or invalid `state.json`, a live account that is not the active slot's, the live token of the non-active slot, a slot login with no `claudeAiOauth`, and a slot login that is a link to the live file | Verified with a fixture test in a temp home and a fake `claude` |
+| `install-launcher.mjs --slots` keeps an unrelated `claude2` and creates no `claude1` | Verified with a fixture test |
+| `claude1 auth status` and `claude2 auth status` show two logged-in accounts | Verified on one machine |
+| The status line meters inside a session of the non-active launcher | Not verified |

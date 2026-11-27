@@ -123,7 +123,7 @@ In Pi, `herdr_watch_start` with `wait_only: true` and no prompt runs that form i
 One command, four inputs. Read `SPAWN.md` in this skill directory before the first launch.
 
 ```bash
-python3 $S/spawn.py --harness <pi|claude|agy> --role <role> [--model <name>] [--thinking <level>] --cwd "$PWD"
+python3 $S/spawn.py --harness <pi|claude|agy> --role <role> [--account <1|2>] [--model <name>] [--thinking <level>] --cwd "$PWD"
 ```
 
 In Pi with the `herdr_spawn` tool (the `herdr-watch` extension), start every
@@ -144,6 +144,10 @@ exists, use `herdr_watch_start`. Use the blocking `ask.py` only in these cases:
 | role | `coordinator`, `researcher` (context gatherer, the web first), `scout` (context gatherer, local files and repositories first), `worker`, `reviewer` | Choose from the task. Ask only if two roles fit. |
 | model | The name that the user gives. pi: `provider/model` or a name that `pi --list-models` finds one time. claude: a model ID or a CLI alias. agy: a slug of `agy models`. | Leave it out only when the local file names a model for the role and the harness. Else ask the user: without a model, `spawn.py` starts no `pi` or `claude` pane and exits with 2. `agy` without a model starts with its own default model. |
 | thinking | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`. agy: `low` to `max` only | Leave it out. The local file can supply a level. |
+| account | claude only: `1` or `2`. The user says `claude1` or `claude2` in place of `claude`, before the model. Give `--harness claude --account 1` or `2` | Leave it out. The pane starts plain `claude`. |
+
+Example: "launch claude2 haiku low worker to print hello" is
+`--harness claude --account 2 --role worker --model haiku --thinking low`, then the task "print hello".
 
 The user usually names the model and the thinking level. Pass them as given;
 do not replace them.

@@ -187,7 +187,7 @@ class Logins:
         self.gate = threading.Lock()
         self.stamp = None
         self.data = None
-        # session id -> [generation, last use, last time the cookie went out]
+        # session id -> [generation, last use, last time the cookie went out, server-minted session id]
         self.sessions = {}
         self.failures = 0
         self.locked_until = 0.0
@@ -212,21 +212,22 @@ class Logins:
         return data['generation'] if data else None
 
     def session(self, sid):
-        """(True, send the cookie again) for a live session id, else (False, False). A hit renews the session."""
+        """(True, stored session id to send again or None) for a live session id, else (False, None). A hit renews the
+        session, and a renewed cookie uses the server-minted id from the table rather than the request header."""
         generation = self.generation()
         if not sid or generation is None:
-            return False, False
+            return False, None
         now = self.clock()
         with self.lock:
             entry = self.sessions.get(sid)
             if entry is None or entry[0] != generation or now - entry[1] > SESSION_SECONDS:
                 self.sessions.pop(sid, None)
-                return False, False
+                return False, None
             entry[1] = now
             again = now - entry[2] >= COOKIE_SECONDS
             if again:
                 entry[2] = now
-            return True, again
+            return True, (entry[3] if again else None)
 
     def retry_after(self):
         """The seconds until the next login try is taken, or 0."""
@@ -251,7 +252,7 @@ class Logins:
                 with self.lock:
                     self.failures = 0
                     self.sessions = {s: e for s, e in self.sessions.items() if now - e[1] <= SESSION_SECONDS}
-                    self.sessions[sid] = [data['generation'], now, now]
+                    self.sessions[sid] = [data['generation'], now, now, sid]
                 return sid, 0
             with self.lock:
                 self.failures += 1

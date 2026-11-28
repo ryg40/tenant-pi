@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import secrets
 import sys
+import tempfile
 import unittest
 from urllib.parse import urlencode
 
@@ -101,8 +102,14 @@ FAKE_WRAPPER_BW = '''#!/bin/sh
 touch {folder}/wrapper-ran
 exit 1
 '''
+# A `security` stub that fails: on macOS /usr/bin/security is on the scratch PATH, so `auto` tests stub it out to
+# avoid asking the host Keychain.
+FAKE_NO_KEYCHAIN = '''#!/bin/sh
+exit 1
+'''
 FAKES = {'bitwarden': ('bw', FAKE_BW), 'vault': ('vault', FAKE_VAULT), 'keychain': ('security', FAKE_SECURITY),
-         'old-node': ('node', FAKE_OLD_NODE), 'node-bw': ('bw', FAKE_NODE_BW), 'wrapper-bw': ('bw', FAKE_WRAPPER_BW)}
+         'no-keychain': ('security', FAKE_NO_KEYCHAIN), 'old-node': ('node', FAKE_OLD_NODE),
+         'node-bw': ('bw', FAKE_NODE_BW), 'wrapper-bw': ('bw', FAKE_WRAPPER_BW)}
 
 
 def fake_store(scratch, kind):
@@ -224,10 +231,33 @@ class LoginTests(unittest.TestCase):
         self.assertEqual(401, log_in(port, key)[0])
         self.assertEqual(303, log_in(port, stored_key(scratch, None, 'file'))[0])
 
+    def test_cookie_renewal_returns_the_stored_session_id_after_the_renewal_interval(self):
+        server_dir = str(Path(__file__).resolve().parents[1] / 'packages/artifacts/server')
+        if server_dir not in sys.path:
+            sys.path.insert(0, server_dir)
+        import login as login_lib
+
+        with tempfile.TemporaryDirectory(prefix='artifacts-login-') as temp:
+            path = Path(temp) / login_lib.VERIFIER
+            key = login_lib.new_key()
+            login_lib.write_verifier(path, login_lib.verifier(key, {'kind': 'file'}, '2026-01-01T00:00:00Z'))
+            now = [100.0]
+            logins = login_lib.Logins(path, clock=lambda: now[0])
+            sid, wait = logins.login(login_lib.USER, key)
+            self.assertEqual(0, wait)
+            incoming = sid.encode('ascii').decode('ascii')
+            self.assertEqual((True, None), logins.session(incoming))
+            now[0] += login_lib.COOKIE_SECONDS
+            live, renewed = logins.session(incoming)
+            self.assertTrue(live)
+            self.assertIs(sid, renewed)
+            self.assertEqual((True, None), logins.session(incoming))
+
 
 class StoreTests(unittest.TestCase):
     def test_no_usable_store_or_a_wrong_read_back_starts_no_server_and_writes_no_verifier(self):
         scratch = Scratch(self, key_store='auto')
+        fake_store(scratch, 'no-keychain')
         done = scratch.cli('start')
         self.assertEqual(6, done.returncode)
         self.assertIsNone(json.loads(scratch.ok('--json', 'status').stdout).get('pid'))
@@ -276,6 +306,7 @@ class StoreTests(unittest.TestCase):
 
     def test_a_bw_node_script_with_an_old_node_or_a_bw_wrapper_never_runs(self):
         scratch = Scratch(self, key_store='bitwarden')
+        fake_store(scratch, 'no-keychain')
         folder = fake_store(scratch, 'old-node')
         fake_store(scratch, 'node-bw')
         self.assertEqual(6, scratch.cli('start').returncode)

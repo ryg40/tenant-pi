@@ -1113,10 +1113,10 @@ def login_refusal(handler, path, raw):
             return None
         return json_error(401, 'UNAUTHORIZED', 'The local token is not the one of this server run.')
     sid = session_id(handler)
-    live, again = handler.server.logins.session(sid)
+    live, renewed = handler.server.logins.session(sid)
     if live:
-        if again:
-            handler.cookie = set_cookie(handler, sid)
+        if renewed:
+            handler.cookie = set_cookie(handler, renewed)
         return None
     if page_request(handler, path, raw):
         return Answer(303, b'', headers={'Location': '/login?next=' + quote(handler.path, safe='/')})
